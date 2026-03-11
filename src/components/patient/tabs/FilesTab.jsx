@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2 } from '../../../utils/r2Upload.js';
+import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
+import { useLookups } from '../../../hooks/useLookups.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -33,16 +35,18 @@ function formatDateTime(d) {
 }
 
 function getFileIcon(type, name) {
-  if (!type && name) {
-    const ext = name.split('.').pop().toLowerCase();
-    if (['pdf'].includes(ext)) return 'pdf';
-    if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return 'image';
-    if (['doc','docx'].includes(ext)) return 'doc';
+  // Always check extension first (type may be missing since Airtable field is restricted)
+  const ext = (name || '').split('.').pop().toLowerCase();
+  if (['pdf'].includes(ext)) return 'pdf';
+  if (['jpg','jpeg','png','gif','webp','svg','avif','heic'].includes(ext)) return 'image';
+  if (['doc','docx','odt','rtf'].includes(ext)) return 'doc';
+  if (['xls','xlsx','csv'].includes(ext)) return 'doc';
+  // Fall back to MIME type if extension unclear
+  if (type) {
+    if (type.includes('pdf')) return 'pdf';
+    if (type.includes('image')) return 'image';
+    if (type.includes('word') || type.includes('document') || type.includes('spreadsheet')) return 'doc';
   }
-  if (!type) return 'generic';
-  if (type.includes('pdf')) return 'pdf';
-  if (type.includes('image')) return 'image';
-  if (type.includes('word') || type.includes('document')) return 'doc';
   return 'generic';
 }
 
@@ -129,6 +133,8 @@ function PreviewModal({ file, onClose }) {
 
 export default function FilesTab({ patient, referral }) {
   const { user } = useUser();
+  const { appUserId, appUserName } = useCurrentAppUser();
+  const { resolveUser } = useLookups();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
@@ -167,9 +173,11 @@ export default function FilesTab({ patient, referral }) {
       const fields = {
         id: `file_${Date.now()}`,
         patient_id: patient.id,
-        uploaded_by_id: user?.fullName || user?.id || 'unknown',
+        uploaded_by_id: appUserId || appUserName || 'unknown',
         file_name: file.name,
-        file_type: file.type || 'application/octet-stream',
+        // file_type omitted — Airtable field is singleSelect with only 'application/pdf'.
+        // Change field type to Text in Airtable to store MIME types properly.
+        // The UI derives file type from filename extension for icons/preview.
         file_size: file.size,
         r2_key: r2Key,
         r2_url: r2Url,
@@ -179,7 +187,7 @@ export default function FilesTab({ patient, referral }) {
       };
 
       const created = await createFile(fields);
-      setFiles((prev) => [{ _id: created.id, ...created.fields }, ...prev]);
+      setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
       setUploadProgress(null);
     } catch (err) {
       setUploadError(err.message);
@@ -264,7 +272,7 @@ export default function FilesTab({ patient, referral }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {files.map((file) => (
-            <FileRow key={file._id} file={file} onPreview={setPreview} />
+            <FileRow key={file._id} file={file} onPreview={setPreview} resolveUser={resolveUser} appUserName={appUserName} />
           ))}
         </div>
       )}
@@ -274,7 +282,7 @@ export default function FilesTab({ patient, referral }) {
   );
 }
 
-function FileRow({ file, onPreview }) {
+function FileRow({ file, onPreview, resolveUser, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
   const cleanUrl = file.r2_url?.replace(/[<>\n]/g, '').trim();
@@ -308,7 +316,7 @@ function FileRow({ file, onPreview }) {
         </div>
         <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 2 }}>
           Uploaded {formatDateTime(file.created_at)}
-          {file.uploaded_by_id && ` · ${file.uploaded_by_id}`}
+          {file.uploaded_by_id ? ` · ${resolveUser(file.uploaded_by_id)}` : file._justUploaded ? ` · ${appUserName}` : ''}
         </p>
       </div>
 

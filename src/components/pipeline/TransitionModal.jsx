@@ -8,12 +8,15 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
 
   const fromStage = referral.current_stage;
   const fromRule = StageRules.stages[fromStage];
-  const toRule = StageRules.stages[toStage];
+  const toRule   = StageRules.stages[toStage];
+
+  const destinationPrompt = toRule?.destinationPrompt || null;
 
   const noteRequired =
     fromRule?.requiresNote ||
     toStage === 'Hold' ||
-    toStage === 'NTUC';
+    toStage === 'NTUC' ||
+    !!destinationPrompt;
 
   const isProtected = fromRule?.protectedExit || fromRule?.requiresScope;
   const canConfirm = !noteRequired || note.trim().length > 0;
@@ -30,7 +33,11 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
-  const labelFor = toStage === 'Hold' ? 'Hold reason' : toStage === 'NTUC' ? 'NTUC reason' : 'Reason for transition';
+  const labelFor =
+    toStage === 'Hold' ? 'Hold reason' :
+    toStage === 'NTUC' ? 'NTUC reason' :
+    destinationPrompt  ? 'Required note' :
+    'Reason for transition';
 
   return (
     <div
@@ -156,9 +163,11 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
                 ? 'Describe why this patient is being placed on hold and the expected resolution...'
                 : toStage === 'NTUC'
                 ? 'Provide the structured NTUC reason (e.g. No staffing, Insurance denied, Patient declined)...'
+                : destinationPrompt
+                ? destinationPrompt
                 : 'Describe the reason for this transition...'
             }
-            rows={4}
+            rows={destinationPrompt ? 7 : 4}
             style={{
               width: '100%',
               padding: '10px 12px',

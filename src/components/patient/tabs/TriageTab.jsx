@@ -4,8 +4,62 @@ import {
   getTriageAdult, createTriageAdult, updateTriageAdult,
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
+import { useLookups } from '../../../hooks/useLookups.js';
+import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+
+function formatDateTime(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+    ' at ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function getInitials(name) {
+  return (name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+}
+
+function FilledByRow({ name, date, isCurrentUser, clerkImageUrl, onPrint }) {
+  const initials = getInitials(name);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, paddingBottom: 16, borderBottom: `1px solid var(--color-border)` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Avatar */}
+        {clerkImageUrl ? (
+          <img src={clerkImageUrl} alt={name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: hexToRgba(palette.primaryMagenta.hex, 0.14), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 800, color: palette.primaryMagenta.hex }}>
+            {initials}
+          </div>
+        )}
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: palette.backgroundDark.hex, lineHeight: 1.2 }}>{name}</p>
+          {date && (
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 1 }}>
+              {formatDateTime(date)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Print button */}
+      <button
+        onClick={onPrint}
+        title="Print / Export PDF"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, background: 'none', border: 'none', color: hexToRgba(palette.backgroundDark.hex, 0.4), cursor: 'pointer', transition: 'color 0.12s, background 0.12s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.06); e.currentTarget.style.color = palette.backgroundDark.hex; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.4); }}
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+          <path d="M6 9V2h12v7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+          <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.7"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
 
 function calcAge(dob) {
   if (!dob) return null;
@@ -210,6 +264,8 @@ function PediatricForm({ data, onChange, readOnly }) {
 
 export default function TriageTab({ patient, referral }) {
   const { user } = useUser();
+  const { resolveUser } = useLookups();
+  const { appUserId } = useCurrentAppUser();
   const [triageData, setTriageData] = useState({});
   const [triageRecordId, setTriageRecordId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -281,9 +337,48 @@ export default function TriageTab({ patient, referral }) {
 
   const currentData = editing ? draft : triageData;
   const hasData = Object.keys(triageData).length > 0;
+  const filledByName = triageData.filled_by_id ? resolveUser(triageData.filled_by_id) : null;
+  const filledAt = triageData.updated_at || triageData.created_at;
+
+  function handlePrint() {
+    const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Patient';
+    const type = isPediatric ? 'Pediatric' : 'Adult';
+    const win = window.open('', '_blank', 'width=800,height=900');
+    const formEl = document.getElementById('triage-form-content');
+    win.document.write(`
+      <html><head><title>${type} Triage — ${name}</title>
+      <style>
+        body { font-family: -apple-system, sans-serif; padding: 32px; color: #0B0B10; }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        .meta { font-size: 12px; color: #777; margin-bottom: 24px; }
+        label { display: block; font-size: 11px; font-weight: 600; color: #555; margin-top: 14px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+        p { font-size: 13px; margin: 0; padding: 6px 0; border-bottom: 1px solid #eee; }
+        .section { margin-bottom: 20px; }
+        .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #999; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }
+      </style></head><body>
+      <h1>${type} Special Needs Triage Form</h1>
+      <div class="meta">Patient: ${name}${filledByName ? ` · Filled by ${filledByName}` : ''}${filledAt ? ` · ${formatDateTime(filledAt)}` : ''}</div>
+      ${formEl ? formEl.innerHTML : '<p>Form content unavailable.</p>'}
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  }
 
   return (
     <div style={{ padding: '16px 20px 40px' }}>
+      {/* Filled-by row */}
+      {hasData && !editing && filledByName && (
+        <FilledByRow
+          name={filledByName}
+          date={filledAt}
+          isCurrentUser={triageData.filled_by_id === appUserId}
+          clerkImageUrl={triageData.filled_by_id === appUserId ? user?.imageUrl : null}
+          onPrint={handlePrint}
+        />
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 2 }}>
@@ -311,11 +406,13 @@ export default function TriageTab({ patient, referral }) {
         )}
       </div>
 
-      {triageType === 'adult' ? (
-        <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
-      ) : (
-        <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
-      )}
+      <div id="triage-form-content">
+        {triageType === 'adult' ? (
+          <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
+        ) : (
+          <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
+        )}
+      </div>
     </div>
   );
 }

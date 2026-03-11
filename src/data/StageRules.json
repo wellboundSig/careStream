@@ -57,7 +57,10 @@
         "Disenrollment Required",
         "Conflict",
         "Hold",
-        "NTUC"
+        "NTUC",
+        "F2F/MD Orders Pending",
+        "Lead Entry", "Admin Confirmation", "Intake"
+
       ],
       "terminal": false,
       "isGlobal": false,
@@ -77,7 +80,8 @@
       "requiresNote": true,
       "requiresScope": null,
       "protectedExit": false,
-      "description": "Patient has active services elsewhere that must be terminated before admission."
+      "description": "Pending disenrollment",
+      "destinationPrompt": "Describe why disenrollment is required. Specify:\n\n• Which agency is currently providing services\n• What services the patient is receiving\n• Who you spoke with and when (agency staff, patient, caregiver, etc.)\n• Any relevant details or confirmation provided"
     },
 
     "F2F/MD Orders Pending": {

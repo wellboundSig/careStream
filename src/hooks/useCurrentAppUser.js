@@ -40,41 +40,35 @@ export function useCurrentAppUser() {
 
   useEffect(() => {
     if (!isLoaded || !user) return;
+
+    // Clear cache if the Clerk user has changed (e.g. different person logged in)
+    if (_appUserCache && _appUserCache.clerk_user_id && _appUserCache.clerk_user_id !== user.id) {
+      _appUserCache = null;
+    }
     if (_appUserCache) { setAppUser(_appUserCache); setLoading(false); return; }
 
     setLoading(true);
 
     (async () => {
-      // 1. Env var override — most reliable in development
-      const envOverride = import.meta.env.VITE_DEFAULT_AUTHOR_ID;
-      if (envOverride) {
-        const records = await airtable.fetchAll('Users', {
-          filterByFormula: `{id} = "${envOverride}"`,
-          maxRecords: 1,
-        }).catch(() => []);
-        if (records.length) {
-          const u = { _id: records[0].id, ...records[0].fields };
-          _appUserCache = u;
-          setAppUser(u);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 2. Match by clerk_user_id
+      // 1. Match by clerk_user_id — primary, most reliable
       const byClerk = await airtable.fetchAll('Users', {
         filterByFormula: `{clerk_user_id} = "${user.id}"`,
         maxRecords: 1,
       }).catch(() => []);
       if (byClerk.length) {
         const u = { _id: byClerk[0].id, ...byClerk[0].fields };
+        // Sync Clerk profile photo to Airtable so teammates can see it
+        if (user.imageUrl && u.clerk_image_url !== user.imageUrl) {
+          airtable.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
+          u.clerk_image_url = user.imageUrl;
+        }
         _appUserCache = u;
         setAppUser(u);
         setLoading(false);
         return;
       }
 
-      // 3. Match by email
+      // 2. Match by email
       const email = user.primaryEmailAddress?.emailAddress;
       if (email) {
         const byEmail = await airtable.fetchAll('Users', {
@@ -83,6 +77,26 @@ export function useCurrentAppUser() {
         }).catch(() => []);
         if (byEmail.length) {
           const u = { _id: byEmail[0].id, ...byEmail[0].fields };
+          if (user.imageUrl && u.clerk_image_url !== user.imageUrl) {
+            airtable.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
+            u.clerk_image_url = user.imageUrl;
+          }
+          _appUserCache = u;
+          setAppUser(u);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 3. Env var override — last resort for dev when clerk_user_id isn't set yet
+      const envOverride = import.meta.env.VITE_DEFAULT_AUTHOR_ID;
+      if (envOverride) {
+        const records = await airtable.fetchAll('Users', {
+          filterByFormula: `{id} = "${envOverride}"`,
+          maxRecords: 1,
+        }).catch(() => []);
+        if (records.length) {
+          const u = { _id: records[0].id, ...records[0].fields };
           _appUserCache = u;
           setAppUser(u);
           setLoading(false);

@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllTasks, updateTask } from '../api/tasks.js';
+import { getPatients } from '../api/patients.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
@@ -23,6 +24,7 @@ export default function Tasks() {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const [allTasks, setAllTasks] = useState([]);
+  const [patientNameMap, setPatientNameMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('mine');         // 'mine' | 'all'
   const [statusFilter, setStatusFilter] = useState('open'); // 'open' | 'all' | 'done'
@@ -34,10 +36,30 @@ export default function Tasks() {
   useEffect(() => {
     setLoading(true);
     getAllTasks()
-      .then((recs) => setAllTasks(recs.map((r) => ({ _id: r.id, ...r.fields }))))
+      .then(async (recs) => {
+        const tasks = recs.map((r) => ({ _id: r.id, ...r.fields }));
+        setAllTasks(tasks);
+
+        // Resolve patient names for all unique patient_ids in the task list
+        const pids = [...new Set(tasks.map((t) => t.patient_id).filter(Boolean))];
+        if (pids.length) {
+          const formula = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
+          const patients = await getPatients({ filterByFormula: formula }).catch(() => []);
+          const nameMap = {};
+          patients.forEach((p) => {
+            if (p.fields.id) nameMap[p.fields.id] = `${p.fields.first_name || ''} ${p.fields.last_name || ''}`.trim();
+          });
+          setPatientNameMap(nameMap);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const resolvePatient = useCallback(
+    (id) => patientNameMap[id] || null,
+    [patientNameMap]
+  );
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -162,7 +184,7 @@ export default function Tasks() {
             const tasks = bySection[section.id];
             if (!tasks?.length) return null;
             return (
-              <SectionGroup key={section.id} section={section} tasks={tasks} resolveUser={resolveUser} onComplete={handleComplete} onStatusChange={handleStatusChange} />
+              <SectionGroup key={section.id} section={section} tasks={tasks} resolveUser={resolveUser} resolvePatient={resolvePatient} onComplete={handleComplete} onStatusChange={handleStatusChange} />
             );
           })
         )}
@@ -177,7 +199,7 @@ export default function Tasks() {
   );
 }
 
-function SectionGroup({ section, tasks, resolveUser, onComplete, onStatusChange }) {
+function SectionGroup({ section, tasks, resolveUser, resolvePatient, onComplete, onStatusChange }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -194,7 +216,7 @@ function SectionGroup({ section, tasks, resolveUser, onComplete, onStatusChange 
       {!collapsed && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tasks.map((task) => (
-            <TaskCard key={task._id} task={task} resolveUser={resolveUser} onComplete={onComplete} onStatusChange={onStatusChange} />
+            <TaskCard key={task._id} task={task} resolveUser={resolveUser} resolvePatient={resolvePatient} onComplete={onComplete} onStatusChange={onStatusChange} />
           ))}
         </div>
       )}

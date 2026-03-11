@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
@@ -43,8 +43,14 @@ function getF2FStatus(f2fExpiration) {
 
 export default function PatientDrawer() {
   const { isOpen, patient, referral, activeTab, setActiveTab, close } = usePatientDrawer();
-  const [visible, setVisible] = useState(false);
-  const [animated, setAnimated] = useState(false);
+  const [visible, setVisible]       = useState(false);
+  const [animated, setAnimated]     = useState(false);
+  const [autoNewTask, setAutoNewTask] = useState(false);
+
+  const handleNewTask = useCallback(() => {
+    setActiveTab('tasks');
+    setAutoNewTask(true);
+  }, [setActiveTab]);
 
   useEffect(() => {
     if (isOpen) {
@@ -110,6 +116,7 @@ export default function PatientDrawer() {
           age={age}
           onClose={close}
           setActiveTab={setActiveTab}
+          onNewTask={handleNewTask}
         />
 
         <TabBar tabs={TABS} activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -120,6 +127,8 @@ export default function PatientDrawer() {
               tab={activeTab}
               patient={patient}
               referral={referral}
+              autoNewTask={autoNewTask}
+              onAutoNewTaskConsumed={() => setAutoNewTask(false)}
             />
           )}
         </div>
@@ -128,7 +137,7 @@ export default function PatientDrawer() {
   );
 }
 
-function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab }) {
+function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNewTask }) {
   const name = patient
     ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
     : 'Unknown Patient';
@@ -190,40 +199,56 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab }) {
         </button>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {patient?.division && <DivisionBadge division={patient.division} size="small" />}
-        {referral?.current_stage && <StageBadge stage={referral.current_stage} size="small" />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+        {/* Division — solid color, always readable on dark plum */}
+        {patient?.division && (
+          <span style={{
+            fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+            background: patient.division === 'Special Needs'
+              ? hexToRgba(palette.primaryMagenta.hex, 0.32)
+              : hexToRgba(palette.highlightYellow.hex, 0.32),
+            color: patient.division === 'Special Needs' ? palette.primaryMagenta.hex : palette.highlightYellow.hex,
+          }}>
+            {patient.division === 'Special Needs' ? 'SN' : 'ALF'}
+          </span>
+        )}
+        {/* Stage — white text on semi-transparent white bg, always readable */}
+        {referral?.current_stage && (
+          <span style={{
+            fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+            background: hexToRgba(palette.backgroundLight.hex, 0.16),
+            color: hexToRgba(palette.backgroundLight.hex, 0.92),
+          }}>
+            {referral.current_stage}
+          </span>
+        )}
+        {/* F2F countdown */}
         {f2f && (
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: 20,
-              background: hexToRgba(f2f.color, 0.25),
-              color: f2f.color,
-            }}
-          >
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20,
+            background: hexToRgba(f2f.color, 0.28),
+            color: f2f.color,
+          }}>
             {f2f.label}
           </span>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 7, marginTop: 14 }}>
         {[
           { label: 'Add Note', tab: 'notes' },
           { label: 'Files', tab: 'files' },
-          { label: 'Tasks', tab: 'tasks' },
+          { label: '+ Task', tab: 'tasks', action: 'new' },
         ].map((a) => (
           <button
             key={a.tab}
-            onClick={() => setActiveTab(a.tab)}
+            onClick={() => a.action === 'new' ? onNewTask() : setActiveTab(a.tab)}
             style={{
-              height: 30,
+              height: 28,
               padding: '0 12px',
               borderRadius: 7,
               background: hexToRgba(palette.backgroundLight.hex, 0.1),
-              border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.2)}`,
+              border: 'none',
               fontSize: 12,
               fontWeight: 600,
               color: hexToRgba(palette.backgroundLight.hex, 0.85),
@@ -281,7 +306,7 @@ function TabBar({ tabs, activeTab, setActiveTab }) {
   );
 }
 
-function TabContent({ tab, patient, referral }) {
+function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
   const props = { patient, referral };
   switch (tab) {
     case 'overview': return <OverviewTab {...props} />;
@@ -290,7 +315,7 @@ function TabContent({ tab, patient, referral }) {
     case 'notes': return <NotesTab {...props} />;
     case 'timeline': return <TimelineTab {...props} />;
     case 'files': return <FilesTab {...props} />;
-    case 'tasks': return <TasksTab {...props} />;
+    case 'tasks': return <TasksTab {...props} autoNewTask={autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;
     case 'authorizations': return <AuthorizationsTab {...props} />;
     case 'conflicts': return <ConflictsTab {...props} />;
     default: return null;

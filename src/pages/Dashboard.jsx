@@ -72,7 +72,7 @@ export default function Dashboard() {
         <StatCard label="Active Referrals"       value={activeCount}    sub="currently in pipeline"     color={palette.primaryMagenta.hex} />
         <StatCard label="New This Week"           value={newThisWeek}   sub="referrals received"         color={palette.accentBlue.hex} />
         <StatCard label="On Hold"                 value={stageCounts['Hold'] || 0} sub="awaiting resolution" color={palette.highlightYellow.hex} />
-        <StatCard label="Not Taken Under Care"    value={stageCounts['NTUC'] || 0} sub="closed — no admission" color={hexToRgba(palette.backgroundDark.hex, 0.4)} />
+        <StatCard label="Not Taken Under Care"    value={stageCounts['NTUC'] || 0} sub="no admission" color={hexToRgba(palette.backgroundDark.hex, 0.4)} />
       </div>
 
       {/* ── 2. Patient list ── */}

@@ -11,6 +11,10 @@ import PipelineBoard from './pages/PipelineBoard.jsx';
 import PendingApproval from './pages/PendingApproval.jsx';
 import Team from './pages/Team.jsx';
 import Marketers from './pages/directory/Marketers.jsx';
+import Facilities from './pages/directory/Facilities.jsx';
+import Physicians from './pages/directory/Physicians.jsx';
+import Campaigns from './pages/directory/Campaigns.jsx';
+import ReferralSources from './pages/directory/ReferralSources.jsx';
 import Tasks from './pages/Tasks.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
@@ -60,10 +64,10 @@ export default function App() {
         <Route path="tasks" element={<Tasks />} />
         <Route path="reports" element={<ComingSoon title="Reports" />} />
         <Route path="directory/marketers" element={<Marketers />} />
-        <Route path="directory/facilities" element={<ComingSoon title="Facilities Directory" />} />
-        <Route path="directory/physicians" element={<ComingSoon title="Physicians Directory" />} />
-        <Route path="directory/campaigns" element={<ComingSoon title="Campaigns" />} />
-        <Route path="directory/referral-sources" element={<ComingSoon title="Referral Sources" />} />
+        <Route path="directory/facilities" element={<Facilities />} />
+        <Route path="directory/physicians" element={<Physicians />} />
+        <Route path="directory/campaigns" element={<Campaigns />} />
+        <Route path="directory/referral-sources" element={<ReferralSources />} />
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/settings" element={<ComingSoon title="Settings" />} />

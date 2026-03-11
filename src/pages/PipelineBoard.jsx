@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
+import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { updateReferral } from '../api/referrals.js';
+import { saveTransitionNote } from '../utils/saveTransitionNote.js';
+import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import StageRules from '../data/StageRules.json';
 
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
@@ -28,17 +31,20 @@ function canMoveFromTo(fromStage, toStage) {
 
 function needsModal(fromStage, toStage) {
   const fromRule = StageRules.stages[fromStage];
-  return (
+  const toRule   = StageRules.stages[toStage];
+  return !!(
     fromRule?.requiresNote ||
     fromRule?.protectedExit ||
     toStage === 'Hold' ||
-    toStage === 'NTUC'
+    toStage === 'NTUC' ||
+    toRule?.destinationPrompt
   );
 }
 
 export default function PipelineBoard() {
   const { division } = useOutletContext();
   const { data: enriched, loading, refetch } = usePipelineData();
+  const { appUserId } = useCurrentAppUser();
 
   const [localReferrals, setLocalReferrals] = useState([]);
   const [draggingId, setDraggingId] = useState(null);
@@ -90,6 +96,11 @@ export default function PipelineBoard() {
 
     try {
       await updateReferral(referral._id, updateFields);
+      // Persist the transition note on the patient's profile
+      if (note?.trim()) {
+        await saveTransitionNote({ referral, fromStage, toStage, note, authorId: appUserId });
+        triggerDataRefresh();
+      }
       showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
     } catch {
       setLocalReferrals((prev) =>

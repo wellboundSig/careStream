@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { updatePatient } from '../../../api/patients.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
+import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function Section({ title, children }) {
@@ -40,15 +41,17 @@ function EditableField({ label, value, fieldKey, patientId, onSave, type = 'text
 
   async function save() {
     if (draft === (value || '')) { setEditing(false); return; }
+    // Optimistic update — show new value instantly, revert if API fails
+    onSave(fieldKey, draft);
+    setEditing(false);
     setSaving(true);
     try {
       await updatePatient(patientId, { [fieldKey]: draft });
-      onSave(fieldKey, draft);
+      triggerDataRefresh(); // propagate update to all active data hooks
     } catch {
-      // silently revert on error
+      onSave(fieldKey, value || ''); // revert optimistic update
     } finally {
       setSaving(false);
-      setEditing(false);
     }
   }
 

@@ -1,195 +1,380 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/react';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { getMyTasks } from '../../api/tasks.js';
+import { getPatients } from '../../api/patients.js';
+import CommandPalette from '../search/CommandPalette.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins  < 1)   return 'just now';
+  if (mins  < 60)  return `${mins}m ago`;
+  if (hours < 24)  return `${hours}h ago`;
+  if (days  < 7)   return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function TopBar({ breadcrumbs }) {
-  const { user } = useUser();
+  const { user }              = useUser();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K listener
+  useEffect(() => {
+    function handler(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
-    <header
-      style={{
-        height: 58,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 20px',
-        background: palette.primaryDeepPlum.hex,
-        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.35)}`,
-        flexShrink: 0,
-        zIndex: 100,
-        position: 'sticky',
-        top: 0,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-        <img
-          src="/logo-wb.png"
-          alt="Wellbound"
-          style={{ height: 36, objectFit: 'contain' }}
-        />
-        {breadcrumbs && (
-          <nav
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginLeft: 20,
-              fontSize: 13,
-              color: hexToRgba(palette.backgroundLight.hex, 0.45),
-            }}
-          >
-            {breadcrumbs.map((crumb, i) => (
-              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {i > 0 && (
-                  <span style={{ opacity: 0.4 }}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                )}
-                <span
-                  style={{
-                    color: i === breadcrumbs.length - 1
-                      ? palette.backgroundLight.hex
-                      : hexToRgba(palette.backgroundLight.hex, 0.5),
-                    fontWeight: i === breadcrumbs.length - 1 ? 550 : 400,
-                  }}
-                >
-                  {crumb}
-                </span>
-              </span>
-            ))}
-          </nav>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <SearchBar />
-        <NotificationBell />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {user && (
-            <span
-              style={{
-                fontSize: 13,
-                color: hexToRgba(palette.backgroundLight.hex, 0.65),
-                fontWeight: 450,
-              }}
-            >
-              {user.firstName} {user.lastName}
-            </span>
-          )}
-          <UserButton afterSignOutUrl="/sign-in" />
-        </div>
-      </div>
-
-      <img
-        src="/logo-cs.png"
-        alt="CareStream"
+    <>
+      <header
         style={{
-          height: 32,
-          objectFit: 'contain',
-          position: 'absolute',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          pointerEvents: 'none',
+          height: 58,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          background: palette.primaryDeepPlum.hex,
+          borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.35)}`,
+          flexShrink: 0,
+          zIndex: 100,
+          position: 'sticky',
+          top: 0,
         }}
-      />
-    </header>
+      >
+        {/* Left: logo + breadcrumbs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          <img src="/logo-wb.png" alt="Wellbound" style={{ height: 36, objectFit: 'contain' }} />
+          {breadcrumbs && (
+            <nav style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              marginLeft: 20, fontSize: 13,
+              color: hexToRgba(palette.backgroundLight.hex, 0.45),
+            }}>
+              {breadcrumbs.map((crumb, i) => (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {i > 0 && (
+                    <span style={{ opacity: 0.4 }}>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  )}
+                  <span style={{
+                    color: i === breadcrumbs.length - 1 ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.5),
+                    fontWeight: i === breadcrumbs.length - 1 ? 550 : 400,
+                  }}>
+                    {crumb}
+                  </span>
+                </span>
+              ))}
+            </nav>
+          )}
+        </div>
+
+        {/* Right: search + bell + user */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <SearchBar onOpen={() => setPaletteOpen(true)} />
+          <NotificationBell />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {user && (
+              <span style={{ fontSize: 13, color: hexToRgba(palette.backgroundLight.hex, 0.65), fontWeight: 450 }}>
+                {user.firstName} {user.lastName}
+              </span>
+            )}
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
+        </div>
+
+        {/* Center: CareStream logo */}
+        <img
+          src="/logo-cs.png"
+          alt="CareStream"
+          style={{
+            height: 32, objectFit: 'contain',
+            position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+          }}
+        />
+      </header>
+
+      <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
+    </>
   );
 }
 
-function SearchBar() {
+// ── Search bar (click or ⌘K to open palette) ──────────────────────────────────
+function SearchBar({ onOpen }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
+        display: 'flex', alignItems: 'center', gap: 8,
         background: hexToRgba(palette.backgroundLight.hex, 0.08),
         border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
-        borderRadius: 8,
-        padding: '0 12px',
-        height: 34,
-        width: 240,
-        cursor: 'text',
+        borderRadius: 8, padding: '0 12px',
+        height: 34, width: 220, cursor: 'pointer',
+        transition: 'background 0.15s',
       }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.13))}
+      onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.08))}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
         <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundLight.hex, 0.45)} strokeWidth="1.8" />
         <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundLight.hex, 0.45)} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
-      <input
-        placeholder="Search patients, referrals..."
-        style={{
-          background: 'none',
-          border: 'none',
-          outline: 'none',
-          fontSize: 13,
-          color: palette.backgroundLight.hex,
-          width: '100%',
-        }}
-      />
-      <kbd
-        style={{
-          fontSize: 10,
-          color: hexToRgba(palette.backgroundLight.hex, 0.35),
-          background: hexToRgba(palette.backgroundLight.hex, 0.1),
-          border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
-          borderRadius: 4,
-          padding: '1px 5px',
-          fontFamily: 'inherit',
-        }}
-      >
-        K
+      <span style={{
+        flex: 1, fontSize: 13,
+        color: hexToRgba(palette.backgroundLight.hex, 0.45),
+        userSelect: 'none',
+      }}>
+        Search…
+      </span>
+      <kbd style={{
+        fontSize: 10, color: hexToRgba(palette.backgroundLight.hex, 0.35),
+        background: hexToRgba(palette.backgroundLight.hex, 0.1),
+        border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+        borderRadius: 4, padding: '1px 5px', fontFamily: 'inherit',
+      }}>
+        ⌘K
       </kbd>
     </div>
   );
 }
 
+// ── Notification bell ──────────────────────────────────────────────────────────
 function NotificationBell() {
+  const navigate                  = useNavigate();
+  const { appUserId }             = useCurrentAppUser();
+  const [open, setOpen]           = useState(false);
+  const [tasks, setTasks]         = useState([]);
+  const [patientNames, setPatientNames] = useState({});
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const wrapperRef                = useRef(null);
+
+  // Fetch tasks when user is resolved
+  useEffect(() => {
+    if (!appUserId) return;
+    setLoadingTasks(true);
+    getMyTasks(appUserId)
+      .then(async (records) => {
+        const myTasks = records
+          .map((r) => ({ _id: r.id, ...r.fields }))
+          .filter((t) => t.status !== 'Completed' && t.status !== 'Cancelled')
+          .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+          .slice(0, 5);
+        setTasks(myTasks);
+
+        // Resolve patient names for these tasks
+        const pids = [...new Set(myTasks.map((t) => t.patient_id).filter(Boolean))];
+        if (pids.length) {
+          const formula = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
+          const patients = await getPatients({ filterByFormula: formula }).catch(() => []);
+          const nameMap = {};
+          patients.forEach((p) => {
+            if (p.fields.id) nameMap[p.fields.id] = `${p.fields.first_name || ''} ${p.fields.last_name || ''}`.trim();
+          });
+          setPatientNames(nameMap);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTasks(false));
+  }, [appUserId]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const unreadCount = tasks.length;
+
+  const TASK_TYPE_COLORS = {
+    'Insurance Barrier': palette.primaryMagenta.hex,
+    'Missing Document':  palette.accentOrange.hex,
+    'Auth Needed':       palette.accentBlue.hex,
+    'Escalation':        palette.primaryMagenta.hex,
+    'Staffing':          palette.accentGreen.hex,
+    'Scheduling':        palette.accentGreen.hex,
+    'Follow-Up':         hexToRgba(palette.backgroundDark.hex, 0.45),
+    'Other':             hexToRgba(palette.backgroundDark.hex, 0.35),
+  };
+
   return (
-    <button
-      style={{
-        width: 34,
-        height: 34,
-        borderRadius: 8,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: hexToRgba(palette.backgroundLight.hex, 0.08),
-        border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
-        position: 'relative',
-        color: hexToRgba(palette.backgroundLight.hex, 0.7),
-        transition: 'background 0.15s',
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M13.73 21a2 2 0 0 1-3.46 0"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span
+    <div ref={wrapperRef} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
         style={{
-          position: 'absolute',
-          top: 6,
-          right: 6,
-          width: 7,
-          height: 7,
-          borderRadius: '50%',
-          background: palette.primaryMagenta.hex,
-          border: `2px solid ${palette.primaryDeepPlum.hex}`,
+          width: 34, height: 34, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: open
+            ? hexToRgba(palette.backgroundLight.hex, 0.15)
+            : hexToRgba(palette.backgroundLight.hex, 0.08),
+          border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+          position: 'relative',
+          color: hexToRgba(palette.backgroundLight.hex, 0.8),
+          cursor: 'pointer',
+          transition: 'background 0.15s',
         }}
-      />
-    </button>
+        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.15))}
+        onMouseLeave={(e) => !open && (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.08))}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+
+        {/* Badge */}
+        {unreadCount > 0 && (
+          <span style={{
+            position: 'absolute', top: 4, right: 4,
+            minWidth: 16, height: 16, borderRadius: 8,
+            background: palette.primaryMagenta.hex,
+            border: `2px solid ${palette.primaryDeepPlum.hex}`,
+            fontSize: 9, fontWeight: 700,
+            color: palette.backgroundLight.hex,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 3px',
+          }}>
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+          width: 310,
+          background: palette.backgroundLight.hex,
+          borderRadius: 12,
+          boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
+          border: `1px solid var(--color-border)`,
+          overflow: 'hidden',
+          zIndex: 500,
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '11px 14px 10px',
+            borderBottom: `1px solid var(--color-border)`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundDark.hex }}>
+              Notifications
+            </span>
+            {unreadCount > 0 && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 650,
+                color: palette.primaryMagenta.hex,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.08),
+                borderRadius: 10, padding: '2px 8px',
+              }}>
+                {unreadCount} open
+              </span>
+            )}
+          </div>
+
+          {/* Task cards */}
+          {loadingTasks && (
+            <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+              Loading…
+            </div>
+          )}
+
+          {!loadingTasks && tasks.length === 0 && (
+            <div style={{ padding: '22px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>No open tasks assigned to you.</p>
+            </div>
+          )}
+
+          {!loadingTasks && tasks.map((task) => {
+            const patientName = patientNames[task.patient_id] || null;
+            const typeColor   = TASK_TYPE_COLORS[task.type] || hexToRgba(palette.backgroundDark.hex, 0.35);
+            return (
+              <div
+                key={task._id}
+                onClick={() => { setOpen(false); navigate('/tasks'); }}
+                style={{
+                  padding: '10px 14px',
+                  borderBottom: `1px solid var(--color-border)`,
+                  cursor: 'pointer',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03))}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Task type badge */}
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                      color: typeColor,
+                      display: 'block', marginBottom: 3,
+                    }}>
+                      {task.type || 'Task'} assigned to you
+                    </span>
+
+                    {/* Task title */}
+                    <p style={{
+                      fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex,
+                      margin: 0, lineHeight: 1.4,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {task.title || '(No title)'}
+                    </p>
+
+                    {/* Patient name */}
+                    {patientName && (
+                      <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), margin: '2px 0 0' }}>
+                        Re: {patientName}
+                      </p>
+                    )}
+                  </div>
+
+                  <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0, marginTop: 2 }}>
+                    {timeAgo(task.created_at)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Footer */}
+          <div
+            onClick={() => { setOpen(false); navigate('/tasks'); }}
+            style={{
+              padding: '10px 14px',
+              cursor: 'pointer',
+              textAlign: 'center',
+              fontSize: 12, fontWeight: 650,
+              color: palette.accentBlue.hex,
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentBlue.hex, 0.05))}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            View all tasks →
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

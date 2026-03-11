@@ -1,11 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import ICD10Lookup from '../clinical/ICD10Lookup.jsx';
+import CliniciansPanel from '../staffing/CliniciansPanel.jsx';
+import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
+import RadarPanel from '../staffing/RadarPanel.jsx';
+import { getChecksByPatient, createInsuranceCheck } from '../../api/insuranceChecks.js';
+import { getConflictsByReferral } from '../../api/conflicts.js';
+import { updateReferral } from '../../api/referrals.js';
+import { createEpisode } from '../../api/episodes.js';
+import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
+import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { useLookups } from '../../hooks/useLookups.js';
+import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../data/eligibilityConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // Shared panel wrapper ────────────────────────────────────────────────────────
-function Panel({ children }) {
+function Panel({ children, width = 280 }) {
   return (
     <div style={{
-      width: 280, minWidth: 280, borderLeft: `1px solid var(--color-border)`,
+      width, minWidth: width, borderLeft: `1px solid var(--color-border)`,
       background: hexToRgba(palette.backgroundDark.hex, 0.015),
       overflowY: 'auto', flexShrink: 0, padding: '16px 14px',
     }}>
@@ -72,7 +85,10 @@ function EmptyPanelState({ message }) {
 }
 
 // ── 1. Lead Entry ─────────────────────────────────────────────────────────────
-function LeadEntryPanel({ referrals, resolveSource }) {
+function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
+  const [duplicates, setDuplicates] = useState([]);
+  const [dupChecked, setDupChecked] = useState(false);
+
   const today = referrals.filter((r) => {
     const d = new Date(r.referral_date);
     return Date.now() - d.getTime() < 86400000;
@@ -81,6 +97,21 @@ function LeadEntryPanel({ referrals, resolveSource }) {
     const d = new Date(r.referral_date);
     return Date.now() - d.getTime() < 7 * 86400000;
   }).length;
+
+  function checkDuplicates() {
+    const seen = {};
+    referrals.forEach((r) => {
+      const name = (r.patientName || r.patient_id || '').toLowerCase().trim();
+      if (!name) return;
+      seen[name] = (seen[name] || 0) + 1;
+    });
+    const dups = referrals.filter((r) => {
+      const name = (r.patientName || r.patient_id || '').toLowerCase().trim();
+      return seen[name] > 1;
+    });
+    setDuplicates(dups);
+    setDupChecked(true);
+  }
 
   return (
     <Panel>
@@ -91,9 +122,28 @@ function LeadEntryPanel({ referrals, resolveSource }) {
       </PanelSection>
 
       <PanelSection title="Quick Actions">
-        <ActionBtn label="+ New Referral" variant="primary" onClick={() => {}} />
-        <ActionBtn label="Check Duplicates" />
+        <ActionBtn label="+ New Referral" variant="primary" onClick={onNewReferral} />
+        <ActionBtn label="Check Duplicates" onClick={checkDuplicates} />
       </PanelSection>
+
+      {dupChecked && (
+        <PanelSection title="Duplicate Check">
+          {duplicates.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: palette.accentGreen.hex, fontWeight: 600 }}>No duplicates found.</p>
+          ) : (
+            <>
+              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 650, marginBottom: 8 }}>
+                {duplicates.length} potential duplicate{duplicates.length !== 1 ? 's' : ''} detected:
+              </p>
+              {duplicates.map((r) => (
+                <div key={r._id} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07), marginBottom: 4, color: palette.backgroundDark.hex }}>
+                  {r.patientName || r.patient_id}
+                </div>
+              ))}
+            </>
+          )}
+        </PanelSection>
+      )}
 
       <PanelSection title="Source Breakdown">
         {(() => {
@@ -116,17 +166,18 @@ function LeadEntryPanel({ referrals, resolveSource }) {
 }
 
 // ── 2. Intake ─────────────────────────────────────────────────────────────────
-function IntakePanel({ referrals, selectedReferral }) {
+function IntakePanel({ referrals, selectedReferral, onOpenTriage, onInitiateTransition }) {
   const REQUIRED_FIELDS = ['first_name', 'last_name', 'dob', 'phone_primary', 'address_street', 'medicaid_number'];
   const p = selectedReferral?.patient;
   const filled = p ? REQUIRED_FIELDS.filter((f) => p[f]).length : 0;
   const pct = p ? Math.round((filled / REQUIRED_FIELDS.length) * 100) : 0;
+  const isSN = selectedReferral?.division === 'Special Needs';
 
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          <PanelSection title="Demographics Completeness">
+          <PanelSection title="Basic Demographics Completeness">
             <div style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Completion</span>
@@ -141,15 +192,19 @@ function IntakePanel({ referrals, selectedReferral }) {
             ))}
           </PanelSection>
 
-          <PanelSection title="Triage Form">
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, textAlign: 'center', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-              {selectedReferral.division === 'Special Needs' ? 'Open Triage tab to fill or view form' : 'Triage form — ALF only (not required)'}
-            </div>
-          </PanelSection>
-
           <PanelSection title="Quick Actions">
-            <ActionBtn label="Open Triage Form" variant="primary" />
-            <ActionBtn label="Move to Eligibility" variant="success" />
+            {isSN && (
+              <ActionBtn
+                label="Open Triage Form"
+                variant="primary"
+                onClick={() => onOpenTriage?.(selectedReferral)}
+              />
+            )}
+            <ActionBtn
+              label="Move to Eligibility"
+              variant="success"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
+            />
           </PanelSection>
         </>
       )}
@@ -158,49 +213,307 @@ function IntakePanel({ referrals, selectedReferral }) {
 }
 
 // ── 3. Eligibility ────────────────────────────────────────────────────────────
+
+function FlagRow({ label, value, onChange, readOnly }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{label}</span>
+      {readOnly ? (
+        <span style={{ fontSize: 11.5, fontWeight: 650, color: value === true || value === 'true' ? palette.primaryMagenta.hex : value === false || value === 'false' ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+          {value === true || value === 'true' ? 'Yes' : value === false || value === 'false' ? 'No' : '—'}
+        </span>
+      ) : (
+        <select value={value || ''} onChange={(e) => onChange(e.target.value)} style={{ fontSize: 11.5, padding: '2px 6px', borderRadius: 5, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontFamily: 'inherit', cursor: 'pointer' }}>
+          <option value="">—</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      )}
+    </div>
+  );
+}
+
+function FormField({ label, children, style }) {
+  return (
+    <div style={{ marginBottom: 8, ...style }}>
+      <p style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 4, letterSpacing: '0.02em' }}>{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function PanelSelect({ value, onChange, options, placeholder }) {
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', background: palette.backgroundLight.hex, cursor: 'pointer', outline: 'none' }}
+      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
+    >
+      {placeholder && <option value="">{placeholder}</option>}
+      {options.map((s) => <option key={s} value={s}>{s}</option>)}
+    </select>
+  );
+}
+
 function EligibilityPanel({ referrals, selectedReferral }) {
-  const flags = ['has_open_hh_episode', 'hospice_overlap', 'snf_present', 'cdpap_active', 'disenrollment_needed'];
+  const { appUserId, appUserName } = useCurrentAppUser();
+  const { resolveUser } = useLookups();
+  const [lastCheck, setLastCheck] = useState(null);
+  const [loadingCheck, setLoadingCheck] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_CHECK_FORM });
+  const [flagValues, setFlagValues] = useState({});
+  const isSN = selectedReferral?.division === 'Special Needs';
+
+  useEffect(() => {
+    if (!selectedReferral?.patient_id) { setLastCheck(null); setShowForm(false); return; }
+    setLoadingCheck(true);
+    getChecksByPatient(selectedReferral.patient_id)
+      .then((recs) => {
+        const sorted = recs.map((r) => ({ _id: r.id, ...r.fields }))
+          .sort((a, b) => new Date(b.check_date || 0) - new Date(a.check_date || 0));
+        setLastCheck(sorted[0] || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCheck(false));
+  }, [selectedReferral?.patient_id]);
+
+  function openForm() {
+    setFlagValues({});
+    setForm({ ...EMPTY_CHECK_FORM });
+    setShowForm(true);
+  }
+
+  async function submitCheck() {
+    setSaving(true);
+    try {
+      const fields = buildCheckFields({
+        referralId: selectedReferral.id,
+        patientId: selectedReferral.patient_id,
+        authorId: appUserId,
+        form,
+        flagValues,
+        isSN,
+      });
+      const created = await createInsuranceCheck(fields);
+      setLastCheck({ _id: created.id, ...created.fields });
+      setShowForm(false);
+    } catch (err) {
+      console.error('Check save failed', err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const checkedByName = lastCheck?.checked_by_id ? resolveUser(lastCheck.checked_by_id) : null;
+
   return (
     <Panel>
-      <PanelSection title="Queue Summary">
-        <InfoRow label="Awaiting check" value={referrals.filter((r) => !r.medicaid_number).length} />
-        <InfoRow label="Total in queue" value={referrals.length} />
-      </PanelSection>
-      <PanelSection title="Quick Actions">
-        <ActionBtn label="Batch Recheck All" variant="primary" />
-        <ActionBtn label="Flag Conflicts" variant="warning" />
-      </PanelSection>
-      <PanelSection title="Common Flags">
-        {flags.map((f) => (
-          <div key={f} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, fontSize: 12 }}>
-            <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>{f.replace(/_/g, ' ')}</span>
-            <span style={{ fontWeight: 600, color: palette.primaryMagenta.hex }}>
-              {referrals.filter((r) => r[f] === true || r[f] === 'true').length}
-            </span>
-          </div>
-        ))}
-      </PanelSection>
+      {!selectedReferral ? (
+        <>
+          <PanelSection title="Queue Summary">
+            <InfoRow label="Total in queue" value={referrals.length} />
+          </PanelSection>
+          <EmptyPanelState message="Select a patient to log or view their eligibility check." />
+        </>
+      ) : (
+        <>
+          {/* Last check */}
+          {loadingCheck ? (
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '8px 0' }}>Loading last check…</p>
+          ) : lastCheck ? (
+            <PanelSection title="Last Check">
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{checkedByName || lastCheck.checked_by_id}</span>
+                  <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>·</span>
+                  <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{lastCheck.check_source}</span>
+                </div>
+                {lastCheck.check_date && (
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 8 }}>
+                    {new Date(lastCheck.check_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' at '}
+                    {new Date(lastCheck.check_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  </p>
+                )}
+                {/* Show Medicare/Medicaid info from result_summary prefix lines */}
+                {lastCheck.result_summary && lastCheck.result_summary.split('\n').filter((l) => l.startsWith('Medicare:') || l.startsWith('Medicaid:')).map((line, i) => {
+                  const [label, ...rest] = line.split(': ');
+                  const val = rest.join(': ');
+                  const isMgd = val.includes('Managed') || val.includes('MCO') || val.includes('Advantage');
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+                      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{label}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 650, color: val.includes('Not enrolled') ? hexToRgba(palette.backgroundDark.hex, 0.35) : isMgd ? palette.accentOrange.hex : palette.accentBlue.hex }}>{val}</span>
+                    </div>
+                  );
+                })}
+                {lastCheck.managed_care_plan && (
+                  <InfoRow label="Plan" value={lastCheck.managed_care_plan} />
+                )}
+                {lastCheck.managed_care_id && (
+                  <InfoRow label="Exception Code" value={lastCheck.managed_care_id} />
+                )}
+                {CHECK_FLAGS.filter((f) => lastCheck[f.key] !== undefined && lastCheck[f.key] !== null).map((f) => (
+                  <FlagRow key={f.key} label={f.label} value={lastCheck[f.key]} readOnly />
+                ))}
+                {/* Show user notes portion of summary (non-structured lines) */}
+                {lastCheck.result_summary && (() => {
+                  const userNotes = lastCheck.result_summary.split('\n').filter((l) => !l.startsWith('Medicare:') && !l.startsWith('Medicaid:') && !l.startsWith('Plan:') && !l.startsWith('Exception Code:')).join('\n').trim();
+                  return userNotes ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>{userNotes}</p> : null;
+                })()}
+              </div>
+              <ActionBtn label="Log New Check" onClick={openForm} />
+            </PanelSection>
+          ) : (
+            <PanelSection title="Eligibility">
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 10 }}>No check on record.</p>
+              <ActionBtn label="Log Eligibility Check" variant="primary" onClick={openForm} />
+            </PanelSection>
+          )}
+
+          {/* Inline check form */}
+          {showForm && (
+            <PanelSection title="New Manual Check">
+              <FormField label="Source">
+                <PanelSelect value={form.check_source} onChange={(v) => setForm((p) => ({ ...p, check_source: v }))} options={CHECK_SOURCES} />
+              </FormField>
+
+              <FormField label="Third Party / Commercial Plan">
+                <PanelSelect
+                  value={form.managed_care_plan}
+                  onChange={(v) => setForm((p) => ({ ...p, managed_care_plan: v }))}
+                  options={COMMERCIAL_PLANS}
+                  placeholder="— None / Not applicable —"
+                />
+              </FormField>
+
+              <FormField label="Medicare Coverage">
+                <select
+                  value={form.medicare_type}
+                  onChange={(e) => setForm((p) => ({ ...p, medicare_type: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', background: form.medicare_type === 'ffs' ? hexToRgba(palette.accentBlue.hex, 0.08) : form.medicare_type === 'advantage' ? hexToRgba(palette.accentOrange.hex, 0.08) : form.medicare_type === 'none' ? hexToRgba(palette.backgroundDark.hex, 0.05) : palette.backgroundLight.hex, cursor: 'pointer', outline: 'none', fontWeight: form.medicare_type ? 600 : 400 }}
+                  onFocus={(e) => (e.target.style.outline = `2px solid ${palette.primaryMagenta.hex}`)}
+                  onBlur={(e) => (e.target.style.outline = 'none')}
+                >
+                  {MEDICARE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </FormField>
+
+              <FormField label="Medicaid Coverage">
+                <select
+                  value={form.medicaid_type}
+                  onChange={(e) => setForm((p) => ({ ...p, medicaid_type: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', background: form.medicaid_type === 'ffs' ? hexToRgba(palette.accentBlue.hex, 0.08) : form.medicaid_type === 'mco' ? hexToRgba(palette.accentOrange.hex, 0.08) : form.medicaid_type === 'none' ? hexToRgba(palette.backgroundDark.hex, 0.05) : palette.backgroundLight.hex, cursor: 'pointer', outline: 'none', fontWeight: form.medicaid_type ? 600 : 400 }}
+                  onFocus={(e) => (e.target.style.outline = `2px solid ${palette.primaryMagenta.hex}`)}
+                  onBlur={(e) => (e.target.style.outline = 'none')}
+                >
+                  {MEDICAID_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </FormField>
+
+              {isSN && (
+                <FormField label="Exception Code (SN / Medicaid)">
+                  <input
+                    type="text"
+                    value={form.exception_code}
+                    onChange={(e) => setForm((p) => ({ ...p, exception_code: e.target.value }))}
+                    placeholder="e.g. 9, 88, 0A…"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03) }}
+                    onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                    onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
+                  />
+                </FormField>
+              )}
+
+              <div style={{ marginTop: 4 }}>
+                {CHECK_FLAGS.map((f) => (
+                  <FlagRow key={f.key} label={f.label} value={flagValues[f.key] || ''} onChange={(v) => setFlagValues((p) => ({ ...p, [f.key]: v }))} />
+                ))}
+              </div>
+
+              <FormField label="Notes / Summary" style={{ marginTop: 8 }}>
+                <textarea
+                  value={form.result_summary}
+                  onChange={(e) => setForm((p) => ({ ...p, result_summary: e.target.value }))}
+                  placeholder="Any findings or observations…"
+                  rows={3}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03) }}
+                  onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                  onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
+                />
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>Logged by {appUserName}</p>
+              </FormField>
+
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '7px 0', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
+                <button onClick={submitCheck} disabled={saving} style={{ flex: 2, padding: '7px 0', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                  {saving ? 'Saving…' : 'Save Check'}
+                </button>
+              </div>
+            </PanelSection>
+          )}
+        </>
+      )}
     </Panel>
   );
 }
 
 // ── 4. Disenrollment ─────────────────────────────────────────────────────────
-function DisenrollmentPanel({ selectedReferral }) {
-  const [checks, setChecks] = useState({ contacted_agency: false, discharge_confirmed: false, medicaid_updated: false, eligibility_clear: false });
-  const toggle = (k) => setChecks((prev) => ({ ...prev, [k]: !prev[k] }));
+const DISEN_CHECKLIST = [
+  { key: 'contacted_agency',    label: 'Contacted current agency' },
+  { key: 'discharge_confirmed', label: 'Discharge date confirmed' },
+  { key: 'medicaid_updated',    label: 'Medicaid notified / updated' },
+  { key: 'eligibility_clear',   label: 'Eligibility clear post-discharge' },
+];
+
+function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
+  const [checks, setChecks] = useState({});
+
+  useEffect(() => {
+    if (!selectedReferral?._id) { setChecks({}); return; }
+    const saved = localStorage.getItem(`disen_${selectedReferral._id}`);
+    setChecks(saved ? JSON.parse(saved) : {});
+  }, [selectedReferral?._id]);
+
+  function toggle(k) {
+    setChecks((prev) => {
+      const next = { ...prev, [k]: !prev[k] };
+      if (selectedReferral?._id) {
+        localStorage.setItem(`disen_${selectedReferral._id}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  }
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="Disenrollment Checklist">
-            {Object.entries(checks).map(([k, v]) => (
-              <CheckItem key={k} label={k.replace(/_/g, ' ')} done={v} onChange={() => toggle(k)} />
+            {DISEN_CHECKLIST.map(({ key, label }) => (
+              <CheckItem key={key} label={label} done={!!checks[key]} onChange={() => toggle(key)} />
             ))}
           </PanelSection>
           <PanelSection title="Actions">
-            <ActionBtn label="Discharge Confirmed" variant="success" />
-            <ActionBtn label="Escalate to Conflict" variant="warning" />
-            <ActionBtn label="Move to NTUC" variant="danger" />
+            <ActionBtn
+              label="Discharge Confirmed → Eligibility"
+              variant="success"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
+            />
+            <ActionBtn
+              label="Escalate to Conflict"
+              variant="warning"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')}
+            />
+            <ActionBtn
+              label="Move to NTUC"
+              variant="danger"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')}
+            />
           </PanelSection>
         </>
       )}
@@ -209,22 +522,66 @@ function DisenrollmentPanel({ selectedReferral }) {
 }
 
 // ── 5. F2F/MD Orders Pending ──────────────────────────────────────────────────
-function F2FPanel({ referrals, selectedReferral }) {
+function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransition }) {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [receivedDate, setReceivedDate]     = useState('');
+  const [saving, setSaving]                 = useState(false);
+  const [saveError, setSaveError]           = useState(null);
+
+  // Reset form when patient selection changes
+  useEffect(() => {
+    setShowDatePicker(false);
+    setReceivedDate('');
+    setSaveError(null);
+  }, [selectedReferral?._id]);
+
   function daysLeft(exp) {
     if (!exp) return null;
     return Math.ceil((new Date(exp) - Date.now()) / 86400000);
   }
-  const ref = selectedReferral;
+
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split('T')[0];
+  }
+
+  async function handleLogReceived() {
+    if (!receivedDate || !selectedReferral) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const expiration = addDays(receivedDate, 90);
+      await updateReferral(selectedReferral._id, {
+        f2f_date:       receivedDate,
+        f2f_expiration: expiration,
+      });
+      triggerDataRefresh();
+      setShowDatePicker(false);
+      setReceivedDate('');
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  const ref  = selectedReferral;
   const days = ref ? daysLeft(ref.f2f_expiration) : null;
-  const urgencyColor = days === null ? null : days < 0 ? palette.primaryMagenta.hex : days <= 7 ? palette.primaryMagenta.hex : days <= 14 ? palette.accentOrange.hex : days <= 30 ? palette.highlightYellow.hex : palette.accentGreen.hex;
+  const urgencyColor = days === null
+    ? null
+    : days < 0  ? palette.primaryMagenta.hex
+    : days <= 7  ? palette.primaryMagenta.hex
+    : days <= 14 ? palette.accentOrange.hex
+    : days <= 30 ? palette.highlightYellow.hex
+    : palette.accentGreen.hex;
 
   return (
     <Panel>
       <PanelSection title="Queue Overview">
-        <InfoRow label="Expired F2F" value={referrals.filter((r) => r.f2f_urgency === 'Expired').length} highlight={palette.primaryMagenta.hex} />
-        <InfoRow label="Expiring <7d" value={referrals.filter((r) => r.f2f_urgency === 'Red').length} highlight={palette.primaryMagenta.hex} />
-        <InfoRow label="Expiring <14d" value={referrals.filter((r) => r.f2f_urgency === 'Orange').length} highlight={palette.accentOrange.hex} />
-        <InfoRow label="No F2F yet" value={referrals.filter((r) => !r.f2f_date).length} />
+        <InfoRow label="Expired F2F"   value={referrals.filter((r) => r.f2f_urgency === 'Expired').length} highlight={palette.primaryMagenta.hex} />
+        <InfoRow label="Expiring <7d"  value={referrals.filter((r) => r.f2f_urgency === 'Red').length}     highlight={palette.primaryMagenta.hex} />
+        <InfoRow label="Expiring <14d" value={referrals.filter((r) => r.f2f_urgency === 'Orange').length}  highlight={palette.accentOrange.hex} />
+        <InfoRow label="No F2F yet"    value={referrals.filter((r) => !r.f2f_date).length} />
       </PanelSection>
 
       {ref && (
@@ -232,18 +589,127 @@ function F2FPanel({ referrals, selectedReferral }) {
           <PanelSection title="F2F Status">
             {days !== null ? (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                <p style={{ fontSize: 36, fontWeight: 800, color: urgencyColor, lineHeight: 1 }}>{days < 0 ? 'EXPIRED' : `${days}d`}</p>
-                <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>{days < 0 ? 'F2F has expired' : 'until F2F expiration'}</p>
+                <p style={{ fontSize: 36, fontWeight: 800, color: urgencyColor, lineHeight: 1 }}>
+                  {days < 0 ? 'EXPIRED' : `${days}d`}
+                </p>
+                <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>
+                  {days < 0 ? 'F2F has expired' : 'until F2F expiration'}
+                </p>
+                {ref.f2f_date && (
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 3 }}>
+                    Received {new Date(ref.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' · '}
+                    Expires {new Date(ref.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                )}
               </div>
             ) : (
-              <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '12px 0' }}>No F2F date recorded</p>
+              <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '12px 0' }}>
+                No F2F date recorded
+              </p>
             )}
             <InfoRow label="PECOS Verified" value={ref.is_pecos_verified === 'TRUE' || ref.is_pecos_verified === true ? 'Yes' : 'No'} highlight={ref.is_pecos_verified === 'TRUE' || ref.is_pecos_verified === true ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
-            <InfoRow label="OPRA Verified" value={ref.is_opra_verified === 'TRUE' || ref.is_opra_verified === true ? 'Yes' : 'No'} />
+            <InfoRow label="OPRA Verified"  value={ref.is_opra_verified  === 'TRUE' || ref.is_opra_verified  === true ? 'Yes' : 'No'} />
           </PanelSection>
+
           <PanelSection title="Actions">
-            <ActionBtn label="Upload F2F Document" variant="primary" />
-            <ActionBtn label="Move to Clinical RN" variant="success" />
+
+            {/* ── Log F2F / MD Orders Received ── */}
+            {!showDatePicker ? (
+              <button
+                onClick={() => setShowDatePicker(true)}
+                style={{
+                  width: '100%', padding: '8px 0', marginBottom: 8,
+                  borderRadius: 7, border: 'none',
+                  background: ref.f2f_date
+                    ? hexToRgba(palette.accentGreen.hex, 0.1)
+                    : palette.accentGreen.hex,
+                  color: ref.f2f_date
+                    ? palette.accentGreen.hex
+                    : palette.backgroundLight.hex,
+                  fontSize: 12, fontWeight: 650, cursor: 'pointer',
+                  transition: 'filter 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(0.93)')}
+                onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+              >
+                {ref.f2f_date ? '↺ Update F2F / MD Orders Date' : '✓ F2F / MD Orders Received'}
+              </button>
+            ) : (
+              <div style={{
+                borderRadius: 8,
+                border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                background: hexToRgba(palette.accentGreen.hex, 0.04),
+                padding: '10px 11px', marginBottom: 8,
+              }}>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
+                  Date documents were received
+                </p>
+                <input
+                  type="date"
+                  value={receivedDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setReceivedDate(e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '6px 9px', borderRadius: 7, marginBottom: 7,
+                    border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`,
+                    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+                    background: palette.backgroundLight.hex,
+                    color: palette.backgroundDark.hex,
+                  }}
+                />
+                {receivedDate && (
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 8 }}>
+                    Clock starts {new Date(receivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' — '}
+                    expires <strong style={{ color: palette.accentOrange.hex }}>
+                      {new Date(addDays(receivedDate, 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </strong>
+                  </p>
+                )}
+                {saveError && (
+                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{saveError}</p>
+                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={handleLogReceived}
+                    disabled={!receivedDate || saving}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                      background: receivedDate && !saving ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                      color: receivedDate && !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+                      fontSize: 11.5, fontWeight: 650, cursor: receivedDate && !saving ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {saving ? 'Saving…' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => { setShowDatePicker(false); setReceivedDate(''); setSaveError(null); }}
+                    disabled={saving}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                      background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                      color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                      fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <ActionBtn
+              label="Upload F2F Document"
+              variant="primary"
+              onClick={() => onOpenFiles?.(selectedReferral)}
+            />
+            <ActionBtn
+              label="Move to Clinical RN"
+              variant="success"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
+            />
           </PanelSection>
         </>
       )}
@@ -251,32 +717,100 @@ function F2FPanel({ referrals, selectedReferral }) {
   );
 }
 
+function ApproveButton({ enabled, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const DESTINATIONS = [
+    { label: 'Authorization Pending', sub: 'Managed care / auth required', stage: 'Authorization Pending' },
+    { label: 'Staffing Feasibility',  sub: 'No auth needed — go straight to staffing', stage: 'Staffing Feasibility' },
+  ];
+  return (
+    <div style={{ position: 'relative', marginBottom: 6 }}>
+      <button
+        onClick={() => enabled && setOpen((o) => !o)}
+        disabled={!enabled}
+        style={{
+          width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+          background: enabled ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+          color: enabled ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+          fontSize: 12.5, fontWeight: 650, cursor: enabled ? 'pointer' : 'not-allowed',
+          textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          transition: 'filter 0.12s',
+        }}
+        onMouseEnter={(e) => enabled && (e.currentTarget.style.filter = 'brightness(1.08)')}
+        onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+      >
+        {enabled ? 'Approve — send to…' : 'Check F2F / MD orders first'}
+        {enabled && (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+            <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </button>
+
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 9, overflow: 'hidden', boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+          {DESTINATIONS.map((d) => (
+            <button
+              key={d.stage}
+              onClick={() => { setOpen(false); onSelect(d.stage); }}
+              style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', transition: 'background 0.1s' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentGreen.hex, 0.07))}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+            >
+              <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 2 }}>{d.label}</p>
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{d.sub}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 6. Clinical Intake RN Review ──────────────────────────────────────────────
-function ClinicalRNPanel({ selectedReferral }) {
-  const [assessment, setAssessment] = useState({ skilled_need: false, safe_environment: false, services_available: false, icd10_reviewed: false });
-  const toggle = (k) => setAssessment((p) => ({ ...p, [k]: !p[k] }));
-  const allDone = Object.values(assessment).every(Boolean);
+function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
+  const [f2fReviewed, setF2fReviewed] = useState(false);
+  const [icdCodes, setIcdCodes] = useState([]);
+
+  const allDone = f2fReviewed;
 
   return (
     <Panel>
-      <PanelSection title="Clinical Assessment">
-        {Object.entries(assessment).map(([k, v]) => (
-          <CheckItem key={k} label={k.replace(/_/g, ' ')} done={v} onChange={() => toggle(k)} />
-        ))}
-      </PanelSection>
-      <PanelSection title="Protected Actions">
-        <div style={{ padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentOrange.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 10, fontSize: 11.5, color: '#8B4A00', lineHeight: 1.5 }}>
-          Moving out of this stage requires DevNurse scope and confirmation.
-        </div>
-        <ActionBtn label={allDone ? 'Approve → Auth / Staffing' : 'Complete assessment first'} variant={allDone ? 'success' : 'default'} />
-        <ActionBtn label="Place on Hold" variant="warning" />
-        <ActionBtn label="Mark NTUC" variant="danger" />
-      </PanelSection>
-      <PanelSection title="Tools">
-        <ActionBtn label="ICD-10 Lookup" variant="primary" />
-        <ActionBtn label="Open Triage Form" />
-        <ActionBtn label="View F2F / MD Orders" />
-      </PanelSection>
+      {!selectedReferral ? <EmptyPanelState /> : (
+        <>
+          <PanelSection title="Review">
+            <CheckItem
+              label="F2F / MD orders reviewed"
+              done={f2fReviewed}
+              onChange={() => setF2fReviewed((v) => !v)}
+            />
+          </PanelSection>
+
+          <PanelSection title="ICD-10 Lookup">
+            <ICD10Lookup compact onSelect={setIcdCodes} />
+            {icdCodes.length > 0 && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 6 }}>
+                {icdCodes.length} code{icdCodes.length !== 1 ? 's' : ''} selected
+              </p>
+            )}
+          </PanelSection>
+
+          <PanelSection title="Document Access">
+            <ActionBtn label="Open Triage Form"     onClick={() => onOpenTriage?.(selectedReferral)} />
+            <ActionBtn label="View F2F / MD Orders" onClick={() => onOpenFiles?.(selectedReferral)} />
+          </PanelSection>
+
+          <PanelSection title="Decision">
+            <ApproveButton
+              enabled={allDone}
+              onSelect={(dest) => onInitiateTransition?.(selectedReferral, dest)}
+            />
+            <ActionBtn label="Escalate to Conflict" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
+            <ActionBtn label="Place on Hold"        variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+            <ActionBtn label="Mark NTUC"            variant="danger"  onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+          </PanelSection>
+        </>
+      )}
     </Panel>
   );
 }
@@ -305,19 +839,105 @@ function AuthorizationPanel({ selectedReferral }) {
 }
 
 // ── 8. Conflict ───────────────────────────────────────────────────────────────
-function ConflictPanel({ selectedReferral }) {
+const SEVERITY_PILL = {
+  Low:      { bg: hexToRgba(palette.accentBlue.hex, 0.14),     text: palette.accentBlue.hex },
+  Medium:   { bg: hexToRgba(palette.highlightYellow.hex, 0.22), text: '#7A5F00' },
+  High:     { bg: hexToRgba(palette.accentOrange.hex, 0.18),   text: palette.accentOrange.hex },
+  Critical: { bg: hexToRgba(palette.primaryMagenta.hex, 0.18), text: palette.primaryMagenta.hex },
+};
+
+const CONFLICT_RESOLVE_DESTINATIONS = [
+  { stage: 'Eligibility Verification', sub: 'Insurance conflict resolved — recheck' },
+  { stage: 'Clinical Intake RN Review', sub: 'Compliance cleared — return to clinical' },
+  { stage: 'Disenrollment Required', sub: 'Overlap found — discharge needed' },
+];
+
+function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onInitiateTransition }) {
+  const [conflicts, setConflicts] = useState([]);
+  const [loadingConflicts, setLoadingConflicts] = useState(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
+
+  useEffect(() => {
+    if (!selectedReferral?.id) { setConflicts([]); return; }
+    setLoadingConflicts(true);
+    getConflictsByReferral(selectedReferral.id)
+      .then((recs) => setConflicts(recs.map((r) => ({ _id: r.id, ...r.fields }))))
+      .catch(() => {})
+      .finally(() => setLoadingConflicts(false));
+  }, [selectedReferral?.id]);
+
+  const openConflicts = conflicts.filter((c) => c.status === 'Open' || c.status === 'In Progress');
+  const resolvedConflicts = conflicts.filter((c) => c.status === 'Resolved' || c.status === 'Waived');
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
+          {/* Conflict details */}
+          {loadingConflicts ? (
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '8px 0' }}>Loading…</p>
+          ) : (
+            <PanelSection title={`Active Conflicts (${openConflicts.length})`}>
+              {openConflicts.length === 0 ? (
+                <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), fontStyle: 'italic' }}>No open conflicts recorded.</p>
+              ) : openConflicts.map((c) => {
+                const sc = SEVERITY_PILL[c.severity] || SEVERITY_PILL.Medium;
+                return (
+                  <div key={c._id} style={{ padding: '10px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}`, marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{c.type || 'Unknown'}</span>
+                      <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>{c.severity}</span>
+                    </div>
+                    {c.description && (
+                      <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), lineHeight: 1.5 }}>{c.description}</p>
+                    )}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: palette.primaryMagenta.hex }}>{c.status}</span>
+                  </div>
+                );
+              })}
+              {resolvedConflicts.length > 0 && (
+                <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), marginTop: 6 }}>
+                  + {resolvedConflicts.length} resolved
+                </p>
+              )}
+            </PanelSection>
+          )}
+
+          {/* Resolution — dropdown button */}
           <PanelSection title="Resolution Actions">
-            <ActionBtn label="Resolve Conflict" variant="success" />
-            <ActionBtn label="Escalate" variant="warning" />
-            <ActionBtn label="Mark NTUC" variant="danger" />
+            <div style={{ position: 'relative', marginBottom: 6 }}>
+              <button
+                onClick={() => setResolveOpen((o) => !o)}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'filter 0.12s' }}
+                onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+              >
+                Resolve Conflict — send to…
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ transform: resolveOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+                  <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              {resolveOpen && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 9, overflow: 'hidden', boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+                  {CONFLICT_RESOLVE_DESTINATIONS.map((d) => (
+                    <button key={d.stage} onMouseDown={(e) => { e.preventDefault(); setResolveOpen(false); onInitiateTransition?.(selectedReferral, d.stage); }}
+                      style={{ width: '100%', padding: '9px 13px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', transition: 'background 0.1s' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentGreen.hex, 0.06))}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}>
+                      <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 1 }}>{d.stage}</p>
+                      <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{d.sub}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <ActionBtn label="Escalate to Disenrollment" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Disenrollment Required')} />
+            <ActionBtn label="Mark NTUC"                 variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
           </PanelSection>
+
           <PanelSection title="Related Data">
-            <ActionBtn label="View Eligibility Check" />
-            <ActionBtn label="View Related Documents" />
+            <ActionBtn label="View Eligibility Check"  onClick={() => onOpenEligibility?.(selectedReferral)} />
+            <ActionBtn label="View Related Documents"  onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
         </>
       )}
@@ -326,38 +946,81 @@ function ConflictPanel({ selectedReferral }) {
 }
 
 // ── 9. Staffing Feasibility ───────────────────────────────────────────────────
-function StaffingPanel({ selectedReferral }) {
-  const [contacted, setContacted] = useState(false);
+const STAFFING_TABS = ['Clinicians', 'Zip Search', 'Radar'];
+
+function CollapsibleSection({ title, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Panel>
-      {!selectedReferral ? <EmptyPanelState /> : (
-        <>
-          <PanelSection title="Required Before Advancing">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.08) : hexToRgba(palette.primaryMagenta.hex, 0.05), border: `1px solid ${contacted ? hexToRgba(palette.accentGreen.hex, 0.3) : hexToRgba(palette.primaryMagenta.hex, 0.2)}`, cursor: 'pointer' }}>
-              <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex, width: 16, height: 16 }} />
-              <div>
-                <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex }}>Patient / parent contacted</p>
-                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>Required before moving to Admin Confirmation</p>
-              </div>
-            </label>
-          </PanelSection>
-          <PanelSection title="Case Info">
-            <InfoRow label="Services needed" value={Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'} />
-            <InfoRow label="Division" value={selectedReferral.division} />
-            <InfoRow label="Zip code" value={selectedReferral.patient?.address_zip} />
-          </PanelSection>
-          <PanelSection title="Actions">
-            <ActionBtn label={contacted ? 'Move to Admin Confirmation' : 'Contact patient first'} variant={contacted ? 'success' : 'default'} />
-            <ActionBtn label="Place on Hold" variant="warning" />
-          </PanelSection>
-        </>
+    <div style={{ marginBottom: 8 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', marginBottom: open ? 8 : 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{title}</span>
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <path d="M2 4.5l4 4 4-4" stroke={hexToRgba(palette.backgroundDark.hex, 0.4)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition }) {
+  const [contacted, setContacted] = useState(false);
+  const [activeTab, setActiveTab] = useState('Clinicians');
+
+  return (
+    <Panel width={380}>
+      {/* Patient actions — always visible when patient selected */}
+      {selectedReferral && (
+        <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid var(--color-border)` }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginBottom: 8 }}>
+            {selectedReferral.patientName || selectedReferral.patient_id} · {Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'}
+          </p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.primaryMagenta.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
+            <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>Patient / parent contacted</span>
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => contacted && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
+              disabled={!contacted}
+              style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: contacted ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), color: contacted ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35), fontSize: 12, fontWeight: 650, cursor: contacted ? 'pointer' : 'not-allowed', transition: 'filter 0.12s' }}
+              onMouseEnter={(e) => contacted && (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
+              → Admin Confirmation
+            </button>
+            <button
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')}
+              style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'filter 0.12s' }}
+              onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
+              Place on Hold
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+        {STAFFING_TABS.map((t) => (
+          <button key={t} onClick={() => setActiveTab(t)}
+            style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: 'none', fontSize: 11.5, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
+              background: activeTab === t ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+              color: activeTab === t ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'Clinicians' && <CliniciansPanel />}
+      {activeTab === 'Zip Search' && <ZipSearchPanel />}
+      {activeTab === 'Radar'     && <RadarPanel allReferrals={allReferrals || []} />}
     </Panel>
   );
 }
 
 // ── 10. Admin Confirmation ────────────────────────────────────────────────────
-function AdminConfirmationPanel({ selectedReferral }) {
+function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
@@ -370,11 +1033,8 @@ function AdminConfirmationPanel({ selectedReferral }) {
             <InfoRow label="Days in pipeline" value={Math.floor((Date.now() - new Date(selectedReferral.referral_date).getTime()) / 86400000) + 'd'} />
           </PanelSection>
           <PanelSection title="Decision">
-            <div style={{ padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentOrange.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 10, fontSize: 11.5, color: '#8B4A00' }}>
-              Accept / Decline is a protected action — requires Admin scope.
-            </div>
-            <ActionBtn label="Accept → Pre-SOC" variant="success" />
-            <ActionBtn label="Decline → NTUC" variant="danger" />
+            <ActionBtn label="Accept → Pre-SOC" variant="success" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
+            <ActionBtn label="Decline → NTUC"   variant="danger"  onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
           </PanelSection>
         </>
       )}
@@ -384,20 +1044,91 @@ function AdminConfirmationPanel({ selectedReferral }) {
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
 function PreSocPanel({ selectedReferral }) {
-  const [docs, setDocs] = useState({ f2f_docs: false, md_orders: false, auth_letter: false, insurance_card: false, consent_signed: false });
-  const toggle = (k) => setDocs((p) => ({ ...p, [k]: !p[k] }));
-  const allDone = Object.values(docs).every(Boolean);
+  const today = new Date().toISOString().split('T')[0];
+  const [socDate, setSocDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Reset date when selection changes
+  useEffect(() => { setSocDate(''); setError(null); }, [selectedReferral?._id]);
+
+  async function handleSchedule() {
+    if (!socDate || !selectedReferral) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateReferral(selectedReferral._id, {
+        current_stage: 'SOC Scheduled',
+        soc_scheduled_date: socDate,
+      });
+      await createEpisode({
+        patient_id: selectedReferral.patient_id,
+        referral_id: selectedReferral._id,
+        soc_date: socDate,
+        episode_start: socDate,
+      });
+      triggerDataRefresh();
+    } catch (err) {
+      setError(err.message || 'Failed to schedule SOC');
+      setSaving(false);
+    }
+  }
+
+  const canSchedule = !!socDate && !saving;
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          <PanelSection title="Documentation Checklist">
-            {Object.entries(docs).map(([k, v]) => (
-              <CheckItem key={k} label={k.replace(/_/g, ' ')} done={v} onChange={() => toggle(k)} />
-            ))}
+          <PanelSection title="Patient">
+            <InfoRow label="Name"      value={selectedReferral.patientName} />
+            <InfoRow label="Division"  value={selectedReferral.division} />
+            <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
           </PanelSection>
-          <PanelSection title="Actions">
-            <ActionBtn label={allDone ? 'Schedule SOC' : 'Complete docs first'} variant={allDone ? 'primary' : 'default'} />
+
+          <PanelSection title="Schedule SOC">
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.55, marginBottom: 10 }}>
+              Select the Start of Care date. Confirming will begin an episode and move this patient to SOC Scheduled.
+            </p>
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), display: 'block', marginBottom: 5 }}>
+              SOC Date
+            </label>
+            <input
+              type="date"
+              value={socDate}
+              min={today}
+              onChange={(e) => setSocDate(e.target.value)}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '7px 9px', borderRadius: 7,
+                border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`,
+                fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                background: palette.backgroundLight.hex,
+                color: palette.backgroundDark.hex,
+                marginBottom: 12,
+              }}
+            />
+
+            {error && (
+              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>
+            )}
+
+            <button
+              onClick={handleSchedule}
+              disabled={!canSchedule}
+              style={{
+                width: '100%', padding: '8px 0', borderRadius: 7, border: 'none',
+                background: canSchedule ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: canSchedule ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+                fontSize: 12.5, fontWeight: 650,
+                cursor: canSchedule ? 'pointer' : 'not-allowed',
+                transition: 'filter 0.12s',
+              }}
+              onMouseEnter={(e) => canSchedule && (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+            >
+              {saving ? 'Scheduling…' : 'Confirm & Schedule SOC →'}
+            </button>
           </PanelSection>
         </>
       )}
@@ -406,18 +1137,154 @@ function PreSocPanel({ selectedReferral }) {
 }
 
 // ── 12. SOC Scheduled ─────────────────────────────────────────────────────────
-function SocScheduledPanel({ selectedReferral }) {
+function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
+  const [pdfLoading, setPdfLoading]       = useState(false);
+  const [pdfError, setPdfError]           = useState(null);
+  const [confirming, setConfirming]       = useState(false);
+  const [onboarding, setOnboarding]       = useState(false);
+  const [onboardError, setOnboardError]   = useState(null);
+
+  // Reset state when patient changes
+  useEffect(() => {
+    setConfirming(false);
+    setOnboardError(null);
+    setPdfError(null);
+  }, [selectedReferral?._id]);
+
+  async function handleDownloadPdf() {
+    if (!selectedReferral) return;
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      await generateEmrPacket(selectedReferral, resolveSource);
+    } catch (err) {
+      setPdfError(err.message || 'Failed to generate PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  async function handleOnboarded() {
+    if (!selectedReferral) return;
+    setOnboarding(true);
+    setOnboardError(null);
+    try {
+      await updateReferral(selectedReferral._id, {
+        current_stage: 'SOC Completed',
+        soc_completed_date: new Date().toISOString().split('T')[0],
+      });
+      triggerDataRefresh();
+    } catch (err) {
+      setOnboardError(err.message || 'Failed to update patient');
+      setOnboarding(false);
+      setConfirming(false);
+    }
+  }
+
+  const socDateDisplay = selectedReferral?.soc_scheduled_date
+    ? new Date(selectedReferral.soc_scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="SOC Details">
-            <InfoRow label="Scheduled date" value={selectedReferral.soc_scheduled_date ? new Date(selectedReferral.soc_scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} />
-            <InfoRow label="Clinician" value="—" />
+            <InfoRow label="Scheduled date" value={socDateDisplay} />
+            <InfoRow label="Patient"        value={selectedReferral.patientName} />
+            <InfoRow label="Division"       value={selectedReferral.division} />
           </PanelSection>
+
           <PanelSection title="Actions">
-            <ActionBtn label="Mark SOC Completed" variant="success" />
-            <ActionBtn label="Reschedule / Hold" variant="warning" />
+
+            {/* ── Download EMR Onboarding Packet ── */}
+            <button
+              onClick={handleDownloadPdf}
+              disabled={pdfLoading}
+              style={{
+                width: '100%', padding: '8px 0', marginBottom: 8,
+                borderRadius: 7, border: 'none',
+                background: palette.accentBlue.hex,
+                color: palette.backgroundLight.hex,
+                fontSize: 12, fontWeight: 650, cursor: pdfLoading ? 'wait' : 'pointer',
+                transition: 'filter 0.12s',
+              }}
+              onMouseEnter={(e) => !pdfLoading && (e.currentTarget.style.filter = 'brightness(0.92)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+            >
+              {pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'}
+            </button>
+            {pdfError && (
+              <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>
+            )}
+
+            {/* ── Patient Onboarded to EMR (with inline confirm) ── */}
+            {!confirming ? (
+              <button
+                onClick={() => setConfirming(true)}
+                style={{
+                  width: '100%', padding: '8px 0', marginBottom: 8,
+                  borderRadius: 7, border: 'none',
+                  background: palette.accentGreen.hex,
+                  color: palette.backgroundLight.hex,
+                  fontSize: 12, fontWeight: 650, cursor: 'pointer',
+                  transition: 'filter 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+              >
+                Patient Onboarded to EMR
+              </button>
+            ) : (
+              <div style={{
+                borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                background: hexToRgba(palette.accentGreen.hex, 0.05),
+                padding: '10px 11px', marginBottom: 8,
+              }}>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>
+                  Confirm SOC Completion
+                </p>
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
+                  Confirm that <strong>{selectedReferral.patientName}</strong> has had their Start of Care and is now under Wellbound care. This will move them to SOC Completed.
+                </p>
+                {onboardError && (
+                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{onboardError}</p>
+                )}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={handleOnboarded}
+                    disabled={onboarding}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                      background: onboarding ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
+                      color: palette.backgroundLight.hex,
+                      fontSize: 11.5, fontWeight: 650, cursor: onboarding ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {onboarding ? 'Saving…' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => { setConfirming(false); setOnboardError(null); }}
+                    disabled={onboarding}
+                    style={{
+                      flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                      background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                      color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                      fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Reschedule / Hold ── */}
+            <ActionBtn
+              label="Reschedule / Hold"
+              variant="warning"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')}
+            />
           </PanelSection>
         </>
       )}
@@ -500,8 +1367,8 @@ function NtucPanel({ referrals }) {
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
-export default function StagePanel({ stage, referrals, selectedReferral, resolveUser, resolveSource }) {
-  const props = { referrals, selectedReferral, resolveUser, resolveSource };
+export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition }) {
+  const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition };
   switch (stage) {
     case 'Lead Entry':                return <LeadEntryPanel {...props} />;
     case 'Intake':                    return <IntakePanel {...props} />;

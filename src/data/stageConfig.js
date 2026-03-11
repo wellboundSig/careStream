@@ -68,13 +68,13 @@ export const ROLE_MODES = [
 // ── Stage display metadata ────────────────────────────────────────────────────
 export const STAGE_META = {
   'Lead Entry': {
-    description: 'Raw referrals captured — not yet validated',
+    description: 'New referral submissions',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentBlue.hex,
   },
   'Intake': {
-    description: 'Full demographics + referral validation',
+    description: 'Referrals being processed by intake',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentBlue.hex,
@@ -86,7 +86,7 @@ export const STAGE_META = {
     color: palette.accentOrange.hex,
   },
   'Disenrollment Required': {
-    description: 'Patient has active services elsewhere that must end',
+    description: 'Pending disenrollment',
     isGlobal: false,
     isTerminal: false,
     color: palette.highlightYellow.hex,

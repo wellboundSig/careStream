@@ -56,7 +56,7 @@ function formatDue(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function TaskCard({ task, resolveUser, onComplete, onStatusChange }) {
+export default function TaskCard({ task, resolveUser, resolvePatient, onComplete, onStatusChange }) {
   const { open: openPatient } = usePatientDrawer();
   const [expanded, setExpanded] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -132,7 +132,7 @@ export default function TaskCard({ task, resolveUser, onComplete, onStatusChange
             )}
             {task.patient_id && (
               <button onClick={openPatientTasks} style={{ fontSize: 11.5, color: palette.primaryMagenta.hex, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 550, padding: 0, fontFamily: 'inherit' }}>
-                {task.patient_id}
+                {resolvePatient?.(task.patient_id) || task.patient_id}
               </button>
             )}
             {task.assigned_to_id && (

@@ -85,14 +85,18 @@ export default function UserProfileDrawer({ user, onClose }) {
         <div style={{ background: palette.primaryDeepPlum.hex, padding: '20px 22px 18px', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {user.clerk_image_url ? (
+              <img src={user.clerk_image_url} alt={`${user.first_name} ${user.last_name}`} style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            ) : (
               <div style={{
-                width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+                width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
                 background: hexToRgba(roleColor, 0.3),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 18, fontWeight: 800, color: roleColor,
               }}>
                 {initials(user.first_name, user.last_name)}
               </div>
+            )}
               <div>
                 <p style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>
                   {user.first_name} {user.last_name}

@@ -3,14 +3,40 @@ import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../../hooks/usePipelineData.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { STAGE_META } from '../../data/stageConfig.js';
+import StageRules from '../../data/StageRules.json';
+import { updateReferral } from '../../api/referrals.js';
+import { saveTransitionNote } from '../../utils/saveTransitionNote.js';
 import airtable from '../../api/airtable.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
+import TransitionModal from '../pipeline/TransitionModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+
+function canMoveFromTo(fromStage, toStage) {
+  if (fromStage === toStage) return false;
+  const fromRule = StageRules.stages[fromStage];
+  if (!fromRule || fromRule.terminal) return false;
+  if (toStage === 'Hold' && StageRules.globalRules.anyActiveStageCanMoveToHold) return true;
+  return fromRule.canMoveTo?.includes(toStage) ?? false;
+}
+
+function needsModal(fromStage, toStage) {
+  const fromRule = StageRules.stages[fromStage];
+  const toRule   = StageRules.stages[toStage];
+  return !!(
+    fromRule?.requiresNote ||
+    fromRule?.protectedExit ||
+    toStage === 'Hold' ||
+    toStage === 'NTUC' ||
+    toRule?.destinationPrompt
+  );
+}
 
 const F2F_URGENCY_COLORS = {
   Green:   palette.accentGreen.hex,
@@ -19,6 +45,29 @@ const F2F_URGENCY_COLORS = {
   Red:     palette.primaryMagenta.hex,
   Expired: hexToRgba(palette.backgroundDark.hex, 0.4),
 };
+
+function F2FCountdown({ referral }) {
+  if (!referral?.f2f_expiration) {
+    return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>;
+  }
+  const days = Math.ceil((new Date(referral.f2f_expiration) - Date.now()) / 86400000);
+  const color = days < 0 ? palette.primaryMagenta.hex
+    : days <= 7  ? palette.primaryMagenta.hex
+    : days <= 14 ? palette.accentOrange.hex
+    : days <= 30 ? '#7A5F00'
+    : palette.accentGreen.hex;
+  const label = days < 0 ? `Exp ${Math.abs(days)}d` : `${days}d`;
+  return (
+    <span title={`F2F expires ${new Date(referral.f2f_expiration).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, fontWeight: days <= 14 ? 650 : 500, color }}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+        <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      {days < 0 ? 'Expired' : label}
+    </span>
+  );
+}
 
 function daysInStage(updatedAt) {
   if (!updatedAt) return 0;
@@ -42,6 +91,7 @@ export default function ModulePage({ stage }) {
   const { data: allReferrals, loading, refetch } = usePipelineData();
   const { resolveUser, resolveMarketer, resolveSource } = useLookups();
   const { open: openPatient } = usePatientDrawer();
+  const { appUserId } = useCurrentAppUser();
 
   const [selectedReferral, setSelectedReferral] = useState(null);
   const [search, setSearch] = useState('');
@@ -49,7 +99,10 @@ export default function ModulePage({ stage }) {
   const [sortDir, setSortDir] = useState('desc');
   const [showNewReferral, setShowNewReferral] = useState(false);
   const [triageStatus, setTriageStatus] = useState({});
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, referral }
+  const [contextMenu, setContextMenu] = useState(null);
+  const [pendingTransition, setPendingTransition] = useState(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const meta = STAGE_META[stage] || {};
 
@@ -139,6 +192,47 @@ export default function ModulePage({ stage }) {
     setContextMenu({ x: e.clientX, y: e.clientY, referral });
   }
 
+  function showToast(message, type = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  const initiateTransition = useCallback((referral, toStage) => {
+    setContextMenu(null);
+    if (!referral || !canMoveFromTo(referral.current_stage, toStage)) {
+      showToast(`Cannot move from ${referral?.current_stage} to ${toStage}`, 'error');
+      return;
+    }
+    if (needsModal(referral.current_stage, toStage)) {
+      setPendingTransition({ referral, toStage });
+    } else {
+      executeTransition(referral, toStage, '');
+    }
+  }, []);
+
+  async function executeTransition(referral, toStage, note) {
+    const fromStage = referral.current_stage;
+    setTransitioning(true);
+    setPendingTransition(null);
+    const updateFields = { current_stage: toStage };
+    if (toStage === 'Hold' && note) updateFields.hold_reason = note;
+    if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
+    try {
+      await updateReferral(referral._id, updateFields);
+      // Persist the transition note on the patient's profile
+      if (note?.trim()) {
+        await saveTransitionNote({ referral, fromStage, toStage, note, authorId: appUserId });
+      }
+      triggerDataRefresh();
+      setSelectedReferral(null);
+      showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
+    } catch {
+      showToast(`Failed to move patient`, 'error');
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
   function toggleSort(field) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortField(field); setSortDir('asc'); }
@@ -174,6 +268,20 @@ export default function ModulePage({ stage }) {
           openPatient(patient, referral);
         }}
       />
+    )}
+    {pendingTransition && (
+      <TransitionModal
+        referral={pendingTransition.referral}
+        toStage={pendingTransition.toStage}
+        loading={transitioning}
+        onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.toStage, note)}
+        onCancel={() => setPendingTransition(null)}
+      />
+    )}
+    {toast && (
+      <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9997, background: toast.type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex, color: palette.backgroundLight.hex, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 550, boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+        {toast.message}
+      </div>
     )}
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={() => contextMenu && setContextMenu(null)}>
       {/* Header */}
@@ -247,9 +355,24 @@ export default function ModulePage({ stage }) {
         <StagePanel
           stage={stage}
           referrals={stageReferrals}
+          allReferrals={allReferrals}
           selectedReferral={selectedReferral}
           resolveUser={resolveUser}
           resolveSource={resolveSource}
+          onNewReferral={() => setShowNewReferral(true)}
+          onOpenTriage={(ref) => {
+            const p = buildPatient(ref);
+            openPatient(p, ref, 'triage');
+          }}
+          onOpenFiles={(ref) => {
+            const p = buildPatient(ref);
+            openPatient(p, ref, 'files');
+          }}
+          onOpenEligibility={(ref) => {
+            const p = buildPatient(ref);
+            openPatient(p, ref, 'eligibility');
+          }}
+          onInitiateTransition={(ref, toStage) => initiateTransition(ref, toStage)}
         />
       </div>
     </div>
@@ -319,14 +442,7 @@ function QueueRow({ referral, resolveUser, isSelected, onClick, onDoubleClick, o
         </span>
       </td>
       <td style={{ padding: '11px 14px' }}>
-        {f2fColor ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: f2fColor, fontWeight: 600 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: f2fColor, display: 'inline-block', flexShrink: 0 }} />
-            {referral.f2f_urgency}
-          </span>
-        ) : (
-          <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>
-        )}
+        <F2FCountdown referral={referral} />
       </td>
       <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{ownerName !== referral.intake_owner_id ? ownerName : (ownerName || '—')}</td>
       <td style={{ padding: '11px 14px' }}>
