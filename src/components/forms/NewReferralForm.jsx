@@ -1,0 +1,538 @@
+import { useState, useEffect } from 'react';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { getMarketers } from '../../api/marketers.js';
+import { getReferralSources } from '../../api/referralSources.js';
+import { createPatient } from '../../api/patients.js';
+import { createReferral } from '../../api/referrals.js';
+import palette, { hexToRgba } from '../../utils/colors.js';
+
+const DIVISIONS = ['ALF', 'Special Needs'];
+const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
+const SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
+const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
+
+function generateId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// ── Shared field components ───────────────────────────────────────────────────
+
+function Label({ children, required }) {
+  return (
+    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5, letterSpacing: '0.02em' }}>
+      {children}
+      {required && <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>}
+    </label>
+  );
+}
+
+const inputBase = {
+  width: '100%', padding: '9px 11px', borderRadius: 8,
+  border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.12)}`,
+  background: hexToRgba(palette.backgroundDark.hex, 0.03),
+  fontSize: 13, color: palette.backgroundDark.hex,
+  outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.15s',
+};
+
+function Input({ value, onChange, placeholder, type = 'text', hasError }) {
+  return (
+    <input
+      type={type}
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12) }}
+      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
+    />
+  );
+}
+
+function Select({ value, onChange, options, placeholder, hasError }) {
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12), cursor: 'pointer' }}
+      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
+    >
+      <option value="" disabled>{placeholder || 'Select…'}</option>
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
+
+function FieldGroup({ children, cols = 2 }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '12px 16px' }}>
+      {children}
+    </div>
+  );
+}
+
+function FieldBox({ label, required, children, fullWidth }) {
+  return (
+    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
+      <Label required={required}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function SectionDivider({ title, expanded, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: '100%', padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 10, color: hexToRgba(palette.backgroundDark.hex, 0.55),
+        fontSize: 12, fontWeight: 650, letterSpacing: '0.04em', textTransform: 'uppercase',
+      }}
+    >
+      <span style={{ flex: 1, height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.1) }} />
+      {title}
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+        <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span style={{ flex: 1, height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.1) }} />
+    </button>
+  );
+}
+
+function CheckboxGroup({ label, options, values, onChange }) {
+  function toggle(opt) {
+    const arr = values || [];
+    onChange(arr.includes(opt) ? arr.filter((v) => v !== opt) : [...arr, opt]);
+  }
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
+        {options.map((opt) => (
+          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={(values || []).includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
+            {opt}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main form ─────────────────────────────────────────────────────────────────
+
+export default function NewReferralForm({ onClose, onSuccess }) {
+  const { appUser, appUserId } = useCurrentAppUser();
+
+  const [marketers, setMarketers] = useState([]);
+  const [sources, setSources] = useState([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+
+  const [showPatientDetails, setShowPatientDetails] = useState(false);
+  const [showReferralDetails, setShowReferralDetails] = useState(false);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
+
+  // ── Form state ──────────────────────────────────────────────────────────────
+  const [form, setForm] = useState({
+    // Required
+    first_name: '',
+    last_name: '',
+    phone_primary: '',
+    insurance_plan: '',
+    referral_source_id: '',
+    referral_source_other: '',
+    marketer_id: '',
+    marketer_other: '',
+    // Patient details
+    dob: '',
+    gender: '',
+    phone_secondary: '',
+    email: '',
+    medicaid_number: '',
+    medicare_number: '',
+    insurance_id: '',
+    address_street: '',
+    address_city: '',
+    address_state: 'NY',
+    address_zip: '',
+    division: 'ALF',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    // Referral details
+    priority: 'Normal',
+    services_requested: [],
+    initial_notes: '',
+  });
+
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }));
+  }
+
+  // Load marketers and sources
+  useEffect(() => {
+    setLoadingOptions(true);
+    Promise.all([getMarketers(), getReferralSources()])
+      .then(([mkts, srcs]) => {
+        setMarketers(mkts.map((r) => ({ _id: r.id, ...r.fields })));
+        setSources(srcs.map((r) => ({ _id: r.id, ...r.fields })));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOptions(false));
+  }, []);
+
+  // Auto-fill marketer if logged-in user is a marketer
+  useEffect(() => {
+    if (!appUserId || !marketers.length) return;
+    const match = marketers.find((m) => m.user_id === appUserId);
+    if (match) setField('marketer_id', match.id);
+  }, [appUserId, marketers]);
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function validate() {
+    const errs = {};
+    if (!form.first_name.trim()) errs.first_name = 'Required';
+    if (!form.last_name.trim()) errs.last_name = 'Required';
+    if (!form.phone_primary.trim()) errs.phone_primary = 'Required';
+    if (!form.insurance_plan.trim()) errs.insurance_plan = 'Required';
+    if (!form.referral_source_id) errs.referral_source_id = 'Required';
+    if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
+    if (!form.marketer_id) errs.marketer_id = 'Required';
+    if (form.marketer_id === 'other' && !form.marketer_other.trim()) errs.marketer_other = 'Required';
+    return errs;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const patientCustomId = generateId('pat');
+      const referralCustomId = generateId('ref');
+
+      // ── Create patient ──────────────────────────────────────────────────
+      const patientFields = {
+        id: patientCustomId,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        phone_primary: form.phone_primary.trim(),
+        insurance_plan: form.insurance_plan.trim(),
+        division: form.division,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...(form.dob && { dob: form.dob }),
+        ...(form.gender && { gender: form.gender }),
+        ...(form.phone_secondary && { phone_secondary: form.phone_secondary }),
+        ...(form.email && { email: form.email }),
+        ...(form.medicaid_number && { medicaid_number: form.medicaid_number }),
+        ...(form.medicare_number && { medicare_number: form.medicare_number }),
+        ...(form.insurance_id && { insurance_id: form.insurance_id }),
+        ...(form.address_street && { address_street: form.address_street }),
+        ...(form.address_city && { address_city: form.address_city }),
+        ...(form.address_state && { address_state: form.address_state }),
+        ...(form.address_zip && { address_zip: form.address_zip }),
+        ...(form.emergency_contact_name && { emergency_contact_name: form.emergency_contact_name }),
+        ...(form.emergency_contact_phone && { emergency_contact_phone: form.emergency_contact_phone }),
+      };
+
+      const patientRecord = await createPatient(patientFields);
+      const createdPatientId = patientRecord.fields?.id || patientCustomId;
+
+      // ── Create referral ─────────────────────────────────────────────────
+      const resolvedMarketer = form.marketer_id === 'other'
+        ? form.marketer_other.trim()
+        : form.marketer_id;
+
+      const resolvedSource = form.referral_source_id === 'other'
+        ? form.referral_source_other.trim()
+        : form.referral_source_id;
+
+      const referralFields = {
+        id: referralCustomId,
+        patient_id: createdPatientId,
+        marketer_id: resolvedMarketer,
+        referral_source_id: resolvedSource,
+        current_stage: 'Lead Entry',
+        division: form.division,
+        priority: form.priority,
+        referral_date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...(form.services_requested.length && { services_requested: form.services_requested }),
+        ...(appUserId && { intake_owner_id: appUserId }),
+      };
+
+      const referralRecord = await createReferral(referralFields);
+
+      onSuccess?.({
+        patient: { _id: patientRecord.id, ...patientRecord.fields },
+        referral: { _id: referralRecord.id, ...referralRecord.fields },
+      });
+      onClose();
+    } catch (err) {
+      setError(`Submission failed: ${err.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Marketer options
+  const marketerOptions = [
+    ...marketers.map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}` })),
+    { value: 'other', label: 'Other / Not listed' },
+  ];
+
+  // Source options
+  const sourceOptions = [
+    ...sources.map((s) => ({ value: s.id, label: s.name })),
+    { value: 'other', label: 'Other' },
+  ];
+
+  return (
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9990,
+        background: hexToRgba(palette.backgroundDark.hex, 0.5),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div style={{
+        background: palette.backgroundLight.hex, borderRadius: 16,
+        width: '100%', maxWidth: 680, maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: `0 24px 72px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0, background: palette.primaryDeepPlum.hex }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>New Referral</h2>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.55) }}>
+                Creates a patient record and initiates a Lead Entry referral
+              </p>
+            </div>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Form body */}
+        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+
+          {/* ── Attribution (lead source + marketer) ── */}
+          <div style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.04), border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.1)}`, marginBottom: 20 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.primaryDeepPlum.hex, 0.6), marginBottom: 12 }}>
+              Attribution — required
+            </p>
+            <FieldGroup>
+              <FieldBox label="Lead Source" required>
+                {loadingOptions ? (
+                  <div style={{ ...inputBase, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>Loading sources…</div>
+                ) : (
+                  <Select
+                    value={form.referral_source_id}
+                    onChange={(v) => setField('referral_source_id', v)}
+                    options={sourceOptions}
+                    placeholder="Select lead source…"
+                    hasError={!!errors.referral_source_id}
+                  />
+                )}
+                {errors.referral_source_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_id}</p>}
+                {form.referral_source_id === 'other' && (
+                  <div style={{ marginTop: 8 }}>
+                    <Input value={form.referral_source_other} onChange={(v) => setField('referral_source_other', v)} placeholder="Describe the lead source…" hasError={!!errors.referral_source_other} />
+                    {errors.referral_source_other && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_other}</p>}
+                  </div>
+                )}
+              </FieldBox>
+
+              <FieldBox label="Marketer" required>
+                {loadingOptions ? (
+                  <div style={{ ...inputBase, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>Loading marketers…</div>
+                ) : (
+                  <Select
+                    value={form.marketer_id}
+                    onChange={(v) => setField('marketer_id', v)}
+                    options={marketerOptions}
+                    placeholder="Select marketer…"
+                    hasError={!!errors.marketer_id}
+                  />
+                )}
+                {errors.marketer_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.marketer_id}</p>}
+                {form.marketer_id && form.marketer_id !== 'other' && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
+                  <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled — you are the marketer for this referral</p>
+                )}
+                {form.marketer_id === 'other' && (
+                  <div style={{ marginTop: 8 }}>
+                    <Input value={form.marketer_other} onChange={(v) => setField('marketer_other', v)} placeholder="Enter marketer name…" hasError={!!errors.marketer_other} />
+                    {errors.marketer_other && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.marketer_other}</p>}
+                  </div>
+                )}
+              </FieldBox>
+            </FieldGroup>
+          </div>
+
+          {/* ── Required patient info ── */}
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
+            Patient — required
+          </p>
+          <FieldGroup cols={2}>
+            <FieldBox label="First Name" required>
+              <Input value={form.first_name} onChange={(v) => setField('first_name', v)} placeholder="First name" hasError={!!errors.first_name} />
+              {errors.first_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.first_name}</p>}
+            </FieldBox>
+            <FieldBox label="Last Name" required>
+              <Input value={form.last_name} onChange={(v) => setField('last_name', v)} placeholder="Last name" hasError={!!errors.last_name} />
+              {errors.last_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.last_name}</p>}
+            </FieldBox>
+            <FieldBox label="Primary Phone" required>
+              <Input value={form.phone_primary} onChange={(v) => setField('phone_primary', v)} placeholder="(XXX) XXX-XXXX" type="tel" hasError={!!errors.phone_primary} />
+              {errors.phone_primary && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.phone_primary}</p>}
+            </FieldBox>
+            <FieldBox label="Insurance Plan" required>
+              <Input value={form.insurance_plan} onChange={(v) => setField('insurance_plan', v)} placeholder="e.g. Medicaid, Medicare, Molina…" hasError={!!errors.insurance_plan} />
+              {errors.insurance_plan && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_plan}</p>}
+            </FieldBox>
+            <FieldBox label="Division" required>
+              <Select value={form.division} onChange={(v) => setField('division', v)} options={DIVISIONS.map((d) => ({ value: d, label: d }))} placeholder="Select…" />
+            </FieldBox>
+          </FieldGroup>
+
+          {/* ── Optional patient details ── */}
+          <SectionDivider
+            title="Additional Patient Info"
+            expanded={showPatientDetails}
+            onToggle={() => setShowPatientDetails((v) => !v)}
+          />
+          {showPatientDetails && (
+            <FieldGroup cols={2}>
+              <FieldBox label="Date of Birth">
+                <Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" />
+              </FieldBox>
+              <FieldBox label="Gender">
+                <Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" />
+              </FieldBox>
+              <FieldBox label="Secondary Phone">
+                <Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" />
+              </FieldBox>
+              <FieldBox label="Email">
+                <Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" />
+              </FieldBox>
+              <FieldBox label="Medicaid #">
+                <Input value={form.medicaid_number} onChange={(v) => setField('medicaid_number', v)} placeholder="Medicaid number" />
+              </FieldBox>
+              <FieldBox label="Medicare #">
+                <Input value={form.medicare_number} onChange={(v) => setField('medicare_number', v)} placeholder="Medicare number" />
+              </FieldBox>
+              <FieldBox label="Insurance Member ID">
+                <Input value={form.insurance_id} onChange={(v) => setField('insurance_id', v)} placeholder="Member ID" />
+              </FieldBox>
+              <FieldBox label="Address">
+                <Input value={form.address_street} onChange={(v) => setField('address_street', v)} placeholder="Street address" />
+              </FieldBox>
+              <FieldBox label="City">
+                <Input value={form.address_city} onChange={(v) => setField('address_city', v)} placeholder="City" />
+              </FieldBox>
+              <FieldBox label="Zip">
+                <Input value={form.address_zip} onChange={(v) => setField('address_zip', v)} placeholder="Zip code" />
+              </FieldBox>
+              <FieldBox label="Emergency Contact Name">
+                <Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" />
+              </FieldBox>
+              <FieldBox label="Emergency Contact Phone">
+                <Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" />
+              </FieldBox>
+            </FieldGroup>
+          )}
+
+          {/* ── Optional referral details ── */}
+          <SectionDivider
+            title="Referral Details"
+            expanded={showReferralDetails}
+            onToggle={() => setShowReferralDetails((v) => !v)}
+          />
+          {showReferralDetails && (
+            <FieldGroup cols={2}>
+              <FieldBox label="Priority">
+                <Select value={form.priority} onChange={(v) => setField('priority', v)} options={PRIORITIES.map((p) => ({ value: p, label: p }))} placeholder="Normal" />
+              </FieldBox>
+              <div />
+              <FieldBox label="Services Requested" fullWidth>
+                <CheckboxGroup options={SERVICES} values={form.services_requested} onChange={(v) => setField('services_requested', v)} />
+              </FieldBox>
+              <FieldBox label="Initial Notes" fullWidth>
+                <textarea
+                  value={form.initial_notes}
+                  onChange={(e) => setField('initial_notes', e.target.value)}
+                  placeholder="Any initial context, notes, or observations…"
+                  rows={3}
+                  style={{ ...inputBase, resize: 'vertical' }}
+                  onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                  onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
+                />
+              </FieldBox>
+            </FieldGroup>
+          )}
+
+          {/* Global error */}
+          {error && (
+            <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
+              {error}
+            </div>
+          )}
+        </form>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px 18px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            Creates patient + starts a Lead Entry referral
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: `1px solid var(--color-border)`, fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              style={{ padding: '9px 24px', borderRadius: 8, background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 8 }}
+            >
+              {submitting && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.75s linear infinite' }}>
+                  <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                  <circle cx="12" cy="12" r="10" stroke={hexToRgba(palette.backgroundLight.hex, 0.3)} strokeWidth="2.5" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              )}
+              {submitting ? 'Creating…' : 'Create Referral'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,256 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "description": "CareStream pipeline stage transition rules. Edit this file to adjust allowed transitions, permission requirements, and flow logic. Changes take effect on next app load.",
+    "lastUpdated": "2026-03-10",
+    "maintainer": "Developer"
+  },
+
+  "globalRules": {
+    "anyActiveStageCanMoveToHold": true,
+    "holdAlwaysRequiresNote": true,
+    "ntucAlwaysRequiresNote": true,
+    "holdToNTUCRequiresScope": "Admin",
+    "devModeBypassScopeCheck": true
+  },
+
+  "stages": {
+    "Lead Entry": {
+      "displayName": "Lead Entry",
+      "gridRow": 0,
+      "gridCol": 0,
+      "canMoveTo": ["Intake", "Hold", "NTUC"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Raw referral captured. Minimal information. Not yet validated."
+    },
+
+    "Intake": {
+      "displayName": "Intake",
+      "gridRow": 0,
+      "gridCol": 1,
+      "canMoveTo": [
+        "Eligibility Verification",
+        "Disenrollment Required",
+        "F2F/MD Orders Pending",
+        "Hold",
+        "NTUC"
+      ],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Full demographics collection and referral validation."
+    },
+
+    "Eligibility Verification": {
+      "displayName": "Eligibility Verification",
+      "gridRow": 0,
+      "gridCol": 2,
+      "canMoveTo": [
+        "Clinical Intake RN Review",
+        "Authorization Pending",
+        "Disenrollment Required",
+        "Conflict",
+        "Hold",
+        "NTUC"
+      ],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Insurance and episode eligibility check via Waystar, ePACES, or Availity."
+    },
+
+    "Disenrollment Required": {
+      "displayName": "Disenrollment Required",
+      "gridRow": 0,
+      "gridCol": 3,
+      "canMoveTo": ["Eligibility Verification", "Conflict", "Hold", "NTUC", "F2F/MD Orders Pending"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": true,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Patient has active services elsewhere that must be terminated before admission."
+    },
+
+    "F2F/MD Orders Pending": {
+      "displayName": "F2F/MD Orders Pending",
+      "gridRow": 0,
+      "gridCol": 4,
+      "canMoveTo": ["Clinical Intake RN Review", "Hold", "NTUC"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Awaiting valid face-to-face documentation and physician orders. PECOS/OPRA verification required."
+    },
+
+    "Clinical Intake RN Review": {
+      "displayName": "Clinical Intake RN Review",
+      "gridRow": 1,
+      "gridCol": 0,
+      "canMoveTo": [
+        "Authorization Pending",
+        "Staffing Feasibility",
+        "Conflict",
+        "Hold",
+        "NTUC"
+      ],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": true,
+      "requiresScope": "DevNurse",
+      "protectedExit": true,
+      "protectedExitMessage": "Moving a patient out of Clinical RN Review requires DevNurse scope. This action is logged.",
+      "description": "Skilled need, safety, ICD-10, and environment review by clinical intake RN."
+    },
+
+    "Authorization Pending": {
+      "displayName": "Authorization Pending",
+      "gridRow": 1,
+      "gridCol": 1,
+      "canMoveTo": ["Staffing Feasibility", "Hold", "NTUC"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Prior authorization request submitted. Awaiting managed care approval."
+    },
+
+    "Conflict": {
+      "displayName": "Conflict",
+      "gridRow": 1,
+      "gridCol": 2,
+      "canMoveTo": [
+        "Eligibility Verification",
+        "Clinical Intake RN Review",
+        "Disenrollment Required",
+        "NTUC"
+      ],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": true,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Regulatory or service overlap conflict flagged. Requires resolution before advancement."
+    },
+
+    "Staffing Feasibility": {
+      "displayName": "Staffing Feasibility",
+      "gridRow": 1,
+      "gridCol": 3,
+      "canMoveTo": ["Admin Confirmation", "Hold", "NTUC"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "patientContactRequired": true,
+      "patientContactNote": "Patient or parent must be contacted before moving forward from Staffing Feasibility.",
+      "description": "Operational availability check. Discipline, region, and schedule compatibility confirmed."
+    },
+
+    "Admin Confirmation": {
+      "displayName": "Admin Confirmation",
+      "gridRow": 1,
+      "gridCol": 4,
+      "canMoveTo": ["Pre-SOC", "NTUC"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": true,
+      "requiresScope": "Admin",
+      "protectedExit": true,
+      "protectedExitMessage": "Admin Confirmation accept/decline is a protected action requiring Admin scope.",
+      "description": "Final leadership acceptance decision. Case summary reviewed. Accept moves to Pre-SOC. Decline triggers NTUC."
+    },
+
+    "Pre-SOC": {
+      "displayName": "Pre-SOC",
+      "gridRow": 2,
+      "gridCol": 0,
+      "canMoveTo": ["SOC Scheduled", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Case formally accepted. Clinician assigned. Documentation confirmed. Coordinating with ALF or parent."
+    },
+
+    "SOC Scheduled": {
+      "displayName": "SOC Scheduled",
+      "gridRow": 2,
+      "gridCol": 1,
+      "canMoveTo": ["SOC Completed", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": false,
+      "description": "Start of care visit officially scheduled with clinician and patient."
+    },
+
+    "SOC Completed": {
+      "displayName": "SOC Completed",
+      "gridRow": 2,
+      "gridCol": 2,
+      "canMoveTo": [],
+      "terminal": true,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresScope": null,
+      "protectedExit": true,
+      "description": "SOC performed and documented. Patient transferred to HCHB. CareStream pipeline ends here."
+    },
+
+    "Hold": {
+      "displayName": "Hold",
+      "gridRow": 2,
+      "gridCol": 3,
+      "canMoveTo": [
+        "Lead Entry",
+        "Intake",
+        "Eligibility Verification",
+        "Disenrollment Required",
+        "F2F/MD Orders Pending",
+        "Clinical Intake RN Review",
+        "Authorization Pending",
+        "Conflict",
+        "Staffing Feasibility",
+        "Admin Confirmation",
+        "Pre-SOC",
+        "SOC Scheduled",
+        "NTUC"
+      ],
+      "terminal": false,
+      "isGlobal": true,
+      "requiresNote": true,
+      "requiresScope": null,
+      "protectedExit": false,
+      "ntucFromHoldRequiresScope": "Admin",
+      "description": "Temporarily paused. Requires hold reason, owner, and expected resolution date."
+    },
+
+    "NTUC": {
+      "displayName": "NTUC",
+      "gridRow": 2,
+      "gridCol": 4,
+      "canMoveTo": [],
+      "terminal": true,
+      "isGlobal": true,
+      "requiresNote": true,
+      "requiresScope": null,
+      "protectedExit": true,
+      "description": "Not taken under care. Terminal. Requires structured NTUC reason and financial impact tag."
+    }
+  }
+}
