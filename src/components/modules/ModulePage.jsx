@@ -9,6 +9,7 @@ import { STAGE_META } from '../../data/stageConfig.js';
 import StageRules from '../../data/StageRules.json';
 import { updateReferral } from '../../api/referrals.js';
 import { saveTransitionNote } from '../../utils/saveTransitionNote.js';
+import { getFilesForPatients } from '../../api/patientFiles.js';
 import airtable from '../../api/airtable.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
@@ -99,6 +100,8 @@ export default function ModulePage({ stage }) {
   const [sortDir, setSortDir] = useState('desc');
   const [showNewReferral, setShowNewReferral] = useState(false);
   const [triageStatus, setTriageStatus] = useState({});
+  // patient IDs that have an F2F or MD Orders file — for flagging rows in that stage
+  const [fileUploadFlags, setFileUploadFlags] = useState(new Set());
   const [contextMenu, setContextMenu] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
@@ -160,6 +163,31 @@ export default function ModulePage({ stage }) {
     }).catch(() => {});
   }, [snRefKey]);
 
+  // For F2F/MD Orders stage: detect which patients have already uploaded relevant files
+  const f2fPatientKey = useMemo(() => {
+    if (stage !== 'F2F/MD Orders Pending') return '';
+    return stageReferrals
+      .map((r) => r.patient_id)
+      .filter(Boolean)
+      .sort()
+      .join(',');
+  }, [stage, stageReferrals]);
+
+  useEffect(() => {
+    if (!f2fPatientKey) { setFileUploadFlags(new Set()); return; }
+    const ids = f2fPatientKey.split(',');
+    getFilesForPatients(ids)
+      .then((records) => {
+        const flagged = new Set();
+        records.forEach((r) => {
+          const cat = r.fields?.category;
+          if (cat === 'F2F' || cat === 'MD Orders') flagged.add(r.fields.patient_id);
+        });
+        setFileUploadFlags(flagged);
+      })
+      .catch(() => {});
+  }, [f2fPatientKey]);
+
   // Dismiss context menu on Escape
   useEffect(() => {
     if (!contextMenu) return;
@@ -169,6 +197,7 @@ export default function ModulePage({ stage }) {
   }, [contextMenu]);
 
   function buildPatient(referral) {
+    // referral.patient is the full record from usePipelineData (all fields from Airtable)
     return referral.patient || {
       id: referral.patient_id,
       _id: referral.patient_id,
@@ -215,7 +244,11 @@ export default function ModulePage({ stage }) {
     setTransitioning(true);
     setPendingTransition(null);
     const updateFields = { current_stage: toStage };
-    if (toStage === 'Hold' && note) updateFields.hold_reason = note;
+    if (toStage === 'Hold') {
+      if (note) updateFields.hold_reason = note;
+      // Record where to return when the hold is released
+      updateFields.hold_return_stage = fromStage;
+    }
     if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     try {
       await updateReferral(referral._id, updateFields);
@@ -343,6 +376,7 @@ export default function ModulePage({ stage }) {
                     onDoubleClick={() => handleRowOpen(ref)}
                     onContextMenu={(e) => handleRowContextMenu(e, ref)}
                     triageDone={triageStatus[ref.id]}
+                    hasFile={fileUploadFlags.has(ref.patient_id)}
                     stage={stage}
                   />
                 ))}
@@ -380,7 +414,7 @@ export default function ModulePage({ stage }) {
   );
 }
 
-function QueueRow({ referral, resolveUser, isSelected, onClick, onDoubleClick, onContextMenu, triageDone, stage }) {
+function QueueRow({ referral, resolveUser, isSelected, onClick, onDoubleClick, onContextMenu, triageDone, hasFile, stage }) {
   const [hovered, setHovered] = useState(false);
   const days = daysInStage(referral.updated_at);
   const f2fColor = F2F_URGENCY_COLORS[referral.f2f_urgency] || null;
@@ -415,6 +449,14 @@ function QueueRow({ referral, resolveUser, isSelected, onClick, onDoubleClick, o
         {referral.patient?.medicaid_number && (
           <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
             Medicaid: {referral.patient.medicaid_number}
+          </p>
+        )}
+        {hasFile && (
+          <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            File uploaded, please confirm
           </p>
         )}
       </td>

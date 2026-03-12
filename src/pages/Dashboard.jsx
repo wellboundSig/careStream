@@ -63,7 +63,7 @@ export default function Dashboard() {
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Dashboard</h1>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-          {division === 'All' ? 'All divisions' : division} — operational overview
+          {division === 'All' ? 'All divisions' : division}
         </p>
       </div>
 

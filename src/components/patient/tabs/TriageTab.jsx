@@ -4,8 +4,10 @@ import {
   getTriageAdult, createTriageAdult, updateTriageAdult,
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
+import { updateReferral } from '../../../api/referrals.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
+import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -154,6 +156,22 @@ function CheckboxGroup({ options, values = [], onChange, readOnly }) {
 
 function AdultForm({ data, onChange, readOnly }) {
   const set = (k) => (v) => onChange({ ...data, [k]: v });
+
+  function handlePcpSelect(phy) {
+    if (!phy) {
+      onChange({ ...data, pcp_physician_id: null });
+      return;
+    }
+    const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
+    onChange({
+      ...data,
+      pcp_physician_id: phy.id,
+      pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+      pcp_phone: data.pcp_phone || phy.phone || '',
+      pcp_fax:   data.pcp_fax   || phy.fax   || '',
+      pcp_address: data.pcp_address || addr,
+    });
+  }
   return (
     <>
       <FormSection title="Caregiver Information">
@@ -189,7 +207,15 @@ function AdultForm({ data, onChange, readOnly }) {
         )}
       </FormSection>
       <FormSection title="PCP Information">
-        <Field label="PCP Name"><TextInput value={data.pcp_name} onChange={set('pcp_name')} readOnly={readOnly} /></Field>
+        <Field label="PCP">
+          <PhysicianPicker
+            physicianId={data.pcp_physician_id}
+            physicianName={data.pcp_name}
+            onChange={handlePcpSelect}
+            readOnly={readOnly}
+            compact
+          />
+        </Field>
         <Field label="Date of Last PCP Visit"><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
         <Field label="PCP Phone"><TextInput value={data.pcp_phone} onChange={set('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
         <Field label="PCP Fax"><TextInput value={data.pcp_fax} onChange={set('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
@@ -207,6 +233,22 @@ function AdultForm({ data, onChange, readOnly }) {
 
 function PediatricForm({ data, onChange, readOnly }) {
   const set = (k) => (v) => onChange({ ...data, [k]: v });
+
+  function handlePcpSelect(phy) {
+    if (!phy) {
+      onChange({ ...data, pcp_physician_id: null });
+      return;
+    }
+    const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
+    onChange({
+      ...data,
+      pcp_physician_id: phy.id,
+      pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+      pcp_phone: data.pcp_phone || phy.phone || '',
+      pcp_fax:   data.pcp_fax   || phy.fax   || '',
+      pcp_address: data.pcp_address || addr,
+    });
+  }
   return (
     <>
       <FormSection title="Intake Info">
@@ -246,7 +288,15 @@ function PediatricForm({ data, onChange, readOnly }) {
         <Field label="Any recent hospitalization"><TextArea value={data.recent_hospitalization} onChange={set('recent_hospitalization')} rows={2} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="PCP Information">
-        <Field label="PCP Name"><TextInput value={data.pcp_name} onChange={set('pcp_name')} readOnly={readOnly} /></Field>
+        <Field label="PCP">
+          <PhysicianPicker
+            physicianId={data.pcp_physician_id}
+            physicianName={data.pcp_name}
+            onChange={handlePcpSelect}
+            readOnly={readOnly}
+            compact
+          />
+        </Field>
         <Field label="Date of Last PCP Visit"><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
         <Field label="PCP Phone"><TextInput value={data.pcp_phone} onChange={set('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
         <Field label="PCP Fax"><TextInput value={data.pcp_fax} onChange={set('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
@@ -271,6 +321,7 @@ export default function TriageTab({ patient, referral }) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [draft, setDraft] = useState({});
 
   const isSpecialNeeds = referral?.division === 'Special Needs' || patient?.division === 'Special Needs';
@@ -304,22 +355,37 @@ export default function TriageTab({ patient, referral }) {
 
   async function save() {
     setSaving(true);
+    setSaveError(null);
     try {
-      const fields = {
-        ...draft,
+      // Strip virtual/local fields that don't exist as Airtable columns
+      // eslint-disable-next-line no-unused-vars
+      const { pcp_physician_id, ...triageFields } = draft;
+      const rawFields = {
+        ...triageFields,
         referral_id: referral.id,
         filled_by_id: user?.id || 'unknown',
         updated_at: new Date().toISOString(),
       };
+      // Airtable checkbox fields reject explicit `false` — omit them and Airtable
+      // treats them as unchecked by default. Strip every boolean false from payload.
+      const fields = Object.fromEntries(
+        Object.entries(rawFields).filter(([, v]) => v !== false)
+      );
       if (triageRecordId) {
         await updateFn(triageRecordId, fields);
       } else {
         const created = await createFn({ ...fields, created_at: new Date().toISOString() });
         setTriageRecordId(created.id);
       }
-      setTriageData(draft);
+      // If a physician was newly linked, sync to the referral record
+      if (pcp_physician_id && pcp_physician_id !== triageData.pcp_physician_id && referral?._id) {
+        await updateReferral(referral._id, { physician_id: pcp_physician_id }).catch(() => {});
+      }
+      // Preserve pcp_physician_id in local state (it's not persisted on the triage record)
+      setTriageData({ ...triageFields, pcp_physician_id });
       setEditing(false);
-    } catch {
+    } catch (err) {
+      setSaveError(err.message || 'Save failed. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -406,6 +472,12 @@ export default function TriageTab({ patient, referral }) {
         )}
       </div>
 
+      {saveError && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.3)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
+          {saveError}
+        </div>
+      )}
+
       <div id="triage-form-content">
         {triageType === 'adult' ? (
           <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
@@ -413,6 +485,21 @@ export default function TriageTab({ patient, referral }) {
           <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
         )}
       </div>
+
+      {/* Bottom save bar — visible when editing so the user doesn't scroll back up */}
+      {editing && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingTop: 16, borderTop: `1px solid var(--color-border)` }}>
+          {saveError && (
+            <p style={{ flex: 1, fontSize: 12, color: palette.primaryMagenta.hex, alignSelf: 'center' }}>{saveError}</p>
+          )}
+          <button onClick={() => { setEditing(false); setSaveError(null); }} style={{ padding: '8px 18px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: `1px solid var(--color-border)`, fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving} style={{ padding: '8px 24px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Save Form'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

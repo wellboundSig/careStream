@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2 } from '../../../utils/r2Upload.js';
+import { updateReferral } from '../../../api/referrals.js';
+import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
+import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -134,15 +137,20 @@ function PreviewModal({ file, onClose }) {
 export default function FilesTab({ patient, referral }) {
   const { user } = useUser();
   const { appUserId, appUserName } = useCurrentAppUser();
-  const { resolveUser } = useLookups();
+  const { resolveUser, resolvePhysician } = useLookups();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState('Other');
   const [preview, setPreview] = useState(null);
+  // Staging state — file is held here until user confirms upload with options
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingCategory, setPendingCategory] = useState('Other');
+  const [pendingPhysician, setPendingPhysician] = useState(null);
+  const [f2fDate, setF2fDate] = useState('');
+  const [f2fDatePrefilled, setF2fDatePrefilled] = useState(false);
   const inputRef = useRef(null);
 
   const r2Configured = !!(
@@ -160,35 +168,83 @@ export default function FilesTab({ patient, referral }) {
       .finally(() => setLoading(false));
   }, [patient?.id]);
 
-  async function handleFiles(fileList) {
+  function stageFile(fileList) {
     if (!fileList?.length || uploading) return;
-    const file = fileList[0];
+    setPendingFile(fileList[0]);
+    setPendingCategory('Other');
+    setPendingPhysician(null);
+    setF2fDate('');
+    setF2fDatePrefilled(false);
+    setUploadError(null);
+  }
+
+  function cancelStaging() {
+    setPendingFile(null);
+    setPendingPhysician(null);
+    setF2fDate('');
+    setF2fDatePrefilled(false);
+    if (inputRef.current) inputRef.current.value = '';
+  }
+
+  async function confirmUpload() {
+    if (!pendingFile || uploading) return;
     setUploading(true);
     setUploadError(null);
-    setUploadProgress(`Uploading ${file.name}...`);
+    setUploadProgress(`Uploading ${pendingFile.name}…`);
 
     try {
-      const { r2Key, r2Url } = await uploadToR2(file, patient.id);
+      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient.id);
 
-      const fields = {
+      const baseFields = {
         id: `file_${Date.now()}`,
         patient_id: patient.id,
         uploaded_by_id: appUserId || appUserName || 'unknown',
-        file_name: file.name,
-        // file_type omitted — Airtable field is singleSelect with only 'application/pdf'.
-        // Change field type to Text in Airtable to store MIME types properly.
-        // The UI derives file type from filename extension for icons/preview.
-        file_size: file.size,
+        file_name: pendingFile.name,
+        file_size: pendingFile.size,
         r2_key: r2Key,
         r2_url: r2Url,
-        category: selectedCategory,
+        category: pendingCategory,
         created_at: new Date().toISOString(),
         ...(referral?.id ? { referral_id: referral.id } : {}),
       };
 
-      const created = await createFile(fields);
+      // Try with physician_id first. If Airtable rejects it (field not yet
+      // added to the Files table), fall back to saving without it.
+      let created;
+      if (pendingPhysician?.id) {
+        try {
+          created = await createFile({ ...baseFields, physician_id: pendingPhysician.id });
+        } catch (e) {
+          if (e.message?.includes('Unknown field name')) {
+            created = await createFile(baseFields);
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        created = await createFile(baseFields);
+      }
+
       setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
+
+      // If category is F2F and a received date was entered, start the 90-day expiration clock
+      if (pendingCategory === 'F2F' && f2fDate && referral?._id) {
+        const received = new Date(f2fDate);
+        const expiration = new Date(received);
+        expiration.setDate(expiration.getDate() + 90);
+        await updateReferral(referral._id, {
+          f2f_date: received.toISOString(),
+          f2f_expiration: expiration.toISOString(),
+        }).catch(() => {});
+        triggerDataRefresh();
+      }
+
+      setPendingFile(null);
+      setPendingPhysician(null);
+      setF2fDate('');
+      setF2fDatePrefilled(false);
       setUploadProgress(null);
+      if (inputRef.current) inputRef.current.value = '';
     } catch (err) {
       setUploadError(err.message);
       setUploadProgress(null);
@@ -199,65 +255,190 @@ export default function FilesTab({ patient, referral }) {
 
   return (
     <div style={{ padding: '20px' }}>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-        onClick={() => r2Configured && inputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragOver ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-          borderRadius: 10, padding: '20px 16px', textAlign: 'center', marginBottom: 16,
-          background: dragOver ? hexToRgba(palette.primaryMagenta.hex, 0.04) : hexToRgba(palette.backgroundDark.hex, 0.02),
-          transition: 'all 0.15s',
-          cursor: r2Configured ? 'pointer' : 'default',
-        }}
-      >
-        <input ref={inputRef} type="file" style={{ display: 'none' }} onChange={(e) => handleFiles(e.target.files)} />
-        {uploading ? (
-          <p style={{ fontSize: 13, color: palette.primaryMagenta.hex, fontWeight: 600 }}>{uploadProgress}</p>
-        ) : r2Configured ? (
-          <>
-            <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4 }}>
-              Drop file here or click to upload
-            </p>
-            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-              Stored securely in Cloudflare R2
-            </p>
-          </>
-        ) : (
-          <>
-            <p style={{ fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
-              R2 upload not configured
-            </p>
-            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), lineHeight: 1.5 }}>
-              Add <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCOUNT_ID</code>,{' '}
-              <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCESS_KEY_ID</code>, and{' '}
-              <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_SECRET_ACCESS_KEY</code> to <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>.env</code> to enable uploads.
-            </p>
-          </>
-        )}
-      </div>
-
-      {r2Configured && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-          {FILE_CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              style={{
-                padding: '4px 10px', borderRadius: 6, border: `1px solid var(--color-border)`,
-                fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s',
-                background: selectedCategory === cat ? palette.primaryMagenta.hex : 'none',
-                color: selectedCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-              }}
-            >
-              {cat}
-            </button>
-          ))}
+      {/* Drop zone — only shown when no pending file */}
+      {!pendingFile && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); stageFile(e.dataTransfer.files); }}
+          onClick={() => r2Configured && inputRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragOver ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+            borderRadius: 10, padding: '20px 16px', textAlign: 'center', marginBottom: 16,
+            background: dragOver ? hexToRgba(palette.primaryMagenta.hex, 0.04) : hexToRgba(palette.backgroundDark.hex, 0.02),
+            transition: 'all 0.15s',
+            cursor: r2Configured ? 'pointer' : 'default',
+          }}
+        >
+          <input ref={inputRef} type="file" style={{ display: 'none' }} onChange={(e) => stageFile(e.target.files)} />
+          {r2Configured ? (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+                Drop file here or click to upload
+              </p>
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                Secure upload
+              </p>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
+                R2 upload not configured
+              </p>
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), lineHeight: 1.5 }}>
+                Add <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCOUNT_ID</code>,{' '}
+                <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCESS_KEY_ID</code>, and{' '}
+                <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_SECRET_ACCESS_KEY</code> to <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>.env</code> to enable uploads.
+              </p>
+            </>
+          )}
         </div>
       )}
 
-      {uploadError && (
+      {/* Staging panel — shown after a file is selected, before uploading */}
+      {pendingFile && !uploading && (
+        <div style={{ border: `1px solid var(--color-border)`, borderRadius: 10, padding: '16px', marginBottom: 16, background: hexToRgba(palette.backgroundDark.hex, 0.02) }}>
+          {/* File name */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid var(--color-border)` }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.accentBlue.hex} strokeWidth="1.6" strokeLinejoin="round"/><path d="M14 2v6h6" stroke={palette.accentBlue.hex} strokeWidth="1.6" strokeLinejoin="round"/></svg>
+            <span style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{pendingFile.name}</span>
+            <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), flexShrink: 0 }}>
+              {pendingFile.size < 1048576 ? `${(pendingFile.size / 1024).toFixed(1)} KB` : `${(pendingFile.size / 1048576).toFixed(1)} MB`}
+            </span>
+          </div>
+
+          {/* Category */}
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 8 }}>Category</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+            {FILE_CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setPendingCategory(cat);
+                  if (cat === 'F2F') {
+                    if (referral?.f2f_date) {
+                      setF2fDate(new Date(referral.f2f_date).toISOString().slice(0, 10));
+                      setF2fDatePrefilled(true);
+                    } else {
+                      setF2fDate('');
+                      setF2fDatePrefilled(false);
+                    }
+                  } else {
+                    setF2fDate('');
+                    setF2fDatePrefilled(false);
+                  }
+                }}
+                style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid var(--color-border)`, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s', background: pendingCategory === cat ? palette.primaryMagenta.hex : 'none', color: pendingCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* F2F received date — only shown when F2F category is selected */}
+          {pendingCategory === 'F2F' && (
+            <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.05), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.2)}` }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryMagenta.hex, marginBottom: 4 }}>F2F Received Date</p>
+
+              {f2fDatePrefilled ? (
+                /* Existing date — just confirm it */
+                <div>
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
+                    This referral already has an F2F date on record. Confirm or adjust below.
+                  </p>
+                  <input
+                    type="date"
+                    value={f2fDate}
+                    onChange={(e) => { setF2fDate(e.target.value); }}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${palette.primaryMagenta.hex}`, fontSize: 13, color: palette.backgroundDark.hex, background: palette.backgroundLight.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  />
+                  {f2fDate && (
+                    <p style={{ fontSize: 11.5, color: palette.accentGreen.hex, marginTop: 6, fontWeight: 600 }}>
+                      Expires {new Date(new Date(f2fDate).setDate(new Date(f2fDate).getDate() + 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                /* No existing date — pick one */
+                <div>
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
+                    Sets the 90-day F2F expiration clock on this referral.
+                  </p>
+                  <input
+                    type="date"
+                    value={f2fDate}
+                    onChange={(e) => setF2fDate(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${f2fDate ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.15)}`, fontSize: 13, color: palette.backgroundDark.hex, background: palette.backgroundLight.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  />
+                  {f2fDate && (
+                    <p style={{ fontSize: 11.5, color: palette.accentGreen.hex, marginTop: 6, fontWeight: 600 }}>
+                      Expires {new Date(new Date(f2fDate).setDate(new Date(f2fDate).getDate() + 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  )}
+                  {!f2fDate && (
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 4 }}>
+                      Optional — leave blank to skip
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Physician association */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Associated Physician</p>
+              {pendingPhysician && (
+                <button onClick={() => setPendingPhysician(null)} style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  Clear
+                </button>
+              )}
+            </div>
+            <PhysicianPicker
+              physicianId={pendingPhysician?.id || null}
+              onChange={setPendingPhysician}
+              compact
+            />
+            {!pendingPhysician && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 5 }}>
+                Optional
+              </p>
+            )}
+          </div>
+
+          {uploadError && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 7, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex }}>
+              {uploadError}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button
+              onClick={confirmUpload}
+              style={{ padding: '8px 20px', borderRadius: 7, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
+            >
+              Upload
+            </button>
+            <button
+              onClick={cancelStaging}
+              style={{ padding: '8px 14px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 12.5, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload progress */}
+      {uploading && uploadProgress && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.06), fontSize: 13, color: palette.primaryMagenta.hex, fontWeight: 600 }}>
+          {uploadProgress}
+        </div>
+      )}
+
+      {uploadError && !pendingFile && (
         <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
           {uploadError}
         </div>
@@ -272,7 +453,7 @@ export default function FilesTab({ patient, referral }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {files.map((file) => (
-            <FileRow key={file._id} file={file} onPreview={setPreview} resolveUser={resolveUser} appUserName={appUserName} />
+            <FileRow key={file._id} file={file} onPreview={setPreview} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
           ))}
         </div>
       )}
@@ -282,11 +463,12 @@ export default function FilesTab({ patient, referral }) {
   );
 }
 
-function FileRow({ file, onPreview, resolveUser, appUserName }) {
+function FileRow({ file, onPreview, resolveUser, resolvePhysician, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
   const cleanUrl = file.r2_url?.replace(/[<>\n]/g, '').trim();
   const canPreview = !!cleanUrl;
+  const physicianName = file.physician_id ? resolvePhysician?.(file.physician_id) : null;
 
   return (
     <div
@@ -308,6 +490,11 @@ function FileRow({ file, onPreview, resolveUser, appUserName }) {
           {file.category && (
             <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: catColors.bg, color: catColors.text }}>
               {file.category}
+            </span>
+          )}
+          {physicianName && physicianName !== '—' && (
+            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), color: palette.primaryDeepPlum.hex }}>
+              Dr. {physicianName}
             </span>
           )}
           {file.file_size && (

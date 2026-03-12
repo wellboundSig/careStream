@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { usePatients } from '../hooks/usePatients.js';
 import { usePipelineData } from '../hooks/usePipelineData.js';
@@ -20,13 +20,28 @@ import palette, { hexToRgba } from '../utils/colors.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
 
+// ── Column definitions ─────────────────────────────────────────────────────────
+const COLUMN_DEFS = [
+  { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
+  { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
+  { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
+  { key: 'f2f',             label: 'F2F',               defaultOn: true,  filterable: false },
+  { key: 'days',            label: 'Days',              defaultOn: true,  filterable: false },
+  { key: 'marketer',        label: 'Marketer',          defaultOn: true,  filterable: true  },
+  { key: 'insurance',       label: 'Insurance',         defaultOn: true,  sortField: 'insurance_plan', filterable: true  },
+  { key: 'referral_date',   label: 'Referral Date',     defaultOn: true,  filterable: true  },
+  { key: 'referral_source', label: 'Referral Source',   defaultOn: false, filterable: true  },
+  { key: 'facility',        label: 'Facility',          defaultOn: false, filterable: true  },
+  { key: 'physician',       label: 'Physician',         defaultOn: false, filterable: true  },
+];
+
+const DEFAULT_COL_FILTERS = Object.fromEntries(
+  COLUMN_DEFS.filter((c) => c.filterable).map((c) => [c.key, ''])
+);
+
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-function calcAge(dob) {
-  if (!dob) return '—';
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 function daysInStage(updatedAt) {
   if (!updatedAt) return null;
@@ -45,7 +60,7 @@ function needsModal(from, to) {
   return !!(r?.requiresNote || r?.protectedExit || to === 'Hold' || to === 'NTUC' || t?.destinationPrompt);
 }
 
-// ── F2F Countdown cell ────────────────────────────────────────────────────────
+// ── F2F Countdown cell ─────────────────────────────────────────────────────────
 function F2FCell({ referral }) {
   if (!referral?.f2f_expiration) return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>;
   const days = Math.ceil((new Date(referral.f2f_expiration) - Date.now()) / 86400000);
@@ -62,7 +77,7 @@ function F2FCell({ referral }) {
   );
 }
 
-// ── Context menu ──────────────────────────────────────────────────────────────
+// ── Context menu ───────────────────────────────────────────────────────────────
 function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDismiss }) {
   const isSN = row.division === 'Special Needs';
   const currentStage = row.current_stage;
@@ -113,17 +128,56 @@ function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDis
   );
 }
 
+// ── Column Picker ──────────────────────────────────────────────────────────────
+function ColumnPicker({ visibleCols, onChange, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 200, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Columns</p>
+      {COLUMN_DEFS.map((col) => (
+        <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 14px', cursor: col.alwaysOn ? 'default' : 'pointer', opacity: col.alwaysOn ? 0.45 : 1 }}>
+          <input
+            type="checkbox"
+            checked={visibleCols.has(col.key)}
+            disabled={col.alwaysOn}
+            onChange={() => {
+              if (col.alwaysOn) return;
+              const next = new Set(visibleCols);
+              if (next.has(col.key)) next.delete(col.key);
+              else next.add(col.key);
+              onChange(next);
+            }}
+            style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13 }}
+          />
+          <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{col.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 // ── Tiny SVG icons ─────────────────────────────────────────────────────────────
 const PersonIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.7"/></svg>;
 const ClipboardIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>;
 const NoteIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>;
+const FilterIcon = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const ColsIcon = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="14" y="3" width="7" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg>;
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Main page ──────────────────────────────────────────────────────────────────
 export default function PatientList() {
   const { division } = useOutletContext();
   const { data: patients, loading: pLoading } = usePatients();
   const { data: enriched, loading: eLoading } = usePipelineData();
-  const { resolveMarketer } = useLookups();
+  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
 
@@ -139,6 +193,30 @@ export default function PatientList() {
   const [toast, setToast] = useState(null);
   const [showNewReferral, setShowNewReferral] = useState(false);
 
+  // Column picker + filter row
+  const [visibleCols, setVisibleCols] = useState(() => new Set(COLUMN_DEFS.filter((c) => c.defaultOn).map((c) => c.key)));
+  const [showColPicker, setShowColPicker] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [colFilters, setColFilters] = useState({ ...DEFAULT_COL_FILTERS });
+
+  const colPickerRef = useRef(null);
+
+  const resolvers = useMemo(() => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician }), [resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
+
+  const activeColumns = useMemo(() => COLUMN_DEFS.filter((c) => visibleCols.has(c.key)), [visibleCols]);
+
+  const hasAnyFilter = search.trim() || stageFilter || Object.values(colFilters).some((v) => v.trim());
+
+  function clearAll() {
+    setSearch('');
+    setStageFilter('');
+    setColFilters({ ...DEFAULT_COL_FILTERS });
+  }
+
+  function setColFilter(key, val) {
+    setColFilters((prev) => ({ ...prev, [key]: val }));
+  }
+
   // Latest enriched referral per patient
   const refByPatientId = useMemo(() => {
     const map = {};
@@ -150,6 +228,53 @@ export default function PatientList() {
     return map;
   }, [enriched]);
 
+  // Unique values per filterable column — drives datalist suggestions
+  const colOptions = useMemo(() => {
+    const opts = {};
+    COLUMN_DEFS.filter((c) => c.filterable).forEach((col) => {
+      const vals = new Set();
+      patients.forEach((p) => {
+        const ref = refByPatientId[p.id];
+        switch (col.key) {
+          case 'division':
+            if (p.division) vals.add(p.division);
+            break;
+          case 'stage':
+            if (ref?.current_stage) vals.add(ref.current_stage);
+            break;
+          case 'marketer': {
+            const v = resolveMarketer(ref?.marketer_id);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
+          case 'insurance':
+            if (p.insurance_plan) vals.add(p.insurance_plan);
+            break;
+          case 'referral_date':
+            if (ref?.referral_date) vals.add(fmtDate(ref.referral_date));
+            break;
+          case 'referral_source': {
+            const v = resolveSource(ref?.referral_source_id);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
+          case 'facility': {
+            const v = resolveFacility(ref?.facility_id);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
+          case 'physician': {
+            const v = resolvePhysician(ref?.physician_id);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
+        }
+      });
+      opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
+    });
+    return opts;
+  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
+
   const filtered = useMemo(() => {
     let list = patients.filter((p) => {
       if (division !== 'All' && p.division !== division) return false;
@@ -160,9 +285,26 @@ export default function PatientList() {
             !(p.medicaid_number || '').toLowerCase().includes(q) &&
             !(p.medicare_number || '').toLowerCase().includes(q)) return false;
       }
+      const ref = refByPatientId[p.id];
       if (stageFilter) {
-        const ref = refByPatientId[p.id];
         if (!ref || ref.current_stage !== stageFilter) return false;
+      }
+      // Per-column filters
+      for (const [key, val] of Object.entries(colFilters)) {
+        if (!val.trim()) continue;
+        const q = val.toLowerCase();
+        let cellVal = '';
+        switch (key) {
+          case 'division':       cellVal = (p.division || '').toLowerCase(); break;
+          case 'stage':          cellVal = (ref?.current_stage || '').toLowerCase(); break;
+          case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id).toLowerCase(); break;
+          case 'insurance':      cellVal = (p.insurance_plan || '').toLowerCase(); break;
+          case 'referral_date':  cellVal = ref?.referral_date ? fmtDate(ref.referral_date).toLowerCase() : ''; break;
+          case 'referral_source':cellVal = resolveSource(ref?.referral_source_id).toLowerCase(); break;
+          case 'facility':       cellVal = resolveFacility(ref?.facility_id).toLowerCase(); break;
+          case 'physician':      cellVal = resolvePhysician(ref?.physician_id).toLowerCase(); break;
+        }
+        if (!cellVal.includes(q)) return false;
       }
       return true;
     });
@@ -176,7 +318,7 @@ export default function PatientList() {
       }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir]);
+  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -184,10 +326,10 @@ export default function PatientList() {
   }
 
   function buildPatient(row) {
-    return { id: row.id, _id: row._id, first_name: row.first_name, last_name: row.last_name, dob: row.dob, division: row.division, medicaid_number: row.medicaid_number };
+    // Pass the full patient record — all fields are already on the object from useAirtable
+    return { ...row };
   }
 
-  // Transition machinery
   function initiateTransition(row, toStage) {
     const ref = refByPatientId[row.id];
     if (!ref) return;
@@ -222,9 +364,9 @@ export default function PatientList() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  const colHdr = (label, field) => (
-    <th onClick={field ? () => toggleSort(field) : undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: field ? 'pointer' : 'default', userSelect: 'none' }}>
-      {label} {field && sortField === field && (sortDir === 'asc' ? '▲' : '▼')}
+  const colHdr = (col) => (
+    <th key={col.key} onClick={col.sortField ? () => toggleSort(col.sortField) : undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.sortField ? 'pointer' : 'default', userSelect: 'none' }}>
+      {col.label} {col.sortField && sortField === col.sortField && (sortDir === 'asc' ? '▲' : '▼')}
     </th>
   );
 
@@ -242,68 +384,138 @@ export default function PatientList() {
           <button onClick={() => setShowNewReferral(true)} style={{ padding: '7px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>+ New Referral</button>
         </div>
 
-        {/* Filter bar */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, flex: 1, maxWidth: 300 }}>
+        {/* Filter / toolbar bar */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexShrink: 0, alignItems: 'center' }}>
+          {/* Search — fixed width so typing never shifts neighbours */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 264, flexShrink: 0 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, Medicaid #, Medicare #…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, Medicaid #, Medicare #…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%', minWidth: 0 }} />
           </div>
-          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {/* Stage dropdown — fixed width so changing selection never resizes it */}
+          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ height: 34, width: 186, flexShrink: 0, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', color: palette.backgroundDark.hex, cursor: 'pointer' }}>
             <option value="">All Stages</option>
             {ALL_STAGE_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+          {/* Active only */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.55), flexShrink: 0 }}>
             <input type="checkbox" checked={showActive} onChange={(e) => setShowActive(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex }} />
             Active only
           </label>
+
+          <div style={{ flex: 1 }} />
+
+          {/* Filter toggle */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            title={showFilters ? 'Hide column filters' : 'Show column filters'}
+            style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 550, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer', flexShrink: 0 }}
+          >
+            <FilterIcon /> Filters
+          </button>
+
+          {/* Column picker */}
+          <div ref={colPickerRef} style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              onClick={() => setShowColPicker((v) => !v)}
+              title="Customize columns"
+              style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: `1px solid ${showColPicker ? palette.primaryMagenta.hex : 'var(--color-border)'}`, background: showColPicker ? hexToRgba(palette.primaryMagenta.hex, 0.07) : palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 550, color: showColPicker ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}
+            >
+              <ColsIcon /> Columns
+            </button>
+            {showColPicker && (
+              <ColumnPicker
+                visibleCols={visibleCols}
+                onChange={setVisibleCols}
+                onClose={() => setShowColPicker(false)}
+              />
+            )}
+          </div>
+
+          {/* Clear all — always rendered so its presence/absence never shifts the row */}
+          <button
+            onClick={clearAll}
+            style={{ height: 34, padding: '0 12px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 550, color: palette.primaryMagenta.hex, cursor: 'pointer', flexShrink: 0, visibility: hasAnyFilter ? 'visible' : 'hidden' }}
+          >
+            Clear all
+          </button>
         </div>
 
         {/* Table */}
         <div style={{ flex: 1, overflow: 'auto', background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
-          {filtered.length === 0 ? (
-            <EmptyState title="No patients found" subtitle={search ? `No results for "${search}"` : 'No patients match the current filters.'} />
+          {patients.length === 0 ? (
+            <EmptyState title="No patients found" subtitle="No patient records exist yet." />
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
               <thead>
                 <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                  {colHdr('Patient', 'last_name')}
-                  {colHdr('Division', 'division')}
-                  {colHdr('Stage', 'stage')}
-                  {colHdr('F2F', null)}
-                  {colHdr('Days', null)}
-                  {colHdr('Marketer', null)}
-                  {colHdr('Insurance', 'insurance_plan')}
-                  {colHdr('Referral Date', null)}
+                  {activeColumns.map(colHdr)}
                 </tr>
+                {showFilters && (
+                  <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
+                    {activeColumns.map((col) => (
+                      <th key={col.key} style={{ padding: '4px 8px' }}>
+                        {col.filterable ? (
+                          <>
+                            <input
+                              list={`col-opts-${col.key}`}
+                              value={colFilters[col.key] || ''}
+                              onChange={(e) => setColFilter(col.key, e.target.value)}
+                              placeholder="Filter…"
+                              style={{ width: '100%', padding: '4px 8px', borderRadius: 5, border: `1px solid ${colFilters[col.key]?.trim() ? palette.accentBlue.hex : 'var(--color-border)'}`, background: palette.backgroundLight.hex, fontSize: 11.5, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                            />
+                            <datalist id={`col-opts-${col.key}`}>
+                              {(colOptions[col.key] || []).map((opt) => (
+                                <option key={opt} value={opt} />
+                              ))}
+                            </datalist>
+                          </>
+                        ) : null}
+                      </th>
+                    ))}
+                  </tr>
+                )}
               </thead>
               <tbody>
-                {filtered.map((patient) => {
-                  const ref = refByPatientId[patient.id];
-                  const days = ref ? daysInStage(ref.updated_at) : null;
-                  return (
-                    <PatientRow
-                      key={patient._id}
-                      patient={patient}
-                      referral={ref}
-                      days={days}
-                      resolveMarketer={resolveMarketer}
-                      onDoubleClick={() => openDrawer(buildPatient(patient), ref || null)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        // Clamp so menu never goes off-screen
-                        const x = Math.min(e.clientX, window.innerWidth - 250);
-                        const y = Math.min(e.clientY, window.innerHeight - 300);
-                        setContextMenu({
-                          x, y,
-                          patientId: patient.id,        // store separately to avoid id collision with referral
-                          currentStage: ref?.current_stage,
-                          division: patient.division,
-                          patientName: `${patient.first_name} ${patient.last_name}`.trim(),
-                        });
-                      }}
-                    />
-                  );
-                })}
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={activeColumns.length} style={{ padding: '40px 20px', textAlign: 'center' }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 4 }}>No results</p>
+                      <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>
+                        {search ? `No patients match "${search}"` : 'No patients match the current filters.'}
+                        {' '}
+                        <button onClick={clearAll} style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: palette.accentBlue.hex, cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((patient) => {
+                    const ref = refByPatientId[patient.id];
+                    const days = ref ? daysInStage(ref.updated_at) : null;
+                    return (
+                      <PatientRow
+                        key={patient._id}
+                        patient={patient}
+                        referral={ref}
+                        days={days}
+                        resolvers={resolvers}
+                        activeColumns={activeColumns}
+                        onDoubleClick={() => openDrawer(buildPatient(patient), ref || null)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          const x = Math.min(e.clientX, window.innerWidth - 250);
+                          const y = Math.min(e.clientY, window.innerHeight - 300);
+                          setContextMenu({
+                            x, y,
+                            patientId: patient.id,
+                            currentStage: ref?.current_stage,
+                            division: patient.division,
+                            patientName: `${patient.first_name} ${patient.last_name}`.trim(),
+                          });
+                        }}
+                      />
+                    );
+                  })
+                )}
               </tbody>
             </table>
           )}
@@ -370,9 +582,82 @@ export default function PatientList() {
   );
 }
 
-// ── Patient row ───────────────────────────────────────────────────────────────
-function PatientRow({ patient, referral, days, resolveMarketer, onDoubleClick, onContextMenu }) {
+// ── Patient row ────────────────────────────────────────────────────────────────
+function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
+  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician } = resolvers;
+
+  const renderCell = (col) => {
+    switch (col.key) {
+      case 'patient':
+        return (
+          <td key="patient" style={{ padding: '11px 14px' }}>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1 }}>{patient.first_name} {patient.last_name}</p>
+            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
+              {patient.medicaid_number ? `Medicaid: ${patient.medicaid_number}` : patient.medicare_number ? `Medicare: ${patient.medicare_number}` : patient.dob ? `Age ${Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 86400000))}` : ''}
+            </p>
+          </td>
+        );
+      case 'division':
+        return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
+      case 'stage':
+        return (
+          <td key="stage" style={{ padding: '11px 14px' }}>
+            {referral?.current_stage ? <StageBadge stage={referral.current_stage} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
+          </td>
+        );
+      case 'f2f':
+        return <td key="f2f" style={{ padding: '11px 14px' }}><F2FCell referral={referral} /></td>;
+      case 'days':
+        return (
+          <td key="days" style={{ padding: '11px 14px' }}>
+            {days !== null ? (
+              <span style={{ fontSize: 12.5, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+                {days === 0 ? 'Today' : `${days}d`}
+              </span>
+            ) : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>}
+          </td>
+        );
+      case 'marketer':
+        return (
+          <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
+          </td>
+        );
+      case 'insurance':
+        return (
+          <td key="insurance" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {patient.insurance_plan || '—'}
+          </td>
+        );
+      case 'referral_date':
+        return (
+          <td key="referral_date" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+            {referral?.referral_date ? fmtDate(referral.referral_date) : '—'}
+          </td>
+        );
+      case 'referral_source':
+        return (
+          <td key="referral_source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {referral?.referral_source_id ? resolveSource(referral.referral_source_id) : '—'}
+          </td>
+        );
+      case 'facility':
+        return (
+          <td key="facility" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {referral?.facility_id ? resolveFacility(referral.facility_id) : '—'}
+          </td>
+        );
+      case 'physician':
+        return (
+          <td key="physician" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {referral?.physician_id ? resolvePhysician(referral.physician_id) : '—'}
+          </td>
+        );
+      default:
+        return <td key={col.key} />;
+    }
+  };
 
   return (
     <tr
@@ -383,33 +668,7 @@ function PatientRow({ patient, referral, days, resolveMarketer, onDoubleClick, o
       title="Double-click to open · Right-click for options"
       style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent', cursor: 'default', transition: 'background 0.1s' }}
     >
-      <td style={{ padding: '11px 14px' }}>
-        <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1 }}>{patient.first_name} {patient.last_name}</p>
-        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
-          {patient.medicaid_number ? `Medicaid: ${patient.medicaid_number}` : patient.medicare_number ? `Medicare: ${patient.medicare_number}` : patient.dob ? `Age ${Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 86400000))}` : ''}
-        </p>
-      </td>
-      <td style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>
-      <td style={{ padding: '11px 14px' }}>
-        {referral?.current_stage ? <StageBadge stage={referral.current_stage} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
-      </td>
-      <td style={{ padding: '11px 14px' }}><F2FCell referral={referral} /></td>
-      <td style={{ padding: '11px 14px' }}>
-        {days !== null ? (
-          <span style={{ fontSize: 12.5, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>
-            {days === 0 ? 'Today' : `${days}d`}
-          </span>
-        ) : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>}
-      </td>
-      <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-        {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
-      </td>
-      <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-        {patient.insurance_plan || '—'}
-      </td>
-      <td style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-        {referral?.referral_date ? new Date(referral.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-      </td>
+      {activeColumns.map(renderCell)}
     </tr>
   );
 }

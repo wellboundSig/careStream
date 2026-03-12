@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getChecksByPatient, createInsuranceCheck } from '../../../api/insuranceChecks.js';
+import { getAuthorizationsByReferral } from '../../../api/authorizations.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../../data/eligibilityConfig.js';
@@ -38,6 +39,19 @@ const selectStyle = (highlight) => ({
   fontWeight: highlight ? 600 : 400,
 });
 
+const AUTH_STATUS_COLORS = {
+  Approved: { bg: hexToRgba('#22c55e', 0.12), text: '#15803d' },
+  Denied:   { bg: hexToRgba('#e11d48', 0.1),  text: '#be123c' },
+  Pending:  { bg: hexToRgba('#f59e0b', 0.12), text: '#b45309' },
+  Expired:  { bg: hexToRgba('#6b7280', 0.1),  text: '#4b5563' },
+  Appealed: { bg: hexToRgba('#8b5cf6', 0.1),  text: '#6d28d9' },
+};
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export default function EligibilityTab({ patient, referral }) {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser } = useLookups();
@@ -48,6 +62,9 @@ export default function EligibilityTab({ patient, referral }) {
   const [expanded, setExpanded] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_CHECK_FORM });
   const [flagValues, setFlagValues] = useState({});
+  const [auths, setAuths] = useState([]);
+  const [authsLoading, setAuthsLoading] = useState(false);
+  const [authExpanded, setAuthExpanded] = useState(null);
   const isSN = referral?.division === 'Special Needs' || patient?.division === 'Special Needs';
 
   useEffect(() => {
@@ -59,6 +76,18 @@ export default function EligibilityTab({ patient, referral }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [patient?.id]);
+
+  useEffect(() => {
+    if (!referral?.id) return;
+    setAuthsLoading(true);
+    getAuthorizationsByReferral(referral.id)
+      .then((recs) => setAuths(
+        recs.map((r) => ({ _id: r.id, ...r.fields }))
+          .sort((a, b) => new Date(b.submitted_date || b.approved_date || 0) - new Date(a.submitted_date || a.approved_date || 0))
+      ))
+      .catch(() => {})
+      .finally(() => setAuthsLoading(false));
+  }, [referral?.id]);
 
   function openForm() {
     setForm({ ...EMPTY_CHECK_FORM });
@@ -226,6 +255,89 @@ export default function EligibilityTab({ patient, referral }) {
           </div>
         </div>
       )}
+
+      {/* ── Authorizations ── */}
+      <div style={{ marginBottom: 24 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
+          Prior Authorizations
+        </p>
+
+        {authsLoading ? (
+          <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>Loading…</p>
+        ) : auths.length === 0 ? (
+          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No authorization records on file.</p>
+        ) : auths.map((a) => {
+          const sc = AUTH_STATUS_COLORS[a.status] || AUTH_STATUS_COLORS.Pending;
+          const isOpen = authExpanded === a._id;
+          return (
+            <div
+              key={a._id}
+              onClick={() => setAuthExpanded(isOpen ? null : a._id)}
+              style={{
+                padding: '12px 14px', borderRadius: 9, marginBottom: 8, cursor: 'pointer',
+                border: `1px solid ${isOpen ? hexToRgba(palette.backgroundDark.hex, 0.1) : hexToRgba(palette.backgroundDark.hex, 0.07)}`,
+                background: isOpen ? hexToRgba(palette.backgroundDark.hex, 0.02) : 'transparent',
+                transition: 'all 0.15s',
+              }}
+            >
+              {/* Row header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 2 }}>
+                    {a.plan_name || 'Unknown Plan'}
+                    {a.auth_number && <span style={{ fontWeight: 400, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginLeft: 6 }}>#{a.auth_number}</span>}
+                  </p>
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+                    {a.submitted_date ? `Submitted ${fmtDate(a.submitted_date)}` : a.approved_date ? `Approved ${fmtDate(a.approved_date)}` : 'No date recorded'}
+                  </p>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 650, padding: '3px 9px', borderRadius: 20, background: sc.bg, color: sc.text, flexShrink: 0 }}>
+                  {a.status || 'Pending'}
+                </span>
+              </div>
+
+              {/* Expanded detail */}
+              {isOpen && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}` }}>
+                  {a.services_authorized?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 4 }}>Services Authorized</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {(Array.isArray(a.services_authorized) ? a.services_authorized : a.services_authorized.split(',')).map((s) => (
+                          <span key={s} style={{ fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: hexToRgba(palette.accentGreen.hex, 0.1), color: '#15803d' }}>{s.trim()}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(a.effective_start || a.effective_end) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Auth Window</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>
+                        {fmtDate(a.effective_start)} – {fmtDate(a.effective_end)}
+                      </span>
+                    </div>
+                  )}
+                  {a.approved_date && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Approved</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>{fmtDate(a.approved_date)}</span>
+                    </div>
+                  )}
+                  {a.denial_reason && (
+                    <div style={{ padding: '6px 10px', borderRadius: 6, background: hexToRgba('#e11d48', 0.06), marginTop: 6 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#be123c', marginBottom: 2 }}>Denial Reason</p>
+                      <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.5 }}>{a.denial_reason}</p>
+                    </div>
+                  )}
+                  {a.notes && (
+                    <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.5, marginTop: 6, fontStyle: 'italic' }}>{a.notes}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* History */}
       {checks.length > 1 && (

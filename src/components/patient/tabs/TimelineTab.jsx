@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getStageHistory } from '../../../api/stageHistory.js';
 import { getNotesByPatient } from '../../../api/notes.js';
+import { getTriageAdult, getTriagePediatric } from '../../../api/triage.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import LoadingState from '../../common/LoadingState.jsx';
@@ -16,39 +17,61 @@ function initials(name) {
   return (name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 }
 
+function calcAge(dob) {
+  if (!dob) return null;
+  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
+}
+
 export default function TimelineTab({ patient, referral }) {
-  const { resolveUser } = useLookups();
+  const { resolveUser, resolveMarketer } = useLookups();
   const { appUserId } = useCurrentAppUser();
-  const [history, setHistory] = useState([]);
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [history, setHistory]   = useState([]);
+  const [notes, setNotes]       = useState([]);
+  const [triage, setTriage]     = useState(null);
+  const [loading, setLoading]   = useState(true);
+
+  const isSpecialNeeds = patient?.division === 'Special Needs';
+  const age            = calcAge(patient?.dob);
+  const isPediatric    = age !== null && age < 18;
 
   useEffect(() => {
     if (!patient?.id) { setLoading(false); return; }
     setLoading(true);
 
-    const fetches = [
-      referral?.id
-        ? getStageHistory(referral.id).then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields }))).catch(() => [])
-        : Promise.resolve([]),
-      getNotesByPatient(patient.id).then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields }))).catch(() => []),
-    ];
+    const histFetch = referral?.id
+      ? getStageHistory(referral.id)
+          .then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields })))
+          .catch(() => [])
+      : Promise.resolve([]);
 
-    Promise.all(fetches)
-      .then(([hist, nts]) => { setHistory(hist); setNotes(nts); })
+    const noteFetch = getNotesByPatient(patient.id)
+      .then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields })))
+      .catch(() => []);
+
+    // Fetch triage record for Special Needs patients so we can mark completion
+    const triageFetch = (isSpecialNeeds && referral?.id)
+      ? (isPediatric ? getTriagePediatric : getTriageAdult)(referral.id)
+          .then((recs) => recs.length ? { _id: recs[0].id, ...recs[0].fields } : null)
+          .catch(() => null)
+      : Promise.resolve(null);
+
+    Promise.all([histFetch, noteFetch, triageFetch])
+      .then(([hist, nts, tri]) => { setHistory(hist); setNotes(nts); setTriage(tri); })
       .finally(() => setLoading(false));
-  }, [patient?.id, referral?.id]);
+  }, [patient?.id, referral?.id, isSpecialNeeds, isPediatric]);
 
   const entries = [
-    // Referral created
+    // Referral created — actor is a marketer, resolve with resolveMarketer
     ...(referral?.referral_date ? [{
       _id: 'referral-created',
       type: 'referral',
       timestamp: referral.referral_date,
       title: 'Referral created',
-      detail: `Entered at Lead Entry stage`,
+      detail: 'Entered at Lead Entry stage',
       actor: referral.marketer_id || null,
+      actorResolved: referral.marketer_id ? resolveMarketer(referral.marketer_id) : null,
     }] : []),
+
     // Stage transitions
     ...history.map((h) => ({
       _id: h._id,
@@ -57,8 +80,8 @@ export default function TimelineTab({ patient, referral }) {
       title: h.to_stage ? `→ ${h.to_stage}` : 'Stage updated',
       detail: h.reason || null,
       actor: h.changed_by_id || null,
-      fromStage: h.from_stage,
     })),
+
     // Notes
     ...notes.map((n) => ({
       _id: n._id,
@@ -68,7 +91,17 @@ export default function TimelineTab({ patient, referral }) {
       noteContent: n.content,
       actor: n.author_id,
     })),
-  ].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0)); // oldest first
+
+    // Triage milestone — only for Special Needs patients that have a completed form
+    ...(triage?.created_at ? [{
+      _id: 'triage-completed',
+      type: 'milestone',
+      timestamp: triage.created_at,
+      title: 'Initial Triage Completed',
+      detail: isPediatric ? 'Pediatric Special Needs triage form' : 'Adult Special Needs triage form',
+      actor: triage.filled_by_id || null,
+    }] : []),
+  ].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
 
   if (loading) return <LoadingState message="Loading timeline..." size="small" />;
 
@@ -103,28 +136,41 @@ export default function TimelineTab({ patient, referral }) {
 
 function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
   const [expanded, setExpanded] = useState(false);
-  const actorName = entry.actor ? resolveUser(entry.actor) : null;
+
+  // actorResolved takes precedence (used for marketers and pre-resolved names)
+  const actorName = entry.actorResolved || (entry.actor ? resolveUser(entry.actor) : null);
   const isMe = entry.actor === appUserId;
 
+  const isMilestone = entry.type === 'milestone';
+  const isNote      = entry.type === 'note';
+
   const dotColor =
-    entry.type === 'note' ? palette.accentBlue.hex :
+    isMilestone      ? palette.accentGreen.hex :
+    isNote           ? palette.accentBlue.hex :
     entry.type === 'referral' ? palette.accentGreen.hex :
     palette.primaryMagenta.hex;
 
-  const isNote = entry.type === 'note';
   const hasLongContent = isNote && (entry.noteContent || '').length > 120;
 
   return (
     <div style={{ display: 'flex', gap: 14, paddingBottom: isLast ? 0 : 22, position: 'relative' }}>
       {/* Dot */}
       <div style={{
-        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-        background: palette.backgroundLight.hex,
-        border: `2px solid ${hexToRgba(dotColor, 0.4)}`,
+        width: isMilestone ? 32 : 28,
+        height: isMilestone ? 32 : 28,
+        borderRadius: '50%', flexShrink: 0,
+        background: isMilestone ? dotColor : palette.backgroundLight.hex,
+        border: `2px solid ${isMilestone ? dotColor : hexToRgba(dotColor, 0.4)}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1, marginTop: 1,
+        marginLeft: isMilestone ? -2 : 0,
+        boxShadow: isMilestone ? `0 0 0 3px ${hexToRgba(dotColor, 0.18)}` : 'none',
       }}>
-        {isNote ? (
+        {isMilestone ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ) : isNote ? (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke={dotColor} strokeWidth="2" strokeLinejoin="round"/>
           </svg>
@@ -141,9 +187,16 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, paddingTop: 3 }}>
+      <div style={{ flex: 1, paddingTop: isMilestone ? 5 : 3 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: isNote ? 6 : 2 }}>
-          <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, lineHeight: 1.3 }}>{entry.title}</p>
+          <p style={{
+            fontSize: isMilestone ? 13.5 : 13,
+            fontWeight: isMilestone ? 700 : 650,
+            color: isMilestone ? dotColor : palette.backgroundDark.hex,
+            lineHeight: 1.3,
+          }}>
+            {entry.title}
+          </p>
           <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38), whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtFull(entry.timestamp)}</p>
         </div>
 
@@ -161,14 +214,14 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
           </div>
         )}
 
-        {/* Stage detail */}
+        {/* Stage / milestone detail */}
         {!isNote && entry.detail && (
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.4, marginBottom: 4, fontStyle: 'italic' }}>{entry.detail}</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.4, marginBottom: 4, fontStyle: 'italic' }}>{entry.detail}</p>
         )}
 
         {/* Actor */}
-        {actorName && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {actorName && actorName !== '—' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <div style={{
               width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
               background: isMe ? hexToRgba(palette.primaryMagenta.hex, 0.14) : hexToRgba(palette.accentBlue.hex, 0.12),

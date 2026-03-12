@@ -123,7 +123,7 @@ export const STAGE_META = {
     color: palette.accentBlue.hex,
   },
   'Admin Confirmation': {
-    description: 'Final leadership acceptance decision',
+    description: 'Final review',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryDeepPlum.hex,
@@ -148,13 +148,13 @@ export const STAGE_META = {
     color: palette.accentGreen.hex,
   },
   'Hold': {
-    description: 'Temporarily paused — awaiting resolution',
+    description: 'Temporarily paused, awaiting resolution',
     isGlobal: true,
     isTerminal: false,
     color: palette.highlightYellow.hex,
   },
   'NTUC': {
-    description: 'Not taken under care — terminal state',
+    description: 'Not taken under care',
     isGlobal: true,
     isTerminal: true,
     color: hexToRgba(palette.backgroundDark.hex, 0.4),

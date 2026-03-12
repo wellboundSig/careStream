@@ -4,12 +4,32 @@ import { getMarketers } from '../../api/marketers.js';
 import { getReferralSources } from '../../api/referralSources.js';
 import { createPatient } from '../../api/patients.js';
 import { createReferral } from '../../api/referrals.js';
+import { createNote } from '../../api/notes.js';
+import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
 const SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
+
+const INSURANCE_PLANS = [
+  'Fidelis Care',
+  'UnitedHealthcare Community Plan',
+  'Healthfirst',
+  'Aetna Better Health',
+  'Molina Healthcare',
+  'Anthem BCBS',
+  'Medicaid',
+  'Medicare',
+  'Hamaspik',
+  'VNS Health',
+  'MetroPlus MLTC',
+  'Fidelis Care at Home',
+  'Elderplan HomeFirst',
+  'Montefiore Diamond Care',
+  'Healthfirst CompleteCare',
+];
 
 function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -138,6 +158,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
+  const [selectedPhysician, setSelectedPhysician] = useState(null);
 
   // ── Form state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
@@ -150,6 +171,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     referral_source_other: '',
     marketer_id: '',
     marketer_other: '',
+    insurance_plan_other: '',
     // Patient details
     dob: '',
     gender: '',
@@ -207,7 +229,8 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     if (!form.first_name.trim()) errs.first_name = 'Required';
     if (!form.last_name.trim()) errs.last_name = 'Required';
     if (!form.phone_primary.trim()) errs.phone_primary = 'Required';
-    if (!form.insurance_plan.trim()) errs.insurance_plan = 'Required';
+    if (!form.insurance_plan) errs.insurance_plan = 'Required';
+    if (form.insurance_plan === 'other' && !form.insurance_plan_other.trim()) errs.insurance_plan_other = 'Required';
     if (!form.referral_source_id) errs.referral_source_id = 'Required';
     if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
     if (!form.marketer_id) errs.marketer_id = 'Required';
@@ -233,9 +256,9 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         phone_primary: form.phone_primary.trim(),
-        insurance_plan: form.insurance_plan.trim(),
+        insurance_plan: form.insurance_plan === 'other' ? form.insurance_plan_other.trim() : form.insurance_plan,
         division: form.division,
-        is_active: true,
+        is_active: 'TRUE',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         ...(form.dob && { dob: form.dob }),
@@ -278,9 +301,24 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         updated_at: new Date().toISOString(),
         ...(form.services_requested.length && { services_requested: form.services_requested }),
         ...(appUserId && { intake_owner_id: appUserId }),
+        ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
       };
 
       const referralRecord = await createReferral(referralFields);
+
+      // Save initial notes as a Note record (non-blocking — don't fail the submission if this fails)
+      if (form.initial_notes?.trim()) {
+        createNote({
+          id: `note_${Date.now()}`,
+          patient_id: createdPatientId,
+          referral_id: referralCustomId,
+          author_id: appUserId || 'unknown',
+          content: form.initial_notes.trim(),
+          is_pinned: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
 
       onSuccess?.({
         patient: { _id: patientRecord.id, ...patientRecord.fields },
@@ -293,6 +331,12 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       setSubmitting(false);
     }
   }
+
+  // Insurance plan options
+  const insurancePlanOptions = [
+    ...INSURANCE_PLANS.map((p) => ({ value: p, label: p })),
+    { value: 'other', label: 'Other / Not listed' },
+  ];
 
   // Marketer options
   const marketerOptions = [
@@ -414,13 +458,46 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               {errors.phone_primary && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.phone_primary}</p>}
             </FieldBox>
             <FieldBox label="Insurance Plan" required>
-              <Input value={form.insurance_plan} onChange={(v) => setField('insurance_plan', v)} placeholder="e.g. Medicaid, Medicare, Molina…" hasError={!!errors.insurance_plan} />
+              <Select
+                value={form.insurance_plan}
+                onChange={(v) => setField('insurance_plan', v)}
+                options={insurancePlanOptions}
+                placeholder="Select insurance plan…"
+                hasError={!!errors.insurance_plan}
+              />
               {errors.insurance_plan && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_plan}</p>}
+              {form.insurance_plan === 'other' && (
+                <div style={{ marginTop: 8 }}>
+                  <Input value={form.insurance_plan_other} onChange={(v) => setField('insurance_plan_other', v)} placeholder="Enter insurance plan name…" hasError={!!errors.insurance_plan_other} />
+                  {errors.insurance_plan_other && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_plan_other}</p>}
+                </div>
+              )}
             </FieldBox>
             <FieldBox label="Division" required>
               <Select value={form.division} onChange={(v) => setField('division', v)} options={DIVISIONS.map((d) => ({ value: d, label: d }))} placeholder="Select…" />
             </FieldBox>
           </FieldGroup>
+
+          {/* ── PCP ── */}
+          <div style={{ marginTop: 20, marginBottom: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>
+              Referring / Ordering Physician
+            </p>
+            <PhysicianPicker
+              physicianId={null}
+              onChange={setSelectedPhysician}
+            />
+            {selectedPhysician && (
+              <p style={{ fontSize: 11, color: palette.accentGreen.hex, fontWeight: 600, marginTop: 6 }}>
+                Physician will be linked to this referral.
+              </p>
+            )}
+            {!selectedPhysician && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 6 }}>
+                You may change this later.
+              </p>
+            )}
+          </div>
 
           {/* ── Optional patient details ── */}
           <SectionDivider

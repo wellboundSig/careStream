@@ -1,9 +1,140 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getPhysicians } from '../../api/physicians.js';
+import { getPhysicians, createPhysician } from '../../api/physicians.js';
+import { clearLookupsCache } from '../../hooks/useLookups.js';
+import { invalidatePhysicianPickerCache } from '../../components/physicians/PhysicianPicker.jsx';
 import airtable from '../../api/airtable.js';
 import PhysicianDrawer from '../../components/physicians/PhysicianDrawer.jsx';
 import LoadingState from '../../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+
+const BASE_INPUT = {
+  width: '100%', padding: '7px 10px', borderRadius: 6,
+  border: `1px solid var(--color-border)`,
+  background: hexToRgba(palette.backgroundDark.hex, 0.03),
+  fontSize: 13, color: palette.backgroundDark.hex,
+  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+};
+
+function TInput({ value, onChange, placeholder, type = 'text', autoFocus }) {
+  return (
+    <input
+      type={type} value={value || ''} placeholder={placeholder} autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value)}
+      style={BASE_INPUT}
+      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.15))}
+    />
+  );
+}
+
+function FG({ label, required, children }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 4 }}>
+        {label}{required && <span style={{ color: palette.primaryMagenta.hex }}> *</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function AddPhysicianModal({ onClose, onAdded }) {
+  const [form, setForm] = useState({ first_name: '', last_name: '', npi: '', phone: '', fax: '', address_street: '', address_city: '', address_state: '', address_zip: '', is_pecos_enrolled: false, is_opra_enrolled: false });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function handleSave() {
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      setError('First name and last name are required.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const fields = {
+        id: `phy_${Date.now()}`,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        ...(form.npi            ? { npi: form.npi.trim() }               : {}),
+        ...(form.phone          ? { phone: form.phone.trim() }           : {}),
+        ...(form.fax            ? { fax: form.fax.trim() }               : {}),
+        ...(form.address_street ? { address_street: form.address_street.trim() } : {}),
+        ...(form.address_city   ? { address_city: form.address_city.trim() }     : {}),
+        ...(form.address_state  ? { address_state: form.address_state.trim() }   : {}),
+        ...(form.address_zip    ? { address_zip: form.address_zip.trim() }       : {}),
+        ...(form.is_pecos_enrolled ? { is_pecos_enrolled: true } : {}),
+        ...(form.is_opra_enrolled  ? { is_opra_enrolled: true }  : {}),
+        is_active: 'Active',
+        created_at: new Date().toISOString(),
+      };
+      const rec = await createPhysician(fields);
+      const newPhy = { _id: rec.id, ...rec.fields };
+      clearLookupsCache();
+      invalidatePhysicianPickerCache();
+      onAdded(newPhy);
+    } catch (e) {
+      setError(e.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div onClick={(e) => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 560, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex }}>Add Physician</p>
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>New physician will be added to the directory.</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '2px 6px' }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '65vh', overflowY: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <FG label="First Name" required><TInput value={form.first_name} onChange={set('first_name')} placeholder="First" autoFocus /></FG>
+            <FG label="Last Name" required><TInput value={form.last_name} onChange={set('last_name')} placeholder="Last" /></FG>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <FG label="NPI"><TInput value={form.npi} onChange={set('npi')} placeholder="1234567890" /></FG>
+            <FG label="Phone"><TInput value={form.phone} onChange={set('phone')} type="tel" placeholder="(718) 555-1234" /></FG>
+          </div>
+          <FG label="Fax"><TInput value={form.fax} onChange={set('fax')} type="tel" placeholder="(718) 555-5678" /></FG>
+          <FG label="Address"><TInput value={form.address_street} onChange={set('address_street')} placeholder="Street address" /></FG>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+            <FG label="City"><TInput value={form.address_city} onChange={set('address_city')} placeholder="City" /></FG>
+            <FG label="State"><TInput value={form.address_state} onChange={set('address_state')} placeholder="NY" /></FG>
+            <FG label="Zip"><TInput value={form.address_zip} onChange={set('address_zip')} placeholder="11201" /></FG>
+          </div>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.is_pecos_enrolled} onChange={(e) => set('is_pecos_enrolled')(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14 }} />
+              PECOS enrolled
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.is_opra_enrolled} onChange={(e) => set('is_opra_enrolled')(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14 }} />
+              OPRA enrolled
+            </label>
+          </div>
+          {error && <p style={{ fontSize: 12.5, color: palette.primaryMagenta.hex }}>{error}</p>}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} style={{ padding: '7px 20px', borderRadius: 7, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Saving…' : 'Add Physician'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatusPill({ value, label }) {
   const ok = value === true || value === 'true';
@@ -22,6 +153,7 @@ export default function Physicians() {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
+  const [showAddModal, setShowAddModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -36,9 +168,16 @@ export default function Physicians() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
+  function handlePhysicianAdded(newPhy) {
+    setPhysicians((prev) =>
+      [...prev, newPhy].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''))
+    );
+    setShowAddModal(false);
+  }
+
   const filtered = useMemo(() => {
     let list = physicians.filter((p) => {
-      if (p.is_active === 'FALSE' || p.is_active === false) return false;
+      if (p.is_active !== 'Active') return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         return `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) || (p.npi?.toString() || '').includes(q);
@@ -73,9 +212,17 @@ export default function Physicians() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Physicians</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} physicians</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, NPI…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, NPI…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
+            >
+              + Add Physician
+            </button>
           </div>
         </div>
 
@@ -90,17 +237,25 @@ export default function Physicians() {
                 {colHdr('Referrals', null)}
               </tr>
             </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No physicians found.</td></tr>
-            ) : filtered.map((phy) => (
-              <PhysicianRow key={phy._id} physician={phy} refCount={refCounts[phy.id] || 0} onOpen={() => setSelected(phy)} />
-            ))}
-          </tbody>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={5} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No physicians found.</td></tr>
+              ) : filtered.map((phy) => (
+                <PhysicianRow key={phy._id} physician={phy} refCount={refCounts[phy.id] || 0} onOpen={() => setSelected(phy)} />
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
+
       <PhysicianDrawer physician={selected} onClose={() => setSelected(null)} />
+
+      {showAddModal && (
+        <AddPhysicianModal
+          onClose={() => setShowAddModal(false)}
+          onAdded={handlePhysicianAdded}
+        />
+      )}
     </>
   );
 }

@@ -764,7 +764,7 @@ export default function Reports() {
           Reports
         </h1>
         <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0 }}>
-          Operational data exports from the CareStream database. Files are generated client-side and download as .xlsx.
+          Operational data exports from the CareStream database.
         </p>
       </div>
 

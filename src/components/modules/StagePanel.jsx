@@ -4,6 +4,7 @@ import CliniciansPanel from '../staffing/CliniciansPanel.jsx';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import RadarPanel from '../staffing/RadarPanel.jsx';
 import { getChecksByPatient, createInsuranceCheck } from '../../api/insuranceChecks.js';
+import { getAuthorizationsByReferral, createAuthorization, updateAuthorization } from '../../api/authorizations.js';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { updateReferral } from '../../api/referrals.js';
 import { createEpisode } from '../../api/episodes.js';
@@ -12,7 +13,16 @@ import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../data/eligibilityConfig.js';
+import { exportToExcel } from '../../utils/reportEngine.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+
+const ADMIN_ROLE_IDS = ['rol_001', 'rol_002', 'rol_004', 'rol_007'];
+
+const PIPELINE_STAGES = [
+  'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
+  'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
+  'Conflict', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled',
+];
 
 // Shared panel wrapper ────────────────────────────────────────────────────────
 function Panel({ children, width = 280 }) {
@@ -45,7 +55,7 @@ function InfoRow({ label, value, highlight }) {
   );
 }
 
-function ActionBtn({ label, variant = 'default', onClick }) {
+function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
   const styles = {
     default:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),  color: hexToRgba(palette.backgroundDark.hex, 0.7) },
     primary:  { bg: palette.primaryMagenta.hex,                    color: palette.backgroundLight.hex },
@@ -56,14 +66,16 @@ function ActionBtn({ label, variant = 'default', onClick }) {
   const s = styles[variant] || styles.default;
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       style={{
         width: '100%', padding: '8px 12px', borderRadius: 8,
-        fontSize: 12.5, fontWeight: 650, cursor: 'pointer', marginBottom: 6,
+        fontSize: 12.5, fontWeight: 650, cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 6,
         background: s.bg, color: s.color, border: 'none',
         textAlign: 'left', transition: 'filter 0.12s',
+        opacity: disabled ? 0.45 : 1,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.1)')}
+      onMouseEnter={(e) => !disabled && (e.currentTarget.style.filter = 'brightness(1.1)')}
       onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
     >
       {label}
@@ -617,7 +629,13 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
             {/* ── Log F2F / MD Orders Received ── */}
             {!showDatePicker ? (
               <button
-                onClick={() => setShowDatePicker(true)}
+                onClick={() => {
+                  // Pre-fill with existing date if available so the user just confirms
+                  if (ref.f2f_date) {
+                    setReceivedDate(new Date(ref.f2f_date).toISOString().split('T')[0]);
+                  }
+                  setShowDatePicker(true);
+                }}
                 style={{
                   width: '100%', padding: '8px 0', marginBottom: 8,
                   borderRadius: 7, border: 'none',
@@ -643,7 +661,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 padding: '10px 11px', marginBottom: 8,
               }}>
                 <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
-                  Date documents were received
+                  {ref.f2f_date ? 'Confirm or update F2F received date' : 'Date documents were received'}
                 </p>
                 <input
                   type="date"
@@ -706,7 +724,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               onClick={() => onOpenFiles?.(selectedReferral)}
             />
             <ActionBtn
-              label="Move to Clinical RN"
+              label="Confrim and move to Clinical RN"
               variant="success"
               onClick={() => onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
             />
@@ -816,21 +834,216 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 }
 
 // ── 7. Authorization Pending ──────────────────────────────────────────────────
-function AuthorizationPanel({ selectedReferral }) {
+const AUTH_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
+
+function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
+  const [auths, setAuths]               = useState([]);
+  const [loadingAuths, setLoadingAuths] = useState(false);
+
+  // form mode: null | 'approval' | 'denial'
+  const [mode, setMode]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  // Approval form state
+  const [authNumber, setAuthNumber]     = useState('');
+  const [approvedDate, setApprovedDate] = useState('');
+  const [windowStart, setWindowStart]   = useState('');
+  const [windowEnd, setWindowEnd]       = useState('');
+  const [servicesAuth, setServicesAuth] = useState([]);
+
+  // Denial form state
+  const [denialReason, setDenialReason] = useState('');
+
+  useEffect(() => {
+    if (!selectedReferral?.id) { setAuths([]); return; }
+    setLoadingAuths(true);
+    getAuthorizationsByReferral(selectedReferral.id)
+      .then((recs) => setAuths(recs.map((r) => ({ _id: r.id, ...r.fields }))))
+      .catch(() => {})
+      .finally(() => setLoadingAuths(false));
+  }, [selectedReferral?.id]);
+
+  // Reset forms when patient changes
+  useEffect(() => {
+    setMode(null);
+    setAuthNumber(''); setApprovedDate(''); setWindowStart(''); setWindowEnd(''); setServicesAuth([]);
+    setDenialReason('');
+    setSaveError(null);
+  }, [selectedReferral?._id]);
+
+  const latestAuth = auths[0];
+
+  function toggleService(s) {
+    setServicesAuth((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+  }
+
+  async function handleApproval() {
+    if (!approvedDate || !selectedReferral) return;
+    setSaving(true); setSaveError(null);
+    try {
+      const fields = {
+        referral_id: selectedReferral.id,
+        plan_name: selectedReferral.patient?.insurance_plan || '',
+        status: 'Approved',
+        approved_date: approvedDate,
+        ...(authNumber.trim()  && { auth_number: authNumber.trim() }),
+        ...(windowStart        && { effective_start: windowStart }),
+        ...(windowEnd          && { effective_end: windowEnd }),
+        ...(servicesAuth.length && { services_authorized: servicesAuth }),
+      };
+      if (latestAuth?._id) {
+        await updateAuthorization(latestAuth._id, fields);
+      } else {
+        await createAuthorization(fields);
+      }
+      onInitiateTransition?.(selectedReferral, 'Staffing Feasibility');
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  async function handleDenial() {
+    if (!selectedReferral) return;
+    setSaving(true); setSaveError(null);
+    try {
+      const fields = {
+        referral_id: selectedReferral.id,
+        plan_name: selectedReferral.patient?.insurance_plan || '',
+        status: 'Denied',
+        ...(denialReason.trim() && { denial_reason: denialReason.trim() }),
+      };
+      if (latestAuth?._id) {
+        await updateAuthorization(latestAuth._id, fields);
+      } else {
+        await createAuthorization(fields);
+      }
+      onInitiateTransition?.(selectedReferral, 'NTUC');
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    padding: '6px 9px', borderRadius: 7, marginBottom: 7,
+    border: `1px solid var(--color-border)`,
+    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
+    background: palette.backgroundLight.hex,
+    color: palette.backgroundDark.hex,
+  };
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="Auth Details">
-            <InfoRow label="Plan" value={selectedReferral.patient?.insurance_plan} />
-            <InfoRow label="Submitted" value="—" />
-            <InfoRow label="Expected response" value="—" />
+            <InfoRow label="Plan"      value={selectedReferral.patient?.insurance_plan} />
+            <InfoRow label="Submitted" value={latestAuth?.submitted_date
+              ? new Date(latestAuth.submitted_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : loadingAuths ? '…' : '—'} />
+            <InfoRow label="Status"    value={latestAuth?.status || (loadingAuths ? '…' : 'Pending')}
+              highlight={latestAuth?.status === 'Approved' ? palette.accentGreen.hex
+                : latestAuth?.status === 'Denied' ? palette.primaryMagenta.hex : undefined} />
+            {latestAuth?.auth_number && (
+              <InfoRow label="Auth #" value={latestAuth.auth_number} />
+            )}
+            {latestAuth?.effective_start && (
+              <InfoRow label="Window"
+                value={`${new Date(latestAuth.effective_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} – ${latestAuth.effective_end ? new Date(latestAuth.effective_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '?'}`} />
+            )}
           </PanelSection>
+
           <PanelSection title="Actions">
-            <ActionBtn label="Record Approval" variant="success" />
-            <ActionBtn label="Record Denial" variant="danger" />
-            <ActionBtn label="Follow Up" />
-            <ActionBtn label="Place on Hold" variant="warning" />
+            {mode === null && (
+              <>
+                <ActionBtn label="Record Approval" variant="success" onClick={() => setMode('approval')} />
+                <ActionBtn label="Record Denial"   variant="danger"  onClick={() => setMode('denial')} />
+                <ActionBtn label="Place on Hold"   variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+              </>
+            )}
+
+            {/* ── Approval Form ── */}
+            {mode === 'approval' && (
+              <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`, background: hexToRgba(palette.accentGreen.hex, 0.03), padding: '10px 11px' }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 8 }}>Record Approval</p>
+
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Number (optional)</label>
+                <input type="text" placeholder="e.g. AUTH-12345" value={authNumber} onChange={(e) => setAuthNumber(e.target.value)} style={inputStyle} />
+
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Approval Date *</label>
+                <input type="date" value={approvedDate} max={new Date().toISOString().split('T')[0]} onChange={(e) => setApprovedDate(e.target.value)} style={{ ...inputStyle, borderColor: approvedDate ? palette.accentGreen.hex : undefined }} />
+
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Window Start</label>
+                <input type="date" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} style={inputStyle} />
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Window End</label>
+                <input type="date" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} style={inputStyle} />
+
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 5 }}>Services Authorized</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+                  {AUTH_SERVICES.map((s) => (
+                    <button key={s} onClick={() => toggleService(s)} style={{
+                      padding: '3px 9px', borderRadius: 5, border: `1px solid var(--color-border)`,
+                      fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                      background: servicesAuth.includes(s) ? palette.accentGreen.hex : 'none',
+                      color: servicesAuth.includes(s) ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                    }}>{s}</button>
+                  ))}
+                </div>
+
+                {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{saveError}</p>}
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={handleApproval} disabled={!approvedDate || saving} style={{
+                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: approvedDate && !saving ? 'pointer' : 'not-allowed',
+                    background: approvedDate && !saving ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                    color: approvedDate && !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+                    fontSize: 11.5, fontWeight: 650,
+                  }}>{saving ? 'Saving…' : 'Confirm Approval'}</button>
+                  <button onClick={() => { setMode(null); setSaveError(null); }} disabled={saving} style={{
+                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                    color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                    fontSize: 11.5, fontWeight: 650,
+                  }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Denial Form ── */}
+            {mode === 'denial' && (
+              <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.35)}`, background: hexToRgba(palette.primaryMagenta.hex, 0.03), padding: '10px 11px' }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: palette.primaryMagenta.hex, marginBottom: 8 }}>Record Denial</p>
+
+                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Denial Reason</label>
+                <textarea
+                  value={denialReason}
+                  onChange={(e) => setDenialReason(e.target.value)}
+                  rows={3}
+                  placeholder="Describe the reason for denial..."
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
+                />
+
+                {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{saveError}</p>}
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={handleDenial} disabled={saving} style={{
+                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: !saving ? 'pointer' : 'not-allowed',
+                    background: !saving ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                    color: !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+                    fontSize: 11.5, fontWeight: 650,
+                  }}>{saving ? 'Saving…' : 'Confirm Denial → NTUC'}</button>
+                  <button onClick={() => { setMode(null); setSaveError(null); }} disabled={saving} style={{
+                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                    color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                    fontSize: 11.5, fontWeight: 650,
+                  }}>Cancel</button>
+                </div>
+              </div>
+            )}
           </PanelSection>
         </>
       )}
@@ -1311,28 +1524,104 @@ function SocCompletedPanel({ referrals }) {
 }
 
 // ── 14. Hold ──────────────────────────────────────────────────────────────────
-function HoldPanel({ referrals, selectedReferral }) {
-  const overdue = referrals.filter((r) => {
-    if (!r.hold_expected_resolution) return false;
-    return new Date(r.hold_expected_resolution) < new Date();
-  }).length;
+function HoldPanel({ referrals, selectedReferral, resolveUser, onInitiateTransition }) {
+  const { appUser } = useCurrentAppUser();
+  const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
+
+  const [returnStage, setReturnStage] = useState('');
+  const [releasing, setReleasing] = useState(false);
+
+  // Sync return stage from referral data when selection changes
+  useEffect(() => {
+    setReturnStage(selectedReferral?.hold_return_stage || '');
+  }, [selectedReferral?._id, selectedReferral?.hold_return_stage]);
+
+  const overdue = referrals.filter((r) =>
+    r.hold_expected_resolution && new Date(r.hold_expected_resolution) < new Date()
+  ).length;
+
+  const isOverdue = selectedReferral?.hold_expected_resolution &&
+    new Date(selectedReferral.hold_expected_resolution) < new Date();
+
+  async function handleRelease() {
+    if (!selectedReferral || !returnStage || releasing) return;
+    setReleasing(true);
+    try {
+      // Clear hold metadata before transitioning
+      await updateReferral(selectedReferral._id, {
+        hold_reason: '',
+        hold_return_stage: '',
+        hold_expected_resolution: null,
+      });
+      onInitiateTransition?.(selectedReferral, returnStage);
+    } catch {
+      // transition failed — leave state as-is
+    } finally {
+      setReleasing(false);
+    }
+  }
 
   return (
     <Panel>
       <PanelSection title="Hold Summary">
-        <InfoRow label="Overdue resolutions" value={overdue} highlight={overdue > 0 ? palette.primaryMagenta.hex : null} />
         <InfoRow label="Total on hold" value={referrals.length} />
+        <InfoRow
+          label="Overdue resolutions"
+          value={overdue}
+          highlight={overdue > 0 ? palette.primaryMagenta.hex : null}
+        />
       </PanelSection>
 
-      {selectedReferral && (
+      {selectedReferral ? (
         <PanelSection title="Hold Details">
           <InfoRow label="Hold reason" value={selectedReferral.hold_reason} />
-          <InfoRow label="Return to stage" value={selectedReferral.hold_return_stage} />
-          <InfoRow label="Expected resolution" value={selectedReferral.hold_expected_resolution ? new Date(selectedReferral.hold_expected_resolution).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'} />
-          <div style={{ marginTop: 10 }}>
-            <ActionBtn label="Release Hold → Return to Stage" variant="success" />
-            <ActionBtn label="Move to NTUC" variant="danger" />
+          <InfoRow
+            label="Expected resolution"
+            value={
+              selectedReferral.hold_expected_resolution
+                ? new Date(selectedReferral.hold_expected_resolution).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : '—'
+            }
+            highlight={isOverdue ? palette.primaryMagenta.hex : null}
+          />
+          {selectedReferral.hold_owner_id && (
+            <InfoRow label="Hold owner" value={resolveUser?.(selectedReferral.hold_owner_id)} />
+          )}
+
+          {/* Return stage selector */}
+          <div style={{ marginTop: 12, marginBottom: 4 }}>
+            <p style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 6 }}>
+              Return to stage
+            </p>
+            <PanelSelect
+              value={returnStage}
+              onChange={setReturnStage}
+              options={PIPELINE_STAGES}
+              placeholder="Select stage…"
+            />
           </div>
+
+          <div style={{ marginTop: 10 }}>
+            <ActionBtn
+              label={releasing ? 'Releasing…' : 'Release → Return to Stage'}
+              variant="success"
+              onClick={handleRelease}
+              disabled={!returnStage || releasing}
+            />
+            {isAdmin && (
+              <ActionBtn
+                label="Move to NTUC"
+                variant="danger"
+                onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')}
+              />
+            )}
+          </div>
+        </PanelSection>
+      ) : (
+        <PanelSection title="Hold Details">
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>
+            Select a patient from the list to see hold details and release options.
+          </p>
         </PanelSection>
       )}
     </Panel>
@@ -1341,22 +1630,85 @@ function HoldPanel({ referrals, selectedReferral }) {
 
 // ── 15. NTUC ──────────────────────────────────────────────────────────────────
 function NtucPanel({ referrals }) {
-  const reasons = {};
+  const [exporting, setExporting] = useState(false);
+
+  // Group by reason
+  const byReason = {};
   referrals.forEach((r) => {
     const k = r.ntuc_reason || 'Unspecified';
-    reasons[k] = (reasons[k] || 0) + 1;
+    byReason[k] = (byReason[k] || 0) + 1;
   });
+
+  // Group by financial impact
+  const byImpact = {};
+  referrals.forEach((r) => {
+    const k = r.ntuc_financial_impact || 'Untagged';
+    byImpact[k] = (byImpact[k] || 0) + 1;
+  });
+
+  async function handleExport() {
+    if (exporting || !referrals.length) return;
+    setExporting(true);
+    try {
+      const columns = [
+        { key: 'patientName',           label: 'Patient' },
+        { key: 'division',              label: 'Division' },
+        { key: 'ntuc_reason',           label: 'NTUC Reason' },
+        { key: 'ntuc_financial_impact', label: 'Financial Impact' },
+        { key: 'referral_date',         label: 'Referral Date' },
+        { key: 'services_requested',    label: 'Services' },
+        { key: 'current_stage',         label: 'Stage' },
+      ];
+      const rows = referrals.map((r) => ({
+        patientName:           r.patientName || r.patient_id || '',
+        division:              r.division || '',
+        ntuc_reason:           r.ntuc_reason || '',
+        ntuc_financial_impact: r.ntuc_financial_impact || '',
+        referral_date:         r.referral_date
+          ? new Date(r.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '',
+        services_requested:    Array.isArray(r.services_requested)
+          ? r.services_requested.join(', ')
+          : (r.services_requested || ''),
+        current_stage:         r.current_stage || '',
+      }));
+      exportToExcel(rows, columns, 'NTUC Report', `${referrals.length} records · exported ${new Date().toLocaleDateString()}`);
+    } catch (e) {
+      console.error('NTUC export failed:', e);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <Panel>
-      <PanelSection title="NTUC Breakdown">
-        {Object.entries(reasons).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
-          <InfoRow key={reason} label={reason} value={count} />
-        ))}
+      <PanelSection title="Breakdown by Reason">
+        {Object.entries(byReason).length === 0 ? (
+          <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No data</p>
+        ) : (
+          Object.entries(byReason).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
+            <InfoRow key={reason} label={reason} value={count} />
+          ))
+        )}
       </PanelSection>
+
+      {Object.keys(byImpact).some((k) => k !== 'Untagged') && (
+        <PanelSection title="Financial Impact">
+          {Object.entries(byImpact).sort(([, a], [, b]) => b - a).map(([tag, count]) => (
+            <InfoRow key={tag} label={tag} value={count} />
+          ))}
+        </PanelSection>
+      )}
+
       <PanelSection title="Actions">
-        <ActionBtn label="Export NTUC Report" variant="primary" />
+        <ActionBtn
+          label={exporting ? 'Exporting…' : 'Export NTUC Report'}
+          variant="primary"
+          onClick={handleExport}
+          disabled={exporting || referrals.length === 0}
+        />
       </PanelSection>
+
       <PanelSection title="Notes">
         <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
           Terminal state. No forward transitions available. NTUC records are preserved for reporting and attribution.

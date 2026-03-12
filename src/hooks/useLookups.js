@@ -2,15 +2,18 @@ import { useState, useEffect, useMemo } from 'react';
 import airtable from '../api/airtable.js';
 
 let _cache = null;
+export function clearLookupsCache() { _cache = null; }
 
 async function fetchLookups() {
   if (_cache) return _cache;
 
-  const [marketers, users, sources, roles] = await Promise.all([
+  const [marketers, users, sources, roles, facilities, physicians] = await Promise.all([
     airtable.fetchAll('Marketers'),
     airtable.fetchAll('Users'),
     airtable.fetchAll('ReferralSources'),
     airtable.fetchAll('Roles'),
+    airtable.fetchAll('Facilities'),
+    airtable.fetchAll('Physicians'),
   ]);
 
   const marketerMap = {};
@@ -29,7 +32,9 @@ async function fetchLookups() {
   const sourceMap = {};
   sources.forEach((r) => {
     const f = r.fields;
-    if (f.id) sourceMap[f.id] = f.name || f.id;
+    const name = f.name || f.id;
+    if (f.id) sourceMap[f.id] = name;
+    sourceMap[r.id] = name;
   });
 
   const roleMap = {};
@@ -38,12 +43,28 @@ async function fetchLookups() {
     if (f.id) roleMap[f.id] = f.name || f.id;
   });
 
-  _cache = { marketerMap, userMap, sourceMap, roleMap };
+  const facilityMap = {};
+  facilities.forEach((r) => {
+    const f = r.fields;
+    const name = f.name || f.id;
+    if (f.id) facilityMap[f.id] = name;
+    facilityMap[r.id] = name;
+  });
+
+  const physicianMap = {};
+  physicians.forEach((r) => {
+    const f = r.fields;
+    const name = `${f.first_name || ''} ${f.last_name || ''}`.trim() || f.id;
+    if (f.id) physicianMap[f.id] = name;
+    physicianMap[r.id] = name;
+  });
+
+  _cache = { marketerMap, userMap, sourceMap, roleMap, facilityMap, physicianMap };
   return _cache;
 }
 
 export function useLookups() {
-  const [lookups, setLookups] = useState({ marketerMap: {}, userMap: {}, sourceMap: {}, roleMap: {} });
+  const [lookups, setLookups] = useState({ marketerMap: {}, userMap: {}, sourceMap: {}, roleMap: {}, facilityMap: {}, physicianMap: {} });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -73,5 +94,15 @@ export function useLookups() {
     [lookups]
   );
 
-  return { resolveMarketer, resolveUser, resolveSource, resolveRole, loading };
+  const resolveFacility = useMemo(
+    () => (id) => lookups.facilityMap[id] || id || '—',
+    [lookups]
+  );
+
+  const resolvePhysician = useMemo(
+    () => (id) => lookups.physicianMap[id] || id || '—',
+    [lookups]
+  );
+
+  return { resolveMarketer, resolveUser, resolveSource, resolveRole, resolveFacility, resolvePhysician, loading };
 }

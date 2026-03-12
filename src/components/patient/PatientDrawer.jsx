@@ -14,6 +14,9 @@ import TasksTab from './tabs/TasksTab.jsx';
 import AuthorizationsTab from './tabs/AuthorizationsTab.jsx';
 import ConflictsTab from './tabs/ConflictsTab.jsx';
 
+// Always white on the dark-plum header — never inverted by dark mode
+const HEADER_TEXT = '#F7F7FA';
+
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'eligibility', label: 'Eligibility' },
@@ -85,7 +88,7 @@ export default function PatientDrawer() {
         style={{
           position: 'fixed',
           inset: 0,
-          background: hexToRgba(palette.backgroundDark.hex, animated ? 0.35 : 0),
+          background: animated ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)',
           zIndex: 1000,
           transition: 'background 0.3s ease',
           backdropFilter: animated ? 'blur(2px)' : 'none',
@@ -156,7 +159,7 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
             style={{
               fontSize: 20,
               fontWeight: 700,
-              color: palette.backgroundLight.hex,
+              color: HEADER_TEXT,
               lineHeight: 1.2,
               marginBottom: 4,
               wordBreak: 'break-word',
@@ -165,7 +168,7 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
             {name}
           </h2>
           {patient?.dob && (
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundLight.hex, 0.55), marginBottom: 0 }}>
+            <p style={{ fontSize: 12, color: hexToRgba(HEADER_TEXT, 0.55), marginBottom: 0 }}>
               {new Date(patient.dob).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               {age !== null && ` · Age ${age}`}
               {patient.gender && ` · ${patient.gender}`}
@@ -178,9 +181,9 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
             width: 30,
             height: 30,
             borderRadius: 8,
-            background: hexToRgba(palette.backgroundLight.hex, 0.1),
+            background: hexToRgba(HEADER_TEXT, 0.1),
             border: 'none',
-            color: hexToRgba(palette.backgroundLight.hex, 0.7),
+            color: hexToRgba(HEADER_TEXT, 0.7),
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -190,8 +193,8 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
             marginTop: 2,
             transition: 'background 0.12s',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.18))}
-          onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.1))}
+          onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(HEADER_TEXT, 0.18))}
+          onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(HEADER_TEXT, 0.1))}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -216,8 +219,8 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
         {referral?.current_stage && (
           <span style={{
             fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
-            background: hexToRgba(palette.backgroundLight.hex, 0.16),
-            color: hexToRgba(palette.backgroundLight.hex, 0.92),
+            background: hexToRgba(HEADER_TEXT, 0.16),
+            color: hexToRgba(HEADER_TEXT, 0.92),
           }}>
             {referral.current_stage}
           </span>
@@ -247,16 +250,16 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
               height: 28,
               padding: '0 12px',
               borderRadius: 7,
-              background: hexToRgba(palette.backgroundLight.hex, 0.1),
+              background: hexToRgba(HEADER_TEXT, 0.1),
               border: 'none',
               fontSize: 12,
               fontWeight: 600,
-              color: hexToRgba(palette.backgroundLight.hex, 0.85),
+              color: hexToRgba(HEADER_TEXT, 0.85),
               cursor: 'pointer',
               transition: 'background 0.12s',
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.35))}
-            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.1))}
+            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(HEADER_TEXT, 0.1))}
           >
             {a.label}
           </button>

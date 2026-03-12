@@ -23,9 +23,13 @@ export function PatientDrawerProvider({ children }) {
     setPatient((prev) => (prev ? { ...prev, ...updates } : prev));
   }, []);
 
+  const updateReferralLocal = useCallback((updates) => {
+    setReferral((prev) => (prev ? { ...prev, ...updates } : prev));
+  }, []);
+
   return (
     <PatientDrawerContext.Provider
-      value={{ isOpen, patient, referral, activeTab, setActiveTab, open, close, updatePatientLocal }}
+      value={{ isOpen, patient, referral, activeTab, setActiveTab, open, close, updatePatientLocal, updateReferralLocal }}
     >
       {children}
     </PatientDrawerContext.Provider>
