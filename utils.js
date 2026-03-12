@@ -1,3 +1,10 @@
+// ── Theme flag ────────────────────────────────────────────────────────────────
+// Set synchronously during ThemeProvider render so all palette.*.hex getters
+// return the correct value before any child component reads them.
+let _isDark = false;
+export function _setDark(v) { _isDark = v; }
+
+// ── Palette ───────────────────────────────────────────────────────────────────
 const palette = {
   primaryDeepPlum: {
     role: "Primary brand color",
@@ -31,17 +38,21 @@ const palette = {
     oklch: "oklch(0.697 0.134 57.309)"
   },
 
+  // ── Theme-reactive: only these two invert between light / dark ─────────────
+
   backgroundLight: {
-    role: "Light mode background",
-    hex: "#F7F7FA",
+    role: "Page / card background",
+    // Light: #F7F7FA (near-white, cool)  Dark: #14141E (near-black, cool-purple)
+    get hex() { return _isDark ? '#14141E' : '#F7F7FA'; },
     rgba: "rgba(247, 247, 250, 1)",
     hsla: "hsla(240, 23%, 97%, 1)",
     oklch: "oklch(0.977 0.004 286.326)"
   },
 
   backgroundDark: {
-    role: "Dark mode background / base text on light",
-    hex: "#0B0B10",
+    role: "Base text on light / page text",
+    // Light: #0B0B10 (near-black)  Dark: #E2E2EC (near-white, cool)
+    get hex() { return _isDark ? '#E2E2EC' : '#0B0B10'; },
     rgba: "rgba(11, 11, 16, 1)",
     hsla: "hsla(240, 18%, 5%, 1)",
     oklch: "oklch(0.152 0.011 285.064)"

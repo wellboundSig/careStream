@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/react';
 
 import './index.css';
+import { ThemeContextProvider } from './utils/ThemeContext.jsx';
 import ThemeProvider from './utils/ThemeProvider.jsx';
 import { PatientDrawerProvider } from './context/PatientDrawerContext.jsx';
 import App from './App.jsx';
@@ -18,11 +19,13 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ClerkProvider afterSignOutUrl="/sign-in">
       <BrowserRouter>
-        <ThemeProvider>
-          <PatientDrawerProvider>
-            <App />
-          </PatientDrawerProvider>
-        </ThemeProvider>
+        <ThemeContextProvider>
+          <ThemeProvider>
+            <PatientDrawerProvider>
+              <App />
+            </PatientDrawerProvider>
+          </ThemeProvider>
+        </ThemeContextProvider>
       </BrowserRouter>
     </ClerkProvider>
   </StrictMode>

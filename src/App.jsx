@@ -17,6 +17,8 @@ import Campaigns from './pages/directory/Campaigns.jsx';
 import ReferralSources from './pages/directory/ReferralSources.jsx';
 import Tasks from './pages/Tasks.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
+import Settings from './pages/Settings.jsx';
+import Reports from './pages/Reports.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
 import NotFound from './pages/NotFound.jsx';
 
@@ -62,7 +64,7 @@ export default function App() {
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 
         <Route path="tasks" element={<Tasks />} />
-        <Route path="reports" element={<ComingSoon title="Reports" />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="directory/marketers" element={<Marketers />} />
         <Route path="directory/facilities" element={<Facilities />} />
         <Route path="directory/physicians" element={<Physicians />} />
@@ -70,7 +72,7 @@ export default function App() {
         <Route path="directory/referral-sources" element={<ReferralSources />} />
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
-        <Route path="admin/settings" element={<ComingSoon title="Settings" />} />
+        <Route path="admin/settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

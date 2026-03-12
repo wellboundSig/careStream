@@ -4,6 +4,11 @@ import { ROLE_MODES, STAGE_SLUGS } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
+// The sidebar is always the brand plum color — its text/icons must always be
+// near-white regardless of the page theme. Never use palette.backgroundLight
+// here because that token inverts in dark mode.
+const NAV_TEXT = '#F7F7FA';
+
 const NAV_ITEMS = [
   {
     section: null,
@@ -75,12 +80,12 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
           width: 22,
           height: 22,
           borderRadius: 6,
-          background: hexToRgba(palette.backgroundLight.hex, 0.08),
+          background: hexToRgba(NAV_TEXT, 0.08),
           border: 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: hexToRgba(palette.backgroundLight.hex, 0.5),
+          color: hexToRgba(NAV_TEXT, 0.5),
           cursor: 'pointer',
           zIndex: 10,
           flexShrink: 0,
@@ -115,8 +120,8 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path) && item.path !== '/';
               return (
-                <NavLink key={item.path} to={item.path} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '9px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', margin: '1px 8px', borderRadius: 8, background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent', color: isActive ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.65), fontSize: 13.5, fontWeight: isActive ? 600 : 430, transition: 'all 0.12s', borderLeft: isActive ? `2px solid ${palette.primaryMagenta.hex}` : '2px solid transparent', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }} title={collapsed ? item.label : undefined}>
-                  <item.icon size={16} color={isActive ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.55)} />
+                <NavLink key={item.path} to={item.path} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '9px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', margin: '1px 8px', borderRadius: 8, background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent', color: isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.65), fontSize: 13.5, fontWeight: isActive ? 600 : 430, transition: 'all 0.12s', borderLeft: isActive ? `2px solid ${palette.primaryMagenta.hex}` : '2px solid transparent', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }} title={collapsed ? item.label : undefined}>
+                  <item.icon size={16} color={isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.55)} />
                   {!collapsed && item.label}
                 </NavLink>
               );
@@ -133,7 +138,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
           />
         )}
         {collapsed && (
-          <div style={{ margin: '4px 8px 4px', borderTop: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.08)}` }} />
+          <div style={{ margin: '4px 8px 4px', borderTop: `1px solid ${hexToRgba(NAV_TEXT, 0.08)}` }} />
         )}
 
         {/* Remaining groups (Directory, Work, System) */}
@@ -145,7 +150,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                   fontSize: 10,
                   fontWeight: 700,
                   letterSpacing: '0.08em',
-                  color: hexToRgba(palette.backgroundLight.hex, 0.3),
+                  color: hexToRgba(NAV_TEXT, 0.3),
                   padding: '12px 16px 4px',
                   textTransform: 'uppercase',
                 }}
@@ -174,8 +179,8 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                       ? hexToRgba(palette.primaryMagenta.hex, 0.2)
                       : 'transparent',
                     color: isActive
-                      ? palette.backgroundLight.hex
-                      : hexToRgba(palette.backgroundLight.hex, 0.65),
+                      ? NAV_TEXT
+                      : hexToRgba(NAV_TEXT, 0.65),
                     fontSize: 13.5,
                     fontWeight: isActive ? 600 : 430,
                     transition: 'all 0.12s',
@@ -192,8 +197,8 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                     size={16}
                     color={
                       isActive
-                        ? palette.backgroundLight.hex
-                        : hexToRgba(palette.backgroundLight.hex, 0.55)
+                        ? NAV_TEXT
+                        : hexToRgba(NAV_TEXT, 0.55)
                     }
                   />
                   {!collapsed && item.label}
@@ -208,7 +213,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
         <div
           style={{
             padding: '12px 14px',
-            borderTop: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.08)}`,
+            borderTop: `1px solid ${hexToRgba(NAV_TEXT, 0.08)}`,
           }}
         >
           <p
@@ -216,7 +221,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
               fontSize: 10,
               fontWeight: 700,
               letterSpacing: '0.08em',
-              color: hexToRgba(palette.backgroundLight.hex, 0.3),
+              color: hexToRgba(NAV_TEXT, 0.3),
               marginBottom: 8,
               textTransform: 'uppercase',
             }}
@@ -237,11 +242,11 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                   background:
                     division === d
                       ? palette.primaryMagenta.hex
-                      : hexToRgba(palette.backgroundLight.hex, 0.07),
+                      : hexToRgba(NAV_TEXT, 0.07),
                   color:
                     division === d
-                      ? palette.backgroundLight.hex
-                      : hexToRgba(palette.backgroundLight.hex, 0.5),
+                      ? NAV_TEXT
+                      : hexToRgba(NAV_TEXT, 0.5),
                   border: 'none',
                   cursor: 'pointer',
                   transition: 'all 0.12s',
@@ -280,8 +285,8 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
   }, [dropdownOpen]);
 
   return (
-    <div style={{ margin: '4px 8px 2px', paddingBottom: 4, borderBottom: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.08)}` }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundLight.hex, 0.3), padding: '10px 6px 6px' }}>
+    <div style={{ margin: '4px 8px 2px', paddingBottom: 4, borderBottom: `1px solid ${hexToRgba(NAV_TEXT, 0.08)}` }}>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(NAV_TEXT, 0.3), padding: '10px 6px 6px' }}>
         Modules
       </p>
 
@@ -300,13 +305,13 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
           onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(currentMode.color, 0.22))}
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: currentMode.color, display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundLight.hex, flex: 1 }}>{currentMode.label}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: NAV_TEXT, flex: 1 }}>{currentMode.label}</span>
           <button
             onClick={(e) => { e.stopPropagation(); setDropdownOpen((o) => !o); }}
             title="Select mode"
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              color: hexToRgba(palette.backgroundLight.hex, 0.6),
+              color: hexToRgba(NAV_TEXT, 0.6),
               display: 'flex', alignItems: 'center',
             }}
           >
@@ -320,7 +325,7 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
           <div style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
             background: palette.primaryDeepPlum.hex,
-            border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+            border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
             borderRadius: 9, overflow: 'hidden', zIndex: 200,
             boxShadow: `0 8px 24px ${hexToRgba(palette.backgroundDark.hex, 0.4)}`,
           }}>
@@ -338,8 +343,8 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
                 onMouseLeave={(e) => { if (mode.id !== roleMode) e.currentTarget.style.background = 'none'; }}
               >
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: mode.color, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, fontWeight: mode.id === roleMode ? 700 : 450, color: palette.backgroundLight.hex }}>{mode.label}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: hexToRgba(palette.backgroundLight.hex, 0.35) }}>{mode.stages.length}</span>
+                <span style={{ fontSize: 12.5, fontWeight: mode.id === roleMode ? 700 : 450, color: NAV_TEXT }}>{mode.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: hexToRgba(NAV_TEXT, 0.35) }}>{mode.stages.length}</span>
               </button>
             ))}
           </div>
@@ -360,14 +365,14 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '7px 10px', margin: '1px 0', borderRadius: 7,
               background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent',
-              color: isActive ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.6),
+              color: isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.6),
               fontSize: 12.5, fontWeight: isActive ? 600 : 400,
               borderLeft: `2px solid ${isActive ? palette.primaryMagenta.hex : 'transparent'}`,
               textDecoration: 'none', transition: 'all 0.12s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}
             title={stage}
           >
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: isActive ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundLight.hex, 0.35), display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: isActive ? palette.primaryMagenta.hex : hexToRgba(NAV_TEXT, 0.35), display: 'inline-block', flexShrink: 0 }} />
             {stage}
           </NavLink>
         );

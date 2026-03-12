@@ -5,6 +5,7 @@ import TopBar from './TopBar.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
 import palette from '../../utils/colors.js';
+import { useTheme } from '../../utils/ThemeContext.jsx';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -32,6 +33,10 @@ function getBreadcrumbs(pathname) {
 }
 
 export default function AppShell() {
+  // Subscribe to theme — causes full Outlet re-render when theme toggles,
+  // which makes all inline palette.*.hex reads pick up the new values.
+  useTheme();
+
   const [division, setDivision] = useState('All');
   const [roleMode, setRoleMode] = useState(() => localStorage.getItem('carestream_rolemode') || 'intake');
   const location = useLocation();

@@ -7,6 +7,10 @@ import { getPatients } from '../../api/patients.js';
 import CommandPalette from '../search/CommandPalette.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
+// TopBar sits on the brand plum background — text/icons must stay near-white
+// in all themes. Never derive these from palette.backgroundLight.
+const NAV_TEXT = '#F7F7FA';
+
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -60,7 +64,7 @@ export default function TopBar({ breadcrumbs }) {
             <nav style={{
               display: 'flex', alignItems: 'center', gap: 6,
               marginLeft: 20, fontSize: 13,
-              color: hexToRgba(palette.backgroundLight.hex, 0.45),
+              color: hexToRgba(NAV_TEXT, 0.45),
             }}>
               {breadcrumbs.map((crumb, i) => (
                 <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -72,7 +76,7 @@ export default function TopBar({ breadcrumbs }) {
                     </span>
                   )}
                   <span style={{
-                    color: i === breadcrumbs.length - 1 ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.5),
+                    color: i === breadcrumbs.length - 1 ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.5),
                     fontWeight: i === breadcrumbs.length - 1 ? 550 : 400,
                   }}>
                     {crumb}
@@ -89,7 +93,7 @@ export default function TopBar({ breadcrumbs }) {
           <NotificationBell />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {user && (
-              <span style={{ fontSize: 13, color: hexToRgba(palette.backgroundLight.hex, 0.65), fontWeight: 450 }}>
+              <span style={{ fontSize: 13, color: hexToRgba(NAV_TEXT, 0.65), fontWeight: 450 }}>
                 {user.firstName} {user.lastName}
               </span>
             )}
@@ -124,30 +128,30 @@ function SearchBar({ onOpen }) {
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        background: hexToRgba(palette.backgroundLight.hex, 0.08),
-        border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+        background: hexToRgba(NAV_TEXT, 0.08),
+        border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
         borderRadius: 8, padding: '0 12px',
         height: 34, width: 220, cursor: 'pointer',
         transition: 'background 0.15s',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.13))}
-      onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.08))}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.13))}
+      onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.08))}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-        <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundLight.hex, 0.45)} strokeWidth="1.8" />
-        <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundLight.hex, 0.45)} strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="11" cy="11" r="8" stroke={hexToRgba(NAV_TEXT, 0.45)} strokeWidth="1.8" />
+        <path d="m21 21-4.35-4.35" stroke={hexToRgba(NAV_TEXT, 0.45)} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
       <span style={{
         flex: 1, fontSize: 13,
-        color: hexToRgba(palette.backgroundLight.hex, 0.45),
+        color: hexToRgba(NAV_TEXT, 0.45),
         userSelect: 'none',
       }}>
         Search…
       </span>
       <kbd style={{
-        fontSize: 10, color: hexToRgba(palette.backgroundLight.hex, 0.35),
-        background: hexToRgba(palette.backgroundLight.hex, 0.1),
-        border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+        fontSize: 10, color: hexToRgba(NAV_TEXT, 0.35),
+        background: hexToRgba(NAV_TEXT, 0.1),
+        border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
         borderRadius: 4, padding: '1px 5px', fontFamily: 'inherit',
       }}>
         ⌘K
@@ -226,16 +230,16 @@ function NotificationBell() {
           width: 34, height: 34, borderRadius: 8,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: open
-            ? hexToRgba(palette.backgroundLight.hex, 0.15)
-            : hexToRgba(palette.backgroundLight.hex, 0.08),
-          border: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.15)}`,
+            ? hexToRgba(NAV_TEXT, 0.15)
+            : hexToRgba(NAV_TEXT, 0.08),
+          border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
           position: 'relative',
-          color: hexToRgba(palette.backgroundLight.hex, 0.8),
+          color: hexToRgba(NAV_TEXT, 0.8),
           cursor: 'pointer',
           transition: 'background 0.15s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.15))}
-        onMouseLeave={(e) => !open && (e.currentTarget.style.background = hexToRgba(palette.backgroundLight.hex, 0.08))}
+        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.15))}
+        onMouseLeave={(e) => !open && (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.08))}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -250,7 +254,7 @@ function NotificationBell() {
             background: palette.primaryMagenta.hex,
             border: `2px solid ${palette.primaryDeepPlum.hex}`,
             fontSize: 9, fontWeight: 700,
-            color: palette.backgroundLight.hex,
+            color: NAV_TEXT,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 3px',
           }}>
@@ -264,7 +268,7 @@ function NotificationBell() {
         <div style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
           width: 310,
-          background: palette.backgroundLight.hex,
+          background: NAV_TEXT,
           borderRadius: 12,
           boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
           border: `1px solid var(--color-border)`,
