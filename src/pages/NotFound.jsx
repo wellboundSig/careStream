@@ -17,6 +17,7 @@ export default function NotFound() {
         textAlign: 'center',
       }}
     >
+      {/* <img src="public/3d-cs.png" alt="404" style={{ width: 50, height: 50 }} /> */}
       <p
         style={{
           fontSize: 72,
@@ -33,6 +34,7 @@ export default function NotFound() {
       <p style={{ fontSize: 14, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
         This page does not exist or is still being built.
       </p>
+      <img src="public/carestream.svg" alt="404" style={{ width: 200, height: 200 }} />
       <button
         onClick={() => navigate('/')}
         style={{

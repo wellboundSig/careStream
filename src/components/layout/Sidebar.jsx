@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { ROLE_MODES, STAGE_SLUGS } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // The sidebar is always the brand plum color — its text/icons must always be
@@ -51,7 +52,17 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const { appUser } = useCurrentAppUser();
+  const { prefs, pinPage, unpinPage, MAX_PINS } = usePreferences();
   const isAdmin = appUser?.scope === 'DevNurse';
+
+  // Right-click pin menu
+  const [pinMenu, setPinMenu] = useState(null); // { x, y, path, label }
+
+  function handleNavContextMenu(e, path, label) {
+    e.preventDefault();
+    e.stopPropagation();
+    setPinMenu({ x: e.clientX, y: e.clientY, path, label });
+  }
 
   const sidebarWidth = collapsed ? 60 : 220;
 
@@ -120,7 +131,13 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path) && item.path !== '/';
               return (
-                <NavLink key={item.path} to={item.path} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '9px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', margin: '1px 8px', borderRadius: 8, background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent', color: isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.65), fontSize: 13.5, fontWeight: isActive ? 600 : 430, transition: 'all 0.12s', borderLeft: isActive ? `2px solid ${palette.primaryMagenta.hex}` : '2px solid transparent', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }} title={collapsed ? item.label : undefined}>
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onContextMenu={(e) => handleNavContextMenu(e, item.path, item.label)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? '9px 0' : '9px 14px', justifyContent: collapsed ? 'center' : 'flex-start', margin: '1px 8px', borderRadius: 8, background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent', color: isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.65), fontSize: 13.5, fontWeight: isActive ? 600 : 430, transition: 'all 0.12s', borderLeft: isActive ? `2px solid ${palette.primaryMagenta.hex}` : '2px solid transparent', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }}
+                  title={collapsed ? item.label : undefined}
+                >
                   <item.icon size={16} color={isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.55)} />
                   {!collapsed && item.label}
                 </NavLink>
@@ -135,6 +152,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
             roleMode={roleMode}
             onRoleModeChange={onRoleModeChange}
             location={location}
+            onContextMenu={handleNavContextMenu}
           />
         )}
         {collapsed && (
@@ -167,6 +185,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  onContextMenu={(e) => handleNavContextMenu(e, item.path, item.label)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -195,11 +214,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                 >
                   <item.icon
                     size={16}
-                    color={
-                      isActive
-                        ? NAV_TEXT
-                        : hexToRgba(NAV_TEXT, 0.55)
-                    }
+                    color={isActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.55)}
                   />
                   {!collapsed && item.label}
                 </NavLink>
@@ -208,6 +223,20 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
           </div>
         ))}
       </nav>
+
+      {pinMenu && (
+        <PinContextMenu
+          x={pinMenu.x}
+          y={pinMenu.y}
+          path={pinMenu.path}
+          label={pinMenu.label}
+          isPinned={prefs.pinnedPages.includes(pinMenu.path)}
+          atLimit={!prefs.pinnedPages.includes(pinMenu.path) && prefs.pinnedPages.length >= MAX_PINS}
+          onPin={() => pinPage(pinMenu.path)}
+          onUnpin={() => unpinPage(pinMenu.path)}
+          onDismiss={() => setPinMenu(null)}
+        />
+      )}
 
       {!collapsed && (
         <div
@@ -263,7 +292,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
 }
 
 // ── Role Mode Module Nav ──────────────────────────────────────────────────────
-function RoleModeModules({ roleMode, onRoleModeChange, location }) {
+function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropRef = useRef(null);
 
@@ -361,6 +390,7 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
           <NavLink
             key={stage}
             to={path}
+            onContextMenu={(e) => onContextMenu?.(e, path, stage)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '7px 10px', margin: '1px 0', borderRadius: 7,
@@ -381,6 +411,91 @@ function RoleModeModules({ roleMode, onRoleModeChange, location }) {
   );
 }
 
+// ── Pin context menu ──────────────────────────────────────────────────────────
+function PinContextMenu({ x, y, path, label, isPinned, atLimit, onPin, onUnpin, onDismiss }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onDismiss(); }
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) onDismiss(); }
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [onDismiss]);
+
+  // Smart-position so the menu doesn't overflow the viewport
+  const menuWidth  = 224;
+  const menuHeight = 90;
+  const left = Math.min(x + 8, window.innerWidth  - menuWidth  - 8);
+  const top  = Math.min(y,      window.innerHeight - menuHeight - 8);
+
+  const menuItem = (children, onClick, disabled) => (
+    <button
+      onClick={disabled ? undefined : onClick}
+      style={{
+        width: '100%', padding: '8px 14px', background: 'none', border: 'none',
+        textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
+        fontSize: 13, fontWeight: 480, color: disabled
+          ? hexToRgba(palette.backgroundDark.hex, 0.3)
+          : palette.backgroundDark.hex,
+        display: 'flex', alignItems: 'center', gap: 9, transition: 'background 0.1s',
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.05); }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+    >
+      {children}
+    </button>
+  );
+
+  return (
+    <>
+      <div onClick={onDismiss} style={{ position: 'fixed', inset: 0, zIndex: 9990 }} />
+      <div
+        ref={ref}
+        style={{
+          position: 'fixed', top, left, zIndex: 9991,
+          background: palette.backgroundLight.hex,
+          border: `1px solid var(--color-border)`,
+          borderRadius: 10, overflow: 'hidden', minWidth: menuWidth,
+          boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+        }}
+      >
+        <div style={{ padding: '8px 14px 7px', borderBottom: `1px solid var(--color-border)` }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
+            {label}
+          </p>
+        </div>
+        <div style={{ padding: '4px 0' }}>
+          {isPinned
+            ? menuItem(<><PinOffIcon />Remove from navigation bar</>, () => { onUnpin(); onDismiss(); })
+            : menuItem(
+                <><PinIcon />{atLimit ? 'Pin bar full (max 6)' : 'Pin to navigation bar'}</>,
+                () => { onPin(); onDismiss(); },
+                atLimit,
+              )
+          }
+        </div>
+      </div>
+    </>
+  );
+}
+
+const PinIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2l3 7h5l-4 4 2 7-6-4-6 4 2-7-4-4h5z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const PinOffIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2l3 7h5l-4 4 2 7-6-4-6 4 2-7-4-4h5zM2 2l20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+// ── Nav icons ─────────────────────────────────────────────────────────────────
 function DashboardIcon({ size = 16, color }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">

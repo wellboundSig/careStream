@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
+import SubNav from './SubNav.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
 import palette from '../../utils/colors.js';
 import { useTheme } from '../../utils/ThemeContext.jsx';
+import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -33,9 +35,8 @@ function getBreadcrumbs(pathname) {
 }
 
 export default function AppShell() {
-  // Subscribe to theme — causes full Outlet re-render when theme toggles,
-  // which makes all inline palette.*.hex reads pick up the new values.
   useTheme();
+  const { prefs } = usePreferences();
 
   const [division, setDivision] = useState('All');
   const [roleMode, setRoleMode] = useState(() => localStorage.getItem('carestream_rolemode') || 'intake');
@@ -58,6 +59,10 @@ export default function AppShell() {
       }}
     >
       <TopBar breadcrumbs={breadcrumbs} />
+
+      {prefs.subnavEnabled && prefs.pinnedPages.length > 0 && (
+        <SubNav pinnedPages={prefs.pinnedPages} />
+      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar division={division} onDivisionChange={setDivision} roleMode={roleMode} onRoleModeChange={handleRoleModeChange} />

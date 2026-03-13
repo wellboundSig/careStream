@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useEsperClinicians } from '../../hooks/useEsperClinicians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -37,13 +37,50 @@ async function reverseGeoZip(lat, lon) {
   } catch { return null; }
 }
 
+const LOADER_MESSAGES = [
+  'Locating district…',
+  'Finding nearby ZIP codes…',
+  'Checking clinician network…',
+  'Calculating distances…',
+  'Mapping service areas…',
+  'Establishing clinician connections…',
+  'Cross-referencing coverage zones…',
+  'Compiling results…',
+];
+
+// Inject keyframes once
+if (typeof document !== 'undefined' && !document.getElementById('zip-loader-style')) {
+  const style = document.createElement('style');
+  style.id = 'zip-loader-style';
+  style.textContent = `
+    @keyframes zipBarSlide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+    @keyframes zipMsgFade {
+      0%   { opacity: 0; transform: translateY(4px); }
+      15%  { opacity: 1; transform: translateY(0); }
+      80%  { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-4px); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 export default function ZipSearchPanel() {
   const { clinicians, loading: clinLoading } = useEsperClinicians();
   const [zip, setZip] = useState('');
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState(null);
+  const [msgIdx, setMsgIdx] = useState(0);
   const zipCache = useRef({});
+
+  useEffect(() => {
+    if (!searching) { setMsgIdx(0); return; }
+    const iv = setInterval(() => setMsgIdx((i) => (i + 1) % LOADER_MESSAGES.length), 2600);
+    return () => clearInterval(iv);
+  }, [searching]);
 
   const cliniciansWithLocation = useMemo(
     () => clinicians.filter((c) => c.location?.lat && c.location?.lon),
@@ -142,6 +179,30 @@ export default function ZipSearchPanel() {
           {searching ? '…' : 'Search'}
         </button>
       </div>
+
+      {/* Animated loader */}
+      {searching && (
+        <div style={{ marginBottom: 14 }}>
+          {/* Track */}
+          <div style={{ position: 'relative', height: 3, borderRadius: 99, background: hexToRgba(palette.primaryDeepPlum.hex, 0.1), overflow: 'hidden', marginBottom: 10 }}>
+            {/* Sliding bar */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, height: '100%', width: '25%',
+              borderRadius: 99,
+              background: `linear-gradient(90deg, transparent, ${palette.primaryDeepPlum.hex}, transparent)`,
+              animation: 'zipBarSlide 1.6s ease-in-out infinite',
+            }} />
+          </div>
+          {/* Cycling message */}
+          <p key={msgIdx} style={{
+            fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5),
+            fontStyle: 'italic', textAlign: 'center',
+            animation: 'zipMsgFade 2.6s ease forwards',
+          }}>
+            {LOADER_MESSAGES[msgIdx]}
+          </p>
+        </div>
+      )}
 
       {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>}
 

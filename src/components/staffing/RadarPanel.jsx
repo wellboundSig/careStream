@@ -32,7 +32,7 @@ export default function RadarPanel({ allReferrals = [] }) {
       <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 8 }}>
         {radar.length} patient{radar.length !== 1 ? 's' : ''} approaching staffing
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {radar.map((r) => {
           const zip = r.patient?.address_zip;
           const services = Array.isArray(r.services_requested) ? r.services_requested : [];

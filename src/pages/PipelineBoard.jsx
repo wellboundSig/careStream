@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { updateReferral } from '../api/referrals.js';
 import { saveTransitionNote } from '../utils/saveTransitionNote.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
@@ -10,16 +11,36 @@ import StageRules from '../data/StageRules.json';
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
 import ContextMenu from '../components/pipeline/ContextMenu.jsx';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
+import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
-const STAGE_GRID = [
-  ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
-  ['Clinical Intake RN Review', 'Authorization Pending', 'Conflict', 'Staffing Feasibility', 'Admin Confirmation'],
-  ['Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Hold', 'NTUC'],
+// ── Stage layout ───────────────────────────────────────────────────────────────
+// Primary workflow is broken into three labeled row groups. Hold and NTUC live
+// in a separate Status section so they don't compete visually with active stages.
+const ROW_GROUPS = [
+  {
+    label: 'Intake & Eligibility',
+    color: palette.accentBlue.hex,
+    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
+  },
+  {
+    label: 'Clinical Review',
+    color: palette.primaryMagenta.hex,
+    stages: ['Clinical Intake RN Review', 'Authorization Pending', 'Conflict', 'Staffing Feasibility', 'Admin Confirmation'],
+  },
+  {
+    label: 'Admission',
+    color: palette.accentGreen.hex,
+    stages: ['Pre-SOC', 'SOC Scheduled', 'SOC Completed'],
+  },
 ];
 
-const ALL_STAGES = STAGE_GRID.flat();
+const STATUS_GROUP = {
+  label: 'Status',
+  color: hexToRgba(palette.backgroundDark.hex, 0.3),
+  stages: ['Hold', 'NTUC'],
+};
 
 function canMoveFromTo(fromStage, toStage) {
   if (fromStage === toStage) return false;
@@ -41,10 +62,19 @@ function needsModal(fromStage, toStage) {
   );
 }
 
+function formatRelTime(ts) {
+  if (!ts) return null;
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 min ago';
+  return `${mins} min ago`;
+}
+
 export default function PipelineBoard() {
   const { division } = useOutletContext();
   const { data: enriched, loading, refetch } = usePipelineData();
   const { appUserId } = useCurrentAppUser();
+  const { open: openPatient } = usePatientDrawer();
 
   const [localReferrals, setLocalReferrals] = useState([]);
   const [draggingId, setDraggingId] = useState(null);
@@ -53,9 +83,15 @@ export default function PipelineBoard() {
   const [pendingTransition, setPendingTransition] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showNewReferral, setShowNewReferral] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
 
   useEffect(() => {
-    if (enriched.length) setLocalReferrals(enriched);
+    if (enriched.length) {
+      setLocalReferrals(enriched);
+      setLastRefreshed(Date.now());
+    }
   }, [enriched]);
 
   const filtered = useMemo(
@@ -63,7 +99,7 @@ export default function PipelineBoard() {
       division === 'All'
         ? localReferrals
         : localReferrals.filter((r) => r.division === division),
-    [localReferrals, division]
+    [localReferrals, division],
   );
 
   function showToast(message, type = 'success') {
@@ -84,9 +120,8 @@ export default function PipelineBoard() {
   async function executeTransition(referral, toStage, note) {
     const fromStage = referral.current_stage;
     setTransitioning(true);
-
     setLocalReferrals((prev) =>
-      prev.map((r) => (r._id === referral._id ? { ...r, current_stage: toStage } : r))
+      prev.map((r) => (r._id === referral._id ? { ...r, current_stage: toStage } : r)),
     );
     setPendingTransition(null);
 
@@ -96,7 +131,6 @@ export default function PipelineBoard() {
 
     try {
       await updateReferral(referral._id, updateFields);
-      // Persist the transition note on the patient's profile
       if (note?.trim()) {
         await saveTransitionNote({ referral, fromStage, toStage, note, authorId: appUserId });
         triggerDataRefresh();
@@ -104,7 +138,7 @@ export default function PipelineBoard() {
       showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
     } catch {
       setLocalReferrals((prev) =>
-        prev.map((r) => (r._id === referral._id ? { ...r, current_stage: fromStage } : r))
+        prev.map((r) => (r._id === referral._id ? { ...r, current_stage: fromStage } : r)),
       );
       showToast(`Failed to move ${referral.patientName || referral.patient_id}`, 'error');
     } finally {
@@ -138,105 +172,184 @@ export default function PipelineBoard() {
     setContextMenu(null);
   }
 
+  function handleRefetch() {
+    refetch();
+    setLastRefreshed(Date.now());
+  }
+
   const totalActive = filtered.filter(
-    (r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed'
+    (r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed',
   ).length;
 
   if (loading) return <LoadingState message="Loading pipeline..." />;
 
   return (
     <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        background: palette.backgroundLight.hex,
-      }}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: palette.backgroundLight.hex }}
       onClick={dismissContextMenu}
     >
+      {/* ── Toolbar ── */}
       <div
         style={{
-          padding: '18px 20px 14px',
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
+          padding:        '14px 20px 12px',
+          flexShrink:     0,
+          display:        'flex',
+          alignItems:     'center',
           justifyContent: 'space-between',
-          borderBottom: `1px solid var(--color-border)`,
+          borderBottom:   `1px solid var(--color-border)`,
+          gap:            12,
         }}
       >
         <div>
-          <h1
-            style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}
-          >
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>
             Pipeline Board
           </h1>
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-            {totalActive} active &nbsp;&middot;&nbsp;{' '}
-            {division === 'All' ? 'All divisions' : division} &nbsp;&middot;&nbsp;{' '}
-            Drag cards between stages or right-click for options
+            {totalActive} active&nbsp;&middot;&nbsp;
+            {division === 'All' ? 'All divisions' : division}&nbsp;&middot;&nbsp;
+            Drag cards or right-click for options
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {lastRefreshed && (
+            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+              Updated {formatRelTime(lastRefreshed)}
+            </span>
+          )}
+
+          <ToolbarBtn
+            onClick={() => setShowLegend((v) => !v)}
+            active={showLegend}
+            title="Toggle indicator legend"
+          >
+            <InfoIcon /> Legend
+          </ToolbarBtn>
+
+          <ToolbarBtn onClick={handleRefetch} title="Refresh data">
+            <RefreshIcon /> Refresh
+          </ToolbarBtn>
+
           <button
-            onClick={refetch}
+            onClick={() => setShowNewReferral(true)}
             style={{
-              height: 32,
-              padding: '0 14px',
+              height:       32,
+              padding:      '0 14px',
               borderRadius: 7,
-              border: `1px solid var(--color-border)`,
-              background: 'none',
-              fontSize: 12,
-              fontWeight: 600,
-              color: hexToRgba(palette.backgroundDark.hex, 0.6),
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
+              background:   palette.primaryMagenta.hex,
+              border:       'none',
+              fontSize:     12,
+              fontWeight:   650,
+              color:        palette.backgroundLight.hex,
+              cursor:       'pointer',
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-              <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M3.51 15a9 9 0 1 0 .49-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Refresh
+            + New Referral
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '18px 27px 27px',
-        }}
-      >
+      {/* ── Legend strip ── */}
+      {showLegend && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gridTemplateRows: 'repeat(3, 1fr)',
-            gap: 17,
-            height: '100%',
-            minHeight: 720,
+            padding:      '10px 20px',
+            borderBottom: `1px solid var(--color-border)`,
+            background:   hexToRgba(palette.backgroundDark.hex, 0.018),
+            display:      'flex',
+            gap:          28,
+            flexWrap:     'wrap',
+            flexShrink:   0,
+            alignItems:   'flex-start',
           }}
         >
-          {STAGE_GRID.flat().map((stage) => (
-            <PipelineStage
-              key={stage}
-              stage={stage}
-              cards={filtered.filter((r) => r.current_stage === stage)}
-              canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
-              isBeingDragged={(id) => id === draggingId}
-              activeDragFromStage={draggingFrom}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onContextMenu={handleContextMenu}
-              onDrop={handleDrop}
-              onInitiateTransition={initiateTransition}
-            />
+          <LegendGroup label="Priority">
+            <LegendDot color={palette.primaryMagenta.hex} label="Critical" />
+            <LegendDot color={palette.accentOrange.hex}   label="High" />
+          </LegendGroup>
+
+          <LegendGroup label="F2F Authorization">
+            <LegendDot color={palette.accentGreen.hex}    label="Current (>30d)" />
+            <LegendDot color={palette.accentOrange.hex}   label="Expiring ≤14d" />
+            <LegendDot color={palette.primaryMagenta.hex} label="Expired" />
+          </LegendGroup>
+
+          <LegendGroup label="Days in Stage">
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+              <span style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentOrange.hex }}>14d+</span>
+              overdue — needs attention
+            </span>
+          </LegendGroup>
+
+          <LegendGroup label="Column Tags">
+            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+              <strong style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>Status</strong>
+              &nbsp;= can receive from any active stage &nbsp;·&nbsp;
+              <strong style={{ color: hexToRgba(palette.accentGreen.hex, 0.8) }}>Final</strong>
+              &nbsp;= terminal — referral admitted
+            </span>
+          </LegendGroup>
+        </div>
+      )}
+
+      {/* ── Board ── */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px 24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 30, minWidth: 900 }}>
+
+          {/* Primary row groups */}
+          {ROW_GROUPS.map(({ label, color, stages }) => (
+            <section key={label}>
+              <RowGroupLabel label={label} color={color} />
+              <div
+                style={{
+                  display:             'grid',
+                  gridTemplateColumns: `repeat(${stages.length}, 1fr)`,
+                  gap:                 14,
+                  minHeight:           200,
+                }}
+              >
+                {stages.map((stage) => (
+                  <PipelineStage
+                    key={stage}
+                    stage={stage}
+                    cards={filtered.filter((r) => r.current_stage === stage)}
+                    canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
+                    isBeingDragged={(id) => id === draggingId}
+                    activeDragFromStage={draggingFrom}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onContextMenu={handleContextMenu}
+                    onDrop={handleDrop}
+                    onInitiateTransition={initiateTransition}
+                    onAddReferral={stage === 'Lead Entry' ? () => setShowNewReferral(true) : undefined}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
+
+          {/* Status section */}
+          <section>
+            <RowGroupLabel label={STATUS_GROUP.label} color={STATUS_GROUP.color} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, minHeight: 100 }}>
+              {STATUS_GROUP.stages.map((stage) => (
+                <PipelineStage
+                  key={stage}
+                  stage={stage}
+                  cards={filtered.filter((r) => r.current_stage === stage)}
+                  canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
+                  isBeingDragged={(id) => id === draggingId}
+                  activeDragFromStage={draggingFrom}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onContextMenu={handleContextMenu}
+                  onDrop={handleDrop}
+                  onInitiateTransition={initiateTransition}
+                />
+              ))}
+            </div>
+          </section>
+
         </div>
       </div>
 
@@ -255,17 +368,99 @@ export default function PipelineBoard() {
           referral={pendingTransition.referral}
           toStage={pendingTransition.toStage}
           loading={transitioning}
-          onConfirm={(note) =>
-            executeTransition(pendingTransition.referral, pendingTransition.toStage, note)
-          }
+          onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.toStage, note)}
           onCancel={() => setPendingTransition(null)}
         />
       )}
 
-      {toast && (
-        <Toast message={toast.message} type={toast.type} />
+      {showNewReferral && (
+        <NewReferralForm
+          onClose={() => setShowNewReferral(false)}
+          onSuccess={({ patient, referral }) => {
+            triggerDataRefresh();
+            openPatient(patient, referral);
+          }}
+        />
       )}
+
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function RowGroupLabel({ label, color }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <span
+        style={{
+          width:        3,
+          height:       14,
+          borderRadius: 2,
+          background:   color,
+          flexShrink:   0,
+          display:      'inline-block',
+        }}
+      />
+      <span
+        style={{
+          fontSize:      10,
+          fontWeight:    700,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color:         hexToRgba(palette.backgroundDark.hex, 0.38),
+        }}
+      >
+        {label}
+      </span>
+      <div style={{ flex: 1, height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.07) }} />
+    </div>
+  );
+}
+
+function LegendGroup({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <p style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginBottom: 2 }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function LegendDot({ color, label }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
+      {label}
+    </span>
+  );
+}
+
+function ToolbarBtn({ onClick, active, title, children }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        height:      32,
+        padding:     '0 14px',
+        borderRadius: 7,
+        border:      `1px solid ${active ? palette.accentBlue.hex : 'var(--color-border)'}`,
+        background:  active ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+        fontSize:    12,
+        fontWeight:  600,
+        color:       active ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+        cursor:      'pointer',
+        display:     'flex',
+        alignItems:  'center',
+        gap:         6,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -273,26 +468,41 @@ function Toast({ message, type }) {
   return (
     <div
       style={{
-        position: 'fixed',
-        bottom: 24,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 9997,
-        background: type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
-        color: palette.backgroundLight.hex,
-        padding: '10px 20px',
-        borderRadius: 8,
-        fontSize: 13,
-        fontWeight: 550,
-        boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+        position:      'fixed',
+        bottom:        24,
+        left:          '50%',
+        transform:     'translateX(-50%)',
+        zIndex:        9997,
+        background:    type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
+        color:         palette.backgroundLight.hex,
+        padding:       '10px 20px',
+        borderRadius:  8,
+        fontSize:      13,
+        fontWeight:    550,
+        boxShadow:     `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
         pointerEvents: 'none',
-        whiteSpace: 'nowrap',
-        maxWidth: '80vw',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
+        whiteSpace:    'nowrap',
+        maxWidth:      '80vw',
+        overflow:      'hidden',
+        textOverflow:  'ellipsis',
       }}
     >
       {message}
     </div>
   );
 }
+
+// ── Tiny icons ─────────────────────────────────────────────────────────────────
+const RefreshIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+    <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3.51 15a9 9 0 1 0 .49-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);

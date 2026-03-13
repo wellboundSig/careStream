@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { useState, useMemo, useRef } from 'react';
+import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
+import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import LoadingState from '../components/common/LoadingState.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
+import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const PIPELINE_STAGES = [
@@ -14,6 +16,60 @@ const PIPELINE_STAGES = [
   'Conflict','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
+
+const TERMINAL_STAGES = new Set(['NTUC', 'SOC Completed']);
+
+// Maps each stage to its dedicated module route
+const STAGE_ROUTE = {
+  'Lead Entry':                '/modules/lead-entry',
+  'Intake':                    '/modules/intake',
+  'Eligibility Verification':  '/modules/eligibility',
+  'Disenrollment Required':    '/modules/disenrollment',
+  'F2F/MD Orders Pending':     '/modules/f2f',
+  'Clinical Intake RN Review': '/modules/clinical-rn',
+  'Authorization Pending':     '/modules/authorization',
+  'Conflict':                  '/modules/conflict',
+  'Staffing Feasibility':      '/modules/staffing',
+  'Admin Confirmation':        '/modules/admin-confirmation',
+  'Pre-SOC':                   '/modules/pre-soc',
+  'SOC Scheduled':             '/modules/soc-scheduled',
+  'SOC Completed':             '/modules/soc-completed',
+  'Hold':                      '/modules/hold',
+  'NTUC':                      '/modules/ntuc',
+};
+
+// Each base hue has three opacity tiers (33 / 66 / 100%) so all 15 stages
+// get a visually unique shade without introducing new colors.
+//
+//  Blue family   → Lead Entry (100%) · Intake (66%) · Staffing Feasibility (33%)
+//  Orange family → Eligibility (100%) · Disenrollment (66%) · F2F/MD (33%)
+//  Magenta family→ Clinical Intake (100%) · Conflict (66%) · Auth Pending (33%)
+//  Deep Plum     → Admin Confirmation (100%)
+//  Green family  → SOC Completed (100%) · SOC Scheduled (66%) · Pre-SOC (33%)
+//  Yellow        → Hold (100%)
+//  Dark          → NTUC (33%)
+const STAGE_BAR_COLOR = {
+  'Lead Entry':                palette.accentBlue.hex,
+  'Intake':                    hexToRgba(palette.accentBlue.hex, 0.66),
+  'Staffing Feasibility':      hexToRgba(palette.accentBlue.hex, 0.33),
+
+  'Eligibility Verification':  palette.accentOrange.hex,
+  'Disenrollment Required':    hexToRgba(palette.accentOrange.hex, 0.66),
+  'F2F/MD Orders Pending':     hexToRgba(palette.accentOrange.hex, 0.33),
+
+  'Clinical Intake RN Review': palette.primaryMagenta.hex,
+  'Conflict':                  hexToRgba(palette.primaryMagenta.hex, 0.66),
+  'Authorization Pending':     hexToRgba(palette.primaryMagenta.hex, 0.33),
+
+  'Admin Confirmation':        palette.primaryDeepPlum.hex,
+
+  'SOC Completed':             palette.accentGreen.hex,
+  'SOC Scheduled':             hexToRgba(palette.accentGreen.hex, 0.66),
+  'Pre-SOC':                   hexToRgba(palette.accentGreen.hex, 0.33),
+
+  'Hold':                      palette.highlightYellow.hex,
+  'NTUC':                      hexToRgba(palette.backgroundDark.hex, 0.33),
+};
 
 function formatDate(d) {
   if (!d) return '—';
@@ -30,59 +86,122 @@ export default function Dashboard() {
   const { division } = useOutletContext();
   const { data: referrals, loading } = usePipelineData();
   const { open: openPatient } = usePatientDrawer();
+  const navigate = useNavigate();
+  const [showNewReferral, setShowNewReferral] = useState(false);
 
   const filtered = useMemo(
     () => division === 'All' ? referrals : referrals.filter((r) => r.division === division),
-    [referrals, division]
+    [referrals, division],
   );
 
   const stageCounts = useMemo(() =>
-    PIPELINE_STAGES.reduce((acc, s) => { acc[s] = filtered.filter((r) => r.current_stage === s).length; return acc; }, {}),
-    [filtered]
+    PIPELINE_STAGES.reduce((acc, s) => {
+      acc[s] = filtered.filter((r) => r.current_stage === s).length;
+      return acc;
+    }, {}),
+    [filtered],
   );
 
-  const activeCount = filtered.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length;
+  const activeCount = filtered.filter((r) => !TERMINAL_STAGES.has(r.current_stage)).length;
 
-  const newThisWeek = filtered.filter((r) => {
+  // New this week vs last week (WoW delta)
+  const now = Date.now();
+  const newThisWeek = filtered.filter((r) => r.referral_date && now - new Date(r.referral_date).getTime() < 7 * 86400000).length;
+  const newLastWeek = filtered.filter((r) => {
     if (!r.referral_date) return false;
-    return Date.now() - new Date(r.referral_date).getTime() < 7 * 86400000;
+    const ms = now - new Date(r.referral_date).getTime();
+    return ms >= 7 * 86400000 && ms < 14 * 86400000;
   }).length;
+
+  // Referrals that have been in their current (non-terminal) stage for > 14 days
+  const overdueCount = useMemo(() =>
+    filtered.filter((r) => {
+      if (TERMINAL_STAGES.has(r.current_stage) || r.current_stage === 'Hold') return false;
+      if (!r.updated_at) return false;
+      return Math.floor((now - new Date(r.updated_at).getTime()) / 86400000) > 14;
+    }).length,
+    [filtered],
+  );
 
   const recentPatients = useMemo(() =>
     [...filtered]
       .sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0))
       .slice(0, 12),
-    [filtered]
+    [filtered],
   );
 
   if (loading) return <LoadingState message="Loading dashboard..." />;
 
+  const wowDelta = newThisWeek - newLastWeek;
+
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 22 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Dashboard</h1>
-        <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-          {division === 'All' ? 'All divisions' : division}
-        </p>
+
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Dashboard</h1>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            {division === 'All' ? 'All divisions' : division}
+            &nbsp;·&nbsp;
+            <span>Updated {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+          </p>
+        </div>
+        <button
+          onClick={() => setShowNewReferral(true)}
+          style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}
+        >
+          + New Referral
+        </button>
       </div>
 
-      {/* ── 1. Stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-        <StatCard label="Active Referrals"       value={activeCount}    sub="currently in pipeline"     color={palette.primaryMagenta.hex} />
-        <StatCard label="New This Week"           value={newThisWeek}   sub="referrals received"         color={palette.accentBlue.hex} />
-        <StatCard label="On Hold"                 value={stageCounts['Hold'] || 0} sub="awaiting resolution" color={palette.highlightYellow.hex} />
-        <StatCard label="Not Taken Under Care"    value={stageCounts['NTUC'] || 0} sub="no admission" color={hexToRgba(palette.backgroundDark.hex, 0.4)} />
+      {/* ── KPI cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+        <StatCard
+          label="Active Referrals"
+          value={activeCount}
+          sub="currently in pipeline"
+          color={palette.primaryMagenta.hex}
+        />
+        <StatCard
+          label="New This Week"
+          value={newThisWeek}
+          sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'}
+          delta={wowDelta}
+          color={palette.accentBlue.hex}
+        />
+        <StatCard
+          label="On Hold"
+          value={stageCounts['Hold'] || 0}
+          sub="awaiting resolution"
+          color={palette.highlightYellow.hex}
+        />
+        <StatCard
+          label="Overdue  ›14 days"
+          value={overdueCount}
+          sub="in stage too long"
+          color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex}
+          alert={overdueCount > 0}
+        />
       </div>
 
-      {/* ── 2. Patient list ── */}
+      {/* ── Stage distribution bar ── */}
+      {activeCount > 0 && (
+        <StageDistributionBar
+          stageCounts={stageCounts}
+          total={activeCount}
+          onNavigateToStage={(stage) => navigate(STAGE_ROUTE[stage] ?? '/pipeline')}
+        />
+      )}
+
+      {/* ── Recent referrals ── */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h2 style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex }}>Recent Referrals</h2>
           <Link to="/patients" style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 550 }}>View all</Link>
         </div>
 
-        <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: 'hidden', boxShadow: `0 1px 4px var(--color-card-shadow)` }}>
+        <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: 'hidden' }}>
           {recentPatients.length === 0 ? (
             <EmptyState title="No referrals yet" subtitle="New referrals will appear here." />
           ) : (
@@ -90,7 +209,9 @@ export default function Dashboard() {
               <thead>
                 <tr style={{ borderBottom: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
                   {['Patient', 'Division', 'Stage', 'Priority', 'Referral Date'].map((h) => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>{h}</th>
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -124,7 +245,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── 3. Pipeline Snapshot ── (last) */}
+      {/* ── Pipeline snapshot ── */}
       <div>
         <h2 style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 14 }}>Pipeline Snapshot</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
@@ -137,31 +258,235 @@ export default function Dashboard() {
           <StageCard stage="NTUC" count={stageCounts['NTUC'] || 0} muted />
         </div>
       </div>
+
+      {/* ── New referral modal ── */}
+      {showNewReferral && (
+        <NewReferralForm
+          onClose={() => setShowNewReferral(false)}
+          onSuccess={({ patient, referral }) => {
+            triggerDataRefresh();
+            openPatient(patient, referral);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value, sub, color }) {
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, sub, color, delta, alert }) {
+  const hasDelta = delta !== undefined && delta !== null;
   return (
-    <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, padding: '18px 20px', boxShadow: `0 1px 4px var(--color-card-shadow)`, display: 'flex', flexDirection: 'column', gap: 6, borderTop: `3px solid ${color}` }}>
+    <div
+      style={{
+        background:    palette.backgroundLight.hex,
+        borderRadius:  12,
+        padding:       '18px 20px',
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           6,
+        borderTop:     `3px solid ${color}`,
+        border:        `1px solid var(--color-border)`,
+        borderTop:     `3px solid ${color}`,
+      }}
+    >
       <p style={{ fontSize: 11, fontWeight: 650, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>{label}</p>
-      <p style={{ fontSize: 32, fontWeight: 700, color: palette.backgroundDark.hex, lineHeight: 1 }}>{value}</p>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <p style={{ fontSize: 32, fontWeight: 700, color: alert ? color : palette.backgroundDark.hex, lineHeight: 1 }}>{value}</p>
+        {hasDelta && delta !== 0 && (
+          <span
+            title={`${Math.abs(delta)} ${delta > 0 ? 'more' : 'fewer'} than last week`}
+            style={{
+              fontSize:   12,
+              fontWeight: 650,
+              color:      delta > 0 ? palette.accentGreen.hex : palette.accentOrange.hex,
+              display:    'flex',
+              alignItems: 'center',
+              gap:        2,
+            }}
+          >
+            {delta > 0 ? '▲' : '▼'} {Math.abs(delta)}
+          </span>
+        )}
+        {hasDelta && delta === 0 && (
+          <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>→ same</span>
+        )}
+      </div>
       <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{sub}</p>
+    </div>
+  );
+}
+
+function StageDistributionBar({ stageCounts, total, onNavigateToStage }) {
+  const barRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null); // { stage, count, x }
+
+  const activeStages = PIPELINE_STAGES.filter((s) => stageCounts[s] > 0);
+  const topStages = [...activeStages]
+    .sort((a, b) => stageCounts[b] - stageCounts[a])
+    .slice(0, 6);
+
+  function handleSegmentEnter(e, stage) {
+    if (!barRef.current) return;
+    const barRect = barRef.current.getBoundingClientRect();
+    const segRect = e.currentTarget.getBoundingClientRect();
+    const cx = segRect.left - barRect.left + segRect.width / 2;
+    // Clamp so the tooltip never bleeds outside the bar
+    const clamped = Math.max(60, Math.min(cx, barRect.width - 60));
+    setTooltip({ stage, count: stageCounts[stage], x: clamped });
+    e.currentTarget.style.filter = 'brightness(1.12) saturate(1.1)';
+  }
+
+  function handleSegmentLeave(e) {
+    setTooltip(null);
+    e.currentTarget.style.filter = '';
+  }
+
+  return (
+    <div
+      style={{
+        background:   palette.backgroundLight.hex,
+        borderRadius: 12,
+        padding:      '16px 20px',
+        border:       `1px solid var(--color-border)`,
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+          Stage Distribution
+        </p>
+        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+          {total} active&nbsp;·&nbsp;double-click a segment to open its module
+        </p>
+      </div>
+
+      {/* Bar — position:relative so the tooltip can be absolutely positioned inside */}
+      <div style={{ position: 'relative' }}>
+        <div
+          ref={barRef}
+          style={{
+            display:      'flex',
+            height:       14,
+            borderRadius: 6,
+            overflow:     'hidden',
+            gap:          1.5,
+            background:   hexToRgba(palette.backgroundDark.hex, 0.05),
+          }}
+        >
+          {activeStages.map((stage) => {
+            const pct = (stageCounts[stage] / total) * 100;
+            return (
+              <div
+                key={stage}
+                style={{
+                  width:        `${pct}%`,
+                  minWidth:     3,
+                  background:   STAGE_BAR_COLOR[stage] || hexToRgba(palette.backgroundDark.hex, 0.3),
+                  flexShrink:   0,
+                  cursor:       'pointer',
+                  transition:   'filter 0.1s',
+                }}
+                onMouseEnter={(e) => handleSegmentEnter(e, stage)}
+                onMouseLeave={handleSegmentLeave}
+                onDoubleClick={() => onNavigateToStage(stage)}
+              />
+            );
+          })}
+        </div>
+
+        {/* Tooltip */}
+        {tooltip && (
+          <div
+            style={{
+              position:      'absolute',
+              bottom:        'calc(100% + 10px)',
+              left:          tooltip.x,
+              transform:     'translateX(-50%)',
+              background:    palette.backgroundDark.hex,
+              color:         palette.backgroundLight.hex,
+              padding:       '5px 11px',
+              borderRadius:  6,
+              fontSize:      11.5,
+              fontWeight:    500,
+              whiteSpace:    'nowrap',
+              pointerEvents: 'none',
+              zIndex:        20,
+              boxShadow:     `0 4px 14px ${hexToRgba(palette.backgroundDark.hex, 0.22)}`,
+            }}
+          >
+            <strong style={{ fontWeight: 700 }}>{tooltip.stage}</strong>
+            &ensp;·&ensp;
+            {tooltip.count} referral{tooltip.count !== 1 ? 's' : ''}
+            {/* Arrow */}
+            <span
+              style={{
+                position:    'absolute',
+                top:         '100%',
+                left:        '50%',
+                transform:   'translateX(-50%)',
+                width:       0,
+                height:      0,
+                borderLeft:  '5px solid transparent',
+                borderRight: '5px solid transparent',
+                borderTop:   `5px solid ${palette.backgroundDark.hex}`,
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Legend — top stages by count */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+        {topStages.map((stage) => (
+          <span
+            key={stage}
+            onClick={() => onNavigateToStage(stage)}
+            title={`Open ${stage} module`}
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              gap:        5,
+              fontSize:   11,
+              color:      hexToRgba(palette.backgroundDark.hex, 0.55),
+              cursor:     'pointer',
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: STAGE_BAR_COLOR[stage], flexShrink: 0, display: 'inline-block' }} />
+            <strong style={{ fontWeight: 700 }}>{stageCounts[stage]}</strong>
+            &nbsp;{stage}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
 function StageCard({ stage, count, muted }) {
   return (
-    <div style={{ background: muted ? hexToRgba(palette.backgroundDark.hex, 0.03) : palette.backgroundLight.hex, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow 0.15s' }}>
-      <p style={{ fontSize: 11, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, muted ? 0.35 : 0.55), marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stage}</p>
+    <div
+      style={{
+        background:   muted ? hexToRgba(palette.backgroundDark.hex, 0.03) : palette.backgroundLight.hex,
+        border:       `1px solid var(--color-border)`,
+        borderRadius: 10,
+        padding:      '14px 16px',
+        cursor:       'pointer',
+      }}
+    >
+      <p style={{ fontSize: 11, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, muted ? 0.35 : 0.55), marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={stage}>{stage}</p>
       <p style={{ fontSize: 26, fontWeight: 700, color: muted ? hexToRgba(palette.backgroundDark.hex, 0.35) : palette.backgroundDark.hex, lineHeight: 1 }}>{count}</p>
     </div>
   );
 }
 
 function PriorityDot({ priority }) {
-  const colors = { Low: hexToRgba(palette.backgroundDark.hex, 0.25), Normal: palette.accentBlue.hex, High: palette.accentOrange.hex, Critical: palette.primaryMagenta.hex };
+  const colors = {
+    Low:      hexToRgba(palette.backgroundDark.hex, 0.25),
+    Normal:   palette.accentBlue.hex,
+    High:     palette.accentOrange.hex,
+    Critical: palette.primaryMagenta.hex,
+  };
   const c = colors[priority] || colors.Normal;
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useLocation } from 'react-router-dom';
 import { usePatients } from '../hooks/usePatients.js';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useLookups } from '../hooks/useLookups.js';
@@ -25,8 +25,8 @@ const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
-  { key: 'f2f',             label: 'F2F',               defaultOn: true,  filterable: false },
-  { key: 'days',            label: 'Days',              defaultOn: true,  filterable: false },
+  { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
+  { key: 'days', label: 'Days', tooltip: 'Days the patient has been in their current stage. Turns orange at >14 days to flag overdue referrals.', defaultOn: true, filterable: false },
   { key: 'marketer',        label: 'Marketer',          defaultOn: true,  filterable: true  },
   { key: 'insurance',       label: 'Insurance',         defaultOn: true,  sortField: 'insurance_plan', filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',     defaultOn: true,  filterable: true  },
@@ -180,9 +180,11 @@ export default function PatientList() {
   const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
+  const location = useLocation();
 
   const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState('');
+  // Pre-populate stage filter when navigated here from the dashboard chart
+  const [stageFilter, setStageFilter] = useState(location.state?.stageFilter || '');
   const [showActive, setShowActive] = useState(true);
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
@@ -365,8 +367,15 @@ export default function PatientList() {
   }
 
   const colHdr = (col) => (
-    <th key={col.key} onClick={col.sortField ? () => toggleSort(col.sortField) : undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.sortField ? 'pointer' : 'default', userSelect: 'none' }}>
-      {col.label} {col.sortField && sortField === col.sortField && (sortDir === 'asc' ? '▲' : '▼')}
+    <th
+      key={col.key}
+      onClick={col.sortField ? () => toggleSort(col.sortField) : undefined}
+      title={col.tooltip || undefined}
+      style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.sortField ? 'pointer' : col.tooltip ? 'help' : 'default', userSelect: 'none' }}
+    >
+      {col.label}
+      {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+      {col.sortField && sortField === col.sortField && (sortDir === 'asc' ? ' ▲' : ' ▼')}
     </th>
   );
 
@@ -389,7 +398,13 @@ export default function PatientList() {
           {/* Search — fixed width so typing never shifts neighbours */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 264, flexShrink: 0 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, Medicaid #, Medicare #…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%', minWidth: 0 }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search patients…"
+              title="Search by name, Medicaid #, or Medicare #"
+              style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%', minWidth: 0 }}
+            />
           </div>
           {/* Stage dropdown — fixed width so changing selection never resizes it */}
           <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ height: 34, width: 186, flexShrink: 0, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', color: palette.backgroundDark.hex, cursor: 'pointer' }}>

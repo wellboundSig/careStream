@@ -1185,9 +1185,16 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
       {/* Patient actions — always visible when patient selected */}
       {selectedReferral && (
         <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid var(--color-border)` }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginBottom: 8 }}>
-            {selectedReferral.patientName || selectedReferral.patient_id} · {Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+              {selectedReferral.patientName || selectedReferral.patient_id} · {Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'}
+            </p>
+            {selectedReferral.patient?.address_zip && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: palette.accentBlue.hex, background: hexToRgba(palette.accentBlue.hex, 0.1), padding: '2px 8px', borderRadius: 5, flexShrink: 0, marginLeft: 8 }}>
+                ZIP {selectedReferral.patient.address_zip}
+              </span>
+            )}
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.primaryMagenta.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
             <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>Patient / parent contacted</span>
@@ -1224,10 +1231,10 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
         ))}
       </div>
 
-      {/* Tab content */}
-      {activeTab === 'Clinicians' && <CliniciansPanel />}
-      {activeTab === 'Zip Search' && <ZipSearchPanel />}
-      {activeTab === 'Radar'     && <RadarPanel allReferrals={allReferrals || []} />}
+      {/* Tab content — all three stay mounted to preserve state across tab switches */}
+      <div style={{ display: activeTab === 'Clinicians' ? 'block' : 'none' }}><CliniciansPanel /></div>
+      <div style={{ display: activeTab === 'Zip Search' ? 'block' : 'none' }}><ZipSearchPanel /></div>
+      <div style={{ display: activeTab === 'Radar'      ? 'block' : 'none' }}><RadarPanel allReferrals={allReferrals || []} /></div>
     </Panel>
   );
 }

@@ -1,5 +1,7 @@
 import { useTheme } from '../utils/ThemeContext.jsx';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { usePreferences } from '../context/UserPreferencesContext.jsx';
+import { PIN_GROUPS } from '../components/layout/SubNav.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
 
@@ -135,6 +137,7 @@ function ThemePreview({ isDark }) {
 export default function Settings() {
   const { isDark, toggleTheme } = useTheme();
   const { appUser, appUserName } = useCurrentAppUser();
+  const { prefs, save, pinPage, unpinPage, MAX_PINS } = usePreferences();
 
   return (
     <div style={{
@@ -202,6 +205,75 @@ export default function Settings() {
                 <ThemePreview isDark={true} />
               </div>
             </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── Navigation Pins ── */}
+      <Section
+        title="Navigation Bar"
+        description="Pin up to 6 pages for quick access. They appear as tabs in a bar below the top nav."
+      >
+        <SettingRow
+          label="Show pinned navigation bar"
+          hint="Displays a second row of tabs under the top bar with your pinned pages."
+        >
+          <Toggle
+            checked={prefs.subnavEnabled}
+            onChange={() => save({ subnavEnabled: !prefs.subnavEnabled })}
+          />
+        </SettingRow>
+
+        {/* Pin picker — always shown so users can set up pins before enabling */}
+        <div style={{ paddingTop: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <p style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+              Pinned Pages
+            </p>
+            <span style={{ fontSize: 11.5, color: prefs.pinnedPages.length >= MAX_PINS ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+              {prefs.pinnedPages.length} / {MAX_PINS}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {PIN_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.32), marginBottom: 6 }}>
+                  {group.label}
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px 12px' }}>
+                  {group.items.map(({ label, path }) => {
+                    const pinned  = prefs.pinnedPages.includes(path);
+                    const atLimit = !pinned && prefs.pinnedPages.length >= MAX_PINS;
+                    return (
+                      <label
+                        key={path}
+                        title={atLimit ? `Limit of ${MAX_PINS} reached — unpin another page first` : undefined}
+                        style={{
+                          display:    'flex',
+                          alignItems: 'center',
+                          gap:        7,
+                          padding:    '5px 0',
+                          cursor:     atLimit ? 'not-allowed' : 'pointer',
+                          opacity:    atLimit ? 0.45 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pinned}
+                          disabled={atLimit}
+                          onChange={() => pinned ? unpinPage(path) : pinPage(path)}
+                          style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: 13, color: pinned ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.6), fontWeight: pinned ? 550 : 400 }}>
+                          {label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </Section>

@@ -4,10 +4,14 @@ import { BrowserRouter } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/react';
 
 import './index.css';
+import { applyFont } from './utils/fontUtility.js';
 import { ThemeContextProvider } from './utils/ThemeContext.jsx';
+import { UserPreferencesProvider } from './context/UserPreferencesContext.jsx';
 import ThemeProvider from './utils/ThemeProvider.jsx';
 import { PatientDrawerProvider } from './context/PatientDrawerContext.jsx';
 import App from './App.jsx';
+
+applyFont();
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -21,9 +25,11 @@ createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <ThemeContextProvider>
           <ThemeProvider>
-            <PatientDrawerProvider>
-              <App />
-            </PatientDrawerProvider>
+            <UserPreferencesProvider>
+              <PatientDrawerProvider>
+                <App />
+              </PatientDrawerProvider>
+            </UserPreferencesProvider>
           </ThemeProvider>
         </ThemeContextProvider>
       </BrowserRouter>

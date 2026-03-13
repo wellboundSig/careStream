@@ -1,13 +1,28 @@
+import { useState } from 'react';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const F2F_URGENCY = {
-  Green: palette.accentGreen.hex,
-  Yellow: palette.highlightYellow.hex,
-  Orange: palette.accentOrange.hex,
-  Red: palette.primaryMagenta.hex,
+  Green:   palette.accentGreen.hex,
+  Yellow:  palette.highlightYellow.hex,
+  Orange:  palette.accentOrange.hex,
+  Red:     palette.primaryMagenta.hex,
   Expired: hexToRgba(palette.backgroundDark.hex, 0.35),
+};
+
+const F2F_LABELS = {
+  Green:   'F2F authorization is current (>30d remaining)',
+  Yellow:  'F2F authorization expires within 30 days',
+  Orange:  'F2F authorization expires within 14 days — action needed',
+  Red:     'F2F authorization expires within 7 days — urgent',
+  Expired: 'F2F authorization has expired',
+};
+
+const PRIORITY_COLORS = {
+  High:     palette.accentOrange.hex,
+  Critical: palette.primaryMagenta.hex,
+  Low:      hexToRgba(palette.backgroundDark.hex, 0.25),
 };
 
 function daysInStage(updatedAt) {
@@ -15,21 +30,27 @@ function daysInStage(updatedAt) {
   return Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000);
 }
 
-export default function PipelineCard({
-  referral,
-  isDragging,
-  onDragStart,
-  onDragEnd,
-  onContextMenu,
-}) {
+export default function PipelineCard({ referral, isDragging, onDragStart, onDragEnd, onContextMenu }) {
   const { open } = usePatientDrawer();
-  const days = daysInStage(referral.updated_at);
+  const [hovered, setHovered] = useState(false);
+
+  const days  = daysInStage(referral.updated_at);
   const f2fColor = F2F_URGENCY[referral.f2f_urgency] || null;
+  const isOverdue = days > 14;
 
   function handleClick(e) {
     if (!isDragging) {
       e.stopPropagation();
-      open(referral.patient || { id: referral.patient_id, _id: referral.patient_id, first_name: referral.patientName?.split(' ')[0] || '', last_name: referral.patientName?.split(' ').slice(1).join(' ') || '', division: referral.division }, referral);
+      open(
+        referral.patient || {
+          id: referral.patient_id,
+          _id: referral.patient_id,
+          first_name: referral.patientName?.split(' ')[0] || '',
+          last_name:  referral.patientName?.split(' ').slice(1).join(' ') || '',
+          division:   referral.division,
+        },
+        referral,
+      );
     }
   }
 
@@ -45,63 +66,49 @@ export default function PipelineCard({
       }}
       onDragEnd={onDragEnd}
       onContextMenu={(e) => onContextMenu(e, referral)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        background: palette.backgroundLight.hex,
-        border: `1px solid var(--color-border)`,
+        background: hovered && !isDragging
+          ? hexToRgba(palette.primaryDeepPlum.hex, 0.025)
+          : palette.backgroundLight.hex,
+        // Use individual border props (not the shorthand) so borderLeft is never
+        // stomped on re-render — the shorthand resets all four sides simultaneously.
+        borderTop:    `1px solid ${hovered && !isDragging ? hexToRgba(palette.primaryDeepPlum.hex, 0.22) : 'var(--color-border)'}`,
+        borderRight:  `1px solid ${hovered && !isDragging ? hexToRgba(palette.primaryDeepPlum.hex, 0.22) : 'var(--color-border)'}`,
+        borderBottom: `1px solid ${hovered && !isDragging ? hexToRgba(palette.primaryDeepPlum.hex, 0.22) : 'var(--color-border)'}`,
+        // F2F urgency overrides the bar; fall back to a neutral border so every card
+        // has a visible left edge regardless of whether F2F data is present.
+        borderLeft:   f2fColor ? `3px solid ${f2fColor}` : `3px solid var(--color-border)`,
         borderRadius: 8,
         padding: '9px 11px',
         cursor: isDragging ? 'grabbing' : 'grab',
         userSelect: 'none',
         opacity: isDragging ? 0.45 : 1,
-        boxShadow: isDragging
-          ? 'none'
-          : `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
-        transition: 'box-shadow 0.12s, opacity 0.12s',
-        borderLeft: f2fColor ? `3px solid ${f2fColor}` : `3px solid transparent`,
-      }}
-      onMouseEnter={(e) => {
-        if (!isDragging) {
-          e.currentTarget.style.boxShadow = `0 3px 10px ${hexToRgba(palette.backgroundDark.hex, 0.1)}`;
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.06)}`;
+        transition: 'background 0.1s, border-color 0.1s, box-shadow 0.12s, opacity 0.12s',
+        boxShadow: hovered && !isDragging
+          ? `0 2px 8px ${hexToRgba(palette.backgroundDark.hex, 0.07)}`
+          : 'none',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 6,
-          marginBottom: 5,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 12.5,
-            fontWeight: 650,
-            color: palette.backgroundDark.hex,
-            lineHeight: 1.3,
-            wordBreak: 'break-word',
-          }}
-        >
+      {/* Name + division */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 5 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, lineHeight: 1.3, wordBreak: 'break-word' }}>
           {referral.patientName || referral.patient_id || 'Unknown'}
         </span>
         <DivisionBadge division={referral.division} size="small" />
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
+      {/* Days + indicators */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span
+          title={isOverdue ? `${days} days in this stage — overdue` : `${days} days in current stage`}
           style={{
             fontSize: 11,
-            color: hexToRgba(palette.backgroundDark.hex, 0.4),
+            fontWeight: isOverdue ? 650 : 400,
+            color: isOverdue
+              ? palette.accentOrange.hex
+              : hexToRgba(palette.backgroundDark.hex, 0.4),
           }}
         >
           {days === 0 ? 'Today' : `${days}d here`}
@@ -109,11 +116,21 @@ export default function PipelineCard({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {referral.priority && referral.priority !== 'Normal' && (
-            <PriorityPip priority={referral.priority} />
+            <span
+              title={`Priority: ${referral.priority}`}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: PRIORITY_COLORS[referral.priority] || palette.accentBlue.hex,
+                display: 'inline-block',
+                flexShrink: 0,
+              }}
+            />
           )}
           {f2fColor && (
             <span
-              title={`F2F: ${referral.f2f_urgency}`}
+              title={F2F_LABELS[referral.f2f_urgency] || `F2F: ${referral.f2f_urgency}`}
               style={{
                 width: 7,
                 height: 7,
@@ -127,15 +144,9 @@ export default function PipelineCard({
         </div>
       </div>
 
+      {/* Service tags */}
       {referral.services_requested?.length > 0 && (
-        <div
-          style={{
-            marginTop: 6,
-            display: 'flex',
-            gap: 3,
-            flexWrap: 'wrap',
-          }}
-        >
+        <div style={{ marginTop: 6, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
           {referral.services_requested.map((s) => (
             <span
               key={s}
@@ -144,7 +155,7 @@ export default function PipelineCard({
                 fontWeight: 650,
                 padding: '1px 5px',
                 borderRadius: 4,
-                background: hexToRgba(palette.accentBlue.hex, 0.14),
+                background: hexToRgba(palette.accentBlue.hex, 0.1),
                 color: palette.accentBlue.hex,
                 letterSpacing: '0.02em',
               }}
@@ -155,26 +166,5 @@ export default function PipelineCard({
         </div>
       )}
     </div>
-  );
-}
-
-function PriorityPip({ priority }) {
-  const colors = {
-    High: palette.accentOrange.hex,
-    Critical: palette.primaryMagenta.hex,
-    Low: hexToRgba(palette.backgroundDark.hex, 0.25),
-  };
-  return (
-    <span
-      title={`Priority: ${priority}`}
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: '50%',
-        background: colors[priority] || palette.accentBlue.hex,
-        display: 'inline-block',
-        flexShrink: 0,
-      }}
-    />
   );
 }
