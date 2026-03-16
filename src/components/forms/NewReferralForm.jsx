@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { getMarketers } from '../../api/marketers.js';
 import { getReferralSources } from '../../api/referralSources.js';
 import { createPatient } from '../../api/patients.js';
@@ -86,8 +87,9 @@ function Select({ value, onChange, options, placeholder, hasError }) {
 }
 
 function FieldGroup({ children, cols = 2 }) {
+  // cols prop is used on desktop; single column on mobile via CSS custom property
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '12px 16px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(var(--form-cols, ${cols}), 1fr)`, gap: '12px 16px' }}>
       {children}
     </div>
   );
@@ -147,6 +149,7 @@ function CheckboxGroup({ label, options, values, onChange }) {
 
 export default function NewReferralForm({ onClose, onSuccess }) {
   const { appUser, appUserId } = useCurrentAppUser();
+  const isMobile = useIsMobile();
 
   const [marketers, setMarketers] = useState([]);
   const [sources, setSources] = useState([]);
@@ -352,20 +355,28 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
   return (
     <div
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => !isMobile && e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9990,
-        background: hexToRgba(palette.backgroundDark.hex, 0.5),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
+        background: isMobile ? 'transparent' : hexToRgba(palette.backgroundDark.hex, 0.5),
+        display: 'flex',
+        alignItems: isMobile ? 'flex-end' : 'center',
+        justifyContent: 'center',
+        padding: isMobile ? 0 : 24,
       }}
     >
       <div style={{
-        background: palette.backgroundLight.hex, borderRadius: 16,
-        width: '100%', maxWidth: 680, maxHeight: '90vh',
+        background: palette.backgroundLight.hex,
+        borderRadius: isMobile ? '16px 16px 0 0' : 16,
+        width: '100%',
+        maxWidth: isMobile ? '100%' : 680,
+        maxHeight: isMobile ? '95vh' : '90vh',
+        height: isMobile ? '95vh' : undefined,
         display: 'flex', flexDirection: 'column',
-        boxShadow: `0 24px 72px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+        boxShadow: `0 -4px 40px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
         overflow: 'hidden',
+        // Single-column fields on mobile via CSS custom property
+        '--form-cols': isMobile ? '1' : undefined,
       }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0, background: palette.primaryDeepPlum.hex }}>

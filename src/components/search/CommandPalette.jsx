@@ -193,7 +193,10 @@ export default function CommandPalette({ isOpen, onClose }) {
   function handleSelect({ type, data }) {
     onClose();
     if (type === 'patient') {
-      openDrawer(data);
+      // data is the enriched referral; the patient record lives in data.patient.
+      // Pass patient as first arg and the referral as second so the drawer populates fully.
+      const patientObj = data.patient || { id: data.patient_id, _id: data.patient_id, division: data.division };
+      openDrawer(patientObj, data);
     } else if (type === 'physician') {
       navigate('/directory/physicians');
     } else if (type === 'source') {

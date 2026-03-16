@@ -3,6 +3,7 @@ import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
+import { useIsMobile } from '../hooks/useIsMobile.js';
 import LoadingState from '../components/common/LoadingState.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
@@ -87,6 +88,7 @@ export default function Dashboard() {
   const { data: referrals, loading } = usePipelineData();
   const { open: openPatient } = usePatientDrawer();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [showNewReferral, setShowNewReferral] = useState(false);
 
   const filtered = useMemo(
@@ -134,6 +136,77 @@ export default function Dashboard() {
 
   const wowDelta = newThisWeek - newLastWeek;
 
+  // ── Mobile dashboard ────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ padding: '16px 16px 8px' }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: 16 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>Dashboard</h1>
+          <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            Updated {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          </p>
+        </div>
+
+        {/* KPI 2×2 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+          <StatCard label="Active" value={activeCount} sub="in pipeline" color={palette.primaryMagenta.hex} />
+          <StatCard label="New This Week" value={newThisWeek} sub={`${newLastWeek} last week`} delta={wowDelta} color={palette.accentBlue.hex} />
+          <StatCard label="On Hold" value={stageCounts['Hold'] || 0} sub="awaiting" color={palette.highlightYellow.hex} />
+          <StatCard label="Overdue" value={overdueCount} sub="›14 days" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
+        </div>
+
+        {/* Recent referrals — card list */}
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+            Recent Referrals
+          </p>
+          {recentPatients.length === 0 ? (
+            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic', padding: '16px 0', textAlign: 'center' }}>No referrals yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recentPatients.slice(0, 8).map((ref) => (
+                <div
+                  key={ref._id}
+                  style={{
+                    padding: '12px 14px', borderRadius: 10,
+                    background: palette.backgroundLight.hex,
+                    border: `1px solid var(--color-border)`,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex }}>
+                      {ref.patientName || ref.patient_id}
+                    </p>
+                    <StageBadge stage={ref.current_stage} size="small" />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <DivisionBadge division={ref.division} size="small" />
+                    {ref.referral_date && (
+                      <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                        {formatDate(ref.referral_date)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* New referral modal */}
+        {showNewReferral && (
+          <NewReferralForm
+            onClose={() => setShowNewReferral(false)}
+            onSuccess={() => { triggerDataRefresh(); setShowNewReferral(false); }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop dashboard (unchanged) ──────────────────────────────────────────
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
 
@@ -157,32 +230,10 @@ export default function Dashboard() {
 
       {/* ── KPI cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-        <StatCard
-          label="Active Referrals"
-          value={activeCount}
-          sub="currently in pipeline"
-          color={palette.primaryMagenta.hex}
-        />
-        <StatCard
-          label="New This Week"
-          value={newThisWeek}
-          sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'}
-          delta={wowDelta}
-          color={palette.accentBlue.hex}
-        />
-        <StatCard
-          label="On Hold"
-          value={stageCounts['Hold'] || 0}
-          sub="awaiting resolution"
-          color={palette.highlightYellow.hex}
-        />
-        <StatCard
-          label="Overdue  ›14 days"
-          value={overdueCount}
-          sub="in stage too long"
-          color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex}
-          alert={overdueCount > 0}
-        />
+        <StatCard label="Active Referrals" value={activeCount} sub="currently in pipeline" color={palette.primaryMagenta.hex} />
+        <StatCard label="New This Week" value={newThisWeek} sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'} delta={wowDelta} color={palette.accentBlue.hex} />
+        <StatCard label="On Hold" value={stageCounts['Hold'] || 0} sub="awaiting resolution" color={palette.highlightYellow.hex} />
+        <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
       </div>
 
       {/* ── Stage distribution bar ── */}

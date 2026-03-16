@@ -70,11 +70,36 @@ export default function PatientDrawer() {
   useEffect(() => {
     if (!isOpen) return;
     function onKey(e) {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') { close(); return; }
+
+      // Shift+C closes the drawer; skip if focus is inside a text field
+      if (e.shiftKey && e.key === 'C') {
+        const tag = document.activeElement?.tagName;
+        const editable = document.activeElement?.isContentEditable;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || editable) return;
+        close();
+        return;
+      }
+
+      // Shift+Arrow navigates tabs; skip if focus is inside a text field
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        const tag = document.activeElement?.tagName;
+        const editable = document.activeElement?.isContentEditable;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || editable) return;
+
+        e.preventDefault();
+        setActiveTab((current) => {
+          const idx = TABS.findIndex((t) => t.id === current);
+          const next = e.key === 'ArrowRight'
+            ? (idx + 1) % TABS.length
+            : (idx - 1 + TABS.length) % TABS.length;
+          return TABS[next].id;
+        });
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, close]);
+  }, [isOpen, close, setActiveTab]);
 
   if (!visible) return null;
 

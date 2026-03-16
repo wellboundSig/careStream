@@ -1,26 +1,27 @@
 import { SignIn } from '@clerk/react';
-import palette, { hexToRgba } from '../../utils/colors.js';
+import palette from '../../utils/colors.js';
 import { fontFamily } from '../../utils/fontUtility.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 
 export default function SignInPage() {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-      }}
-    >
-      {/* Left side – image */}
-      <div
-        style={{
-          flex: 1,
-          backgroundImage: 'url(/signupart.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      />
+  const isMobile = useIsMobile();
 
-      {/* Right side – sign-in */}
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex' }}>
+
+      {/* Left side – image — hidden on mobile */}
+      {!isMobile && (
+        <div
+          style={{
+            flex: 1,
+            backgroundImage: 'url(/signupart.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+      )}
+
+      {/* Right side – sign-in form */}
       <div
         style={{
           flex: 1,
@@ -29,16 +30,21 @@ export default function SignInPage() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 48,
+          padding: isMobile ? '40px 24px 60px' : 48,
+          minHeight: isMobile ? '100vh' : undefined,
         }}
       >
         <img
           src="/logo-cs.png"
           alt="CareStream"
-          style={{ height: 56, objectFit: 'contain', marginBottom: 40 }}
+          style={{
+            height: isMobile ? 44 : 56,
+            objectFit: 'contain',
+            marginBottom: isMobile ? 32 : 40,
+          }}
         />
 
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', width: isMobile ? '100%' : undefined }}>
           <SignIn
             routing="path"
             path="/sign-in"

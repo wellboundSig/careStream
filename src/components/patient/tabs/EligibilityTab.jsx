@@ -59,6 +59,7 @@ export default function EligibilityTab({ patient, referral }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_CHECK_FORM });
   const [flagValues, setFlagValues] = useState({});
@@ -92,11 +93,13 @@ export default function EligibilityTab({ patient, referral }) {
   function openForm() {
     setForm({ ...EMPTY_CHECK_FORM });
     setFlagValues({});
+    setSaveError(null);
     setShowForm(true);
   }
 
   async function submitCheck() {
     setSaving(true);
+    setSaveError(null);
     try {
       const fields = buildCheckFields({
         referralId: referral?.id || null,
@@ -111,6 +114,7 @@ export default function EligibilityTab({ patient, referral }) {
       setShowForm(false);
     } catch (err) {
       console.error('Check save failed', err);
+      setSaveError(err.message || 'Save failed. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -246,6 +250,12 @@ export default function EligibilityTab({ patient, referral }) {
             <textarea value={form.result_summary} onChange={(e) => setForm((p) => ({ ...p, result_summary: e.target.value }))} placeholder="Findings, observations…" rows={3} style={{ width: '100%', padding: '7px 9px', borderRadius: 8, border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.12)}`, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
             <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 3 }}>Logged by {appUserName}</p>
           </div>
+
+          {saveError && (
+            <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8, padding: '7px 10px', borderRadius: 7, background: hexToRgba(palette.primaryMagenta.hex, 0.07) }}>
+              {saveError}
+            </p>
+          )}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>

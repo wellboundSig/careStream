@@ -88,16 +88,18 @@ export default function PipelineStage({
         if (canAcceptDrop) onDrop(stage);
       }}
       style={{
-        display:       'flex',
-        flexDirection: 'column',
-        background:    bgColor,
-        border:        `1px solid ${borderColor}`,
-        borderTop:     `3px solid ${isTerminal ? hexToRgba(palette.backgroundDark.hex, 0.15) : accentColor}`,
-        borderRadius:  10,
-        transition:    'border-color 0.15s, background 0.15s',
-        boxShadow:     dropAllowed ? `0 0 0 2px ${hexToRgba(palette.primaryMagenta.hex, 0.25)}` : 'none',
-        overflow:      'hidden',
-        minHeight:     0,
+        display:        'flex',
+        flexDirection:  'column',
+        background:     bgColor,
+        borderTop:      `3px solid ${isTerminal ? hexToRgba(palette.backgroundDark.hex, 0.15) : accentColor}`,
+        borderRight:    `1px solid ${borderColor}`,
+        borderBottom:   `1px solid ${borderColor}`,
+        borderLeft:     `1px solid ${borderColor}`,
+        borderRadius:   10,
+        transition:     'border-color 0.15s, background 0.15s',
+        boxShadow:      dropAllowed ? `0 0 0 2px ${hexToRgba(palette.primaryMagenta.hex, 0.25)}` : 'none',
+        overflow:       'hidden',
+        minHeight:      0,
       }}
     >
       <StageHeader

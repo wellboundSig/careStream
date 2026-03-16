@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { useOutletContext, useLocation } from 'react-router-dom';
 import { usePatients } from '../hooks/usePatients.js';
 import { usePipelineData } from '../hooks/usePipelineData.js';
@@ -79,11 +79,28 @@ function F2FCell({ referral }) {
 
 // ── Context menu ───────────────────────────────────────────────────────────────
 function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDismiss }) {
+  const menuRef = useRef(null);
   const isSN = row.division === 'Special Needs';
   const currentStage = row.current_stage;
   const validStages = currentStage
     ? ALL_STAGE_ORDER.filter((s) => canMoveFromTo(currentStage, s))
     : [];
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const pad = 8;
+    const { width, height } = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const left = x + width + pad > vw ? Math.max(pad, x - width) : x;
+    const top  = y + height + pad > vh ? Math.max(pad, y - height) : y;
+
+    el.style.left       = `${left}px`;
+    el.style.top        = `${top}px`;
+    el.style.visibility = 'visible';
+  }, [x, y]);
 
   const item = (label, icon, onClick, accent) => (
     <button onClick={onClick} style={{ width: '100%', padding: '8px 14px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 480, color: accent || palette.backgroundDark.hex, display: 'flex', alignItems: 'center', gap: 9, transition: 'background 0.1s' }}
@@ -104,7 +121,7 @@ function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDis
   return (
     <>
       <div onClick={onDismiss} style={{ position: 'fixed', inset: 0, zIndex: 9990 }} />
-      <div style={{ position: 'fixed', top: y, left: x, zIndex: 9991, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 10, overflow: 'hidden', minWidth: 220, boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.13)}` }}>
+      <div ref={menuRef} style={{ position: 'fixed', top: y, left: x, visibility: 'hidden', zIndex: 9991, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 10, overflow: 'hidden', minWidth: 220, maxWidth: 260, boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.13)}` }}>
         <div style={{ padding: '8px 14px 6px', borderBottom: `1px solid var(--color-border)` }}>
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>{row.patientName || row.patient_id}</p>
           {currentStage && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 1 }}>{currentStage}</p>}
@@ -517,10 +534,9 @@ export default function PatientList() {
                         onDoubleClick={() => openDrawer(buildPatient(patient), ref || null)}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          const x = Math.min(e.clientX, window.innerWidth - 250);
-                          const y = Math.min(e.clientY, window.innerHeight - 300);
                           setContextMenu({
-                            x, y,
+                            x: e.clientX,
+                            y: e.clientY,
                             patientId: patient.id,
                             currentStage: ref?.current_stage,
                             division: patient.division,

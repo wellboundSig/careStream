@@ -56,12 +56,16 @@ function InfoRow({ label, value, highlight }) {
 }
 
 function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
+  // forward = large primary CTA (one per panel), success = small green confirm,
+  // warning = yellow caution, danger = orange negative, default = grey utility
   const styles = {
-    default:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),  color: hexToRgba(palette.backgroundDark.hex, 0.7) },
-    primary:  { bg: palette.primaryMagenta.hex,                    color: palette.backgroundLight.hex },
-    success:  { bg: palette.accentGreen.hex,                       color: palette.backgroundLight.hex },
-    warning:  { bg: palette.accentOrange.hex,                      color: palette.backgroundLight.hex },
-    danger:   { bg: palette.primaryMagenta.hex,                    color: palette.backgroundLight.hex },
+    forward:  { bg: palette.accentGreen.hex,                              color: palette.backgroundLight.hex,   pad: '11px 14px', size: 13.5,  weight: 700 },
+    success:  { bg: hexToRgba(palette.accentGreen.hex, 0.13),             color: palette.accentGreen.hex,        pad: '8px 12px',  size: 12.5,  weight: 650 },
+    warning:  { bg: palette.highlightYellow.hex,                          color: palette.backgroundDark.hex,     pad: '8px 12px',  size: 12.5,  weight: 650 },
+    danger:   { bg: palette.accentOrange.hex,                             color: palette.backgroundLight.hex,    pad: '8px 12px',  size: 12.5,  weight: 650 },
+    default:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),          color: hexToRgba(palette.backgroundDark.hex, 0.65), pad: '7px 12px', size: 12, weight: 600 },
+    // legacy aliases kept for any inline callers
+    primary:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),          color: hexToRgba(palette.backgroundDark.hex, 0.65), pad: '7px 12px', size: 12, weight: 600 },
   };
   const s = styles[variant] || styles.default;
   return (
@@ -69,13 +73,15 @@ function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       style={{
-        width: '100%', padding: '8px 12px', borderRadius: 8,
-        fontSize: 12.5, fontWeight: 650, cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 6,
+        width: '100%', padding: s.pad, borderRadius: 8,
+        fontSize: s.size, fontWeight: s.weight,
+        cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 6,
         background: s.bg, color: s.color, border: 'none',
         textAlign: 'left', transition: 'filter 0.12s',
         opacity: disabled ? 0.45 : 1,
+        letterSpacing: variant === 'forward' ? '-0.01em' : 'normal',
       }}
-      onMouseEnter={(e) => !disabled && (e.currentTarget.style.filter = 'brightness(1.1)')}
+      onMouseEnter={(e) => !disabled && (e.currentTarget.style.filter = 'brightness(1.08)')}
       onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
     >
       {label}
@@ -86,9 +92,55 @@ function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
 function CheckItem({ label, done, onChange }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer', fontSize: 12.5, color: done ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex }}>
-      <input type="checkbox" checked={!!done} onChange={(e) => onChange?.(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, flexShrink: 0 }} />
+      <input type="checkbox" checked={!!done} onChange={(e) => onChange?.(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
       <span style={{ textDecoration: done ? 'line-through' : 'none' }}>{label}</span>
     </label>
+  );
+}
+
+// Collapsible checklist — default closed, never gates any action button
+function CollapsibleChecklist({ title, items, doneMap, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const count = items.filter((i) => !!doneMap[i.key]).length;
+  const pct   = items.length > 0 ? Math.round((count / items.length) * 100) : 0;
+  const allDone = pct === 100;
+  const barColor = allDone ? palette.accentGreen.hex : pct > 50 ? palette.highlightYellow.hex : palette.accentOrange.hex;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+          background: hexToRgba(palette.backgroundDark.hex, 0.04),
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.07))}
+        onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04))}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{title}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: allDone ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            {count}/{items.length}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div style={{ width: 40, height: 3, borderRadius: 2, background: hexToRgba(palette.backgroundDark.hex, 0.1), overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s' }} />
+          </div>
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+            <path d="M2 4.5l4 4 4-4" stroke={hexToRgba(palette.backgroundDark.hex, 0.4)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      </button>
+      {open && (
+        <div style={{ padding: '6px 4px 0' }}>
+          {items.map((item) => (
+            <CheckItem key={item.key} label={item.label} done={!!doneMap[item.key]} onChange={() => onToggle(item.key)} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -134,8 +186,8 @@ function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
       </PanelSection>
 
       <PanelSection title="Quick Actions">
-        <ActionBtn label="+ New Referral" variant="primary" onClick={onNewReferral} />
-        <ActionBtn label="Check Duplicates" onClick={checkDuplicates} />
+        <ActionBtn label="+ New Referral"   variant="forward"  onClick={onNewReferral} />
+        <ActionBtn label="Check Duplicates" variant="default"  onClick={checkDuplicates} />
       </PanelSection>
 
       {dupChecked && (
@@ -178,45 +230,46 @@ function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
 }
 
 // ── 2. Intake ─────────────────────────────────────────────────────────────────
+const INTAKE_DEMO_FIELDS = [
+  { key: 'first_name',      label: 'First name' },
+  { key: 'last_name',       label: 'Last name' },
+  { key: 'dob',             label: 'Date of birth' },
+  { key: 'phone_primary',   label: 'Primary phone' },
+  { key: 'address_street',  label: 'Street address' },
+  { key: 'medicaid_number', label: 'Medicaid number' },
+];
+
 function IntakePanel({ referrals, selectedReferral, onOpenTriage, onInitiateTransition }) {
-  const REQUIRED_FIELDS = ['first_name', 'last_name', 'dob', 'phone_primary', 'address_street', 'medicaid_number'];
   const p = selectedReferral?.patient;
-  const filled = p ? REQUIRED_FIELDS.filter((f) => p[f]).length : 0;
-  const pct = p ? Math.round((filled / REQUIRED_FIELDS.length) * 100) : 0;
+  const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [key, !!(p?.[key])]));
   const isSN = selectedReferral?.division === 'Special Needs';
 
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          <PanelSection title="Basic Demographics Completeness">
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Completion</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: pct === 100 ? palette.accentGreen.hex : pct > 50 ? palette.accentOrange.hex : palette.primaryMagenta.hex }}>{pct}%</span>
-              </div>
-              <div style={{ height: 6, borderRadius: 3, background: hexToRgba(palette.backgroundDark.hex, 0.08), overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? palette.accentGreen.hex : pct > 50 ? palette.accentOrange.hex : palette.primaryMagenta.hex, borderRadius: 3, transition: 'width 0.3s' }} />
-              </div>
-            </div>
-            {REQUIRED_FIELDS.map((f) => (
-              <CheckItem key={f} label={f.replace(/_/g, ' ')} done={!!(p?.[f])} />
-            ))}
+          <PanelSection title="Demographics">
+            <CollapsibleChecklist
+              title="Basic fields"
+              items={INTAKE_DEMO_FIELDS}
+              doneMap={doneMap}
+              onToggle={() => {}}
+            />
           </PanelSection>
 
-          <PanelSection title="Quick Actions">
+          <PanelSection title="Actions">
+            <ActionBtn
+              label="Continue to Eligibility Verification →"
+              variant="forward"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
+            />
             {isSN && (
               <ActionBtn
                 label="Open Triage Form"
-                variant="primary"
+                variant="default"
                 onClick={() => onOpenTriage?.(selectedReferral)}
               />
             )}
-            <ActionBtn
-              label="Move to Eligibility"
-              variant="success"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
-            />
           </PanelSection>
         </>
       )}
@@ -276,6 +329,7 @@ function EligibilityPanel({ referrals, selectedReferral }) {
   const [loadingCheck, setLoadingCheck] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_CHECK_FORM });
   const [flagValues, setFlagValues] = useState({});
   const isSN = selectedReferral?.division === 'Special Needs';
@@ -296,11 +350,13 @@ function EligibilityPanel({ referrals, selectedReferral }) {
   function openForm() {
     setFlagValues({});
     setForm({ ...EMPTY_CHECK_FORM });
+    setSaveError(null);
     setShowForm(true);
   }
 
   async function submitCheck() {
     setSaving(true);
+    setSaveError(null);
     try {
       const fields = buildCheckFields({
         referralId: selectedReferral.id,
@@ -315,6 +371,7 @@ function EligibilityPanel({ referrals, selectedReferral }) {
       setShowForm(false);
     } catch (err) {
       console.error('Check save failed', err);
+      setSaveError(err.message || 'Save failed. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -378,12 +435,12 @@ function EligibilityPanel({ referrals, selectedReferral }) {
                   return userNotes ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>{userNotes}</p> : null;
                 })()}
               </div>
-              <ActionBtn label="Log New Check" onClick={openForm} />
+              <ActionBtn label="Log New Check" variant="default" onClick={openForm} />
             </PanelSection>
           ) : (
             <PanelSection title="Eligibility">
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 10 }}>No check on record.</p>
-              <ActionBtn label="Log Eligibility Check" variant="primary" onClick={openForm} />
+              <ActionBtn label="Log Eligibility Check →" variant="forward" onClick={openForm} />
             </PanelSection>
           )}
 
@@ -460,9 +517,15 @@ function EligibilityPanel({ referrals, selectedReferral }) {
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>Logged by {appUserName}</p>
               </FormField>
 
+              {saveError && (
+                <p style={{ fontSize: 11.5, color: palette.primaryMagenta.hex, marginTop: 8, padding: '6px 9px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07) }}>
+                  {saveError}
+                </p>
+              )}
+
               <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                 <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '7px 0', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
-                <button onClick={submitCheck} disabled={saving} style={{ flex: 2, padding: '7px 0', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                <button onClick={submitCheck} disabled={saving} style={{ flex: 2, padding: '7px 0', borderRadius: 7, background: palette.accentGreen.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Saving…' : 'Save Check'}
                 </button>
               </div>
@@ -505,15 +568,18 @@ function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          <PanelSection title="Disenrollment Checklist">
-            {DISEN_CHECKLIST.map(({ key, label }) => (
-              <CheckItem key={key} label={label} done={!!checks[key]} onChange={() => toggle(key)} />
-            ))}
+          <PanelSection title="Discharge Steps">
+            <CollapsibleChecklist
+              title="Disenrollment checklist"
+              items={DISEN_CHECKLIST}
+              doneMap={checks}
+              onToggle={toggle}
+            />
           </PanelSection>
           <PanelSection title="Actions">
             <ActionBtn
-              label="Discharge Confirmed → Eligibility"
-              variant="success"
+              label="Discharge Confirmed → Eligibility Verification"
+              variant="forward"
               onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
             />
             <ActionBtn
@@ -719,14 +785,14 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
             )}
 
             <ActionBtn
-              label="Upload F2F Document"
-              variant="primary"
-              onClick={() => onOpenFiles?.(selectedReferral)}
+              label="Confirm → Clinical Intake RN Review"
+              variant="forward"
+              onClick={() => onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
             />
             <ActionBtn
-              label="Confrim and move to Clinical RN"
-              variant="success"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
+              label="Upload F2F Document"
+              variant="default"
+              onClick={() => onOpenFiles?.(selectedReferral)}
             />
           </PanelSection>
         </>
@@ -747,17 +813,17 @@ function ApproveButton({ enabled, onSelect }) {
         onClick={() => enabled && setOpen((o) => !o)}
         disabled={!enabled}
         style={{
-          width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none',
+          width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
           background: enabled ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
           color: enabled ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-          fontSize: 12.5, fontWeight: 650, cursor: enabled ? 'pointer' : 'not-allowed',
+          fontSize: 13.5, fontWeight: 700, cursor: enabled ? 'pointer' : 'not-allowed',
           textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          transition: 'filter 0.12s',
+          transition: 'filter 0.12s', letterSpacing: '-0.01em',
         }}
         onMouseEnter={(e) => enabled && (e.currentTarget.style.filter = 'brightness(1.08)')}
         onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
       >
-        {enabled ? 'Approve — send to…' : 'Check F2F / MD orders first'}
+        {enabled ? 'Approve — send to…' : 'Review F2F / MD orders first'}
         {enabled && (
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
             <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -813,19 +879,19 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             )}
           </PanelSection>
 
-          <PanelSection title="Document Access">
-            <ActionBtn label="Open Triage Form"     onClick={() => onOpenTriage?.(selectedReferral)} />
-            <ActionBtn label="View F2F / MD Orders" onClick={() => onOpenFiles?.(selectedReferral)} />
-          </PanelSection>
-
           <PanelSection title="Decision">
             <ApproveButton
               enabled={allDone}
               onSelect={(dest) => onInitiateTransition?.(selectedReferral, dest)}
             />
-            <ActionBtn label="Escalate to Conflict" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
-            <ActionBtn label="Place on Hold"        variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
-            <ActionBtn label="Mark NTUC"            variant="danger"  onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            <ActionBtn label="Escalate to Conflict" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
+            <ActionBtn label="Place on Hold"        variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+            <ActionBtn label="Mark NTUC"            variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+          </PanelSection>
+
+          <PanelSection title="Documents">
+            <ActionBtn label="Open Triage Form"     variant="default"  onClick={() => onOpenTriage?.(selectedReferral)} />
+            <ActionBtn label="View F2F / MD Orders" variant="default"  onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
         </>
       )}
@@ -959,9 +1025,9 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
           <PanelSection title="Actions">
             {mode === null && (
               <>
-                <ActionBtn label="Record Approval" variant="success" onClick={() => setMode('approval')} />
-                <ActionBtn label="Record Denial"   variant="danger"  onClick={() => setMode('denial')} />
-                <ActionBtn label="Place on Hold"   variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+                <ActionBtn label="Record Approval →" variant="forward"  onClick={() => setMode('approval')} />
+                <ActionBtn label="Record Denial"      variant="danger"   onClick={() => setMode('denial')} />
+                <ActionBtn label="Place on Hold"      variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
               </>
             )}
 
@@ -1117,11 +1183,17 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
           )}
 
           {/* Resolution — dropdown button */}
-          <PanelSection title="Resolution Actions">
+          <PanelSection title="Actions">
             <div style={{ position: 'relative', marginBottom: 6 }}>
               <button
                 onClick={() => setResolveOpen((o) => !o)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'filter 0.12s' }}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                  background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
+                  fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                  textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'filter 0.12s', letterSpacing: '-0.01em',
+                }}
                 onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
               >
@@ -1144,13 +1216,10 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
                 </div>
               )}
             </div>
-            <ActionBtn label="Escalate to Disenrollment" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Disenrollment Required')} />
-            <ActionBtn label="Mark NTUC"                 variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
-          </PanelSection>
-
-          <PanelSection title="Related Data">
-            <ActionBtn label="View Eligibility Check"  onClick={() => onOpenEligibility?.(selectedReferral)} />
-            <ActionBtn label="View Related Documents"  onClick={() => onOpenFiles?.(selectedReferral)} />
+            <ActionBtn label="Escalate to Disenrollment" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Disenrollment Required')} />
+            <ActionBtn label="Mark NTUC"                  variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            <ActionBtn label="View Eligibility Check"     variant="default"  onClick={() => onOpenEligibility?.(selectedReferral)} />
+            <ActionBtn label="View Related Documents"     variant="default"  onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
         </>
       )}
@@ -1195,22 +1264,32 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
               </span>
             )}
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.primaryMagenta.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
-            <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.backgroundDark.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
+            <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14 }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>Patient / parent contacted</span>
           </label>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
               onClick={() => contacted && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
               disabled={!contacted}
-              style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: contacted ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), color: contacted ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35), fontSize: 12, fontWeight: 650, cursor: contacted ? 'pointer' : 'not-allowed', transition: 'filter 0.12s' }}
+              style={{
+                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                background: contacted ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: contacted ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                fontSize: 13.5, fontWeight: 700, cursor: contacted ? 'pointer' : 'not-allowed',
+                textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s',
+              }}
               onMouseEnter={(e) => contacted && (e.currentTarget.style.filter = 'brightness(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
-              → Admin Confirmation
+              Continue to Admin Confirmation →
             </button>
             <button
               onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')}
-              style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', background: palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'filter 0.12s' }}
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',
+                background: palette.highlightYellow.hex, color: palette.backgroundDark.hex,
+                fontSize: 12.5, fontWeight: 650, cursor: 'pointer', textAlign: 'left', transition: 'filter 0.12s',
+              }}
               onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
               Place on Hold
@@ -1253,8 +1332,8 @@ function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
             <InfoRow label="Days in pipeline" value={Math.floor((Date.now() - new Date(selectedReferral.referral_date).getTime()) / 86400000) + 'd'} />
           </PanelSection>
           <PanelSection title="Decision">
-            <ActionBtn label="Accept → Pre-SOC" variant="success" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
-            <ActionBtn label="Decline → NTUC"   variant="danger"  onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            <ActionBtn label="Accept → Pre-SOC"  variant="forward"  onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
+            <ActionBtn label="Decline → NTUC"    variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
           </PanelSection>
         </>
       )}
@@ -1422,11 +1501,11 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
               onClick={handleDownloadPdf}
               disabled={pdfLoading}
               style={{
-                width: '100%', padding: '8px 0', marginBottom: 8,
+                width: '100%', padding: '7px 12px', marginBottom: 8,
                 borderRadius: 7, border: 'none',
-                background: palette.accentBlue.hex,
-                color: palette.backgroundLight.hex,
-                fontSize: 12, fontWeight: 650, cursor: pdfLoading ? 'wait' : 'pointer',
+                background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                fontSize: 12, fontWeight: 600, cursor: pdfLoading ? 'wait' : 'pointer',
                 transition: 'filter 0.12s',
               }}
               onMouseEnter={(e) => !pdfLoading && (e.currentTarget.style.filter = 'brightness(0.92)')}
@@ -1443,12 +1522,12 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
               <button
                 onClick={() => setConfirming(true)}
                 style={{
-                  width: '100%', padding: '8px 0', marginBottom: 8,
-                  borderRadius: 7, border: 'none',
+                  width: '100%', padding: '11px 14px', marginBottom: 8,
+                  borderRadius: 8, border: 'none',
                   background: palette.accentGreen.hex,
                   color: palette.backgroundLight.hex,
-                  fontSize: 12, fontWeight: 650, cursor: 'pointer',
-                  transition: 'filter 0.12s',
+                  fontSize: 13.5, fontWeight: 700, cursor: 'pointer', letterSpacing: '-0.01em',
+                  textAlign: 'left', transition: 'filter 0.12s',
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
@@ -1611,7 +1690,7 @@ function HoldPanel({ referrals, selectedReferral, resolveUser, onInitiateTransit
           <div style={{ marginTop: 10 }}>
             <ActionBtn
               label={releasing ? 'Releasing…' : 'Release → Return to Stage'}
-              variant="success"
+              variant="forward"
               onClick={handleRelease}
               disabled={!returnStage || releasing}
             />
@@ -1710,7 +1789,7 @@ function NtucPanel({ referrals }) {
       <PanelSection title="Actions">
         <ActionBtn
           label={exporting ? 'Exporting…' : 'Export NTUC Report'}
-          variant="primary"
+          variant="default"
           onClick={handleExport}
           disabled={exporting || referrals.length === 0}
         />

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -33,14 +33,24 @@ export default function ContextMenu({ x, y, referral, onSelect, onDismiss }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onDismiss]);
 
-  useEffect(() => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+  // Measure after DOM write but before paint — no visible jump
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const pad = 8;
+    const { width, height } = el.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    if (rect.right > vw) ref.current.style.left = `${vw - rect.width - 8}px`;
-    if (rect.bottom > vh) ref.current.style.top = `${y - rect.height}px`;
-  }, [y]);
+
+    // Horizontal: prefer right of cursor; flip left if it would overflow
+    const left = x + width + pad > vw ? Math.max(pad, x - width) : x;
+    // Vertical: prefer below cursor; flip above if it would overflow
+    const top  = y + height + pad > vh ? Math.max(pad, y - height) : y;
+
+    el.style.left       = `${left}px`;
+    el.style.top        = `${top}px`;
+    el.style.visibility = 'visible';
+  }, [x, y]);
 
   const mainDestinations = validDestinations.filter((s) => s !== 'Hold' && s !== 'NTUC');
   const globalDestinations = validDestinations.filter((s) => s === 'Hold' || s === 'NTUC');
@@ -51,10 +61,11 @@ export default function ContextMenu({ x, y, referral, onSelect, onDismiss }) {
     <div
       ref={ref}
       style={{
-        position: 'fixed',
-        top: y,
-        left: x,
-        zIndex: 9999,
+        position:   'fixed',
+        top:        y,
+        left:       x,
+        visibility: 'hidden', // revealed after useLayoutEffect measures and corrects position
+        zIndex:     9999,
         background: palette.backgroundLight.hex,
         border: `1px solid var(--color-border)`,
         borderRadius: 10,

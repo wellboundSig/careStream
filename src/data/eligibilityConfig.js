@@ -68,22 +68,30 @@ export function buildCheckFields({ referralId, patientId, authorId, form, flagVa
   if (isSN && form.exception_code) noteParts.push(`Exception Code: ${form.exception_code}`);
   if (form.result_summary) noteParts.push(form.result_summary);
 
-  return {
-    id: `ic_${Date.now()}`,
+  // medicare_part_a / medicare_part_b are Single Line Text fields in Airtable (not checkboxes),
+  // so they must receive a string "TRUE" rather than a boolean true. Omit when not active.
+  // medicaid_active IS a checkbox — send boolean true, omit when false.
+  // All other flag fields are checkboxes — boolean true is fine, false is omitted below.
+  const raw = {
     referral_id: referralId,
     patient_id: patientId,
     checked_by_id: authorId || 'unknown',
     check_source: form.check_source,
     check_date: new Date().toISOString(),
-    medicare_part_a: medicareActive,
-    medicare_part_b: medicareActive,
-    medicaid_active: medicaidActive,
+    ...(medicareActive ? { medicare_part_a: 'TRUE', medicare_part_b: 'TRUE' } : {}),
+    ...(medicaidActive ? { medicaid_active: true } : {}),
     managed_care_plan: (isManagedMedicare || isManagedMedicaid) ? (form.managed_care_plan || null) : null,
     managed_care_id: (isSN && form.exception_code) ? form.exception_code : null,
     result_summary: noteParts.join('\n') || null,
     created_at: new Date().toISOString(),
     ...Object.fromEntries(Object.entries(flagValues).map(([k, v]) => [k, v === 'true'])),
   };
+
+  // Strip boolean false and null/empty values — Airtable checkboxes reject explicit false
+  // and text fields reject null (treated as unchecked / empty by Airtable automatically).
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, v]) => v !== false && v !== null && v !== '')
+  );
 }
 
 export const EMPTY_CHECK_FORM = {

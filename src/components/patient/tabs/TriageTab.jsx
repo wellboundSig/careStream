@@ -366,16 +366,35 @@ export default function TriageTab({ patient, referral }) {
         filled_by_id: user?.id || 'unknown',
         updated_at: new Date().toISOString(),
       };
-      // Airtable checkbox fields reject explicit `false` — omit them and Airtable
-      // treats them as unchecked by default. Strip every boolean false from payload.
+      // Airtable checkbox fields only accept real booleans — never the strings "true"/"false".
+      // Normalize first, then strip false (Airtable treats missing checkbox as unchecked).
       const fields = Object.fromEntries(
-        Object.entries(rawFields).filter(([, v]) => v !== false)
+        Object.entries(rawFields)
+          .map(([k, v]) => {
+            if (v === 'true')  return [k, true];
+            if (v === 'false') return [k, false];
+            return [k, v];
+          })
+          .filter(([, v]) => v !== false)
       );
       if (triageRecordId) {
         await updateFn(triageRecordId, fields);
       } else {
-        const created = await createFn({ ...fields, created_at: new Date().toISOString() });
+        // Generate a unique primary-field id for the new triage record
+        const prefix = triageType === 'pediatric' ? 'tri_p' : 'tri_a';
+        const newId = `${prefix}_${Date.now()}`;
+        const created = await createFn({ id: newId, ...fields, created_at: new Date().toISOString() });
         setTriageRecordId(created.id);
+      }
+      // Sync services_needed → referral.services_requested when the referral has none yet.
+      // This keeps the pipeline card's service tags populated from the triage assessment.
+      const existingServices = referral?.services_requested;
+      const needsServiceSync =
+        draft.services_needed?.length > 0 &&
+        referral?._id &&
+        (!existingServices || (Array.isArray(existingServices) && existingServices.length === 0));
+      if (needsServiceSync) {
+        await updateReferral(referral._id, { services_requested: draft.services_needed }).catch(() => {});
       }
       // If a physician was newly linked, sync to the referral record
       if (pcp_physician_id && pcp_physician_id !== triageData.pcp_physician_id && referral?._id) {
