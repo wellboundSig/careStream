@@ -41,6 +41,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Team', path: '/team', icon: UsersIcon },
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
+      { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
   },
@@ -605,6 +606,14 @@ function ShieldIcon({ size = 16, color }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M9 12l2 2 4-4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function DataToolsIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M18 20V10M12 20V4M6 20v-6" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }

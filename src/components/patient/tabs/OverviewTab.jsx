@@ -294,8 +294,8 @@ function EditableReferralPhysician({ referral, onSave }) {
           compact
         />
       ) : (
-        <p style={{ fontSize: 13, color: (physicianName && physicianName !== '—') ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: (physicianName && physicianName !== '—') ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : ((physicianName && physicianName !== '—') ? `Dr. ${physicianName}` : empty)}
+        <p style={{ fontSize: 13, color: physicianName && physicianName !== '—' ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: physicianName && physicianName !== '—' ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : (physicianName && physicianName !== '—' ? `Dr. ${physicianName}` : empty)}
         </p>
       )}
     </div>

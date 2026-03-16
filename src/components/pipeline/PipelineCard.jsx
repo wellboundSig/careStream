@@ -25,18 +25,30 @@ const PRIORITY_COLORS = {
   Low:      hexToRgba(palette.backgroundDark.hex, 0.25),
 };
 
-function daysInStage(updatedAt) {
-  if (!updatedAt) return 0;
-  return Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000);
+function daysSince(ts) {
+  if (!ts) return null;
+  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+}
+
+function fmtDays(n) {
+  if (n === null || n === undefined) return '—';
+  return `${Math.max(1, n)}d`;
 }
 
 export default function PipelineCard({ referral, isDragging, onDragStart, onDragEnd, onContextMenu }) {
   const { open } = usePatientDrawer();
   const [hovered, setHovered] = useState(false);
 
-  const days  = daysInStage(referral.updated_at);
-  const f2fColor = F2F_URGENCY[referral.f2f_urgency] || null;
-  const isOverdue = days > 14;
+  // Days since the referral was first submitted (Lead Entry clock — never resets)
+  const daysEntry = daysSince(referral.referral_date);
+
+  // Days in the CURRENT stage — resets on every stage change.
+  // stage_entered_at is set by all transition code paths.
+  // Falls back to updated_at for records that predate this field.
+  const daysStage = daysSince(referral.stage_entered_at || referral.updated_at);
+
+  const f2fColor  = F2F_URGENCY[referral.f2f_urgency] || null;
+  const stageOverdue = daysStage !== null && daysStage > 14;
 
   function handleClick(e) {
     if (!isDragging) {
@@ -99,20 +111,37 @@ export default function PipelineCard({ referral, isDragging, onDragStart, onDrag
         <DivisionBadge division={referral.division} size="small" />
       </div>
 
-      {/* Days + indicators */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span
-          title={isOverdue ? `${days} days in this stage — overdue` : `${days} days in current stage`}
-          style={{
-            fontSize: 11,
-            fontWeight: isOverdue ? 650 : 400,
-            color: isOverdue
-              ? palette.accentOrange.hex
-              : hexToRgba(palette.backgroundDark.hex, 0.4),
-          }}
-        >
-          {days === 0 ? 'Today' : `${days}d here`}
-        </span>
+      {/* Time clocks + indicators */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          {/* Clock 1: days since lead entry (never resets) */}
+          <span
+            title={`${fmtDays(daysEntry)} since lead entry`}
+            style={{
+              fontSize: 10.5,
+              color: hexToRgba(palette.backgroundDark.hex, 0.38),
+              fontWeight: 400,
+            }}
+          >
+            {fmtDays(daysEntry)} since entry
+          </span>
+          <span style={{ fontSize: 10, color: hexToRgba(palette.backgroundDark.hex, 0.2) }}>·</span>
+          {/* Clock 2: days in current stage (resets on transition) */}
+          <span
+            title={stageOverdue
+              ? `${fmtDays(daysStage)} in "${referral.current_stage}" — overdue (>14d)`
+              : `${fmtDays(daysStage)} in current stage`}
+            style={{
+              fontSize: 10.5,
+              fontWeight: stageOverdue ? 650 : 400,
+              color: stageOverdue
+                ? palette.accentOrange.hex
+                : hexToRgba(palette.backgroundDark.hex, 0.38),
+            }}
+          >
+            {fmtDays(daysStage)} in stage
+          </span>
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           {referral.priority && referral.priority !== 'Normal' && (

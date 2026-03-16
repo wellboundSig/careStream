@@ -9,6 +9,7 @@ import { getConflictsByReferral } from '../../api/conflicts.js';
 import { updateReferral } from '../../api/referrals.js';
 import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
+import { recordTransition } from '../../utils/recordTransition.js';
 import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../hooks/useLookups.js';
@@ -1356,16 +1357,20 @@ function PreSocPanel({ selectedReferral }) {
     setSaving(true);
     setError(null);
     try {
+      const enteredAt = new Date().toISOString();
       await updateReferral(selectedReferral._id, {
         current_stage: 'SOC Scheduled',
         soc_scheduled_date: socDate,
       });
+      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
       await createEpisode({
         patient_id: selectedReferral.patient_id,
         referral_id: selectedReferral._id,
         soc_date: socDate,
         episode_start: socDate,
       });
+      recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: null });
       triggerDataRefresh();
     } catch (err) {
       setError(err.message || 'Failed to schedule SOC');
@@ -1468,10 +1473,14 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
     setOnboarding(true);
     setOnboardError(null);
     try {
+      const enteredAt = new Date().toISOString();
       await updateReferral(selectedReferral._id, {
         current_stage: 'SOC Completed',
         soc_completed_date: new Date().toISOString().split('T')[0],
       });
+      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
       triggerDataRefresh();
     } catch (err) {
       setOnboardError(err.message || 'Failed to update patient');

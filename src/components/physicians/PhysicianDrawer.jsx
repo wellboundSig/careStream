@@ -9,12 +9,22 @@ const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'patients', label: 'P
 export default function PhysicianDrawer({ physician, onClose }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [animated, setAnimated] = useState(false);
+  // Only track the fields that can be toggled from inside the drawer.
+  // Everything else reads directly from the physician prop so there's no stale-state flash.
+  const [enrollmentOverride, setEnrollmentOverride] = useState(null);
   const { referrals, stats, loading } = usePhysicianData(physician);
 
   useEffect(() => {
-    if (physician) { setActiveTab('overview'); const t = requestAnimationFrame(() => setAnimated(true)); return () => cancelAnimationFrame(t); }
-    else { setAnimated(false); }
-  }, [physician?.id]);
+    if (physician) {
+      setEnrollmentOverride(null); // reset overrides for new physician
+      setActiveTab('overview');
+      setAnimated(false); // brief reset so the slide-in re-fires
+      const t = requestAnimationFrame(() => setAnimated(true));
+      return () => cancelAnimationFrame(t);
+    } else {
+      setAnimated(false);
+    }
+  }, [physician?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!physician) return;
@@ -25,8 +35,14 @@ export default function PhysicianDrawer({ physician, onClose }) {
 
   if (!physician) return null;
 
-  const isPecos = physician.is_pecos_enrolled === true || physician.is_pecos_enrolled === 'true';
-  const isOpra = physician.is_opra_enrolled === true || physician.is_opra_enrolled === 'true';
+  function handleUpdated(fields) {
+    setEnrollmentOverride((prev) => ({ ...(prev || {}), ...fields }));
+  }
+
+  const isPecos = (enrollmentOverride?.is_pecos_enrolled ?? physician.is_pecos_enrolled) === true
+    || (enrollmentOverride?.is_pecos_enrolled ?? physician.is_pecos_enrolled) === 'true';
+  const isOpra  = (enrollmentOverride?.is_opra_enrolled ?? physician.is_opra_enrolled) === true
+    || (enrollmentOverride?.is_opra_enrolled ?? physician.is_opra_enrolled) === 'true';
 
   return (
     <>
@@ -69,7 +85,7 @@ export default function PhysicianDrawer({ physician, onClose }) {
           })}
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {activeTab === 'overview' && <div style={{ overflowY: 'auto' }}><PhysicianOverviewTab physician={physician} /></div>}
+          {activeTab === 'overview' && <div style={{ overflowY: 'auto' }}><PhysicianOverviewTab physician={physician} onUpdated={handleUpdated} /></div>}
           {activeTab === 'patients' && <PhysicianPatientsTab referrals={referrals} loading={loading} />}
         </div>
       </div>

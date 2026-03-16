@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getPhysicians, createPhysician } from '../../api/physicians.js';
+import { createPhysician } from '../../api/physicians.js';
 import { clearLookupsCache } from '../../hooks/useLookups.js';
-import { invalidatePhysicianPickerCache } from '../../components/physicians/PhysicianPicker.jsx';
+import { usePhysicians, refreshPhysicians } from '../../hooks/usePhysicians.js';
 import airtable from '../../api/airtable.js';
 import PhysicianDrawer from '../../components/physicians/PhysicianDrawer.jsx';
 import LoadingState from '../../components/common/LoadingState.jsx';
@@ -71,7 +71,7 @@ function AddPhysicianModal({ onClose, onAdded }) {
       const rec = await createPhysician(fields);
       const newPhy = { _id: rec.id, ...rec.fields };
       clearLookupsCache();
-      invalidatePhysicianPickerCache();
+      refreshPhysicians();
       onAdded(newPhy);
     } catch (e) {
       setError(e.message || 'Failed to save. Please try again.');
@@ -146,32 +146,32 @@ function StatusPill({ value, label }) {
 }
 
 export default function Physicians() {
-  const [physicians, setPhysicians] = useState([]);
+  const { physicians, loading: physLoading } = usePhysicians();
   const [refCounts, setRefCounts] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [refLoading, setRefLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
   const [showAddModal, setShowAddModal] = useState(false);
 
+  const loading = physLoading || refLoading;
+
+  // Ref counts are lightweight — fetch separately, doesn't block physician list
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getPhysicians(),
-      airtable.fetchAll('Referrals', { fields: ['physician_id'] }),
-    ]).then(([phys, refs]) => {
-      setPhysicians(phys.map((r) => ({ _id: r.id, ...r.fields })));
-      const map = {};
-      refs.forEach((r) => { const pid = r.fields.physician_id; if (pid) map[pid] = (map[pid] || 0) + 1; });
-      setRefCounts(map);
-    }).catch(() => {}).finally(() => setLoading(false));
+    airtable.fetchAll('Referrals', { fields: ['physician_id'] })
+      .then((refs) => {
+        const map = {};
+        refs.forEach((r) => { const pid = r.fields.physician_id; if (pid) map[pid] = (map[pid] || 0) + 1; });
+        setRefCounts(map);
+      })
+      .catch(() => {})
+      .finally(() => setRefLoading(false));
   }, []);
 
   function handlePhysicianAdded(newPhy) {
-    setPhysicians((prev) =>
-      [...prev, newPhy].sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''))
-    );
+    refreshPhysicians();
+    clearLookupsCache();
     setShowAddModal(false);
   }
 

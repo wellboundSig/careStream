@@ -12,6 +12,9 @@ import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
+import { prefetchClinicians } from '../../hooks/useEsperClinicians.js';
+import { prefetchPhysicians } from '../../hooks/usePhysicians.js';
+import { prefetchLookups } from '../../hooks/useLookups.js';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -29,6 +32,7 @@ function getBreadcrumbs(pathname) {
     '/team': ['System', 'Team'],
     '/admin/users': ['System', 'User Management'],
     '/admin/settings': ['System', 'Settings'],
+    '/admin/data-tools': ['System', 'Data Tools'],
   };
   if (pathname.startsWith('/modules/')) {
     const slug = pathname.replace('/modules/', '');
@@ -54,6 +58,15 @@ export default function AppShell() {
     setRoleMode(mode);
     localStorage.setItem('carestream_rolemode', mode);
   }
+
+  // Warm all background caches as soon as the shell mounts.
+  // Order matters: physicians first (sessionStorage — near-instant on repeat visits)
+  // so that prefetchLookups can reuse the physician map without a duplicate network call.
+  useEffect(() => {
+    prefetchClinicians();
+    prefetchPhysicians();
+    prefetchLookups();
+  }, []);
 
   // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)
   useEffect(() => {

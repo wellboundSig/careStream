@@ -8,6 +8,7 @@ export function usePhysicianData(physician) {
 
   useEffect(() => {
     if (!physician?.id) return;
+    setReferrals([]); // clear stale data immediately so stats don't show from previous physician
     setLoading(true);
 
     getReferrals({ filterByFormula: `{physician_id} = "${physician.id}"` })

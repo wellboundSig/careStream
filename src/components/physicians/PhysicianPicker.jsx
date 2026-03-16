@@ -9,20 +9,19 @@
  *   compact       bool          — tighter layout for use inside forms
  */
 import { useState, useEffect, useRef } from 'react';
-import { getPhysicians, createPhysician } from '../../api/physicians.js';
+import { createPhysician } from '../../api/physicians.js';
 import { clearLookupsCache } from '../../hooks/useLookups.js';
+import {
+  prefetchPhysicians,
+  refreshPhysicians,
+  getPhysiciansCache,
+  subscribeToPhysicians,
+} from '../../hooks/usePhysicians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
-// Module-level cache — avoids re-fetching across multiple mounts
-let _cache = null;
-async function fetchPhysiciansCached() {
-  if (_cache) return _cache;
-  const recs = await getPhysicians();
-  _cache = recs.map((r) => ({ _id: r.id, ...r.fields }));
-  return _cache;
-}
+// Kept for backward-compat — any existing callers of this still work.
 export function invalidatePhysicianPickerCache() {
-  _cache = null;
+  refreshPhysicians();
 }
 
 const BASE_INPUT = {
@@ -86,21 +85,33 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Load physicians
+  // Load physicians from shared cache (populated by prefetchPhysicians in AppShell)
   useEffect(() => {
-    fetchPhysiciansCached().then((list) => {
+    function applyList(list) {
       setPhysicians(list);
-      // Restore selected from physicianId
       if (physicianId) {
         const found = list.find((p) => p.id === physicianId || p._id === physicianId);
         if (found) { setSelected(found); setMode('selected'); }
         else if (physicianName) {
-          // Physician ID set but not in system — show fallback name as text
           setSelected({ _notInDb: true, display: physicianName });
           setMode('selected');
         }
       }
-    }).catch(() => {});
+    }
+
+    const cached = getPhysiciansCache();
+    if (cached) {
+      applyList(cached);
+    } else {
+      prefetchPhysicians();
+    }
+
+    // Subscribe so we update when the background fetch completes
+    const unsub = subscribeToPhysicians(() => {
+      const latest = getPhysiciansCache();
+      if (latest) applyList(latest);
+    });
+    return unsub;
   }, [physicianId, physicianName]);
 
   // Close dropdown on outside click
@@ -177,8 +188,8 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
       };
       const rec = await createPhysician(fields);
       const newPhy = { _id: rec.id, ...rec.fields };
-      // Bust caches so the new physician shows everywhere
-      _cache = null;
+      // Bust shared cache so the new physician shows everywhere
+      refreshPhysicians();
       clearLookupsCache();
       setPhysicians((prev) => [...prev, newPhy].sort((a, b) =>
         (a.last_name || '').localeCompare(b.last_name || '')

@@ -6,7 +6,7 @@ import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { updateReferral } from '../api/referrals.js';
-import { saveTransitionNote } from '../utils/saveTransitionNote.js';
+import { recordTransition } from '../utils/recordTransition.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import StageRules from '../data/StageRules.json';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
@@ -361,6 +361,8 @@ export default function PatientList() {
   }
 
   async function executeTransition(referral, patient, toStage, note) {
+    const fromStage = referral.current_stage;
+    const enteredAt = new Date().toISOString();
     setTransitioning(true);
     setPendingTransition(null);
     const updateFields = { current_stage: toStage };
@@ -368,7 +370,9 @@ export default function PatientList() {
     if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     try {
       await updateReferral(referral._id, updateFields);
-      if (note?.trim()) await saveTransitionNote({ referral, fromStage: referral.current_stage, toStage, note, authorId: appUserId });
+      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
       triggerDataRefresh();
       showToast(`Moved to ${toStage}`);
     } catch {

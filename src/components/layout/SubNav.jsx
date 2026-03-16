@@ -47,8 +47,9 @@ export const PIN_GROUPS = [
   {
     label: 'System',
     items: [
-      { label: 'Team',     path: '/team' },
-      { label: 'Settings', path: '/admin/settings' },
+      { label: 'Team',       path: '/team' },
+      { label: 'Data Tools', path: '/admin/data-tools' },
+      { label: 'Settings',   path: '/admin/settings' },
     ],
   },
 ];

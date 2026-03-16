@@ -4,7 +4,7 @@ import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { updateReferral } from '../api/referrals.js';
-import { saveTransitionNote } from '../utils/saveTransitionNote.js';
+import { recordTransition } from '../utils/recordTransition.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import StageRules from '../data/StageRules.json';
 
@@ -118,10 +118,11 @@ export default function PipelineBoard() {
   }, []);
 
   async function executeTransition(referral, toStage, note) {
-    const fromStage = referral.current_stage;
+    const fromStage  = referral.current_stage;
+    const enteredAt  = new Date().toISOString();
     setTransitioning(true);
     setLocalReferrals((prev) =>
-      prev.map((r) => (r._id === referral._id ? { ...r, current_stage: toStage } : r)),
+      prev.map((r) => (r._id === referral._id ? { ...r, current_stage: toStage, stage_entered_at: enteredAt } : r)),
     );
     setPendingTransition(null);
 
@@ -131,14 +132,15 @@ export default function PipelineBoard() {
 
     try {
       await updateReferral(referral._id, updateFields);
-      if (note?.trim()) {
-        await saveTransitionNote({ referral, fromStage, toStage, note, authorId: appUserId });
-        triggerDataRefresh();
-      }
+      // Best-effort fire-and-forget — silently ignored until fields exist in Airtable
+      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
+      // Do NOT call triggerDataRefresh() here — the optimistic setLocalReferrals above
+      // already moves the card. A global refresh causes loading=true → white screen.
       showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
     } catch {
       setLocalReferrals((prev) =>
-        prev.map((r) => (r._id === referral._id ? { ...r, current_stage: fromStage } : r)),
+        prev.map((r) => (r._id === referral._id ? { ...r, current_stage: fromStage, stage_entered_at: referral.stage_entered_at } : r)),
       );
       showToast(`Failed to move ${referral.patientName || referral.patient_id}`, 'error');
     } finally {

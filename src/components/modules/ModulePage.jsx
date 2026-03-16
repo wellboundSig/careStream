@@ -8,7 +8,7 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { STAGE_META } from '../../data/stageConfig.js';
 import StageRules from '../../data/StageRules.json';
 import { updateReferral } from '../../api/referrals.js';
-import { saveTransitionNote } from '../../utils/saveTransitionNote.js';
+import { recordTransition } from '../../utils/recordTransition.js';
 import { getFilesForPatients } from '../../api/patientFiles.js';
 import airtable from '../../api/airtable.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
@@ -241,21 +241,20 @@ export default function ModulePage({ stage }) {
 
   async function executeTransition(referral, toStage, note) {
     const fromStage = referral.current_stage;
+    const enteredAt = new Date().toISOString();
     setTransitioning(true);
     setPendingTransition(null);
     const updateFields = { current_stage: toStage };
     if (toStage === 'Hold') {
       if (note) updateFields.hold_reason = note;
-      // Record where to return when the hold is released
       updateFields.hold_return_stage = fromStage;
     }
     if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     try {
       await updateReferral(referral._id, updateFields);
-      // Persist the transition note on the patient's profile
-      if (note?.trim()) {
-        await saveTransitionNote({ referral, fromStage, toStage, note, authorId: appUserId });
-      }
+      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
       triggerDataRefresh();
       setSelectedReferral(null);
       showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);

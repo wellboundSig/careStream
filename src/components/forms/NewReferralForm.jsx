@@ -4,7 +4,7 @@ import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { getMarketers } from '../../api/marketers.js';
 import { getReferralSources } from '../../api/referralSources.js';
 import { createPatient } from '../../api/patients.js';
-import { createReferral } from '../../api/referrals.js';
+import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -291,6 +291,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ? form.referral_source_other.trim()
         : form.referral_source_id;
 
+      const referralDate = new Date().toISOString();
       const referralFields = {
         id: referralCustomId,
         patient_id: createdPatientId,
@@ -299,15 +300,19 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         current_stage: 'Lead Entry',
         division: form.division,
         priority: form.priority,
-        referral_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        referral_date: referralDate,
+        created_at: referralDate,
+        updated_at: referralDate,
         ...(form.services_requested.length && { services_requested: form.services_requested }),
         ...(appUserId && { intake_owner_id: appUserId }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
       };
 
       const referralRecord = await createReferral(referralFields);
+      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      if (referralRecord?._id) {
+        updateReferral(referralRecord._id, { stage_entered_at: referralDate }).catch(() => {});
+      }
 
       // Save initial notes as a Note record (non-blocking — don't fail the submission if this fails)
       if (form.initial_notes?.trim()) {
@@ -329,6 +334,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       });
       onClose();
     } catch (err) {
+      console.error('[NewReferralForm] Submission failed:', err);
       setError(`Submission failed: ${err.message}`);
     } finally {
       setSubmitting(false);
@@ -586,16 +592,19 @@ export default function NewReferralForm({ onClose, onSuccess }) {
             </FieldGroup>
           )}
 
-          {/* Global error */}
+        </form>
+
+        {/* Footer — sticky, always visible even on mobile with keyboard up */}
+        <div style={{ padding: '14px 24px 18px', borderTop: `1px solid var(--color-border)`, flexShrink: 0 }}>
+
+          {/* Error banner — lives in the footer so it's never scrolled out of view */}
           {error && (
-            <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
+            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
               {error}
             </div>
           )}
-        </form>
 
-        {/* Footer */}
-        <div style={{ padding: '14px 24px 18px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
             Creates patient + starts a Lead Entry referral
           </p>
@@ -619,6 +628,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               {submitting ? 'Creating…' : 'Create Referral'}
             </button>
           </div>
+          </div> {/* end flex row */}
         </div>
       </div>
     </div>

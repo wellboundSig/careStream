@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useTheme } from '../utils/ThemeContext.jsx';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePreferences } from '../context/UserPreferencesContext.jsx';
 import { PIN_GROUPS } from '../components/layout/SubNav.jsx';
+import { refreshClinicians, getCliniciansLastFetched } from '../hooks/useEsperClinicians.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
 
@@ -138,6 +140,24 @@ export default function Settings() {
   const { isDark, toggleTheme } = useTheme();
   const { appUser, appUserName } = useCurrentAppUser();
   const { prefs, save, pinPage, unpinPage, MAX_PINS } = usePreferences();
+
+  const [clinRefreshing, setClinRefreshing] = useState(false);
+  const [clinStatus, setClinStatus]         = useState(null); // 'success' | 'error'
+  const [clinLastFetched, setClinLastFetched] = useState(() => getCliniciansLastFetched());
+
+  async function handleRefreshClinicians() {
+    setClinRefreshing(true);
+    setClinStatus(null);
+    try {
+      await refreshClinicians();
+      setClinStatus('success');
+      setClinLastFetched(getCliniciansLastFetched());
+    } catch {
+      setClinStatus('error');
+    } finally {
+      setClinRefreshing(false);
+    }
+  }
 
   return (
     <div style={{
@@ -337,6 +357,44 @@ export default function Settings() {
         </SettingRow>
         <div style={{ paddingTop: 12 }}>
         </div>
+      </Section>
+
+      {/* ── Clinician Data ── */}
+      <Section
+        title="Clinician Data"
+        description="Clinician and device records are fetched from Esper and cached for the day. The cache automatically resets at midnight. Use the button below if assignments changed and you need the latest data immediately."
+      >
+        <SettingRow
+          label="Esper device cache"
+          hint={clinLastFetched
+            ? `Last fetched ${new Date(clinLastFetched).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${new Date(clinLastFetched).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+            : 'Not yet loaded this session'}
+        >
+          <button
+            onClick={handleRefreshClinicians}
+            disabled={clinRefreshing}
+            style={{
+              padding: '7px 16px', borderRadius: 8, border: 'none', cursor: clinRefreshing ? 'not-allowed' : 'pointer',
+              background: clinRefreshing ? hexToRgba(palette.backgroundDark.hex, 0.07) : hexToRgba(palette.backgroundDark.hex, 0.08),
+              color: clinRefreshing ? hexToRgba(palette.backgroundDark.hex, 0.35) : palette.backgroundDark.hex,
+              fontSize: 12.5, fontWeight: 650, transition: 'filter 0.12s', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => !clinRefreshing && (e.currentTarget.style.filter = 'brightness(0.92)')}
+            onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+          >
+            {clinRefreshing ? 'Refreshing…' : '↺ Refresh Now'}
+          </button>
+        </SettingRow>
+        {clinStatus === 'success' && (
+          <p style={{ fontSize: 12, color: palette.accentGreen.hex, marginTop: 8, fontWeight: 600 }}>
+            ✓ Clinician data refreshed successfully.
+          </p>
+        )}
+        {clinStatus === 'error' && (
+          <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginTop: 8, fontWeight: 600 }}>
+            Failed to refresh — check your connection and try again.
+          </p>
+        )}
       </Section>
 
       {/* ── Data & Privacy (stub) ── */}
