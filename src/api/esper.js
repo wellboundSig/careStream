@@ -1,10 +1,11 @@
 // In development, requests go through Vite's proxy (/esper-proxy → ricct-api.esper.cloud)
-// In production, use the direct URL (requires a server-side proxy or Worker)
+// In production, requests go through the Cloudflare Worker (VITE_ESPER_BASE = worker URL)
+// The worker handles auth — no API key is sent from the browser.
 const BASE = import.meta.env.DEV
   ? '/esper-proxy/api'
   : import.meta.env.VITE_ESPER_BASE;
-const KEY  = import.meta.env.VITE_ESPER_API_KEY;
-const EID  = import.meta.env.VITE_ESPER_ENTERPRISE_ID;
+
+const EID = import.meta.env.VITE_ESPER_ENTERPRISE_ID;
 
 const DISCIPLINES = ['PT','OT','PTA','OTA','RN','LPN','HHA','SLP','ST','ABA','LCSW','MSW','NP','PA','MD','CHHA','OTR','CNA'];
 
@@ -14,38 +15,42 @@ function parseTags(tags) {
   for (const tag of safeTags) {
     const t = (tag || '').trim();
     if (!t) continue;
-    // A zip tag would be exactly 5 digits AND labelled "zip:" prefix, or we could detect it if a 6th tag is added
-    // Currently known tags: Name, Discipline, Worker ID (5-digit number)
-    // Future: add a "zip:XXXXX" tag in Esper for home base zip
     if (t.toLowerCase().startsWith('zip:')) { zip = t.slice(4).trim(); continue; }
-    if (/^\d{5}$/.test(t)) { workerId = t; continue; }   // 5-digit = worker ID
+    if (/^\d{5}$/.test(t)) { workerId = t; continue; }
     if (DISCIPLINES.includes(t.toUpperCase())) { discipline = t.toUpperCase(); continue; }
     if (/^[A-Za-z\s'-]+$/.test(t) && t.length > 1) { name = t; continue; }
-    if (!workerId) workerId = t; // fallback: anything else could be worker ID
+    if (!workerId) workerId = t;
   }
   return { name, discipline, workerId, zip };
 }
 
-// Fetch all device location records — lat/lon keyed by device ID
+// Dev uses the Vite proxy (which adds no auth header — Esper allows this in dev).
+// Prod uses the worker (which adds the Bearer token server-side).
+function fetchHeaders() {
+  if (import.meta.env.DEV) {
+    const key = import.meta.env.VITE_ESPER_API_KEY;
+    return key ? { Authorization: `Bearer ${key}` } : {};
+  }
+  return {};
+}
+
 export async function getDeviceLocations() {
-  const locationMap = {}; // device_id → { lat, lon, lastSeen }
+  const locationMap = {};
   let offset = 0;
   const limit = 100;
   let hasMore = true;
 
   while (hasMore) {
     const url = `${BASE}/v1/enterprise/${EID}/report/location/?limit=${limit}&offset=${offset}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${KEY}` } });
+    const res = await fetch(url, { headers: fetchHeaders() });
     if (!res.ok) break;
     const data = await res.json();
 
     for (const loc of data.results || []) {
       if (!loc.latitude || !loc.longitude) continue;
-      // Extract device ID from the device URL
       const match = (loc.device || '').match(/device\/([^/]+)\//);
       if (!match) continue;
       const deviceId = match[1];
-      // Keep the most recent entry per device
       if (!locationMap[deviceId] || new Date(loc.last_updated_on) > new Date(locationMap[deviceId].lastSeen)) {
         locationMap[deviceId] = {
           lat: parseFloat(loc.latitude),
@@ -70,7 +75,7 @@ export async function getEsperClinicians() {
 
   while (hasMore) {
     const url = `${BASE}/enterprise/${EID}/device/?limit=${limit}&offset=${offset}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${KEY}` } });
+    const res = await fetch(url, { headers: fetchHeaders() });
     if (!res.ok) throw new Error(`Esper API ${res.status}`);
     const data = await res.json();
 
@@ -83,7 +88,7 @@ export async function getEsperClinicians() {
         name,
         discipline,
         workerId,
-        zip,          // populated if a "zip:XXXXX" tag is added in Esper
+        zip,
         online: dev.status === 1,
       });
     }

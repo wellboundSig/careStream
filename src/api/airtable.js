@@ -1,8 +1,13 @@
-const BASE_URL = `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`;
-const TOKEN = import.meta.env.VITE_AIRTABLE_TOKEN;
+// Dev:  calls Airtable directly (fast, uses token from .env)
+// Prod: routes through Cloudflare Worker (no token exposed in browser)
+const BASE_URL = import.meta.env.DEV
+  ? `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`
+  : import.meta.env.VITE_AIRTABLE_WORKER_URL;
 
-function headers() {
-  return { Authorization: `Bearer ${TOKEN}` };
+const TOKEN = import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
+
+function authHeader() {
+  return TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 }
 
 async function fetchAll(tableName, params = {}) {
@@ -24,7 +29,7 @@ async function fetchAll(tableName, params = {}) {
       params.fields.forEach((f, i) => url.searchParams.set(`fields[${i}]`, f));
     }
 
-    const res = await fetch(url.toString(), { headers: headers() });
+    const res = await fetch(url.toString(), { headers: authHeader() });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -42,7 +47,7 @@ async function fetchAll(tableName, params = {}) {
 async function fetchOne(tableName, recordId) {
   const res = await fetch(
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
-    { headers: headers() }
+    { headers: authHeader() }
   );
   if (!res.ok) throw new Error(`Record not found: ${recordId}`);
   return res.json();
@@ -51,7 +56,7 @@ async function fetchOne(tableName, recordId) {
 async function create(tableName, fields) {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
     method: 'POST',
-    headers: { ...headers(), 'Content-Type': 'application/json' },
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) {
@@ -66,7 +71,7 @@ async function update(tableName, recordId, fields) {
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
     {
       method: 'PATCH',
-      headers: { ...headers(), 'Content-Type': 'application/json' },
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields }),
     }
   );
@@ -80,7 +85,7 @@ async function update(tableName, recordId, fields) {
 async function remove(tableName, recordId) {
   const res = await fetch(
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
-    { method: 'DELETE', headers: headers() }
+    { method: 'DELETE', headers: authHeader() }
   );
   if (!res.ok) throw new Error('Delete failed');
   return res.json();
