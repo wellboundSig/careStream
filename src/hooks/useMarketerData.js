@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
 import { getMarketerFacilities, getFacilities } from '../api/marketerFacilities.js';
+import airtable from '../api/airtable.js';
 
 export function useMarketerData(marketer) {
   const [referrals, setReferrals] = useState([]);
@@ -16,8 +17,23 @@ export function useMarketerData(marketer) {
       getMarketerFacilities(marketer.id),
       getFacilities(),
     ])
-      .then(([refs, mfLinks, allFacilities]) => {
-        setReferrals(refs.map((r) => ({ _id: r.id, ...r.fields })));
+      .then(async ([refs, mfLinks, allFacilities]) => {
+        const rawRefs = refs.map((r) => ({ _id: r.id, ...r.fields }));
+
+        // Enrich with patient names (same approach as usePhysicianData)
+        const pids = [...new Set(rawRefs.map((r) => r.patient_id).filter(Boolean))];
+        let nameMap = {};
+        if (pids.length) {
+          const formula = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
+          const pRecs = await airtable.fetchAll('Patients', { filterByFormula: formula }).catch(() => []);
+          pRecs.forEach((r) => {
+            nameMap[r.fields.id] = `${r.fields.first_name || ''} ${r.fields.last_name || ''}`.trim();
+          });
+        }
+        setReferrals(rawRefs.map((r) => ({
+          ...r,
+          patientName: nameMap[r.patient_id] || null,
+        })));
 
         const facilityMap = {};
         allFacilities.forEach((f) => {

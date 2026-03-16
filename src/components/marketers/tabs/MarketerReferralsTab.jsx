@@ -53,7 +53,9 @@ export default function MarketerReferralsTab({ referrals }) {
                   <tr key={ref._id} onDoubleClick={() => openPatient({ id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, cursor: 'pointer' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.03))}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '9px 14px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{ref.patient_id}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>
+                      {ref.patientName || ref.patient_id}
+                    </td>
                     <td style={{ padding: '9px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>
                     <td style={{ padding: '9px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
                     <td style={{ padding: '9px 14px' }}>

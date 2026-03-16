@@ -40,7 +40,23 @@ export default function MarketerDrawer({ marketer, onClose }) {
 
   useEffect(() => {
     if (!marketer) return;
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) {
+      if (e.key === 'Escape') { onClose(); return; }
+      const tag = document.activeElement?.tagName;
+      const editable = document.activeElement?.isContentEditable;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || editable) return;
+      if (e.shiftKey && e.key === 'C') { onClose(); return; }
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        setActiveTab((current) => {
+          const idx = TABS.findIndex((t) => t.id === current);
+          const next = e.key === 'ArrowRight'
+            ? (idx + 1) % TABS.length
+            : (idx - 1 + TABS.length) % TABS.length;
+          return TABS[next].id;
+        });
+      }
+    }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [marketer, onClose]);

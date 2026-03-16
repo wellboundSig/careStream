@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@clerk/react';
+import { DirectoryDrawerProvider } from './context/DirectoryDrawerContext.jsx';
 
 import AppShell from './components/layout/AppShell.jsx';
 import LoadingState from './components/common/LoadingState.jsx';
@@ -39,7 +40,9 @@ export default function App() {
         path="/"
         element={
           <RequireAuth>
-            <AppShell />
+            <DirectoryDrawerProvider>
+              <AppShell />
+            </DirectoryDrawerProvider>
           </RequireAuth>
         }
       >

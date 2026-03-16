@@ -6,38 +6,89 @@ import FacilityDrawer from '../../components/facilities/FacilityDrawer.jsx';
 import LoadingState from '../../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
+// Values exactly as stored in Airtable (ALL CAPS single-select)
+export const FACILITY_TYPES = [
+  'NURSING HOME',
+  'ASSISTED LIVING FACILITY',
+  'CARE COORDINATION ORG',
+  'SKILLED NURSING FACILITY',
+  'HOSPITAL',
+  'PHARMACY',
+  'REFERRAL SOURCE',
+  'FUNERAL HOME',
+  'OTHER',
+];
+
+// Display label for the badge — title-cases the raw Airtable value
+export function typeLabel(raw) {
+  if (!raw) return 'Other';
+  return raw
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export const TYPE_COLORS = {
-  ALF:         { bg: hexToRgba(palette.highlightYellow.hex, 0.2),  text: '#7A5F00' },
-  Hospital:    { bg: hexToRgba(palette.primaryMagenta.hex, 0.15), text: palette.primaryMagenta.hex },
-  SNF:         { bg: hexToRgba(palette.accentOrange.hex, 0.15),   text: palette.accentOrange.hex },
-  'PCP Office':{ bg: hexToRgba(palette.accentGreen.hex, 0.15),    text: palette.accentGreen.hex },
-  School:      { bg: hexToRgba(palette.accentBlue.hex, 0.15),     text: palette.accentBlue.hex },
-  Other:       { bg: hexToRgba(palette.backgroundDark.hex, 0.08), text: hexToRgba(palette.backgroundDark.hex, 0.55) },
+  'NURSING HOME':              { bg: hexToRgba(palette.accentBlue.hex, 0.14),      text: palette.accentBlue.hex },
+  'ASSISTED LIVING FACILITY':  { bg: hexToRgba(palette.highlightYellow.hex, 0.22), text: '#7A5F00' },
+  'CARE COORDINATION ORG':     { bg: hexToRgba(palette.accentGreen.hex, 0.15),     text: palette.accentGreen.hex },
+  'SKILLED NURSING FACILITY':  { bg: hexToRgba(palette.accentOrange.hex, 0.15),    text: palette.accentOrange.hex },
+  'HOSPITAL':                  { bg: hexToRgba(palette.primaryMagenta.hex, 0.15),  text: palette.primaryMagenta.hex },
+  'PHARMACY':                  { bg: hexToRgba(palette.accentGreen.hex, 0.12),     text: '#2e7d52' },
+  'REFERRAL SOURCE':           { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.1),  text: palette.primaryDeepPlum.hex },
+  'FUNERAL HOME':              { bg: hexToRgba(palette.backgroundDark.hex, 0.1),   text: hexToRgba(palette.backgroundDark.hex, 0.6) },
+  'OTHER':                     { bg: hexToRgba(palette.backgroundDark.hex, 0.08),  text: hexToRgba(palette.backgroundDark.hex, 0.55) },
 };
 
+// Region values exactly as stored in Airtable (ALL CAPS single-select)
+export const FACILITY_REGIONS = [
+  'LI', 'NYC', 'NASSAU', 'BRONX', 'KINGS', 'SUFFOLK',
+  'NEW YORK', 'QUEENS', 'WESTCHESTER', 'BROOME', 'BERGEN',
+  'RICHMOND', 'ROCKLAND', 'MONMOUTH', 'PUTNAM', 'DUTCHESS', 'DALLAS',
+];
+
+// Color palette cycles for regions — keyed uppercase for case-insensitive lookup
 export const REGION_COLORS = {
-  LI:          { bg: hexToRgba(palette.accentBlue.hex, 0.14),     text: palette.accentBlue.hex },
-  Bronx:       { bg: hexToRgba(palette.primaryMagenta.hex, 0.12), text: palette.primaryMagenta.hex },
-  Westchester: { bg: hexToRgba(palette.accentGreen.hex, 0.14),    text: palette.accentGreen.hex },
-  NYC:         { bg: hexToRgba(palette.accentOrange.hex, 0.14),   text: palette.accentOrange.hex },
+  LI:          { bg: hexToRgba(palette.accentBlue.hex, 0.14),        text: palette.accentBlue.hex },
+  NYC:         { bg: hexToRgba(palette.accentOrange.hex, 0.14),      text: palette.accentOrange.hex },
+  NASSAU:      { bg: hexToRgba(palette.accentGreen.hex, 0.14),       text: palette.accentGreen.hex },
+  BRONX:       { bg: hexToRgba(palette.primaryMagenta.hex, 0.12),    text: palette.primaryMagenta.hex },
+  KINGS:       { bg: hexToRgba(palette.highlightYellow.hex, 0.22),   text: '#7A5F00' },
+  SUFFOLK:     { bg: hexToRgba(palette.accentBlue.hex, 0.1),         text: '#1a5fa8' },
+  'NEW YORK':  { bg: hexToRgba(palette.primaryMagenta.hex, 0.08),    text: '#8b2070' },
+  QUEENS:      { bg: hexToRgba(palette.accentGreen.hex, 0.1),        text: '#2e7d52' },
+  WESTCHESTER: { bg: hexToRgba(palette.accentGreen.hex, 0.18),       text: palette.accentGreen.hex },
+  BROOME:      { bg: hexToRgba(palette.accentOrange.hex, 0.1),       text: palette.accentOrange.hex },
+  BERGEN:      { bg: hexToRgba(palette.accentBlue.hex, 0.18),        text: palette.accentBlue.hex },
+  RICHMOND:    { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.1),    text: palette.primaryDeepPlum.hex },
+  ROCKLAND:    { bg: hexToRgba(palette.accentOrange.hex, 0.14),      text: '#b35a00' },
+  MONMOUTH:    { bg: hexToRgba(palette.highlightYellow.hex, 0.18),   text: '#7A5F00' },
+  PUTNAM:      { bg: hexToRgba(palette.accentGreen.hex, 0.12),       text: '#2e7d52' },
+  DUTCHESS:    { bg: hexToRgba(palette.primaryMagenta.hex, 0.1),     text: palette.primaryMagenta.hex },
+  DALLAS:      { bg: hexToRgba(palette.accentOrange.hex, 0.12),      text: palette.accentOrange.hex },
+  OTHER:       { bg: hexToRgba(palette.backgroundDark.hex, 0.08),    text: hexToRgba(palette.backgroundDark.hex, 0.5) },
 };
 
 export function TypeBadge({ type, size = 'default' }) {
-  const c = TYPE_COLORS[type] || TYPE_COLORS.Other;
+  const key = (type || '').toUpperCase();
+  const c = TYPE_COLORS[key] || TYPE_COLORS['OTHER'];
   const isSmall = size === 'small';
   return (
     <span style={{ fontSize: isSmall ? 11 : 12, fontWeight: 650, padding: isSmall ? '2px 8px' : '3px 10px', borderRadius: 20, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
-      {type || 'Other'}
+      {typeLabel(type)}
     </span>
   );
 }
 
 export function RegionBadge({ region }) {
   if (!region) return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>;
-  const c = REGION_COLORS[region] || { bg: hexToRgba(palette.backgroundDark.hex, 0.08), text: hexToRgba(palette.backgroundDark.hex, 0.55) };
+  const key = region.toUpperCase();
+  const c = REGION_COLORS[key] || REGION_COLORS['OTHER'];
+  // Short abbreviations stay uppercase (LI, NYC); everything else title-cases
+  const label = key.length <= 3 ? key : typeLabel(region);
   return (
-    <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
-      {region}
+    <span style={{ fontSize: 12, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
+      {label}
     </span>
   );
 }
@@ -51,6 +102,7 @@ export default function Facilities() {
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [regionFilter, setRegionFilter] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -87,7 +139,8 @@ export default function Facilities() {
   const filtered = useMemo(() => {
     let list = facilities.filter((f) => {
       if (f.is_active === 'FALSE') return false;
-      if (typeFilter && f.type !== typeFilter) return false;
+      if (typeFilter   && (f.type   || '').toUpperCase() !== typeFilter.toUpperCase())   return false;
+      if (regionFilter && (f.region || '').toUpperCase() !== regionFilter.toUpperCase()) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         if (!(f.name || '').toLowerCase().includes(q) && !(f.region || '').toLowerCase().includes(q) && !(f.primary_contact_name || '').toLowerCase().includes(q)) return false;
@@ -99,7 +152,7 @@ export default function Facilities() {
       let vb = (b[sortField] || '').toString().toLowerCase();
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-  }, [facilities, search, typeFilter, sortField, sortDir]);
+  }, [facilities, search, typeFilter, regionFilter, sortField, sortDir]);
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -129,7 +182,11 @@ export default function Facilities() {
             </div>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>
               <option value="">All Types</option>
-              {['ALF', 'Hospital', 'SNF', 'PCP Office', 'School', 'Other'].map((t) => <option key={t}>{t}</option>)}
+              {FACILITY_TYPES.map((t) => <option key={t} value={t}>{typeLabel(t)}</option>)}
+            </select>
+            <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>
+              <option value="">All Regions</option>
+              {FACILITY_REGIONS.map((r) => <option key={r} value={r}>{r.length <= 3 ? r : typeLabel(r)}</option>)}
             </select>
           </div>
         </div>

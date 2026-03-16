@@ -7,6 +7,7 @@ import { getReferralSources } from '../../api/referralSources.js';
 import { getMarketers } from '../../api/marketers.js';
 import { getFacilities } from '../../api/facilities.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // Module-level cache — persists across palette opens within the session
@@ -54,6 +55,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   const listRef     = useRef(null);
   const navigate    = useNavigate();
   const { open: openDrawer } = usePatientDrawer();
+  const { openPhysician, openFacility, openMarketer } = useDirectoryDrawer();
 
   // Preload data on mount so search is instant when palette opens
   useEffect(() => { if (!_cache && !_loading) loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -193,18 +195,16 @@ export default function CommandPalette({ isOpen, onClose }) {
   function handleSelect({ type, data }) {
     onClose();
     if (type === 'patient') {
-      // data is the enriched referral; the patient record lives in data.patient.
-      // Pass patient as first arg and the referral as second so the drawer populates fully.
       const patientObj = data.patient || { id: data.patient_id, _id: data.patient_id, division: data.division };
       openDrawer(patientObj, data);
     } else if (type === 'physician') {
-      navigate('/directory/physicians');
+      openPhysician(data);
+    } else if (type === 'marketer') {
+      openMarketer(data);
+    } else if (type === 'facility') {
+      openFacility(data);
     } else if (type === 'source') {
       navigate('/directory/referral-sources');
-    } else if (type === 'marketer') {
-      navigate('/directory/marketers');
-    } else if (type === 'facility') {
-      navigate('/directory/facilities');
     }
   }
 
