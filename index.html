@@ -5,6 +5,19 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CareStream</title>
+    <!-- SPA redirect restore: reads the path encoded by 404.html and restores it via history API -->
+    <script>
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location));
+    </script>
     <script type="module" crossorigin src="/assets/index-CAG7o7pQ.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DMRUeFd8.css">
   </head>
