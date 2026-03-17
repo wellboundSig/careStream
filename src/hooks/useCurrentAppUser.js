@@ -8,6 +8,8 @@ let _validAuthorIds = null;
 
 async function fetchValidAuthorIds() {
   if (_validAuthorIds) return _validAuthorIds;
+  // Only callable in dev — production has no direct Airtable credentials (worker handles auth).
+  if (!import.meta.env.VITE_AIRTABLE_TOKEN) return null;
   try {
     const res = await fetch(
       `https://api.airtable.com/v0/meta/bases/${import.meta.env.VITE_AIRTABLE_BASE_ID}/tables`,

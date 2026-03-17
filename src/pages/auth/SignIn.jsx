@@ -57,7 +57,7 @@ export default function SignInPage() {
               },
             }}
           />
-          <div
+          {/* <div
             style={{
               position: 'absolute',
               bottom: -30,
@@ -79,7 +79,7 @@ export default function SignInPage() {
               borderRadius: '0 0 12px 12px',
               zIndex: 11,
             }}
-          />
+          /> */}
         </div>
       </div>
     </div>
