@@ -9,23 +9,42 @@ import UserProfileDrawer from '../components/users/UserProfileDrawer.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
-// Roles that are considered "Admin" (can assign tasks)
-const ADMIN_ROLE_IDS = ['rol_001', 'rol_002', 'rol_004', 'rol_007'];
+// Classify a role by its NAME — no hardcoded IDs.
+// New roles automatically fall to 'admin' unless their name matches a pattern.
+//   "Scheduler" / "Intake Coordinator" → intake
+//   "Billing" / "CEO" / "Admin" / "Developer" / anything else → admin
+function classifyRole(roleName) {
+  const n = (roleName || '').toLowerCase();
+  if (/market/.test(n))                    return 'marketers';
+  if (/intake|schedul/.test(n))            return 'intake';
+  if (/clinical|nurse|\brn\b|\blpn\b/.test(n)) return 'clinical';
+  return 'admin';
+}
+
+// Color cycle — works for any number of roles regardless of ID
+const ROLE_COLOR_CYCLE = [
+  palette.primaryMagenta.hex, palette.primaryDeepPlum.hex,
+  palette.accentBlue.hex,     palette.accentGreen.hex,
+  palette.accentOrange.hex,   palette.highlightYellow.hex,
+  '#9B59B6',
+];
+function getRoleColor(roleId) {
+  const num = parseInt((roleId || '').replace(/\D/g, ''), 10);
+  return ROLE_COLOR_CYCLE[isNaN(num) ? 0 : (num - 1) % ROLE_COLOR_CYCLE.length];
+}
+
+// Static group definitions — membership is computed dynamically from role names
+const GROUP_DEFS = [
+  { id: 'marketers', label: 'Marketers',         color: palette.accentOrange.hex },
+  { id: 'intake',    label: 'Intake',             color: palette.accentBlue.hex },
+  { id: 'clinical',  label: 'Clinical',           color: palette.primaryMagenta.hex },
+  { id: 'admin',     label: 'Admin & Operations', color: palette.primaryDeepPlum.hex },
+];
 
 const TASK_TYPES = [
   'Insurance Barrier', 'Missing Document', 'Auth Needed',
   'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other',
 ];
-
-const ROLE_COLORS = {
-  'rol_001': palette.primaryMagenta.hex,
-  'rol_002': palette.primaryDeepPlum.hex,
-  'rol_003': palette.accentBlue.hex,
-  'rol_004': palette.accentGreen.hex,
-  'rol_005': palette.primaryMagenta.hex,
-  'rol_006': palette.accentOrange.hex,
-  'rol_007': palette.highlightYellow.hex,
-};
 
 const STATUS_DOT = {
   Active:    palette.accentGreen.hex,
@@ -33,13 +52,6 @@ const STATUS_DOT = {
   Suspended: palette.accentOrange.hex,
   Revoked:   hexToRgba(palette.backgroundDark.hex, 0.3),
 };
-
-const GROUPS = [
-  { id: 'marketers', label: 'Marketers',         roles: ['rol_006'] },
-  { id: 'intake',    label: 'Intake',             roles: ['rol_003'] },
-  { id: 'clinical',  label: 'Clinical',           roles: ['rol_005'] },
-  { id: 'admin',     label: 'Admin & Operations', roles: ADMIN_ROLE_IDS },
-];
 
 function initials(first, last) {
   return `${(first || '?')[0]}${(last || '')[0] || ''}`.toUpperCase();
@@ -56,9 +68,9 @@ function timeAgo(dateStr) {
 }
 
 export default function Team() {
-  const { user: clerkUser }     = useUser();
-  const { resolveRole }         = useLookups();
-  const { appUser, appUserId }  = useCurrentAppUser();
+  const { user: clerkUser }        = useUser();
+  const { resolveRole, roleMap }   = useLookups();
+  const { appUser, appUserId }     = useCurrentAppUser();
   const [users, setUsers]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState(null);
@@ -66,7 +78,7 @@ export default function Team() {
   const [contextMenu, setContextMenu] = useState(null); // { x, y, user }
   const [assignTarget, setAssignTarget] = useState(null); // user to assign to
 
-  const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
+  const isAdmin = !!appUser?.role_id && classifyRole(roleMap[appUser.role_id] || '') === 'admin';
 
   useEffect(() => {
     airtable.fetchAll('Users', { sort: [{ field: 'last_name', direction: 'asc' }] })
@@ -98,15 +110,19 @@ export default function Team() {
       )
     : users;
 
-  const groups = GROUPS.map((g) => ({
-    ...g,
-    members: filtered.filter((u) => g.roles.includes(u.role_id)),
-  })).filter((g) => g.members.length > 0);
+  const grouped = {};
+  filtered.forEach((u) => {
+    const gid = classifyRole(roleMap[u.role_id] || '');
+    (grouped[gid] = grouped[gid] || []).push(u);
+  });
+  const groups = GROUP_DEFS
+    .map((def) => ({ ...def, members: grouped[def.id] || [] }))
+    .filter((g) => g.members.length > 0);
 
   function handleRightClick(e, user) {
     if (!isAdmin) return;
-    if (user.id === appUserId) return; // can't assign to self
-    if (ADMIN_ROLE_IDS.includes(user.role_id)) return; // can't assign to other admins
+    if (user.id === appUserId) return;
+    if (classifyRole(roleMap[user.role_id] || '') === 'admin') return;
     e.preventDefault();
     // Keep menu within viewport
     const x = Math.min(e.clientX, window.innerWidth  - 180);
@@ -156,6 +172,7 @@ export default function Team() {
                 key={group.id}
                 group={group}
                 resolveRole={resolveRole}
+                roleMap={roleMap}
                 appUserId={appUserId}
                 clerkImageUrl={clerkUser?.imageUrl}
                 isAdmin={isAdmin}
@@ -212,6 +229,7 @@ export default function Team() {
         <AssignTaskModal
           target={assignTarget}
           assignedById={appUserId}
+          roleMap={roleMap}
           onClose={() => setAssignTarget(null)}
         />
       )}
@@ -220,13 +238,8 @@ export default function Team() {
 }
 
 // ── Department section ─────────────────────────────────────────────────────────
-function DeptSection({ group, resolveRole, appUserId, clerkImageUrl, isAdmin, onOpen, onRightClick }) {
-  const accentColor = {
-    marketers: palette.accentOrange.hex,
-    intake:    palette.accentBlue.hex,
-    clinical:  palette.primaryMagenta.hex,
-    admin:     palette.primaryDeepPlum.hex,
-  }[group.id] || palette.accentBlue.hex;
+function DeptSection({ group, resolveRole, roleMap, appUserId, clerkImageUrl, isAdmin, onOpen, onRightClick }) {
+  const accentColor = group.color || palette.accentBlue.hex;
 
   return (
     <div>
@@ -244,14 +257,14 @@ function DeptSection({ group, resolveRole, appUserId, clerkImageUrl, isAdmin, on
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
         {group.members.map((user) => {
           const isMe  = user.id === appUserId;
-          const photo = user.clerk_image_url || (isMe ? null : null);
-          const canAssign = isAdmin && !isMe && !ADMIN_ROLE_IDS.includes(user.role_id);
+          const photo = user.clerk_image_url || null;
+          const canAssign = isAdmin && !isMe && classifyRole(roleMap[user.role_id] || '') !== 'admin';
           return (
             <UserCard
               key={user._id}
               user={user}
               roleName={resolveRole(user.role_id)}
-              accentColor={ROLE_COLORS[user.role_id] || accentColor}
+              accentColor={getRoleColor(user.role_id)}
               photo={photo}
               isMe={isMe}
               canAssign={canAssign}
@@ -344,7 +357,7 @@ function UserCard({ user, roleName, accentColor, photo, isMe, canAssign, onOpen,
 // ── Assign Task Modal ──────────────────────────────────────────────────────────
 const EMPTY_FORM = { type: '', title: '', description: '', due_date: '' };
 
-function AssignTaskModal({ target, assignedById, onClose }) {
+function AssignTaskModal({ target, assignedById, roleMap, onClose }) {
   const [form, setForm]           = useState(EMPTY_FORM);
   const [patientQuery, setPatientQuery] = useState('');
   const [patients, setPatients]   = useState([]);
@@ -394,13 +407,9 @@ function AssignTaskModal({ target, assignedById, onClose }) {
     setSaving(true);
     setError(null);
     try {
-      // Auto-determine route_to_role from target user's role group
-      const routeMap = {
-        'rol_003': 'Intake',
-        'rol_005': 'Clinical',
-        'rol_006': 'Admin',
-      };
-      const route_to_role = routeMap[target.role_id] || 'Admin';
+      // Route task to the correct department based on the target's role name
+      const groupRouteMap = { intake: 'Intake', clinical: 'Clinical', marketers: 'Admin', admin: 'Admin' };
+      const route_to_role = groupRouteMap[classifyRole(roleMap[target.role_id] || '')] || 'Admin';
 
       await createTask({
         title:          form.title.trim(),
