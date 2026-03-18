@@ -153,11 +153,7 @@ export default function FilesTab({ patient, referral }) {
   const [f2fDatePrefilled, setF2fDatePrefilled] = useState(false);
   const inputRef = useRef(null);
 
-  const r2Configured = !!(
-    import.meta.env.VITE_R2_ACCOUNT_ID &&
-    import.meta.env.VITE_R2_ACCESS_KEY_ID &&
-    import.meta.env.VITE_R2_SECRET_ACCESS_KEY
-  );
+  const r2Configured = !!import.meta.env.VITE_R2_WORKER_URL;
 
   useEffect(() => {
     if (!patient?.id) return;
@@ -283,12 +279,10 @@ export default function FilesTab({ patient, referral }) {
           ) : (
             <>
               <p style={{ fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
-                R2 upload not configured
+                File uploads unavailable
               </p>
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), lineHeight: 1.5 }}>
-                Add <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCOUNT_ID</code>,{' '}
-                <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_ACCESS_KEY_ID</code>, and{' '}
-                <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>VITE_R2_SECRET_ACCESS_KEY</code> to <code style={{ background: hexToRgba(palette.backgroundDark.hex, 0.07), padding: '1px 5px', borderRadius: 3 }}>.env</code> to enable uploads.
+                The file upload worker is not reachable. Contact your administrator.
               </p>
             </>
           )}

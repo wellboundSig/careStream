@@ -79,9 +79,12 @@ export function useCurrentAppUser() {
         }).catch(() => []);
         if (byEmail.length) {
           const u = { _id: byEmail[0].id, ...byEmail[0].fields };
-          if (user.imageUrl && u.clerk_image_url !== user.imageUrl) {
-            airtable.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
-            u.clerk_image_url = user.imageUrl;
+          const updates = {};
+          if (user.id && !u.clerk_user_id) updates.clerk_user_id = user.id;
+          if (user.imageUrl && u.clerk_image_url !== user.imageUrl) updates.clerk_image_url = user.imageUrl;
+          if (Object.keys(updates).length) {
+            airtable.update('Users', u._id, updates).catch(() => {});
+            Object.assign(u, updates);
           }
           _appUserCache = u;
           setAppUser(u);
