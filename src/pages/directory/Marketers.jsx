@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getMarketers } from '../../api/marketers.js';
-import { getReferrals } from '../../api/referrals.js';
+import { useState, useMemo } from 'react';
+import { useCareStore } from '../../store/careStore.js';
 import MarketerDrawer from '../../components/marketers/MarketerDrawer.jsx';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const REGION_COLORS = {
@@ -17,25 +16,18 @@ function initials(first, last) {
 }
 
 export default function Marketers() {
-  const [marketers, setMarketers] = useState([]);
-  const [allReferrals, setAllReferrals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const storeReferrals = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
+
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
 
-  useEffect(() => {
-    Promise.all([getMarketers(), getReferrals()])
-      .then(([mkts, refs]) => {
-        setMarketers(mkts.map((r) => ({ _id: r.id, ...r.fields })));
-        setAllReferrals(refs.map((r) => ({ _id: r.id, ...r.fields })));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
+  const allReferrals = useMemo(() => Object.values(storeReferrals), [storeReferrals]);
 
-  // Pre-compute per-marketer stats
   const statsByMarketer = useMemo(() => {
     const map = {};
     allReferrals.forEach((ref) => {
@@ -73,9 +65,18 @@ export default function Marketers() {
     else { setSortField(field); setSortDir('asc'); }
   }
 
-  if (loading) return <LoadingState message="Loading marketers…" />;
-
   const active = marketers.filter((m) => m.status === 'Active').length;
+
+  const COLS = [
+    { label: 'Marketer', field: 'last_name' },
+    { label: 'Region', field: 'region' },
+    { label: 'Division', field: 'division' },
+    { label: 'Status', field: 'status' },
+    { label: 'Referrals', field: null },
+    { label: 'Admitted', field: null },
+    { label: 'Conv.', field: null },
+    { label: 'Last Referral', field: null },
+  ];
 
   return (
     <>
@@ -95,16 +96,7 @@ export default function Marketers() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                {[
-                  { label: 'Marketer', field: 'last_name' },
-                  { label: 'Region', field: 'region' },
-                  { label: 'Division', field: 'division' },
-                  { label: 'Status', field: 'status' },
-                  { label: 'Referrals', field: null },
-                  { label: 'Admitted', field: null },
-                  { label: 'Conv.', field: null },
-                  { label: 'Last Referral', field: null },
-                ].map(({ label, field }) => (
+                {COLS.map(({ label, field }) => (
                   <th key={label} onClick={field ? () => toggleSort(field) : undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: field ? 'pointer' : 'default', userSelect: 'none' }}>
                     {label} {field && sortField === field && (sortDir === 'asc' ? '▲' : '▼')}
                   </th>
@@ -112,17 +104,16 @@ export default function Marketers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((marketer) => {
+              {!hydrated ? (
+                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={8} />)
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No marketers found.</td></tr>
+              ) : filtered.map((marketer) => {
                 const s = statsByMarketer[marketer.id] || { total: 0, admitted: 0, ntuc: 0, convRate: 0, lastDate: null };
-                return (
-                  <MarketerRow key={marketer._id} marketer={marketer} stats={s} onOpen={() => setSelected(marketer)} />
-                );
+                return <MarketerRow key={marketer._id} marketer={marketer} stats={s} onOpen={() => setSelected(marketer)} />;
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && (
-            <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No marketers found.</p>
-          )}
         </div>
       </div>
 

@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
-import { updateReferral } from '../api/referrals.js';
+import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordTransition } from '../utils/recordTransition.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import StageRules from '../data/StageRules.json';
@@ -62,44 +62,29 @@ function needsModal(fromStage, toStage) {
   );
 }
 
-function formatRelTime(ts) {
-  if (!ts) return null;
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins === 1) return '1 min ago';
-  return `${mins} min ago`;
-}
-
 export default function PipelineBoard() {
   const { division } = useOutletContext();
-  const { data: enriched, loading, refetch } = usePipelineData();
+  const { data: enriched, loading } = usePipelineData();
   const { appUserId } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
 
-  const [localReferrals, setLocalReferrals] = useState([]);
   const [draggingId, setDraggingId] = useState(null);
   const [draggingFrom, setDraggingFrom] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
   const [toast, setToast] = useState(null);
   const [showNewReferral, setShowNewReferral] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  useEffect(() => {
-    if (enriched.length) {
-      setLocalReferrals(enriched);
-      setLastRefreshed(Date.now());
-    }
-  }, [enriched]);
-
+  // No local copy needed — the zustand store IS the local state.
+  // enriched already reads from memory (sub-ms), and optimistic
+  // mutations update the store directly.
   const filtered = useMemo(
     () =>
       division === 'All'
-        ? localReferrals
-        : localReferrals.filter((r) => r.division === division),
-    [localReferrals, division],
+        ? enriched
+        : enriched.filter((r) => r.division === division),
+    [enriched, division],
   );
 
   function showToast(message, type = 'success') {
@@ -117,35 +102,22 @@ export default function PipelineBoard() {
     }
   }, []);
 
-  async function executeTransition(referral, toStage, note) {
-    const fromStage  = referral.current_stage;
-    const enteredAt  = new Date().toISOString();
-    setTransitioning(true);
-    setLocalReferrals((prev) =>
-      prev.map((r) => (r._id === referral._id ? { ...r, current_stage: toStage, stage_entered_at: enteredAt } : r)),
-    );
+  function executeTransition(referral, toStage, note) {
+    const fromStage = referral.current_stage;
     setPendingTransition(null);
 
     const updateFields = { current_stage: toStage };
     if (toStage === 'Hold' && note) updateFields.hold_reason = note;
     if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
 
-    try {
-      await updateReferral(referral._id, updateFields);
-      // Best-effort fire-and-forget — silently ignored until fields exist in Airtable
-      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
-      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
-      // Do NOT call triggerDataRefresh() here — the optimistic setLocalReferrals above
-      // already moves the card. A global refresh causes loading=true → white screen.
-      showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
-    } catch {
-      setLocalReferrals((prev) =>
-        prev.map((r) => (r._id === referral._id ? { ...r, current_stage: fromStage, stage_entered_at: referral.stage_entered_at } : r)),
-      );
-      showToast(`Failed to move ${referral.patientName || referral.patient_id}`, 'error');
-    } finally {
-      setTransitioning(false);
-    }
+    // Optimistic: store updates in 1ms, card moves instantly.
+    // Background Airtable write rolls back on failure.
+    updateReferralOptimistic(referral._id, updateFields).catch(() => {
+      showToast(`Failed to move ${referral.patientName || referral.patient_id} — reverted`, 'error');
+    });
+
+    recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
+    showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
   }
 
   function handleDragStart(referral) {
@@ -159,7 +131,7 @@ export default function PipelineBoard() {
   }
 
   function handleDrop(toStage) {
-    const referral = localReferrals.find((r) => r._id === draggingId);
+    const referral = enriched.find((r) => r._id === draggingId);
     if (!referral || !canMoveFromTo(draggingFrom, toStage)) return;
     initiateTransition(referral, toStage);
     handleDragEnd();
@@ -175,8 +147,7 @@ export default function PipelineBoard() {
   }
 
   function handleRefetch() {
-    refetch();
-    setLastRefreshed(Date.now());
+    triggerDataRefresh();
   }
 
   const totalActive = filtered.filter(
@@ -214,11 +185,9 @@ export default function PipelineBoard() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {lastRefreshed && (
-            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
-              Updated {formatRelTime(lastRefreshed)}
-            </span>
-          )}
+          <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+            Live sync active
+          </span>
 
           <ToolbarBtn
             onClick={() => setShowLegend((v) => !v)}
@@ -369,7 +338,7 @@ export default function PipelineBoard() {
         <TransitionModal
           referral={pendingTransition.referral}
           toStage={pendingTransition.toStage}
-          loading={transitioning}
+          loading={false}
           onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.toStage, note)}
           onCancel={() => setPendingTransition(null)}
         />

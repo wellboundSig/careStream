@@ -10,6 +10,19 @@ function authHeader() {
   return TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 }
 
+async function fetchWithRetry(url, options, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status === 429 && attempt < retries) {
+      const wait = Math.min(1000 * 2 ** attempt, 10000);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Airtable rate limit exceeded after retries');
+}
+
 async function fetchAll(tableName, params = {}) {
   const records = [];
   let offset = null;
@@ -29,7 +42,7 @@ async function fetchAll(tableName, params = {}) {
       params.fields.forEach((f, i) => url.searchParams.set(`fields[${i}]`, f));
     }
 
-    const res = await fetch(url.toString(), { headers: authHeader() });
+    const res = await fetchWithRetry(url.toString(), { headers: authHeader() });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { getAllTasks, updateTask } from '../api/tasks.js';
-import { getPatients } from '../api/patients.js';
+import { useState, useMemo, useCallback } from 'react';
+import { useCareStore } from '../store/careStore.js';
+import { updateTaskOptimistic } from '../store/mutations.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
-import LoadingState from '../components/common/LoadingState.jsx';
+import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const URGENCY_ORDER   = { overdue: 0, today: 1, week: 2, future: 3, none: 4 };
@@ -22,10 +22,10 @@ const SECTIONS = [
 export default function Tasks() {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser }            = useLookups();
-  const [allTasks, setAllTasks]           = useState([]);
-  const [patientNameMap, setPatientNameMap]   = useState({});
-  const [patientRecordMap, setPatientRecordMap] = useState({});
-  const [loading, setLoading]             = useState(true);
+  const storeTasks    = useCareStore((s) => s.tasks);
+  const storePatients = useCareStore((s) => s.patients);
+  const hydrated      = useCareStore((s) => s.hydrated);
+
   const [mode, setMode]                   = useState('mine');
   const [statusFilter, setStatusFilter]   = useState('open');
   const [typeFilter, setTypeFilter]       = useState('');
@@ -33,31 +33,23 @@ export default function Tasks() {
   const [search, setSearch]               = useState('');
   const [toast, setToast]                 = useState(null);
 
-  useEffect(() => {
-    setLoading(true);
-    getAllTasks()
-      .then(async (recs) => {
-        const tasks = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        setAllTasks(tasks);
-        const pids = [...new Set(tasks.map((t) => t.patient_id).filter(Boolean))];
-        if (pids.length) {
-          const formula  = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
-          const patients = await getPatients({ filterByFormula: formula }).catch(() => []);
-          const nameMap  = {};
-          const recordMap = {};
-          patients.forEach((p) => {
-            const pid = p.fields.id;
-            if (!pid) return;
-            nameMap[pid]   = `${p.fields.first_name || ''} ${p.fields.last_name || ''}`.trim();
-            recordMap[pid] = { _id: p.id, ...p.fields };
-          });
-          setPatientNameMap(nameMap);
-          setPatientRecordMap(recordMap);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const allTasks = useMemo(() => Object.values(storeTasks), [storeTasks]);
+
+  const patientNameMap = useMemo(() => {
+    const map = {};
+    Object.values(storePatients).forEach((p) => {
+      if (p.id) map[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    });
+    return map;
+  }, [storePatients]);
+
+  const patientRecordMap = useMemo(() => {
+    const map = {};
+    Object.values(storePatients).forEach((p) => {
+      if (p.id) map[p.id] = p;
+    });
+    return map;
+  }, [storePatients]);
 
   const resolvePatient = useCallback((id) => patientNameMap[id] || null, [patientNameMap]);
   const resolvePatientRecord = useCallback((id) => patientRecordMap[id] || null, [patientRecordMap]);
@@ -67,21 +59,14 @@ export default function Tasks() {
     setTimeout(() => setToast(null), 2800);
   }
 
-  async function handleComplete(task) {
-    try {
-      await updateTask(task._id, { status: 'Completed', completed_at: new Date().toISOString() });
-      setAllTasks((prev) => prev.map((t) => t._id === task._id ? { ...t, status: 'Completed' } : t));
-      showToast('Task marked complete');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
+  function handleComplete(task) {
+    updateTaskOptimistic(task._id, { status: 'Completed', completed_at: new Date().toISOString() })
+      .then(() => showToast('Task marked complete'))
+      .catch((err) => showToast(err.message, 'error'));
   }
 
-  async function handleStatusChange(task, newStatus) {
-    try {
-      await updateTask(task._id, { status: newStatus });
-      setAllTasks((prev) => prev.map((t) => t._id === task._id ? { ...t, status: newStatus } : t));
-    } catch {}
+  function handleStatusChange(task, newStatus) {
+    updateTaskOptimistic(task._id, { status: newStatus }).catch(() => {});
   }
 
   const filtered = useMemo(() => {
@@ -117,8 +102,6 @@ export default function Tasks() {
     appUserId && t.assigned_to_id === appUserId &&
     (t.status === 'Pending' || t.status === 'In Progress')
   ).length;
-
-  if (loading) return <LoadingState message="Loading tasks…" />;
 
   return (
     <>
@@ -196,7 +179,11 @@ export default function Tasks() {
         </div>
 
         {/* ── Task sections ── */}
-        {filtered.length === 0 ? (
+        {!hydrated ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonRect key={i} height={72} />)}
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0', color: hexToRgba(palette.backgroundDark.hex, 0.32), fontSize: 14, fontStyle: 'italic' }}>
             {mode === 'mine' ? 'No tasks assigned to you.' : 'No tasks match the current filters.'}
           </div>

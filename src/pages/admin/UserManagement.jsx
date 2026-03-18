@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { useCareStore, updateEntity } from '../../store/careStore.js';
 import airtable from '../../api/airtable.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import UserProfileDrawer from '../../components/users/UserProfileDrawer.jsx';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
@@ -47,11 +48,17 @@ function timeAgo(dateStr) {
 export default function UserManagement() {
   const { appUser } = useCurrentAppUser();
   const { roleMap } = useLookups();
+  const storeUsers = useCareStore((s) => s.users);
+  const hydrated   = useCareStore((s) => s.hydrated);
+
   const roles = Object.entries(roleMap)
     .map(([id, label]) => ({ id, label }))
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+
+  const users = useMemo(() =>
+    Object.values(storeUsers).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')),
+  [storeUsers]);
+
   const [saving, setSaving] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [search, setSearch] = useState('');
@@ -59,18 +66,11 @@ export default function UserManagement() {
 
   const isAdmin = appUser?.scope === 'DevNurse';
 
-  useEffect(() => {
-    airtable.fetchAll('Users', { sort: [{ field: 'first_name', direction: 'asc' }] })
-      .then((recs) => setUsers(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
   async function updateUser(userId, airtableId, field, value) {
     setSaving((prev) => ({ ...prev, [userId]: true }));
+    updateEntity('users', airtableId, { [field]: value });
     try {
       await airtable.update('Users', airtableId, { [field]: value });
-      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, [field]: value } : u));
       showToast(`Updated ${field} for ${userId}`);
     } catch (err) {
       showToast(`Failed: ${err.message}`, 'error');
@@ -103,8 +103,6 @@ export default function UserManagement() {
       </div>
     );
   }
-
-  if (loading) return <LoadingState message="Loading users…" />;
 
   return (
     <>
@@ -157,7 +155,9 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((user) => (
+              {!hydrated ? (
+                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)
+              ) : filtered.map((user) => (
                 <UserRow
                   key={user._id}
                   user={user}

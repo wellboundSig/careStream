@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getFacilities } from '../../api/facilities.js';
-import airtable from '../../api/airtable.js';
+import { useState, useMemo } from 'react';
+import { useCareStore } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import FacilityDrawer from '../../components/facilities/FacilityDrawer.jsx';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // Values exactly as stored in Airtable (ALL CAPS single-select)
@@ -95,10 +94,11 @@ export function RegionBadge({ region }) {
 
 export default function Facilities() {
   const { resolveMarketer } = useLookups();
-  const [facilities, setFacilities] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [liaisons, setLiaisons] = useState({});   // { fac_id: marketer_id }
-  const [refCounts, setRefCounts] = useState({});  // { fac_id: count }
+  const storeFacilities = useCareStore((s) => s.facilities);
+  const storeMF = useCareStore((s) => s.marketerFacilities);
+  const storeRefs = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
+
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -106,35 +106,27 @@ export default function Facilities() {
   const [sortField, setSortField] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getFacilities(),
-      airtable.fetchAll('MarketerFacilities'),
-      airtable.fetchAll('Referrals', { fields: ['facility_id'] }),
-    ]).then(([facs, mfLinks, refs]) => {
-      setFacilities(facs.map((r) => ({ _id: r.id, ...r.fields })));
+  const facilities = useMemo(() => Object.values(storeFacilities), [storeFacilities]);
 
-      // Build liaison map (primary marketer per facility)
-      const lmap = {};
-      mfLinks.forEach((r) => {
-        const f = r.fields;
-        if (!f.facility_id) return;
-        if (f.is_primary === true || f.is_primary === 'true' || !lmap[f.facility_id]) {
-          lmap[f.facility_id] = f.marketer_id;
-        }
-      });
-      setLiaisons(lmap);
+  const liaisons = useMemo(() => {
+    const lmap = {};
+    Object.values(storeMF).forEach((f) => {
+      if (!f.facility_id) return;
+      if (f.is_primary === true || f.is_primary === 'true' || !lmap[f.facility_id]) {
+        lmap[f.facility_id] = f.marketer_id;
+      }
+    });
+    return lmap;
+  }, [storeMF]);
 
-      // Build referral count map
-      const rmap = {};
-      refs.forEach((r) => {
-        const fid = r.fields.facility_id;
-        if (fid) rmap[fid] = (rmap[fid] || 0) + 1;
-      });
-      setRefCounts(rmap);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const refCounts = useMemo(() => {
+    const rmap = {};
+    Object.values(storeRefs).forEach((r) => {
+      const fid = r.facility_id;
+      if (fid) rmap[fid] = (rmap[fid] || 0) + 1;
+    });
+    return rmap;
+  }, [storeRefs]);
 
   const filtered = useMemo(() => {
     let list = facilities.filter((f) => {
@@ -164,8 +156,6 @@ export default function Facilities() {
       {label} {field && sortField === field && (sortDir === 'asc' ? '▲' : '▼')}
     </th>
   );
-
-  if (loading) return <LoadingState message="Loading facilities…" />;
 
   return (
     <>
@@ -204,7 +194,9 @@ export default function Facilities() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {!hydrated ? (
+                Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)
+              ) : filtered.length === 0 ? (
                 <tr><td colSpan={6} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No facilities found.</td></tr>
               ) : filtered.map((fac) => (
                 <FacilityRow

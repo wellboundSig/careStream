@@ -3,14 +3,12 @@ import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../../hooks/usePipelineData.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
-import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { useCareStore } from '../../store/careStore.js';
+import { updateReferralOptimistic } from '../../store/mutations.js';
 import { STAGE_META } from '../../data/stageConfig.js';
 import StageRules from '../../data/StageRules.json';
-import { updateReferral } from '../../api/referrals.js';
 import { recordTransition } from '../../utils/recordTransition.js';
-import { getFilesForPatients } from '../../api/patientFiles.js';
-import airtable from '../../api/airtable.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
@@ -99,12 +97,10 @@ export default function ModulePage({ stage }) {
   const [sortField, setSortField] = useState('days');
   const [sortDir, setSortDir] = useState('desc');
   const [showNewReferral, setShowNewReferral] = useState(false);
-  const [triageStatus, setTriageStatus] = useState({});
-  // patient IDs that have an F2F or MD Orders file — for flagging rows in that stage
-  const [fileUploadFlags, setFileUploadFlags] = useState(new Set());
+  // triageStatus is now a useMemo below (reads from store)
+  // fileUploadFlags is now a useMemo below (reads from store)
   const [contextMenu, setContextMenu] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
   const [toast, setToast] = useState(null);
 
   const meta = STAGE_META[stage] || {};
@@ -140,53 +136,42 @@ export default function ModulePage({ stage }) {
     });
   }, [allReferrals, stage, division, search, sortField, sortDir]);
 
-  // Stable key for triage effect dependency — avoid inline .map in dep array
-  const snRefKey = stageReferrals
-    .filter((r) => r.division === 'Special Needs' && r.id)
-    .map((r) => r.id)
-    .join(',');
+  // Triage completion status — now reads from the store (zero API calls)
+  const triageAdultStore = useCareStore((s) => s.triageAdult);
+  const triagePedStore   = useCareStore((s) => s.triagePediatric);
 
-  // Fetch triage completion status for SN patients in this stage
-  useEffect(() => {
-    const ids = snRefKey ? snRefKey.split(',') : [];
-    if (!ids.length) { setTriageStatus({}); return; }
-    const formula = `OR(${ids.map((id) => `{referral_id} = "${id}"`).join(',')})`;
-    Promise.all([
-      airtable.fetchAll('TriageAdult',     { filterByFormula: formula }),
-      airtable.fetchAll('TriagePediatric', { filterByFormula: formula }),
-    ]).then(([adults, peds]) => {
-      const status = {};
-      [...adults, ...peds].forEach((r) => {
-        if (r.fields.referral_id) status[r.fields.referral_id] = true;
-      });
-      setTriageStatus(status);
-    }).catch(() => {});
-  }, [snRefKey]);
+  const triageStatus = useMemo(() => {
+    const snRefIds = new Set(
+      stageReferrals.filter((r) => r.division === 'Special Needs' && r.id).map((r) => r.id)
+    );
+    if (!snRefIds.size) return {};
 
-  // For F2F/MD Orders stage: detect which patients have already uploaded relevant files
-  const f2fPatientKey = useMemo(() => {
-    if (stage !== 'F2F/MD Orders Pending') return '';
-    return stageReferrals
-      .map((r) => r.patient_id)
-      .filter(Boolean)
-      .sort()
-      .join(',');
-  }, [stage, stageReferrals]);
+    const status = {};
+    for (const t of Object.values(triageAdultStore)) {
+      if (t.referral_id && snRefIds.has(t.referral_id)) status[t.referral_id] = true;
+    }
+    for (const t of Object.values(triagePedStore)) {
+      if (t.referral_id && snRefIds.has(t.referral_id)) status[t.referral_id] = true;
+    }
+    return status;
+  }, [stageReferrals, triageAdultStore, triagePedStore]);
 
-  useEffect(() => {
-    if (!f2fPatientKey) { setFileUploadFlags(new Set()); return; }
-    const ids = f2fPatientKey.split(',');
-    getFilesForPatients(ids)
-      .then((records) => {
-        const flagged = new Set();
-        records.forEach((r) => {
-          const cat = r.fields?.category;
-          if (cat === 'F2F' || cat === 'MD Orders') flagged.add(r.fields.patient_id);
-        });
-        setFileUploadFlags(flagged);
-      })
-      .catch(() => {});
-  }, [f2fPatientKey]);
+  // File upload flags — reads from the store (zero API calls)
+  const filesStore = useCareStore((s) => s.files);
+  const fileUploadFlags = useMemo(() => {
+    if (stage !== 'F2F/MD Orders Pending') return new Set();
+    const patientIds = new Set(stageReferrals.map((r) => r.patient_id).filter(Boolean));
+    if (!patientIds.size) return new Set();
+
+    const flagged = new Set();
+    for (const f of Object.values(filesStore)) {
+      const cat = f.category;
+      if ((cat === 'F2F' || cat === 'MD Orders') && patientIds.has(f.patient_id)) {
+        flagged.add(f.patient_id);
+      }
+    }
+    return flagged;
+  }, [stage, stageReferrals, filesStore]);
 
   // Dismiss context menu on Escape
   useEffect(() => {
@@ -239,30 +224,26 @@ export default function ModulePage({ stage }) {
     }
   }, []);
 
-  async function executeTransition(referral, toStage, note) {
+  function executeTransition(referral, toStage, note) {
     const fromStage = referral.current_stage;
-    const enteredAt = new Date().toISOString();
-    setTransitioning(true);
     setPendingTransition(null);
+
     const updateFields = { current_stage: toStage };
     if (toStage === 'Hold') {
       if (note) updateFields.hold_reason = note;
       updateFields.hold_return_stage = fromStage;
     }
     if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
-    try {
-      await updateReferral(referral._id, updateFields);
-      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
-      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
-      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
-      triggerDataRefresh();
-      setSelectedReferral(null);
-      showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
-    } catch {
-      showToast(`Failed to move patient`, 'error');
-    } finally {
-      setTransitioning(false);
-    }
+
+    // Optimistic: update store immediately (1ms), Airtable writes in background.
+    // If the background write fails, the store rolls back automatically.
+    updateReferralOptimistic(referral._id, updateFields).catch(() => {
+      showToast('Failed to move patient — change reverted', 'error');
+    });
+
+    recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
+    setSelectedReferral(null);
+    showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
   }
 
   function toggleSort(field) {
@@ -305,7 +286,7 @@ export default function ModulePage({ stage }) {
       <TransitionModal
         referral={pendingTransition.referral}
         toStage={pendingTransition.toStage}
-        loading={transitioning}
+        loading={false}
         onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.toStage, note)}
         onCancel={() => setPendingTransition(null)}
       />

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { getNotesByPatient, createNote, updateNote } from '../../../api/notes.js';
+import { useState, useMemo, useRef } from 'react';
+import { useCareStore } from '../../../store/careStore.js';
+import { createNoteOptimistic, updateNoteOptimistic } from '../../../store/mutations.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
-import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function formatDateTime(dateStr) {
@@ -22,31 +22,27 @@ function generateNoteId() {
 export default function NotesTab({ patient, referral }) {
   const { appUserId, appUserName, validAuthorIds, isValidAuthor } = useCurrentAppUser();
   const { resolveUser } = useLookups();
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const allNotes = useCareStore((s) => s.notes);
+  const hydrated = useCareStore((s) => s.hydrated);
   const [composing, setComposing] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const textareaRef = useRef(null);
 
-  useEffect(() => {
-    if (!patient?.id) return;
-    setLoading(true);
-    setError(null);
-    getNotesByPatient(patient.id)
-      .then((records) => setNotes(records.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [patient?.id]);
+  const notes = useMemo(() => {
+    if (!patient?.id) return [];
+    return Object.values(allNotes)
+      .filter((n) => n.patient_id === patient.id)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [allNotes, patient?.id]);
 
-  async function submitNote() {
-    if (!composing.trim() || submitting) return;
-    setSubmitting(true);
+  const loading = !hydrated;
+
+  function submitNote() {
+    if (!composing.trim()) return;
     setError(null);
 
     if (!appUserId) {
       setError('Your user account was not found in Airtable. See the banner above for instructions.');
-      setSubmitting(false);
       return;
     }
 
@@ -55,7 +51,6 @@ export default function NotesTab({ patient, referral }) {
         `Your user ID (${appUserId}) is not a valid author option in Airtable. ` +
         `See the banner above for how to fix this.`
       );
-      setSubmitting(false);
       return;
     }
 
@@ -69,28 +64,16 @@ export default function NotesTab({ patient, referral }) {
       ...(referral?.id ? { referral_id: referral.id } : {}),
     };
 
-    try {
-      const created = await createNote(fields);
-      const newNote = { _id: created.id, ...created.fields };
-      setNotes((prev) => [newNote, ...prev]);
-      setComposing('');
-    } catch (err) {
+    // Optimistic: note appears instantly, Airtable write happens in background
+    createNoteOptimistic(fields).catch((err) => {
       setError(`Failed to save note: ${err.message}`);
-    } finally {
-      setSubmitting(false);
-    }
+    });
+    setComposing('');
   }
 
-  async function togglePin(note) {
+  function togglePin(note) {
     const wasPinned = note.is_pinned === true || note.is_pinned === 'true';
-    try {
-      await updateNote(note._id, { is_pinned: !wasPinned });
-      setNotes((prev) =>
-        prev.map((n) => (n._id === note._id ? { ...n, is_pinned: !wasPinned } : n))
-      );
-    } catch {
-      // pin toggle is non-critical — fail silently
-    }
+    updateNoteOptimistic(note._id, { is_pinned: !wasPinned }).catch(() => {});
   }
 
   const pinned = notes.filter((n) => n.is_pinned === true || n.is_pinned === 'true');
@@ -182,19 +165,19 @@ export default function NotesTab({ patient, referral }) {
           </span>
           <button
             onClick={submitNote}
-            disabled={!composing.trim() || submitting}
+            disabled={!composing.trim()}
             style={{
               padding: '7px 18px', borderRadius: 7,
-              background: composing.trim() && !submitting
+              background: composing.trim()
                 ? palette.primaryMagenta.hex
                 : hexToRgba(palette.primaryMagenta.hex, 0.3),
               border: 'none', fontSize: 12.5, fontWeight: 650,
               color: palette.backgroundLight.hex,
-              cursor: composing.trim() && !submitting ? 'pointer' : 'not-allowed',
+              cursor: composing.trim() ? 'pointer' : 'not-allowed',
               transition: 'background 0.15s',
             }}
           >
-            {submitting ? 'Saving...' : 'Add Note'}
+            Add Note
           </button>
         </div>
       </div>

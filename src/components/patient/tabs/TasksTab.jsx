@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { getTasksByPatient, updateTask, createTask } from '../../../api/tasks.js';
+import { useState, useEffect, useMemo } from 'react';
+import { useCareStore } from '../../../store/careStore.js';
+import { updateTaskOptimistic, createTaskOptimistic } from '../../../store/mutations.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
-import { getUsers } from '../../../api/users.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -68,15 +68,23 @@ const TYPE_ACCENT = {
 export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
   const { resolveUser }          = useLookups();
   const { appUser, appUserId }   = useCurrentAppUser();
-  const [tasks, setTasks]        = useState([]);
-  const [loading, setLoading]    = useState(true);
+  const allTasks                 = useCareStore((s) => s.tasks);
+  const hydrated                 = useCareStore((s) => s.hydrated);
   const [filter, setFilter]      = useState('open');
   const [confirmId, setConfirmId]= useState(null);
   const [showForm, setShowForm]  = useState(false);
 
   const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
 
-  // Header "+ Task" button triggers auto-open of the new task form
+  const tasks = useMemo(() => {
+    if (!patient?.id) return [];
+    return Object.values(allTasks)
+      .filter((t) => t.patient_id === patient.id)
+      .sort((a, b) => new Date(a.due_date || '9999') - new Date(b.due_date || '9999'));
+  }, [allTasks, patient?.id]);
+
+  const loading = !hydrated;
+
   useEffect(() => {
     if (autoNewTask) {
       setShowForm(true);
@@ -84,25 +92,12 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
     }
   }, [autoNewTask, onAutoNewTaskConsumed]);
 
-  useEffect(() => {
-    if (!patient?.id) return;
-    setLoading(true);
-    getTasksByPatient(patient.id)
-      .then((recs) => setTasks(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [patient?.id]);
-
-  async function markComplete(task) {
+  function markComplete(task) {
     setConfirmId(null);
-    try {
-      await updateTask(task._id, { status: 'Completed', completed_at: new Date().toISOString() });
-      setTasks((prev) => prev.map((t) => t._id === task._id ? { ...t, status: 'Completed' } : t));
-    } catch {}
+    updateTaskOptimistic(task._id, { status: 'Completed', completed_at: new Date().toISOString() }).catch(() => {});
   }
 
-  function handleTaskCreated(newTask) {
-    setTasks((prev) => [newTask, ...prev]);
+  function handleTaskCreated() {
     setShowForm(false);
   }
 
@@ -184,60 +179,52 @@ const EMPTY = { type: '', title: '', description: '', priority: 'Normal', due_da
 function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated, onCancel }) {
   const [form, setForm]         = useState(EMPTY);
   const [assigneeId, setAssigneeId] = useState('');
-  const [users, setUsers]       = useState([]);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState(null);
+  const storeUsers              = useCareStore((s) => s.users);
 
-  // Fetch team members for admin assignment picker
-  useEffect(() => {
-    if (!isAdmin) return;
-    getUsers({ sort: [{ field: 'last_name', direction: 'asc' }] })
-      .then((recs) => {
-        const active = recs.map((r) => ({ _id: r.id, ...r.fields })).filter((u) => u.status === 'Active');
-        setUsers(active);
-        if (appUserId) setAssigneeId(appUserId);
-      })
-      .catch(() => {});
-  }, [isAdmin, appUserId]);
+  const users = useMemo(() => {
+    if (!isAdmin) return [];
+    return Object.values(storeUsers)
+      .filter((u) => u.status === 'Active')
+      .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+  }, [storeUsers, isAdmin]);
 
-  // Non-admin: always assign to self
   useEffect(() => {
-    if (!isAdmin && appUserId) setAssigneeId(appUserId);
-  }, [isAdmin, appUserId]);
+    if (appUserId) setAssigneeId(appUserId);
+  }, [appUserId]);
 
   function set(key, val) { setForm((f) => ({ ...f, [key]: val })); }
 
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!form.type || !form.title.trim()) return;
     setSaving(true);
     setError(null);
 
     const effectiveAssignee = assigneeId || appUserId;
 
-    // Auto-derive route_to_role from assignee's role
     const assignedUser = users.find((u) => u.id === effectiveAssignee);
     const route_to_role = assignedUser
       ? (ROLE_ROUTE_MAP[assignedUser.role_id] || 'Admin')
       : (ROLE_ROUTE_MAP[appUser?.role_id] || 'Admin');
 
-    try {
-      const rec = await createTask({
-        title:          form.title.trim(),
-        description:    form.description.trim() || undefined,
-        type:           form.type,
-        route_to_role,
-        priority:       form.priority,
-        status:         'Pending',
-        assigned_to_id: effectiveAssignee || undefined,
-        patient_id:     patient?.id || undefined,
-        referral_id:    referral?._id || undefined,
-        due_date:       form.due_date || undefined,
-      });
-      onCreated({ _id: rec.id, ...rec.fields });
-    } catch (err) {
+    createTaskOptimistic({
+      title:          form.title.trim(),
+      description:    form.description.trim() || undefined,
+      type:           form.type,
+      route_to_role,
+      priority:       form.priority,
+      status:         'Pending',
+      assigned_to_id: effectiveAssignee || undefined,
+      patient_id:     patient?.id || undefined,
+      referral_id:    referral?._id || undefined,
+      due_date:       form.due_date || undefined,
+    }).then(() => {
+      onCreated();
+    }).catch((err) => {
       setError(err.message || 'Failed to create task');
       setSaving(false);
-    }
+    });
   }
 
   const canSubmit = form.type && form.title.trim() && !saving;

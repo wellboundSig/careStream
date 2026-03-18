@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getCampaigns, getCampaignMarketers } from '../../api/campaigns.js';
-import { getReferrals } from '../../api/referrals.js';
+import { useState, useMemo } from 'react';
+import { useCareStore } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { REGION_COLORS } from './Facilities.jsx';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { SkeletonRect } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STATUS_COLORS = {
@@ -16,35 +15,42 @@ function fmtDate(d) { if (!d) return null; return new Date(d).toLocaleDateString
 
 export default function Campaigns() {
   const { resolveMarketer } = useLookups();
-  const [campaigns, setCampaigns] = useState([]);
-  const [refCounts, setRefCounts] = useState({});
-  const [marketersByCamp, setMarketersByCamp] = useState({});
-  const [loading, setLoading] = useState(true);
+  const storeCampaigns = useCareStore((s) => s.campaigns);
+  const storeCM = useCareStore((s) => s.campaignMarketers);
+  const storeRefs = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([getCampaigns(), getReferrals({ fields: ['campaign_id', 'current_stage'] })]).then(async ([camps, refs]) => {
-      const campList = camps.map((r) => ({ _id: r.id, ...r.fields }));
-      setCampaigns(campList);
-      const rc = {}; refs.forEach((r) => { const cid = r.fields.campaign_id; if (cid) rc[cid] = (rc[cid] || 0) + 1; }); setRefCounts(rc);
-      const mmap = {};
-      await Promise.all(campList.map(async (c) => {
-        const links = await getCampaignMarketers(c.id).catch(() => []);
-        mmap[c.id] = links.map((r) => r.fields.marketer_id).filter(Boolean);
-      }));
-      setMarketersByCamp(mmap);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const campaigns = useMemo(() => Object.values(storeCampaigns), [storeCampaigns]);
+
+  const refCounts = useMemo(() => {
+    const rc = {};
+    Object.values(storeRefs).forEach((r) => {
+      const cid = r.campaign_id;
+      if (cid) rc[cid] = (rc[cid] || 0) + 1;
+    });
+    return rc;
+  }, [storeRefs]);
+
+  const marketersByCamp = useMemo(() => {
+    const mmap = {};
+    Object.values(storeCM).forEach((link) => {
+      const cid = link.campaign_id;
+      const mid = link.marketer_id;
+      if (cid && mid) {
+        if (!mmap[cid]) mmap[cid] = [];
+        mmap[cid].push(mid);
+      }
+    });
+    return mmap;
+  }, [storeCM]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return campaigns;
     const q = search.toLowerCase();
     return campaigns.filter((c) => (c.name || '').toLowerCase().includes(q) || (c.region || '').toLowerCase().includes(q));
   }, [campaigns, search]);
-
-  if (loading) return <LoadingState message="Loading campaigns…" />;
 
   return (
     <>
@@ -59,7 +65,9 @@ export default function Campaigns() {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filtered.map((camp) => {
+          {!hydrated ? (
+            Array.from({ length: 4 }).map((_, i) => <SkeletonRect key={i} height={90} />)
+          ) : filtered.map((camp) => {
             const sc = STATUS_COLORS[camp.status] || STATUS_COLORS.Active;
             const rc = REGION_COLORS[camp.region];
             const mktIds = marketersByCamp[camp.id] || [];

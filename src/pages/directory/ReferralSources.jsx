@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getReferralSources } from '../../api/referralSources.js';
-import { getReferrals } from '../../api/referrals.js';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { useState, useMemo } from 'react';
+import { useCareStore } from '../../store/careStore.js';
+import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TYPE_COLORS = {
@@ -18,21 +17,13 @@ const TYPE_COLORS = {
 };
 
 export default function ReferralSources() {
-  const [sources, setSources] = useState([]);
-  const [refData, setRefData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const storeSources = useCareStore((s) => s.referralSources);
+  const storeRefs = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getReferralSources(),
-      getReferrals({ fields: ['referral_source_id', 'current_stage'] }),
-    ]).then(([srcs, refs]) => {
-      setSources(srcs.map((r) => ({ _id: r.id, ...r.fields })));
-      setRefData(refs.map((r) => r.fields));
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const sources = useMemo(() => Object.values(storeSources), [storeSources]);
+  const refData = useMemo(() => Object.values(storeRefs), [storeRefs]);
 
   const enriched = useMemo(() => {
     const list = search.trim()
@@ -46,8 +37,6 @@ export default function ReferralSources() {
       return { ...src, refCount: refs.length, admitted, convRate };
     }).sort((a, b) => b.refCount - a.refCount);
   }, [sources, refData, search]);
-
-  if (loading) return <LoadingState message="Loading referral sources…" />;
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -71,7 +60,9 @@ export default function ReferralSources() {
             </tr>
           </thead>
           <tbody>
-            {enriched.length === 0 ? (
+            {!hydrated ? (
+              Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)
+            ) : enriched.length === 0 ? (
               <tr><td colSpan={5} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No sources found.</td></tr>
             ) : enriched.map((src) => (
               <SourceRow key={src._id} source={src} />

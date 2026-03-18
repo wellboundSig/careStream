@@ -4,10 +4,10 @@ import { usePipelineData } from '../hooks/usePipelineData.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
-import LoadingState from '../components/common/LoadingState.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
+import { SkeletonStatCard, SkeletonTableRow, SkeletonStageCard, SkeletonRect } from '../components/common/Skeleton.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
@@ -132,7 +132,9 @@ export default function Dashboard() {
     [filtered],
   );
 
-  if (loading) return <LoadingState message="Loading dashboard..." />;
+  // With the hydration gate in AppShell, `loading` is almost always false.
+  // But as a safety fallback, show skeletons (not a spinner) if data isn't ready.
+  if (loading) return <DashboardSkeleton isMobile={isMobile} />;
 
   const wowDelta = newThisWeek - newLastWeek;
 
@@ -544,5 +546,63 @@ function PriorityDot({ priority }) {
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: c, display: 'inline-block', flexShrink: 0 }} />
       <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{priority || 'Normal'}</span>
     </span>
+  );
+}
+
+function DashboardSkeleton({ isMobile }) {
+  if (isMobile) {
+    return (
+      <div style={{ padding: '16px 16px 8px' }}>
+        <SkeletonRect width={120} height={20} style={{ marginBottom: 8 }} />
+        <SkeletonRect width={80} height={12} style={{ marginBottom: 18 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+          {[0, 1, 2, 3].map((i) => <SkeletonStatCard key={i} />)}
+        </div>
+        <SkeletonRect width={100} height={12} style={{ marginBottom: 12 }} />
+        {[0, 1, 2, 3].map((i) => (
+          <SkeletonRect key={i} height={68} style={{ marginBottom: 8 }} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 22 }}>
+        <div>
+          <SkeletonRect width={140} height={22} style={{ marginBottom: 6 }} />
+          <SkeletonRect width={180} height={12} />
+        </div>
+        <SkeletonRect width={120} height={36} borderRadius={8} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+        {[0, 1, 2, 3].map((i) => <SkeletonStatCard key={i} />)}
+      </div>
+      <SkeletonRect height={80} style={{ marginBottom: 24 }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+        <SkeletonRect width={120} height={14} />
+        <SkeletonRect width={60} height={14} />
+      </div>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--color-border)', background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
+              {['Patient', 'Division', 'Stage', 'Priority', 'Referral Date'].map((h) => (
+                <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2, 3, 4, 5].map((i) => <SkeletonTableRow key={i} columns={5} />)}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 28 }}>
+        <SkeletonRect width={140} height={14} style={{ marginBottom: 14 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          {Array.from({ length: 13 }).map((_, i) => <SkeletonStageCard key={i} />)}
+        </div>
+      </div>
+    </div>
   );
 }

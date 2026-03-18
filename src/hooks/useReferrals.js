@@ -1,6 +1,11 @@
-import { useAirtable } from './useAirtable.js';
-import { getReferrals } from '../api/referrals.js';
+import { useMemo } from 'react';
+import { useCareStore } from '../store/careStore.js';
 
-export function useReferrals(params) {
-  return useAirtable(() => getReferrals(params), [JSON.stringify(params)]);
+export function useReferrals() {
+  const referrals = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
+
+  const data = useMemo(() => Object.values(referrals), [referrals]);
+
+  return { data, loading: !hydrated, error: null, refetch: () => {} };
 }

@@ -1,12 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser } from '@clerk/react';
-import airtable from '../api/airtable.js';
+import { useCareStore } from '../store/careStore.js';
+import { createTaskOptimistic } from '../store/mutations.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
-import { createTask } from '../api/tasks.js';
-import { getPatients } from '../api/patients.js';
 import UserProfileDrawer from '../components/users/UserProfileDrawer.jsx';
-import LoadingState from '../components/common/LoadingState.jsx';
+import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 // Classify a role by its NAME — no hardcoded IDs.
@@ -71,21 +70,19 @@ export default function Team() {
   const { user: clerkUser }        = useUser();
   const { resolveRole, roleMap }   = useLookups();
   const { appUser, appUserId }     = useCurrentAppUser();
-  const [users, setUsers]       = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const storeUsers = useCareStore((s) => s.users);
+  const hydrated   = useCareStore((s) => s.hydrated);
+
+  const users = useMemo(() =>
+    Object.values(storeUsers).sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '')),
+  [storeUsers]);
+
   const [selected, setSelected] = useState(null);
   const [search, setSearch]     = useState('');
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, user }
-  const [assignTarget, setAssignTarget] = useState(null); // user to assign to
+  const [contextMenu, setContextMenu] = useState(null);
+  const [assignTarget, setAssignTarget] = useState(null);
 
   const isAdmin = !!appUser?.role_id && classifyRole(roleMap[appUser.role_id] || '') === 'admin';
-
-  useEffect(() => {
-    airtable.fetchAll('Users', { sort: [{ field: 'last_name', direction: 'asc' }] })
-      .then((recs) => setUsers(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
 
   // Close context menu on outside click or Escape
   useEffect(() => {
@@ -130,8 +127,6 @@ export default function Team() {
     setContextMenu({ x, y, user });
   }
 
-  if (loading) return <LoadingState message="Loading team…" />;
-
   return (
     <>
       <div style={{ padding: '24px 28px' }}>
@@ -161,7 +156,11 @@ export default function Team() {
           </div>
         </div>
 
-        {groups.length === 0 ? (
+        {!hydrated ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonRect key={i} height={90} borderRadius={12} />)}
+          </div>
+        ) : groups.length === 0 ? (
           <p style={{ fontSize: 14, color: hexToRgba(palette.backgroundDark.hex, 0.35), textAlign: 'center', padding: '48px 0', fontStyle: 'italic' }}>
             No team members found.
           </p>
@@ -360,20 +359,14 @@ const EMPTY_FORM = { type: '', title: '', description: '', due_date: '' };
 function AssignTaskModal({ target, assignedById, roleMap, onClose }) {
   const [form, setForm]           = useState(EMPTY_FORM);
   const [patientQuery, setPatientQuery] = useState('');
-  const [patients, setPatients]   = useState([]);
+  const storePatients             = useCareStore((s) => s.patients);
+  const patients                  = useMemo(() => Object.values(storePatients), [storePatients]);
   const [patientOpen, setPatientOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState(null);
   const [success, setSuccess]     = useState(false);
   const patientRef                = useRef(null);
-
-  // Fetch patients once on open
-  useEffect(() => {
-    getPatients()
-      .then((recs) => setPatients(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {});
-  }, []);
 
   // Close patient dropdown on outside click
   useEffect(() => {
@@ -411,7 +404,7 @@ function AssignTaskModal({ target, assignedById, roleMap, onClose }) {
       const groupRouteMap = { intake: 'Intake', clinical: 'Clinical', marketers: 'Admin', admin: 'Admin' };
       const route_to_role = groupRouteMap[classifyRole(roleMap[target.role_id] || '')] || 'Admin';
 
-      await createTask({
+      await createTaskOptimistic({
         title:          form.title.trim(),
         description:    form.description.trim() || undefined,
         type:           form.type,

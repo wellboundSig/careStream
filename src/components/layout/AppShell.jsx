@@ -5,6 +5,7 @@ import TopBar from './TopBar.jsx';
 import SubNav from './SubNav.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
+import HydrationScreen from '../common/HydrationScreen.jsx';
 import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { useTheme } from '../../utils/ThemeContext.jsx';
@@ -13,8 +14,9 @@ import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { prefetchClinicians } from '../../hooks/useEsperClinicians.js';
-import { prefetchPhysicians } from '../../hooks/usePhysicians.js';
-import { prefetchLookups } from '../../hooks/useLookups.js';
+import { useCareStore } from '../../store/careStore.js';
+import { hydrateStore } from '../../store/hydrate.js';
+import { startSync, stopSync } from '../../store/sync.js';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -47,6 +49,7 @@ export default function AppShell() {
   const { prefs } = usePreferences();
   const { open: openDrawer } = usePatientDrawer();
   const isMobile = useIsMobile();
+  const hydrated = useCareStore((s) => s.hydrated);
 
   const [division, setDivision] = useState('All');
   const [roleMode, setRoleMode] = useState(() => localStorage.getItem('carestream_rolemode') || 'intake');
@@ -59,18 +62,22 @@ export default function AppShell() {
     localStorage.setItem('carestream_rolemode', mode);
   }
 
-  // Warm all background caches as soon as the shell mounts.
-  // Order matters: physicians first (sessionStorage — near-instant on repeat visits)
-  // so that prefetchLookups can reuse the physician map without a duplicate network call.
+  // Hydrate the normalized store on mount (replaces old prefetch* calls).
+  // Esper clinicians stay on their own cache — that pattern works great.
   useEffect(() => {
+    hydrateStore();
     prefetchClinicians();
-    prefetchPhysicians();
-    prefetchLookups();
+    return () => stopSync();
   }, []);
+
+  // Start background polling once hydration completes
+  useEffect(() => {
+    if (hydrated) startSync();
+  }, [hydrated]);
 
   // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)
   useEffect(() => {
-    if (isMobile) return;
+    if (!hydrated || isMobile) return;
     function onKey(e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         const tag = document.activeElement?.tagName;
@@ -82,7 +89,11 @@ export default function AppShell() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isMobile]);
+  }, [hydrated, isMobile]);
+
+  // Show branded loading screen until the store is ready.
+  // All hooks are above — this is safe per Rules of Hooks.
+  if (!hydrated) return <HydrationScreen />;
 
   const newReferralModal = showNewReferral && (
     <NewReferralForm

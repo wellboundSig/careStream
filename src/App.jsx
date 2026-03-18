@@ -22,6 +22,7 @@ import Settings from './pages/Settings.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
+import Training from './pages/Training.jsx';
 import NotFound from './pages/NotFound.jsx';
 
 function RequireAuth({ children }) {
@@ -35,6 +36,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/sign-in/*" element={<SignInPage />} />
+
+      {/* Training — standalone, no AppShell nav */}
+      <Route path="/training" element={<RequireAuth><Training /></RequireAuth>} />
 
       <Route
         path="/"

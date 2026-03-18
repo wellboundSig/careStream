@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPhysician } from '../../api/physicians.js';
 import { clearLookupsCache } from '../../hooks/useLookups.js';
 import { usePhysicians, refreshPhysicians } from '../../hooks/usePhysicians.js';
-import airtable from '../../api/airtable.js';
+import { useCareStore } from '../../store/careStore.js';
 import PhysicianDrawer from '../../components/physicians/PhysicianDrawer.jsx';
-import LoadingState from '../../components/common/LoadingState.jsx';
+import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const BASE_INPUT = {
@@ -146,28 +146,23 @@ function StatusPill({ value, label }) {
 }
 
 export default function Physicians() {
-  const { physicians, loading: physLoading } = usePhysicians();
-  const [refCounts, setRefCounts] = useState({});
-  const [refLoading, setRefLoading] = useState(true);
+  const { physicians } = usePhysicians();
+  const storeRefs = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const loading = physLoading || refLoading;
-
-  // Ref counts are lightweight — fetch separately, doesn't block physician list
-  useEffect(() => {
-    airtable.fetchAll('Referrals', { fields: ['physician_id'] })
-      .then((refs) => {
-        const map = {};
-        refs.forEach((r) => { const pid = r.fields.physician_id; if (pid) map[pid] = (map[pid] || 0) + 1; });
-        setRefCounts(map);
-      })
-      .catch(() => {})
-      .finally(() => setRefLoading(false));
-  }, []);
+  const refCounts = useMemo(() => {
+    const map = {};
+    Object.values(storeRefs).forEach((r) => {
+      const pid = r.physician_id;
+      if (pid) map[pid] = (map[pid] || 0) + 1;
+    });
+    return map;
+  }, [storeRefs]);
 
   function handlePhysicianAdded(newPhy) {
     refreshPhysicians();
@@ -201,8 +196,6 @@ export default function Physicians() {
       {label} {field && sortField === field && (sortDir === 'asc' ? '▲' : '▼')}
     </th>
   );
-
-  if (loading) return <LoadingState message="Loading physicians…" />;
 
   return (
     <>
@@ -238,7 +231,9 @@ export default function Physicians() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {!hydrated ? (
+                Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)
+              ) : filtered.length === 0 ? (
                 <tr><td colSpan={5} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No physicians found.</td></tr>
               ) : filtered.map((phy) => (
                 <PhysicianRow key={phy._id} physician={phy} refCount={refCounts[phy.id] || 0} onOpen={() => setSelected(phy)} />

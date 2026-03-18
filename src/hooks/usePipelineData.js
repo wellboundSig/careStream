@@ -1,21 +1,22 @@
 import { useMemo } from 'react';
-import { useReferrals } from './useReferrals.js';
-import { usePatients } from './usePatients.js';
+import { useCareStore } from '../store/careStore.js';
 
 export function usePipelineData() {
-  const { data: referrals, loading: rLoading, error, refetch } = useReferrals();
-  const { data: patients, loading: pLoading } = usePatients();
+  const patients = useCareStore((s) => s.patients);
+  const referrals = useCareStore((s) => s.referrals);
+  const hydrated = useCareStore((s) => s.hydrated);
 
   const data = useMemo(() => {
-    if (!referrals.length) return [];
+    const refs = Object.values(referrals);
+    if (!refs.length) return [];
 
-    const patientMap = {};
-    patients.forEach((p) => {
-      if (p.id) patientMap[p.id] = p;
+    const patientByCustomId = {};
+    Object.values(patients).forEach((p) => {
+      if (p.id) patientByCustomId[p.id] = p;
     });
 
-    return referrals.map((ref) => {
-      const patient = patientMap[ref.patient_id];
+    return refs.map((ref) => {
+      const patient = patientByCustomId[ref.patient_id];
       return {
         ...ref,
         patientName: patient
@@ -27,5 +28,5 @@ export function usePipelineData() {
     });
   }, [referrals, patients]);
 
-  return { data, loading: rLoading || pLoading, error, refetch };
+  return { data, loading: !hydrated, error: null, refetch: () => {} };
 }
