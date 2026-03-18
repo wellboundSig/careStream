@@ -175,5 +175,5 @@ export function useLookups() {
   const resolveFacility  = useMemo(() => (id) => (id && lookups.facilityMap[id])   || '—', [lookups]);
   const resolvePhysician = useMemo(() => (id) => (id && lookups.physicianMap[id])  || '—', [lookups]);
 
-  return { resolveMarketer, resolveUser, resolveSource, resolveRole, resolveFacility, resolvePhysician, loading };
+  return { resolveMarketer, resolveUser, resolveSource, resolveRole, resolveFacility, resolvePhysician, roleMap: lookups.roleMap, loading };
 }

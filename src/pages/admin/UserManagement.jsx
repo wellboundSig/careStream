@@ -9,15 +9,14 @@ import palette, { hexToRgba } from '../../utils/colors.js';
 const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
 const SCOPES   = ['DevNurse', 'Main'];
 
-const ROLE_IDS = [
-  { id: 'rol_001', label: 'Admin' },
-  { id: 'rol_002', label: 'Developer' },
-  { id: 'rol_003', label: 'Intake Coordinator' },
-  { id: 'rol_004', label: 'Scheduler' },
-  { id: 'rol_005', label: 'Clinical RN' },
-  { id: 'rol_006', label: 'Marketer' },
-  { id: 'rol_007', label: 'CEO' },
+// Role colors cycle for any number of roles — no hardcoded role IDs needed.
+const ROLE_COLOR_CYCLE = [
+  '#D91E75', '#450931', '#06D4FF', '#6EC72B', '#DB8640', '#F0C424', '#9B59B6',
 ];
+function roleColor(roleId) {
+  const num = parseInt((roleId || '').replace(/\D/g, ''), 10);
+  return ROLE_COLOR_CYCLE[isNaN(num) ? 0 : (num - 1) % ROLE_COLOR_CYCLE.length];
+}
 
 const STATUS_COLORS = {
   Active:    { bg: hexToRgba(palette.accentGreen.hex, 0.18),      text: palette.accentGreen.hex },
@@ -47,7 +46,10 @@ function timeAgo(dateStr) {
 
 export default function UserManagement() {
   const { appUser } = useCurrentAppUser();
-  const { resolveRole } = useLookups();
+  const { roleMap } = useLookups();
+  const roles = Object.entries(roleMap)
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
@@ -159,7 +161,7 @@ export default function UserManagement() {
                 <UserRow
                   key={user._id}
                   user={user}
-                  resolveRole={resolveRole}
+                  roles={roles}
                   isSaving={!!saving[user.id]}
                   onUpdate={(field, value) => updateUser(user.id, user._id, field, value)}
                   onOpenProfile={() => setSelectedUser(user)}
@@ -181,16 +183,11 @@ export default function UserManagement() {
   );
 }
 
-function UserRow({ user, resolveRole, isSaving, onUpdate, onOpenProfile }) {
+function UserRow({ user, roles, isSaving, onUpdate, onOpenProfile }) {
   const [hovered, setHovered] = useState(false);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
-  const scopeStyle = SCOPE_COLORS[user.scope] || SCOPE_COLORS.Main;
-  const roleColor = {
-    'rol_001': palette.primaryMagenta.hex, 'rol_002': palette.primaryDeepPlum.hex,
-    'rol_003': palette.accentBlue.hex,     'rol_004': palette.accentGreen.hex,
-    'rol_005': palette.primaryMagenta.hex, 'rol_006': palette.accentOrange.hex,
-    'rol_007': palette.highlightYellow.hex,
-  }[user.role_id] || palette.accentBlue.hex;
+  const scopeStyle  = SCOPE_COLORS[user.scope]   || SCOPE_COLORS.Main;
+  const color       = roleColor(user.role_id);
 
   const selectStyle = {
     padding: '5px 8px', borderRadius: 6, border: `1px solid var(--color-border)`,
@@ -206,7 +203,7 @@ function UserRow({ user, resolveRole, isSaving, onUpdate, onOpenProfile }) {
     >
       <td style={{ padding: '11px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: hexToRgba(roleColor, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: roleColor }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: hexToRgba(color, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color }}>
             {initials(user.first_name, user.last_name)}
           </div>
           <div>
@@ -217,8 +214,9 @@ function UserRow({ user, resolveRole, isSaving, onUpdate, onOpenProfile }) {
       </td>
 
       <td style={{ padding: '11px 14px' }}>
-        <select value={user.role_id || ''} onChange={(e) => onUpdate('role_id', e.target.value)} disabled={isSaving} style={selectStyle}>
-          {ROLE_IDS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        <select value={user.role_id || ''} onChange={(e) => onUpdate('role_id', e.target.value)} disabled={isSaving || !roles.length} style={selectStyle}>
+          {!user.role_id && <option value="">— select role —</option>}
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
       </td>
 
