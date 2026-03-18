@@ -11,16 +11,17 @@ function normalize(records) {
 }
 
 // ── Table tiers for polling ─────────────────────────────────────────────────
-// Hot: stage changes, task completions — visible to other users within seconds
+// Hot: referrals + patients always sync together (referrals reference patients
+// by custom id — if a referral arrives without its patient, raw IDs display).
 const HOT = [
   { key: 'referrals', table: 'Referrals', sortField: 'updated_at' },
+  { key: 'patients',  table: 'Patients',  sortField: 'updated_at' },
   { key: 'tasks',     table: 'Tasks',     sortField: 'updated_at' },
 ];
 
 // Warm: notes, conflicts — visible within ~30s
 const WARM = [
   { key: 'notes',     table: 'Notes',     sortField: 'updated_at' },
-  { key: 'patients',  table: 'Patients',  sortField: 'updated_at' },
   { key: 'conflicts', table: 'Conflicts', sortField: 'created_at' },
 ];
 

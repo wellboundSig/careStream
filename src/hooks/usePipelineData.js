@@ -10,13 +10,18 @@ export function usePipelineData() {
     const refs = Object.values(referrals);
     if (!refs.length) return [];
 
+    // Build two lookup paths: by custom id (pat_007) AND by Airtable record id (recXXX)
     const patientByCustomId = {};
+    const patientByRecordId = {};
     Object.values(patients).forEach((p) => {
-      if (p.id) patientByCustomId[p.id] = p;
+      if (p.id)  patientByCustomId[p.id]  = p;
+      if (p._id) patientByRecordId[p._id] = p;
     });
 
     return refs.map((ref) => {
-      const patient = patientByCustomId[ref.patient_id];
+      const patient = patientByCustomId[ref.patient_id]
+        || patientByRecordId[ref.patient_id]
+        || null;
       return {
         ...ref,
         patientName: patient
