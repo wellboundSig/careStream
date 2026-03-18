@@ -5,6 +5,7 @@ import {
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { mergeEntities } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
@@ -366,18 +367,23 @@ export default function TriageTab({ patient, referral }) {
         filled_by_id: user?.id || 'unknown',
         updated_at: new Date().toISOString(),
       };
-      // Airtable checkbox fields only accept real booleans — never strings like "true"/"TRUE".
-      // Explicitly list every boolean field so any string representation (any case) is coerced.
+      // Airtable checkbox fields accept real booleans; text-backed boolean fields need "TRUE"/"FALSE".
+      // has_pets, has_homecare_services, has_community_hab, is_diabetic are checkboxes → boolean
+      // immunizations_up_to_date is a text field in Airtable that stores "TRUE"/"FALSE" → string
       const CHECKBOX_FIELDS = new Set([
         'has_pets', 'has_homecare_services', 'has_community_hab', 'is_diabetic',
-        'immunizations_up_to_date',
       ]);
+      const TEXT_BOOL_FIELDS = new Set(['immunizations_up_to_date']);
+
       const fields = Object.fromEntries(
         Object.entries(rawFields)
           .map(([k, v]) => {
             if (CHECKBOX_FIELDS.has(k)) {
-              // Coerce any representation (boolean, 'true', 'TRUE', 'True') → real boolean
               return [k, v === true || (typeof v === 'string' && v.toLowerCase() === 'true')];
+            }
+            if (TEXT_BOOL_FIELDS.has(k)) {
+              const isTrue = v === true || v === 'Yes' || (typeof v === 'string' && v.toLowerCase() === 'true');
+              return [k, isTrue ? 'TRUE' : 'FALSE'];
             }
             if (typeof v === 'string' && v.toLowerCase() === 'true')  return [k, true];
             if (typeof v === 'string' && v.toLowerCase() === 'false') return [k, false];
@@ -385,14 +391,16 @@ export default function TriageTab({ patient, referral }) {
           })
           .filter(([, v]) => v !== false && v !== null && v !== undefined)
       );
+      const storeKey = triageType === 'adult' ? 'triageAdult' : 'triagePediatric';
       if (triageRecordId) {
         await updateFn(triageRecordId, fields);
+        mergeEntities(storeKey, { [triageRecordId]: { _id: triageRecordId, ...fields } });
       } else {
-        // Generate a unique primary-field id for the new triage record
         const prefix = triageType === 'pediatric' ? 'tri_p' : 'tri_a';
         const newId = `${prefix}_${Date.now()}`;
         const created = await createFn({ id: newId, ...fields, created_at: new Date().toISOString() });
         setTriageRecordId(created.id);
+        mergeEntities(storeKey, { [created.id]: { _id: created.id, ...created.fields } });
       }
       // Sync services_needed → referral.services_requested when the referral has none yet.
       // This keeps the pipeline card's service tags populated from the triage assessment.

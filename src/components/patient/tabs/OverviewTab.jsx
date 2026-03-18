@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { updatePatient } from '../../../api/patients.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { updateEntity } from '../../../store/careStore.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
-import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -33,7 +33,7 @@ function Section({ title, children }) {
 
 // ── Patient field (optimistic, saved to Patients table) ────────────────────────
 
-function EditableField({ label, value, fieldKey, patientId, onSave, type = 'text', fullWidth = false }) {
+function EditableField({ label, value, fieldKey, patientId, patientRecordId, onSave, type = 'text', fullWidth = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
@@ -44,12 +44,14 @@ function EditableField({ label, value, fieldKey, patientId, onSave, type = 'text
     if (draft === (value || '')) { setEditing(false); return; }
     onSave(fieldKey, draft);
     setEditing(false);
+    // Update the store immediately so checklists and other readers see the change
+    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: draft });
     setSaving(true);
     try {
       await updatePatient(patientId, { [fieldKey]: draft });
-      triggerDataRefresh();
     } catch {
       onSave(fieldKey, value || '');
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
     } finally {
       setSaving(false);
     }
@@ -100,12 +102,13 @@ function EditableReferralField({ label, value, fieldKey, referralId, onSave, typ
     if (draft === (value || '')) { setEditing(false); return; }
     onSave(fieldKey, draft);
     setEditing(false);
+    if (referralId) updateEntity('referrals', referralId, { [fieldKey]: draft });
     setSaving(true);
     try {
       await updateReferral(referralId, { [fieldKey]: draft });
-      triggerDataRefresh();
     } catch {
       onSave(fieldKey, value || '');
+      if (referralId) updateEntity('referrals', referralId, { [fieldKey]: value || '' });
     } finally {
       setSaving(false);
     }
@@ -148,12 +151,13 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
     if (v === value) { setEditing(false); return; }
     onSave(fieldKey, v);
     setEditing(false);
+    if (referralId) updateEntity('referrals', referralId, { [fieldKey]: v });
     setSaving(true);
     try {
       await updateReferral(referralId, { [fieldKey]: v });
-      triggerDataRefresh();
     } catch {
       onSave(fieldKey, value);
+      if (referralId) updateEntity('referrals', referralId, { [fieldKey]: value });
     } finally {
       setSaving(false);
     }
@@ -201,12 +205,13 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   async function save() {
     onSave('services_requested', draft);
     setEditing(false);
+    if (referralId) updateEntity('referrals', referralId, { services_requested: draft });
     setSaving(true);
     try {
       await updateReferral(referralId, { services_requested: draft });
-      triggerDataRefresh();
     } catch {
       onSave('services_requested', value);
+      if (referralId) updateEntity('referrals', referralId, { services_requested: value });
     } finally {
       setSaving(false);
     }
@@ -261,12 +266,13 @@ function EditableReferralPhysician({ referral, onSave }) {
     }
     onSave('physician_id', phy.id);
     setEditing(false);
+    if (referral._id) updateEntity('referrals', referral._id, { physician_id: phy.id });
     setSaving(true);
     try {
       await updateReferral(referral._id, { physician_id: phy.id });
-      triggerDataRefresh();
     } catch {
       onSave('physician_id', referral.physician_id);
+      if (referral._id) updateEntity('referrals', referral._id, { physician_id: referral.physician_id });
     } finally {
       setSaving(false);
     }
@@ -337,32 +343,32 @@ export default function OverviewTab({ patient, referral }) {
 
       {/* ── Patient Information ── */}
       <Section title="Patient Information">
-        <EditableField label="First Name"       fieldKey="first_name"       value={patient.first_name}       patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Last Name"        fieldKey="last_name"        value={patient.last_name}        patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Date of Birth"    fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} onSave={handlePatientSave} type="date" />
-        <EditableField label="Gender"           fieldKey="gender"           value={patient.gender}           patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Primary Phone"    fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Secondary Phone"  fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Email"            fieldKey="email"            value={patient.email}            patientId={patientId} onSave={handlePatientSave} type="email" />
-        <EditableField label="Address"          fieldKey="address_street"   value={patient.address_street}   patientId={patientId} onSave={handlePatientSave} fullWidth />
-        <EditableField label="City"             fieldKey="address_city"     value={patient.address_city}     patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="State"            fieldKey="address_state"    value={patient.address_state}    patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Zip"              fieldKey="address_zip"      value={patient.address_zip?.toString()} patientId={patientId} onSave={handlePatientSave} />
+        <EditableField label="First Name"       fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Last Name"        fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Date of Birth"    fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" />
+        <EditableField label="Gender"           fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Primary Phone"    fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
+        <EditableField label="Secondary Phone"  fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
+        <EditableField label="Email"            fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="email" />
+        <EditableField label="Address"          fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+        <EditableField label="City"             fieldKey="address_city"     value={patient.address_city}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="State"            fieldKey="address_state"    value={patient.address_state}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Zip"              fieldKey="address_zip"      value={patient.address_zip?.toString()} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
       </Section>
 
       {/* ── Insurance ── */}
       <Section title="Insurance">
-        <EditableField label="Medicaid #"       fieldKey="medicaid_number"  value={patient.medicaid_number}  patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Medicare #"       fieldKey="medicare_number"  value={patient.medicare_number}  patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Insurance Plan"   fieldKey="insurance_plan"   value={patient.insurance_plan}   patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Insurance ID"     fieldKey="insurance_id"     value={patient.insurance_id}     patientId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Medicaid #"       fieldKey="medicaid_number"  value={patient.medicaid_number}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Medicare #"       fieldKey="medicare_number"  value={patient.medicare_number}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Insurance Plan"   fieldKey="insurance_plan"   value={patient.insurance_plan}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Insurance ID"     fieldKey="insurance_id"     value={patient.insurance_id}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
       </Section>
 
       {/* ── Emergency Contact ── */}
       <Section title="Emergency Contact">
-        <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} onSave={handlePatientSave} type="email" fullWidth />
+        <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
+        <EditableField label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="email" fullWidth />
       </Section>
 
       {/* ── Referral Info ── */}

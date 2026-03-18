@@ -6,6 +6,7 @@ import { getReferralSources } from '../../api/referralSources.js';
 import { createPatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
+import { mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -309,6 +310,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       };
 
       const referralRecord = await createReferral(referralFields);
+
+      // Push both records into the store immediately so the name resolves on first render
+      mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
+      mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
+
       // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
       if (referralRecord?._id) {
         updateReferral(referralRecord._id, { stage_entered_at: referralDate }).catch(() => {});

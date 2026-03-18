@@ -73,6 +73,7 @@ export function buildCheckFields({ referralId, patientId, authorId, form, flagVa
   // medicaid_active IS a checkbox — send boolean true, omit when false.
   // All other flag fields are checkboxes — boolean true is fine, false is omitted below.
   const raw = {
+    id: `ic_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
     referral_id: referralId,
     patient_id: patientId,
     checked_by_id: authorId || 'unknown',
