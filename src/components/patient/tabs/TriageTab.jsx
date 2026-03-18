@@ -366,16 +366,24 @@ export default function TriageTab({ patient, referral }) {
         filled_by_id: user?.id || 'unknown',
         updated_at: new Date().toISOString(),
       };
-      // Airtable checkbox fields only accept real booleans — never the strings "true"/"false".
-      // Normalize first, then strip false (Airtable treats missing checkbox as unchecked).
+      // Airtable checkbox fields only accept real booleans — never strings like "true"/"TRUE".
+      // Explicitly list every boolean field so any string representation (any case) is coerced.
+      const CHECKBOX_FIELDS = new Set([
+        'has_pets', 'has_homecare_services', 'has_community_hab', 'is_diabetic',
+        'immunizations_up_to_date',
+      ]);
       const fields = Object.fromEntries(
         Object.entries(rawFields)
           .map(([k, v]) => {
-            if (v === 'true')  return [k, true];
-            if (v === 'false') return [k, false];
+            if (CHECKBOX_FIELDS.has(k)) {
+              // Coerce any representation (boolean, 'true', 'TRUE', 'True') → real boolean
+              return [k, v === true || (typeof v === 'string' && v.toLowerCase() === 'true')];
+            }
+            if (typeof v === 'string' && v.toLowerCase() === 'true')  return [k, true];
+            if (typeof v === 'string' && v.toLowerCase() === 'false') return [k, false];
             return [k, v];
           })
-          .filter(([, v]) => v !== false)
+          .filter(([, v]) => v !== false && v !== null && v !== undefined)
       );
       if (triageRecordId) {
         await updateFn(triageRecordId, fields);
