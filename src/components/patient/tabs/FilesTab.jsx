@@ -118,13 +118,21 @@ function PreviewModal({ file, onClose }) {
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>No preview URL available.</p>
           ) : kind === 'image' ? (
             <img src={url} alt={file.file_name} style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8 }} />
-          ) : kind === 'pdf' ? (
-            <iframe src={url} title={file.file_name} style={{ width: '100%', height: '60vh', border: 'none', borderRadius: 8 }} />
           ) : (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 12 }}>No inline preview for this file type.</p>
-              <a href={url} target="_blank" rel="noopener noreferrer" style={{ padding: '8px 20px', borderRadius: 8, background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex, fontSize: 13, fontWeight: 650, textDecoration: 'none' }}>
-                Open in new tab
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <div style={{ width: 56, height: 56, borderRadius: 12, background: hexToRgba(palette.accentBlue.hex, 0.1), display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.accentBlue.hex} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke={palette.accentBlue.hex} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 6 }}>{file.file_name}</p>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 20 }}>
+                {kind === 'pdf' ? 'PDF preview opens in a new tab' : 'No inline preview for this file type'}
+              </p>
+              <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 24px', borderRadius: 8, background: palette.accentBlue.hex, color: palette.backgroundLight.hex, fontSize: 13, fontWeight: 650, textDecoration: 'none' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Open {kind === 'pdf' ? 'PDF' : 'File'}
               </a>
             </div>
           )}
