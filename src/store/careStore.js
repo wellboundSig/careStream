@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getBroadcastChannel, isBroadcastSuppressed, suppressBroadcast } from '../utils/windowManager.js';
 
 export const useCareStore = create((set, get) => ({
   // ── Hydration lifecycle ───────────────────────────────────────────────────
@@ -67,5 +68,48 @@ export function removeEntity(key, recordId) {
     const copy = { ...s[key] };
     delete copy[recordId];
     return { [key]: copy };
+  });
+}
+
+// ── Cross-window state sync via BroadcastChannel ─────────────────────────────
+
+const SYNC_KEYS = [
+  'patients', 'referrals', 'notes', 'tasks', 'stageHistory', 'files',
+  'insuranceChecks', 'conflicts', 'authorizations', 'episodes',
+  'triageAdult', 'triagePediatric', 'marketers', 'users', 'referralSources',
+  'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',
+  'campaignMarketers', 'lastSyncAt',
+];
+
+let _broadcastReady = false;
+
+export function setupBroadcastSync() {
+  if (_broadcastReady) return;
+  _broadcastReady = true;
+
+  const ch = getBroadcastChannel();
+  if (!ch) return;
+
+  useCareStore.subscribe((state, prevState) => {
+    if (isBroadcastSuppressed()) return;
+    const diff = {};
+    let hasDiff = false;
+    for (const key of SYNC_KEYS) {
+      if (state[key] !== prevState[key]) {
+        diff[key] = state[key];
+        hasDiff = true;
+      }
+    }
+    if (hasDiff) {
+      try { ch.postMessage({ type: 'CARESTREAM_SYNC', payload: diff }); } catch {}
+    }
+  });
+
+  ch.addEventListener('message', (event) => {
+    if (event.data?.type === 'CARESTREAM_SYNC') {
+      suppressBroadcast(() => {
+        useCareStore.setState(event.data.payload);
+      });
+    }
   });
 }

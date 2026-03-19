@@ -14,7 +14,7 @@ export function useUserPreferences() {
   // Stable ref so callbacks never stale-close over the record ID
   const recordIdRef = useRef(null);
 
-  const [prefs, setPrefs] = useState({ subnavEnabled: false, pinnedPages: [] });
+  const [prefs, setPrefs] = useState({ subnavEnabled: false, pinnedPages: [], splitScreenEnabled: false });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,8 +26,9 @@ export function useUserPreferences() {
         if (rec) {
           recordIdRef.current = rec.id;
           setPrefs({
-            subnavEnabled: rec.fields.subnav_enabled ?? false,
-            pinnedPages:   safeParseJSON(rec.fields.pinned_pages, []),
+            subnavEnabled:      rec.fields.subnav_enabled ?? false,
+            pinnedPages:        safeParseJSON(rec.fields.pinned_pages, []),
+            splitScreenEnabled: rec.fields.split_screen_enabled ?? false,
           });
         }
       })

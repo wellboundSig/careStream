@@ -24,7 +24,7 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function TopBar({ breadcrumbs }) {
+export default function TopBar({ breadcrumbs, splitEnabled, onToggleSplit, onPopOut }) {
   const { user }              = useUser();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -87,9 +87,69 @@ export default function TopBar({ breadcrumbs }) {
           )}
         </div>
 
-        {/* Right: search + bell + user */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Right: search + view buttons + bell + user */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <SearchBar onOpen={() => setPaletteOpen(true)} />
+
+          {/* Split screen toggle */}
+          {onToggleSplit && (
+            <button
+              onClick={onToggleSplit}
+              title={splitEnabled ? 'Close split view' : 'Split screen'}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: splitEnabled
+                  ? hexToRgba(NAV_TEXT, 0.18)
+                  : hexToRgba(NAV_TEXT, 0.08),
+                border: `1px solid ${hexToRgba(NAV_TEXT, splitEnabled ? 0.25 : 0.15)}`,
+                cursor: 'pointer',
+                color: splitEnabled ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.6),
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.18))}
+              onMouseLeave={(e) => (e.currentTarget.style.background = splitEnabled ? hexToRgba(NAV_TEXT, 0.18) : hexToRgba(NAV_TEXT, 0.08))}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="7.5" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="13.5" y="3" width="7.5" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+              </svg>
+            </button>
+          )}
+
+          {/* Pop-out window button */}
+          {onPopOut && (
+            <button
+              onClick={onPopOut}
+              title="Open current page in new window"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: hexToRgba(NAV_TEXT, 0.08),
+                border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
+                cursor: 'pointer',
+                color: hexToRgba(NAV_TEXT, 0.6),
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.18))}
+              onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.08))}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                <polyline points="15 3 21 3 21 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="10" y1="14" x2="21" y2="3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+
           <NotificationBell />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {user && (

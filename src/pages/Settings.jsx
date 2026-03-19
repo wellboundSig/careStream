@@ -229,6 +229,45 @@ export default function Settings() {
         </div>
       </Section>
 
+      {/* ── Layout & Multi-Monitor ── */}
+      <Section
+        title="Layout"
+        description="Customize how you view CareStream across your screens."
+      >
+        <SettingRow
+          label="Split Screen"
+          hint="Show two pages side-by-side. Stretch your browser across two monitors for a multi-monitor experience."
+        >
+          <Toggle
+            checked={prefs.splitScreenEnabled || false}
+            onChange={() => save({ splitScreenEnabled: !prefs.splitScreenEnabled })}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="Pop-Out Window"
+          hint="Open any page in a separate window with shared data. Use the pop-out button in the top bar."
+        >
+          <span style={{
+            fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+            background: hexToRgba(palette.accentBlue.hex, 0.1),
+            color: palette.accentBlue.hex,
+          }}>
+            Via Top Bar
+          </span>
+        </SettingRow>
+
+        <div style={{ paddingTop: 12 }}>
+          <p style={{
+            fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4),
+            lineHeight: 1.5, margin: 0,
+          }}>
+            Split screen and pop-out windows share data in real time via your browser.
+            Only the main window syncs with the server — pop-outs receive updates automatically.
+          </p>
+        </div>
+      </Section>
+
       {/* ── Navigation Pins ── */}
       <Section
         title="Navigation Bar"

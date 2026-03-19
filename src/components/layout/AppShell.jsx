@@ -3,6 +3,7 @@ import { Outlet, useLocation, NavLink } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
 import SubNav from './SubNav.jsx';
+import SplitView from './SplitView.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import HydrationScreen from '../common/HydrationScreen.jsx';
@@ -14,9 +15,10 @@ import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { prefetchClinicians } from '../../hooks/useEsperClinicians.js';
-import { useCareStore } from '../../store/careStore.js';
+import { useCareStore, setupBroadcastSync } from '../../store/careStore.js';
 import { hydrateStore } from '../../store/hydrate.js';
 import { startSync, stopSync } from '../../store/sync.js';
+import { isPopOutWindow, openPopOut } from '../../utils/windowManager.js';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -44,12 +46,15 @@ function getBreadcrumbs(pathname) {
   return map[pathname] || [pathname.replace('/', '').replace(/-/g, ' ')];
 }
 
+const NAV_TEXT_POPOUT = '#F7F7FA';
+
 export default function AppShell() {
   useTheme();
-  const { prefs } = usePreferences();
+  const { prefs, save } = usePreferences();
   const { open: openDrawer } = usePatientDrawer();
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
+  const isPopOut = isPopOutWindow();
 
   const [division, setDivision] = useState('All');
   const [roleMode, setRoleMode] = useState(() => localStorage.getItem('carestream_rolemode') || 'intake');
@@ -57,22 +62,26 @@ export default function AppShell() {
   const location = useLocation();
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
+  const splitEnabled = prefs.splitScreenEnabled || false;
+  function toggleSplit() {
+    save({ splitScreenEnabled: !splitEnabled });
+  }
+
   function handleRoleModeChange(mode) {
     setRoleMode(mode);
     localStorage.setItem('carestream_rolemode', mode);
   }
 
-  // Hydrate the normalized store on mount (replaces old prefetch* calls).
-  // Esper clinicians stay on their own cache — that pattern works great.
   useEffect(() => {
     hydrateStore();
+    setupBroadcastSync();
     prefetchClinicians();
     return () => stopSync();
   }, []);
 
-  // Start background polling once hydration completes
+  // Only the main window runs sync polling; pop-outs receive via BroadcastChannel
   useEffect(() => {
-    if (hydrated) startSync();
+    if (hydrated && !isPopOut) startSync();
   }, [hydrated]);
 
   // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)
@@ -188,7 +197,58 @@ export default function AppShell() {
     );
   }
 
-  // ── Desktop layout (unchanged) ────────────────────────────────────────────
+  // ── Pop-out window layout (no sidebar, compact header) ──────────────────────
+  if (isPopOut) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: palette.backgroundLight.hex, overflow: 'hidden' }}>
+        <header style={{
+          height: 40, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 16px', background: palette.primaryDeepPlum.hex,
+          borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.35)}`, flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+              color: hexToRgba(NAV_TEXT_POPOUT, 0.4), background: hexToRgba(NAV_TEXT_POPOUT, 0.08),
+              padding: '2px 7px', borderRadius: 4,
+            }}>
+              POP-OUT
+            </span>
+            {breadcrumbs.map((crumb, i) => (
+              <span key={i} style={{
+                color: i === breadcrumbs.length - 1 ? NAV_TEXT_POPOUT : hexToRgba(NAV_TEXT_POPOUT, 0.5),
+                fontSize: 13, fontWeight: i === breadcrumbs.length - 1 ? 550 : 400,
+              }}>
+                {i > 0 && <span style={{ margin: '0 4px', opacity: 0.4 }}>›</span>}
+                {crumb}
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={() => window.close()}
+            style={{
+              padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+              background: hexToRgba(NAV_TEXT_POPOUT, 0.1), color: NAV_TEXT_POPOUT,
+              fontSize: 11, fontWeight: 600, transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT_POPOUT, 0.18))}
+            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(NAV_TEXT_POPOUT, 0.1))}
+          >
+            Close Window
+          </button>
+        </header>
+
+        <main style={{ flex: 1, overflow: 'auto', background: palette.backgroundLight.hex }}>
+          <Outlet context={{ division: 'All', roleMode }} />
+        </main>
+
+        <PatientDrawer />
+        {newReferralModal}
+      </div>
+    );
+  }
+
+  // ── Desktop layout ─────────────────────────────────────────────────────────
   return (
     <div
       style={{
@@ -199,7 +259,12 @@ export default function AppShell() {
         overflow: 'hidden',
       }}
     >
-      <TopBar breadcrumbs={breadcrumbs} />
+      <TopBar
+        breadcrumbs={breadcrumbs}
+        splitEnabled={splitEnabled}
+        onToggleSplit={toggleSplit}
+        onPopOut={() => openPopOut(location.pathname)}
+      />
 
       {prefs.subnavEnabled && prefs.pinnedPages.length > 0 && (
         <SubNav pinnedPages={prefs.pinnedPages} />
@@ -208,15 +273,21 @@ export default function AppShell() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar division={division} onDivisionChange={setDivision} roleMode={roleMode} onRoleModeChange={handleRoleModeChange} />
 
-        <main
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            background: palette.backgroundLight.hex,
-          }}
-        >
-          <Outlet context={{ division, roleMode }} />
-        </main>
+        {splitEnabled ? (
+          <SplitView division={division} roleMode={roleMode} onClose={toggleSplit}>
+            <Outlet context={{ division, roleMode }} />
+          </SplitView>
+        ) : (
+          <main
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              background: palette.backgroundLight.hex,
+            }}
+          >
+            <Outlet context={{ division, roleMode }} />
+          </main>
+        )}
       </div>
 
       <PatientDrawer />
