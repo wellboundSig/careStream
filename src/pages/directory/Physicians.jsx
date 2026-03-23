@@ -5,6 +5,9 @@ import { usePhysicians, refreshPhysicians } from '../../hooks/usePhysicians.js';
 import { useCareStore } from '../../store/careStore.js';
 import PhysicianDrawer from '../../components/physicians/PhysicianDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const BASE_INPUT = {
@@ -186,6 +189,9 @@ export default function Physicians() {
     });
   }, [physicians, search, sortField, sortDir]);
 
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(f); setSortDir('asc'); }
@@ -210,12 +216,14 @@ export default function Physicians() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, NPI…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
             </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
-            >
-              + Add Physician
-            </button>
+            {can(PERMISSION_KEYS.DIRECTORY_CREATE) && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
+              >
+                + Add Physician
+              </button>
+            )}
           </div>
         </div>
 

@@ -325,6 +325,7 @@ function PanelSelect({ value, onChange, options, placeholder }) {
 
 function EligibilityPanel({ referrals, selectedReferral }) {
   const { appUserId, appUserName } = useCurrentAppUser();
+  const { can: canPerm } = usePermissions();
   const { resolveUser } = useLookups();
   const [lastCheck, setLastCheck] = useState(null);
   const [loadingCheck, setLoadingCheck] = useState(false);
@@ -436,12 +437,12 @@ function EligibilityPanel({ referrals, selectedReferral }) {
                   return userNotes ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>{userNotes}</p> : null;
                 })()}
               </div>
-              <ActionBtn label="Log New Check" variant="default" onClick={openForm} />
+              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log New Check" variant="default" onClick={openForm} />}
             </PanelSection>
           ) : (
             <PanelSection title="Eligibility">
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 10 }}>No check on record.</p>
-              <ActionBtn label="Log Eligibility Check →" variant="forward" onClick={openForm} />
+              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log Eligibility Check →" variant="forward" onClick={openForm} />}
             </PanelSection>
           )}
 
@@ -602,6 +603,7 @@ function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
 
 // ── 5. F2F/MD Orders Pending ──────────────────────────────────────────────────
 function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate]     = useState('');
   const [saving, setSaving]                 = useState(false);
@@ -694,7 +696,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
           <PanelSection title="Actions">
 
             {/* ── Log F2F / MD Orders Received ── */}
-            {!showDatePicker ? (
+            {!canPerm(PERMISSION_KEYS.CLINICAL_F2F) ? null : !showDatePicker ? (
               <button
                 onClick={() => {
                   // Pre-fill with existing date if available so the user just confirms
@@ -854,6 +856,7 @@ function ApproveButton({ enabled, onSelect }) {
 
 // ── 6. Clinical Intake RN Review ──────────────────────────────────────────────
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const [f2fReviewed, setF2fReviewed] = useState(false);
   const [icdCodes, setIcdCodes] = useState([]);
 
@@ -880,15 +883,17 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             )}
           </PanelSection>
 
+          {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
           <PanelSection title="Decision">
             <ApproveButton
               enabled={allDone}
               onSelect={(dest) => onInitiateTransition?.(selectedReferral, dest)}
             />
             <ActionBtn label="Escalate to Conflict" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
-            <ActionBtn label="Place on Hold"        variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
-            <ActionBtn label="Mark NTUC"            variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            {canPerm(PERMISSION_KEYS.REFERRAL_HOLD) && <ActionBtn label="Place on Hold" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />}
+            {canPerm(PERMISSION_KEYS.REFERRAL_NTUC) && <ActionBtn label="Mark NTUC" variant="danger" onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />}
           </PanelSection>
+          )}
 
           <PanelSection title="Documents">
             <ActionBtn label="Open Triage Form"     variant="default"  onClick={() => onOpenTriage?.(selectedReferral)} />
@@ -904,6 +909,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 const AUTH_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 
 function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const [auths, setAuths]               = useState([]);
   const [loadingAuths, setLoadingAuths] = useState(false);
 
@@ -946,7 +952,7 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
   }
 
   async function handleApproval() {
-    if (!approvedDate || !selectedReferral) return;
+    if (!approvedDate || !selectedReferral || !canPerm(PERMISSION_KEYS.AUTH_DECIDE)) return;
     setSaving(true); setSaveError(null);
     try {
       const fields = {
@@ -972,7 +978,7 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
   }
 
   async function handleDenial() {
-    if (!selectedReferral) return;
+    if (!selectedReferral || !canPerm(PERMISSION_KEYS.AUTH_DECIDE)) return;
     setSaving(true); setSaveError(null);
     try {
       const fields = {
@@ -1026,9 +1032,9 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
           <PanelSection title="Actions">
             {mode === null && (
               <>
-                <ActionBtn label="Record Approval →" variant="forward"  onClick={() => setMode('approval')} />
-                <ActionBtn label="Record Denial"      variant="danger"   onClick={() => setMode('denial')} />
-                <ActionBtn label="Place on Hold"      variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+                {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Approval →" variant="forward"  onClick={() => setMode('approval')} />}
+                {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Denial"      variant="danger"   onClick={() => setMode('denial')} />}
+                {canPerm(PERMISSION_KEYS.REFERRAL_HOLD) && <ActionBtn label="Place on Hold"      variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />}
               </>
             )}
 
@@ -1247,6 +1253,7 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
 }
 
 function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const [contacted, setContacted] = useState(false);
   const [activeTab, setActiveTab] = useState('Clinicians');
 
@@ -1271,8 +1278,8 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button
-              onClick={() => contacted && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
-              disabled={!contacted}
+              onClick={() => contacted && canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING) && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
+              disabled={!contacted || !canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING)}
               style={{
                 width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
                 background: contacted ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
@@ -1321,6 +1328,7 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
 
 // ── 10. Admin Confirmation ────────────────────────────────────────────────────
 function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
@@ -1332,10 +1340,12 @@ function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
             <InfoRow label="Days in pipeline" value={Math.floor((Date.now() - new Date(selectedReferral.referral_date).getTime()) / 86400000) + 'd'} />
           </PanelSection>
+          {canPerm(PERMISSION_KEYS.SCHEDULING_ADMIN_CONFIRM) && (
           <PanelSection title="Decision">
             <ActionBtn label="Accept → Pre-SOC"  variant="forward"  onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
-            <ActionBtn label="Decline → NTUC"    variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            {canPerm(PERMISSION_KEYS.REFERRAL_NTUC) && <ActionBtn label="Decline → NTUC" variant="danger" onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />}
           </PanelSection>
+          )}
         </>
       )}
     </Panel>
@@ -1344,6 +1354,7 @@ function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
 function PreSocPanel({ selectedReferral }) {
+  const { can: canPerm } = usePermissions();
   const today = new Date().toISOString().split('T')[0];
   const [socDate, setSocDate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -1353,7 +1364,7 @@ function PreSocPanel({ selectedReferral }) {
   useEffect(() => { setSocDate(''); setError(null); }, [selectedReferral?._id]);
 
   async function handleSchedule() {
-    if (!socDate || !selectedReferral) return;
+    if (!socDate || !selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)) return;
     setSaving(true);
     setError(null);
     try {
@@ -1442,6 +1453,7 @@ function PreSocPanel({ selectedReferral }) {
 
 // ── 12. SOC Scheduled ─────────────────────────────────────────────────────────
 function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const [pdfLoading, setPdfLoading]       = useState(false);
   const [pdfError, setPdfError]           = useState(null);
   const [confirming, setConfirming]       = useState(false);
@@ -1469,7 +1481,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
   }
 
   async function handleOnboarded() {
-    if (!selectedReferral) return;
+    if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true);
     setOnboardError(null);
     try {

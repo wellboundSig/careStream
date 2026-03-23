@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { getConflictsByReferral, updateConflict } from '../../../api/conflicts.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 const SEVERITY_COLORS = {
   Low: { bg: hexToRgba(palette.accentBlue.hex, 0.1), text: '#005B84' },
@@ -20,6 +22,7 @@ const STATUS_COLORS = {
 export default function ConflictsTab({ referral }) {
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { can } = usePermissions();
 
   useEffect(() => {
     if (!referral?.id) { setLoading(false); return; }
@@ -31,6 +34,7 @@ export default function ConflictsTab({ referral }) {
   }, [referral?.id]);
 
   async function resolve(conflict) {
+    if (!can(PERMISSION_KEYS.CONFLICT_RESOLVE)) return;
     try {
       await updateConflict(conflict._id, { status: 'Resolved', resolved_at: new Date().toISOString() });
       setConflicts((prev) => prev.map((c) => c._id === conflict._id ? { ...c, status: 'Resolved' } : c));
@@ -58,7 +62,7 @@ export default function ConflictsTab({ referral }) {
                 Active ({open.length})
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {open.map((c) => <ConflictCard key={c._id} conflict={c} onResolve={resolve} />)}
+                {open.map((c) => <ConflictCard key={c._id} conflict={c} onResolve={can(PERMISSION_KEYS.CONFLICT_RESOLVE) ? resolve : undefined} />)}
               </div>
             </div>
           )}

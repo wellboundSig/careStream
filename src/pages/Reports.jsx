@@ -4,6 +4,9 @@ import {
   STAGES, DIVISIONS, F2F_URGENCY,
   fetchReportData, exportToExcel,
 } from '../utils/reportEngine.js';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
+import AccessDenied from '../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 // ── SVG icons ──────────────────────────────────────────────────────────────────
@@ -754,6 +757,9 @@ function CustomBuilder() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function Reports() {
   const [tab, setTab] = useState('presets');
+
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.REPORT_VIEW)) return <AccessDenied message="You do not have permission to view reports." />;
 
   return (
     <div style={{ padding: '24px 28px 60px', maxWidth: 1300, margin: '0 auto' }}>

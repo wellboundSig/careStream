@@ -16,6 +16,8 @@ import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
@@ -198,6 +200,7 @@ export default function PatientList() {
   const { open: openDrawer } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
   const location = useLocation();
+  const { can } = usePermissions();
 
   const [search, setSearch] = useState('');
   // Pre-populate stage filter when navigated here from the dashboard chart
@@ -361,6 +364,7 @@ export default function PatientList() {
   }
 
   async function executeTransition(referral, patient, toStage, note) {
+    if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
     const fromStage = referral.current_stage;
     const enteredAt = new Date().toISOString();
     setTransitioning(true);
@@ -411,7 +415,9 @@ export default function PatientList() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>Patients</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} of {patients.length} records</p>
           </div>
-          <button onClick={() => setShowNewReferral(true)} style={{ padding: '7px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>+ New Referral</button>
+          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+            <button onClick={() => setShowNewReferral(true)} style={{ padding: '7px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>+ New Referral</button>
+          )}
         </div>
 
         {/* Filter / toolbar bar */}

@@ -9,6 +9,8 @@ import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
 import { SkeletonStatCard, SkeletonTableRow, SkeletonStageCard, SkeletonRect } from '../components/common/Skeleton.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const PIPELINE_STAGES = [
@@ -89,6 +91,7 @@ export default function Dashboard() {
   const { open: openPatient } = usePatientDrawer();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { can } = usePermissions();
   const [showNewReferral, setShowNewReferral] = useState(false);
 
   const filtered = useMemo(
@@ -222,12 +225,14 @@ export default function Dashboard() {
             <span>Updated {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
           </p>
         </div>
-        <button
-          onClick={() => setShowNewReferral(true)}
-          style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}
-        >
-          + New Referral
-        </button>
+        {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+          <button
+            onClick={() => setShowNewReferral(true)}
+            style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}
+          >
+            + New Referral
+          </button>
+        )}
       </div>
 
       {/* ── KPI cards ── */}

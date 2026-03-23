@@ -2,6 +2,9 @@ import { useState, useMemo } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import MarketerDrawer from '../../components/marketers/MarketerDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const REGION_COLORS = {
@@ -59,6 +62,9 @@ export default function Marketers() {
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
   }, [marketers, search, sortField, sortDir]);
+
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
   function toggleSort(field) {
     if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');

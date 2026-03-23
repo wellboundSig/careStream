@@ -3,6 +3,9 @@ import { useCareStore } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import FacilityDrawer from '../../components/facilities/FacilityDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // Values exactly as stored in Airtable (ALL CAPS single-select)
@@ -145,6 +148,9 @@ export default function Facilities() {
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
   }, [facilities, search, typeFilter, regionFilter, sortField, sortDir]);
+
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');

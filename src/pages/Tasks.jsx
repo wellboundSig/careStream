@@ -5,6 +5,9 @@ import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
 import { SkeletonRect } from '../components/common/Skeleton.jsx';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
+import AccessDenied from '../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const URGENCY_ORDER   = { overdue: 0, today: 1, week: 2, future: 3, none: 4 };
@@ -54,12 +57,15 @@ export default function Tasks() {
   const resolvePatient = useCallback((id) => patientNameMap[id] || null, [patientNameMap]);
   const resolvePatientRecord = useCallback((id) => patientRecordMap[id] || null, [patientRecordMap]);
 
+  const { can } = usePermissions();
+
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2800);
   }
 
   function handleComplete(task) {
+    if (!can(PERMISSION_KEYS.TASK_COMPLETE)) return;
     updateTaskOptimistic(task._id, { status: 'Completed', completed_at: new Date().toISOString() })
       .then(() => showToast('Task marked complete'))
       .catch((err) => showToast(err.message, 'error'));
@@ -102,6 +108,8 @@ export default function Tasks() {
     appUserId && t.assigned_to_id === appUserId &&
     (t.status === 'Pending' || t.status === 'In Progress')
   ).length;
+
+  if (!can(PERMISSION_KEYS.TASK_VIEW)) return <AccessDenied message="You do not have permission to view tasks." />;
 
   return (
     <>

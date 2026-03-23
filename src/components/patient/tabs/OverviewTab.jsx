@@ -6,6 +6,8 @@ import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
@@ -37,10 +39,12 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
+  const { can } = usePermissions();
 
   function startEdit() { setDraft(value || ''); setEditing(true); }
 
   async function save() {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
     if (draft === (value || '')) { setEditing(false); return; }
     onSave(fieldKey, draft);
     setEditing(false);
@@ -95,10 +99,12 @@ function EditableReferralField({ label, value, fieldKey, referralId, onSave, typ
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
+  const { can } = usePermissions();
 
   function startEdit() { setDraft(value || ''); setEditing(true); }
 
   async function save() {
+    if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
     if (draft === (value || '')) { setEditing(false); return; }
     onSave(fieldKey, draft);
     setEditing(false);
@@ -145,8 +151,10 @@ function EditableReferralField({ label, value, fieldKey, referralId, onSave, typ
 function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
+  const { can } = usePermissions();
 
   async function handleChange(e) {
+    if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
     const v = e.target.value;
     if (v === value) { setEditing(false); return; }
     onSave(fieldKey, v);
@@ -193,6 +201,7 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState([]);
   const [saving, setSaving]   = useState(false);
+  const { can } = usePermissions();
 
   const current = Array.isArray(value) ? value : (value ? String(value).split(/,\s*/) : []);
 
@@ -203,6 +212,7 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   }
 
   async function save() {
+    if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
     onSave('services_requested', draft);
     setEditing(false);
     if (referralId) updateEntity('referrals', referralId, { services_requested: draft });
@@ -257,8 +267,10 @@ function EditableReferralPhysician({ referral, onSave }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const { resolvePhysician } = useLookups();
+  const { can } = usePermissions();
 
   async function handleSelect(phy) {
+    if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
     if (!phy) {
       onSave('physician_id', null);
       setEditing(false);
@@ -324,6 +336,7 @@ function ReadField({ label, value, fullWidth = false }) {
 // ── Main tab ───────────────────────────────────────────────────────────────────
 
 export default function OverviewTab({ patient, referral }) {
+  const { can } = usePermissions();
   const { updatePatientLocal, updateReferralLocal } = usePatientDrawer();
   const { resolveMarketer, resolveUser, resolveSource, resolveFacility } = useLookups();
 

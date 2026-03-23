@@ -9,6 +9,8 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 const CATEGORY_COLORS = {
   'F2F': { bg: hexToRgba(palette.primaryMagenta.hex, 0.1), text: palette.primaryMagenta.hex },
@@ -160,6 +162,7 @@ export default function FilesTab({ patient, referral }) {
   const [f2fDate, setF2fDate] = useState('');
   const [f2fDatePrefilled, setF2fDatePrefilled] = useState(false);
   const inputRef = useRef(null);
+  const { can } = usePermissions();
 
   const r2Configured = !!import.meta.env.VITE_R2_WORKER_URL;
 
@@ -173,6 +176,7 @@ export default function FilesTab({ patient, referral }) {
   }, [patient?.id]);
 
   function stageFile(fileList) {
+    if (!can(PERMISSION_KEYS.FILE_UPLOAD)) return;
     if (!fileList?.length || uploading) return;
     setPendingFile(fileList[0]);
     setPendingCategory('Other');
@@ -191,6 +195,7 @@ export default function FilesTab({ patient, referral }) {
   }
 
   async function confirmUpload() {
+    if (!can(PERMISSION_KEYS.FILE_UPLOAD)) return;
     if (!pendingFile || uploading) return;
     setUploading(true);
     setUploadError(null);
@@ -260,7 +265,7 @@ export default function FilesTab({ patient, referral }) {
   return (
     <div style={{ padding: '20px' }}>
       {/* Drop zone — only shown when no pending file */}
-      {!pendingFile && (
+      {can(PERMISSION_KEYS.FILE_UPLOAD) && !pendingFile && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}

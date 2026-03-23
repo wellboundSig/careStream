@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { getAuthorizationsByReferral, createAuthorization } from '../../../api/authorizations.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 const AUTH_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 
@@ -30,6 +32,7 @@ const inputStyle = {
 export default function AuthorizationsTab({ referral }) {
   const [auths, setAuths]     = useState([]);
   const [loading, setLoading] = useState(true);
+  const { can } = usePermissions();
 
   // form mode: null | 'pick' | 'approval' | 'denial'
   const [mode, setMode]           = useState(null);
@@ -74,6 +77,7 @@ export default function AuthorizationsTab({ referral }) {
   }
 
   async function handleApproval() {
+    if (!can(PERMISSION_KEYS.AUTH_DECIDE)) return;
     if (!approvedDate || !referral) return;
     setSaving(true); setSaveError(null);
     try {
@@ -96,6 +100,7 @@ export default function AuthorizationsTab({ referral }) {
   }
 
   async function handleDenial() {
+    if (!can(PERMISSION_KEYS.AUTH_DECIDE)) return;
     if (!referral) return;
     setSaving(true); setSaveError(null);
     try {
@@ -126,7 +131,7 @@ export default function AuthorizationsTab({ referral }) {
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>Authorizations</h3>
-        {mode === null && (
+        {mode === null && can(PERMISSION_KEYS.AUTH_DECIDE) && (
           <button
             onClick={openForm}
             style={{

@@ -11,6 +11,8 @@ import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -317,6 +319,7 @@ export default function TriageTab({ patient, referral }) {
   const { user } = useUser();
   const { resolveUser } = useLookups();
   const { appUserId } = useCurrentAppUser();
+  const { can } = usePermissions();
   const [triageData, setTriageData] = useState({});
   const [triageRecordId, setTriageRecordId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -355,6 +358,7 @@ export default function TriageTab({ patient, referral }) {
   }
 
   async function save() {
+    if (!can(PERMISSION_KEYS.CLINICAL_TRIAGE)) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -492,7 +496,7 @@ export default function TriageTab({ patient, referral }) {
           )}
         </div>
         {!editing ? (
-          <button onClick={startEdit} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+          can(PERMISSION_KEYS.CLINICAL_TRIAGE) && <button onClick={startEdit} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
             {hasData ? 'Edit' : 'Fill Out'}
           </button>
         ) : (

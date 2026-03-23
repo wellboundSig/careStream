@@ -6,6 +6,8 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../../data/eligibilityConfig.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 function fmt(d) {
   if (!d) return '—';
@@ -55,6 +57,7 @@ function fmtDate(d) {
 export default function EligibilityTab({ patient, referral }) {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser } = useLookups();
+  const { can } = usePermissions();
   const [checks, setChecks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -98,6 +101,7 @@ export default function EligibilityTab({ patient, referral }) {
   }
 
   async function submitCheck() {
+    if (!can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY)) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -128,9 +132,9 @@ export default function EligibilityTab({ patient, referral }) {
     <div style={{ padding: '18px 20px 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>Eligibility</h3>
-        <button onClick={openForm} style={{ padding: '6px 14px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+        {can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <button onClick={openForm} style={{ padding: '6px 14px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
           {latest ? 'Log New Check' : 'Log First Check'}
-        </button>
+        </button>}
       </div>
 
       {/* Latest check summary */}

@@ -4,6 +4,8 @@ import { createNoteOptimistic, updateNoteOptimistic } from '../../../store/mutat
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 function formatDateTime(dateStr) {
   if (!dateStr) return '';
@@ -27,6 +29,7 @@ export default function NotesTab({ patient, referral }) {
   const [composing, setComposing] = useState('');
   const [error, setError] = useState(null);
   const textareaRef = useRef(null);
+  const { can } = usePermissions();
 
   const notes = useMemo(() => {
     if (!patient?.id) return [];
@@ -38,6 +41,7 @@ export default function NotesTab({ patient, referral }) {
   const loading = !hydrated;
 
   function submitNote() {
+    if (!can(PERMISSION_KEYS.NOTE_CREATE)) return;
     if (!composing.trim()) return;
     setError(null);
 
@@ -72,6 +76,7 @@ export default function NotesTab({ patient, referral }) {
   }
 
   function togglePin(note) {
+    if (!can(PERMISSION_KEYS.NOTE_PIN)) return;
     const wasPinned = note.is_pinned === true || note.is_pinned === 'true';
     updateNoteOptimistic(note._id, { is_pinned: !wasPinned }).catch(() => {});
   }
@@ -115,7 +120,7 @@ export default function NotesTab({ patient, referral }) {
       </div>
     )}
 
-    <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
+    {can(PERMISSION_KEYS.NOTE_CREATE) && <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
       <textarea
           ref={textareaRef}
           value={composing}
@@ -180,7 +185,7 @@ export default function NotesTab({ patient, referral }) {
             Add Note
           </button>
         </div>
-      </div>
+      </div>}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 32px' }}>
         {loading ? (

@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TYPE_COLORS = {
@@ -37,6 +40,9 @@ export default function ReferralSources() {
       return { ...src, refCount: refs.length, admitted, convRate };
     }).sort((a, b) => b.refCount - a.refCount);
   }, [sources, refData, search]);
+
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
   return (
     <div style={{ padding: '24px 28px' }}>

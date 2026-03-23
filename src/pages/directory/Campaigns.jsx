@@ -3,6 +3,9 @@ import { useCareStore } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { REGION_COLORS } from './Facilities.jsx';
 import { SkeletonRect } from '../../components/common/Skeleton.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STATUS_COLORS = {
@@ -51,6 +54,9 @@ export default function Campaigns() {
     const q = search.toLowerCase();
     return campaigns.filter((c) => (c.name || '').toLowerCase().includes(q) || (c.region || '').toLowerCase().includes(q));
   }, [campaigns, search]);
+
+  const { can } = usePermissions();
+  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
   return (
     <>

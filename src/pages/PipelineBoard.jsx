@@ -13,6 +13,8 @@ import ContextMenu from '../components/pipeline/ContextMenu.jsx';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 // ── Stage layout ───────────────────────────────────────────────────────────────
@@ -67,6 +69,7 @@ export default function PipelineBoard() {
   const { data: enriched, loading } = usePipelineData();
   const { appUserId } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
+  const { can } = usePermissions();
 
   const [draggingId, setDraggingId] = useState(null);
   const [draggingFrom, setDraggingFrom] = useState(null);
@@ -103,6 +106,7 @@ export default function PipelineBoard() {
   }, []);
 
   function executeTransition(referral, toStage, note) {
+    if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
     const fromStage = referral.current_stage;
     setPendingTransition(null);
 
@@ -131,6 +135,7 @@ export default function PipelineBoard() {
   }
 
   function handleDrop(toStage) {
+    if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
     const referral = enriched.find((r) => r._id === draggingId);
     if (!referral || !canMoveFromTo(draggingFrom, toStage)) return;
     initiateTransition(referral, toStage);
@@ -201,22 +206,24 @@ export default function PipelineBoard() {
             <RefreshIcon /> Refresh
           </ToolbarBtn>
 
-          <button
-            onClick={() => setShowNewReferral(true)}
-            style={{
-              height:       32,
-              padding:      '0 14px',
-              borderRadius: 7,
-              background:   palette.primaryMagenta.hex,
-              border:       'none',
-              fontSize:     12,
-              fontWeight:   650,
-              color:        palette.backgroundLight.hex,
-              cursor:       'pointer',
-            }}
-          >
-            + New Referral
-          </button>
+          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+            <button
+              onClick={() => setShowNewReferral(true)}
+              style={{
+                height:       32,
+                padding:      '0 14px',
+                borderRadius: 7,
+                background:   palette.primaryMagenta.hex,
+                border:       'none',
+                fontSize:     12,
+                fontWeight:   650,
+                color:        palette.backgroundLight.hex,
+                cursor:       'pointer',
+              }}
+            >
+              + New Referral
+            </button>
+          )}
         </div>
       </div>
 
