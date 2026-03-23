@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { exportToExcel } from '../utils/reportEngine.js';
 import LoadingState from '../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
-
-const ADMIN_ROLE_IDS = ['rol_001', 'rol_002', 'rol_004', 'rol_007'];
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -984,7 +984,8 @@ export default function DataTools() {
   const [period,   setPeriod]   = useState(30);
   const [division, setDivision] = useState('All');
 
-  const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
 
   // Always compute — hooks cannot come after early returns
   const periodFiltered   = useMemo(

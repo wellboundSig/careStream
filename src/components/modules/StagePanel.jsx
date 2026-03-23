@@ -12,12 +12,12 @@ import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { recordTransition } from '../../utils/recordTransition.js';
 import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../data/eligibilityConfig.js';
 import { exportToExcel } from '../../utils/reportEngine.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
-
-const ADMIN_ROLE_IDS = ['rol_001', 'rol_002', 'rol_004', 'rol_007'];
 
 const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
@@ -1621,7 +1621,8 @@ function SocCompletedPanel({ referrals }) {
 // ── 14. Hold ──────────────────────────────────────────────────────────────────
 function HoldPanel({ referrals, selectedReferral, resolveUser, onInitiateTransition }) {
   const { appUser } = useCurrentAppUser();
-  const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.REFERRAL_NTUC);
 
   const [returnStage, setReturnStage] = useState('');
   const [releasing, setReleasing] = useState(false);

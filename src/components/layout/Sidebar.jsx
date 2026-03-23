@@ -1,7 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ROLE_MODES, STAGE_SLUGS } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -41,6 +43,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Team', path: '/team', icon: UsersIcon },
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
+      { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
@@ -54,7 +57,17 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
   const [collapsed, setCollapsed] = useState(false);
   const { appUser } = useCurrentAppUser();
   const { prefs, pinPage, unpinPage, MAX_PINS } = usePreferences();
-  const isAdmin = appUser?.scope === 'DevNurse';
+  const { can, hasDivision } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT) || can(PERMISSION_KEYS.ADMIN_PERMISSIONS) || can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
+
+  const allowedDivisions = useMemo(() => {
+    const divs = [];
+    if (hasDivision('ALF')) divs.push('ALF');
+    if (hasDivision('Special Needs')) divs.push('Special Needs');
+    if (divs.length === 2) return ['All', 'ALF', 'Special Needs'];
+    if (divs.length === 1) return divs;
+    return ['All', 'ALF', 'Special Needs'];
+  }, [hasDivision]);
 
   // Right-click pin menu
   const [pinMenu, setPinMenu] = useState(null); // { x, y, path, label }
@@ -259,7 +272,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
             Division
           </p>
           <div style={{ display: 'flex', gap: 4 }}>
-            {DIVISIONS.map((d) => (
+            {allowedDivisions.map((d) => (
               <button
                 key={d}
                 onClick={() => onDivisionChange?.(d)}
@@ -606,6 +619,15 @@ function ShieldIcon({ size = 16, color }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
       <path d="M9 12l2 2 4-4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function PermissionsIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M9 11l3 3L22 4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }

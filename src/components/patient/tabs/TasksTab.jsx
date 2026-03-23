@@ -3,10 +3,10 @@ import { useCareStore } from '../../../store/careStore.js';
 import { updateTaskOptimistic, createTaskOptimistic } from '../../../store/mutations.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-
-const ADMIN_ROLE_IDS = ['rol_001', 'rol_002', 'rol_004', 'rol_007'];
 
 const TASK_TYPES = [
   'Insurance Barrier', 'Missing Document', 'Auth Needed',
@@ -74,7 +74,8 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
   const [confirmId, setConfirmId]= useState(null);
   const [showForm, setShowForm]  = useState(false);
 
-  const isAdmin = ADMIN_ROLE_IDS.includes(appUser?.role_id);
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
 
   const tasks = useMemo(() => {
     if (!patient?.id) return [];

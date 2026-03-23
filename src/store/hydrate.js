@@ -34,6 +34,9 @@ const TABLES = [
   { key: 'campaigns',          table: 'Campaigns' },
   { key: 'marketerFacilities', table: 'MarketerFacilities' },
   { key: 'campaignMarketers',  table: 'CampaignMarketers' },
+  { key: 'permissions',        table: 'Permissions' },
+  { key: 'permissionPresets',  table: 'PermissionPresets' },
+  { key: 'userPermissions',    table: 'UserPermissions' },
 ];
 
 export async function hydrateStore() {

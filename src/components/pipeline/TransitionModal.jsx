@@ -18,7 +18,7 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
     toStage === 'NTUC' ||
     !!destinationPrompt;
 
-  const isProtected = fromRule?.protectedExit || fromRule?.requiresScope;
+  const isProtected = fromRule?.protectedExit || fromRule?.requiresPermission;
   const canConfirm = !noteRequired || note.trim().length > 0;
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
               </p>
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.5 }}>
                 {fromRule?.protectedExitMessage ||
-                  `This transition requires ${fromRule?.requiresScope} scope. This action is logged.`}
+                  `This transition requires the ${fromRule?.requiresPermission || 'appropriate'} permission. This action is logged.`}
               </p>
             </div>
           )}

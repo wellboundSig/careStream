@@ -159,7 +159,7 @@ export default function ContextMenu({ x, y, referral, onSelect, onDismiss }) {
 function ContextMenuItem({ stage, fromStage, onClick, isGlobal }) {
   const rule = StageRules.stages[stage];
   const requiresNote = rule?.requiresNote || stage === 'Hold' || stage === 'NTUC';
-  const isProtected = rule?.protectedExit || rule?.requiresScope;
+  const isProtected = rule?.protectedExit || rule?.requiresPermission;
 
   const stageColor =
     stage === 'NTUC'
@@ -231,7 +231,7 @@ function ContextMenuItem({ stage, fromStage, onClick, isGlobal }) {
         )}
         {isProtected && (
           <span
-            title={`Requires ${rule?.requiresScope} scope`}
+            title={`Requires ${rule?.requiresPermission || 'special'} permission`}
             style={{
               fontSize: 9.5,
               color: palette.accentOrange.hex,

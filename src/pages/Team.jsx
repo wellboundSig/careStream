@@ -4,6 +4,8 @@ import { useCareStore } from '../store/careStore.js';
 import { createTaskOptimistic } from '../store/mutations.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import UserProfileDrawer from '../components/users/UserProfileDrawer.jsx';
 import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
@@ -82,7 +84,8 @@ export default function Team() {
   const [contextMenu, setContextMenu] = useState(null);
   const [assignTarget, setAssignTarget] = useState(null);
 
-  const isAdmin = !!appUser?.role_id && classifyRole(roleMap[appUser.role_id] || '') === 'admin';
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
 
   // Close context menu on outside click or Escape
   useEffect(() => {

@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { createPatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
@@ -68,12 +70,13 @@ function Input({ value, onChange, placeholder, type = 'text', hasError }) {
   );
 }
 
-function Select({ value, onChange, options, placeholder, hasError }) {
+function Select({ value, onChange, options, placeholder, hasError, disabled }) {
   return (
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
-      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12), cursor: 'pointer' }}
+      disabled={disabled}
+      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12), cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
       onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
       onBlur={(e) => (e.target.style.borderColor = hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
     >
@@ -148,12 +151,65 @@ function CheckboxGroup({ label, options, values, onChange }) {
 
 export default function NewReferralForm({ onClose, onSuccess }) {
   const { appUser, appUserId } = useCurrentAppUser();
+  const { can } = usePermissions();
   const isMobile = useIsMobile();
 
-  const storeMarketers = useCareStore((s) => s.marketers);
-  const storeSources   = useCareStore((s) => s.referralSources);
+  if (!can(PERMISSION_KEYS.REFERRAL_CREATE)) {
+    return (
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: palette.backgroundLight.hex, borderRadius: 16, padding: '40px 32px', textAlign: 'center', maxWidth: 380 }}>
+          <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 8 }}>Permission Required</p>
+          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>You do not have permission to create referrals. Contact your administrator.</p>
+          <button onClick={onClose} style={{ marginTop: 16, padding: '8px 20px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 600, color: palette.backgroundLight.hex, cursor: 'pointer' }}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  const storeMarketers      = useCareStore((s) => s.marketers);
+  const storeSources        = useCareStore((s) => s.referralSources);
+  const storeRoles          = useCareStore((s) => s.roles);
+  const storeFacilities     = useCareStore((s) => s.facilities);
+  const storeMarketerFacs   = useCareStore((s) => s.marketerFacilities);
   const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
   const sources   = useMemo(() => Object.values(storeSources),   [storeSources]);
+
+  // Resolve whether the signed-in user is a marketer
+  const currentMarketer = useMemo(() => {
+    if (!appUserId || !marketers.length) return null;
+    return marketers.find((m) => m.user_id === appUserId) || null;
+  }, [appUserId, marketers]);
+
+  const isMarketerRole = useMemo(() => {
+    if (!appUser?.role_id) return false;
+    const role = Object.values(storeRoles).find((r) => r.id === appUser.role_id);
+    return /market/i.test(role?.name || '');
+  }, [appUser?.role_id, storeRoles]);
+
+  // Division options: restricted for marketers based on their Marketers.division field
+  const allowedDivisions = useMemo(() => {
+    if (!isMarketerRole || !currentMarketer) return DIVISIONS;
+    const md = currentMarketer.division;
+    if (md === 'ALF') return ['ALF'];
+    if (md === 'Special Needs') return ['Special Needs'];
+    if (md === 'Both') return ['ALF', 'Special Needs'];
+    return DIVISIONS;
+  }, [isMarketerRole, currentMarketer]);
+
+  const divisionLocked = allowedDivisions.length === 1;
+
+  // Facilities scoped to the marketer's MarketerFacilities (or all if not a marketer)
+  const availableFacilities = useMemo(() => {
+    const allFacs = Object.values(storeFacilities);
+    if (!isMarketerRole || !currentMarketer) {
+      return allFacs.filter((f) => f.is_active !== false && f.is_active !== 'FALSE');
+    }
+    const mfJoins = Object.values(storeMarketerFacs).filter(
+      (mf) => mf.marketer_id === currentMarketer.id,
+    );
+    const facilityIds = new Set(mfJoins.map((mf) => mf.facility_id));
+    return allFacs.filter((f) => facilityIds.has(f.id) && f.is_active !== false && f.is_active !== 'FALSE');
+  }, [storeFacilities, storeMarketerFacs, isMarketerRole, currentMarketer]);
 
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [showReferralDetails, setShowReferralDetails] = useState(false);
@@ -188,6 +244,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     address_state: 'NY',
     address_zip: '',
     division: 'ALF',
+    facility_id: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
     // Referral details
@@ -197,7 +254,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   });
 
   function setField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'division' && value !== 'ALF') next.facility_id = '';
+      return next;
+    });
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }));
   }
 
@@ -207,6 +268,13 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     const match = marketers.find((m) => m.user_id === appUserId);
     if (match) setField('marketer_id', match.id);
   }, [appUserId, marketers]);
+
+  // Auto-select division when marketer has only one allowed option
+  useEffect(() => {
+    if (divisionLocked && form.division !== allowedDivisions[0]) {
+      setField('division', allowedDivisions[0]);
+    }
+  }, [divisionLocked, allowedDivisions]);
 
   // Close on Escape
   useEffect(() => {
@@ -226,6 +294,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
     if (!form.marketer_id) errs.marketer_id = 'Required';
     if (form.marketer_id === 'other' && !form.marketer_other.trim()) errs.marketer_other = 'Required';
+    if (form.division === 'ALF' && !form.facility_id) errs.facility_id = 'Required for ALF referrals';
     return errs;
   }
 
@@ -292,6 +361,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         created_at: referralDate,
         updated_at: referralDate,
         ...(form.services_requested.length && { services_requested: form.services_requested }),
+        ...(form.facility_id && { facility_id: form.facility_id }),
         ...(appUserId && { intake_owner_id: appUserId }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
       };
@@ -476,8 +546,36 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               )}
             </FieldBox>
             <FieldBox label="Division" required>
-              <Select value={form.division} onChange={(v) => setField('division', v)} options={DIVISIONS.map((d) => ({ value: d, label: d }))} placeholder="Select…" />
+              <Select
+                value={form.division}
+                onChange={(v) => setField('division', v)}
+                options={allowedDivisions.map((d) => ({ value: d, label: d }))}
+                placeholder="Select…"
+                disabled={divisionLocked}
+              />
+              {isMarketerRole && divisionLocked && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
+                  Locked to your assigned division
+                </p>
+              )}
             </FieldBox>
+            {form.division === 'ALF' && (
+              <FieldBox label="Facility" required>
+                <Select
+                  value={form.facility_id}
+                  onChange={(v) => setField('facility_id', v)}
+                  options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
+                  placeholder="Select facility…"
+                  hasError={!!errors.facility_id}
+                />
+                {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
+                {isMarketerRole && availableFacilities.length === 0 && (
+                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>
+                    No facilities assigned to you. Contact an administrator.
+                  </p>
+                )}
+              </FieldBox>
+            )}
           </FieldGroup>
 
           {/* ── PCP ── */}

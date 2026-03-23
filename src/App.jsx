@@ -21,6 +21,7 @@ import UserManagement from './pages/admin/UserManagement.jsx';
 import Settings from './pages/Settings.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
+import Permissions from './pages/admin/Permissions.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
 import Training from './pages/Training.jsx';
 import NotFound from './pages/NotFound.jsx';
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="directory/referral-sources" element={<ReferralSources />} />
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
+        <Route path="admin/permissions" element={<Permissions />} />
         <Route path="admin/settings" element={<Settings />} />
         <Route path="admin/data-tools" element={<DataTools />} />
         <Route path="*" element={<NotFound />} />

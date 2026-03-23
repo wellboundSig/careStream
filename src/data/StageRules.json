@@ -10,8 +10,8 @@
     "anyActiveStageCanMoveToHold": true,
     "holdAlwaysRequiresNote": true,
     "ntucAlwaysRequiresNote": true,
-    "holdToNTUCRequiresScope": "Admin",
-    "devModeBypassScopeCheck": true
+    "holdToNTUCRequiresPermission": "referral.ntuc",
+    "devModeBypassPermissionCheck": true
   },
 
   "stages": {
@@ -39,7 +39,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Raw referral captured. Minimal information. Not yet validated."
     },
@@ -68,7 +68,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Full demographics collection and referral validation."
     },
@@ -97,7 +97,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Insurance and episode eligibility check via Waystar, ePACES, or Availity."
     },
@@ -126,7 +126,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": true,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Pending disenrollment",
       "destinationPrompt": "Describe why disenrollment is required. Specify:\n\n• Which agency is currently providing services\n• What services the patient is receiving\n• Who you spoke with and when (agency staff, patient, caregiver, etc.)\n• Any relevant details or confirmation provided"
@@ -156,7 +156,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Awaiting valid face-to-face documentation and physician orders. PECOS/OPRA verification required."
     },
@@ -185,7 +185,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": true,
-      "requiresScope": "DevNurse",
+      "requiresPermission": "clinical.rn_review",
       "protectedExit": true,
       "protectedExitMessage": "Only clinical intake RN can move a patient out of Clinical RN Review",
       "description": "Skilled need, safety, ICD-10, and environment review by clinical intake RN."
@@ -215,7 +215,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Prior authorization request submitted. Awaiting managed care approval."
     },
@@ -244,7 +244,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": true,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Regulatory or service overlap conflict flagged. Requires resolution before advancement."
     },
@@ -273,7 +273,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "patientContactRequired": true,
       "patientContactNote": "Patient or parent must be contacted before moving forward from Staffing Feasibility.",
@@ -304,7 +304,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": true,
-      "requiresScope": "Admin",
+      "requiresPermission": "scheduling.admin_confirm",
       "protectedExit": true,
       "protectedExitMessage": "Admin Confirmation accept/decline is a protected action requiring Admin scope.",
       "description": "Final leadership acceptance decision. Case summary reviewed. Accept moves to Pre-SOC. Decline triggers NTUC."
@@ -334,7 +334,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Case formally accepted. Clinician assigned. Documentation confirmed. Coordinating with ALF or parent."
     },
@@ -363,7 +363,7 @@
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "description": "Start of care visit officially scheduled with clinician and patient."
     },
@@ -376,7 +376,7 @@
       "terminal": true,
       "isGlobal": false,
       "requiresNote": false,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": true,
       "description": "SOC performed and documented. Patient transferred to HCHB. CareStream pipeline ends here."
     },
@@ -405,7 +405,7 @@
       "terminal": false,
       "isGlobal": true,
       "requiresNote": true,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": false,
       "ntucFromHoldRequiresScope": "Admin",
       "description": "Temporarily paused. Requires hold reason, owner, and expected resolution date."
@@ -419,7 +419,7 @@
       "terminal": true,
       "isGlobal": true,
       "requiresNote": true,
-      "requiresScope": null,
+      "requiresPermission": null,
       "protectedExit": true,
       "description": "Not taken under care. Terminal. Requires structured NTUC reason and financial impact tag."
     }

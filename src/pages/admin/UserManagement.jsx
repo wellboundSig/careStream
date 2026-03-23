@@ -3,12 +3,14 @@ import { useCareStore, updateEntity } from '../../store/careStore.js';
 import airtable from '../../api/airtable.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import UserProfileDrawer from '../../components/users/UserProfileDrawer.jsx';
+import PermissionModal from '../../components/users/PermissionModal.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
-const SCOPES   = ['DevNurse', 'Main'];
 
 // Role colors cycle for any number of roles — no hardcoded role IDs needed.
 const ROLE_COLOR_CYCLE = [
@@ -24,11 +26,6 @@ const STATUS_COLORS = {
   Pending:   { bg: hexToRgba(palette.highlightYellow.hex, 0.25),  text: '#7A5F00' },
   Suspended: { bg: hexToRgba(palette.accentOrange.hex, 0.2),      text: palette.accentOrange.hex },
   Revoked:   { bg: hexToRgba(palette.backgroundDark.hex, 0.1),    text: hexToRgba(palette.backgroundDark.hex, 0.45) },
-};
-
-const SCOPE_COLORS = {
-  DevNurse: { bg: hexToRgba(palette.primaryMagenta.hex, 0.18), text: palette.primaryMagenta.hex },
-  Main:     { bg: hexToRgba(palette.accentBlue.hex, 0.16),      text: palette.accentBlue.hex },
 };
 
 function initials(first, last) {
@@ -61,10 +58,13 @@ export default function UserManagement() {
 
   const [saving, setSaving] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
+  const [permUser, setPermUser] = useState(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
 
-  const isAdmin = appUser?.scope === 'DevNurse';
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT);
+  const canEditPerms = can(PERMISSION_KEYS.ADMIN_PERMISSIONS);
 
   async function updateUser(userId, airtableId, field, value) {
     setSaving((prev) => ({ ...prev, [userId]: true }));
@@ -98,7 +98,7 @@ export default function UserManagement() {
         </div>
         <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex }}>Access Restricted</p>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5), maxWidth: 320, textAlign: 'center' }}>
-          User Management requires DevNurse scope. Contact your administrator.
+          User Management requires the appropriate permission. Contact your administrator.
         </p>
       </div>
     );
@@ -112,7 +112,7 @@ export default function UserManagement() {
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>User Management</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-              {users.length} users in system — edit roles, status, and scope below
+              {users.length} users in system — edit roles, status, and permissions below
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 36, width: 240 }}>
@@ -135,7 +135,7 @@ export default function UserManagement() {
               Account creation, invitations, and deletion are managed in Clerk Dashboard
             </p>
             <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55 }}>
-              Use this page to manage roles, status, and scope for existing accounts.
+              Use this page to manage roles, status, and permissions for existing accounts.
               To invite a new user or revoke credentials, visit{' '}
               <a href="https://dashboard.clerk.com" target="_blank" rel="noopener noreferrer" style={{ color: palette.accentBlue.hex, fontWeight: 600 }}>
                 dashboard.clerk.com
@@ -149,22 +149,24 @@ export default function UserManagement() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                {['User', 'Role', 'Status', 'Scope', 'Last Login', ''].map((h) => (
+                {['User', 'Role', 'Status', 'Last Login', ''].map((h) => (
                   <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {!hydrated ? (
-                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)
+                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)
               ) : filtered.map((user) => (
                 <UserRow
                   key={user._id}
                   user={user}
                   roles={roles}
                   isSaving={!!saving[user.id]}
+                  canEditPerms={canEditPerms}
                   onUpdate={(field, value) => updateUser(user.id, user._id, field, value)}
                   onOpenProfile={() => setSelectedUser(user)}
+                  onOpenPermissions={() => setPermUser(user)}
                 />
               ))}
             </tbody>
@@ -173,6 +175,7 @@ export default function UserManagement() {
       </div>
 
       <UserProfileDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
+      {permUser && <PermissionModal user={permUser} onClose={() => setPermUser(null)} />}
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9997, background: toast.type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex, color: palette.backgroundLight.hex, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 550, boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
@@ -183,10 +186,9 @@ export default function UserManagement() {
   );
 }
 
-function UserRow({ user, roles, isSaving, onUpdate, onOpenProfile }) {
+function UserRow({ user, roles, isSaving, canEditPerms, onUpdate, onOpenProfile, onOpenPermissions }) {
   const [hovered, setHovered] = useState(false);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
-  const scopeStyle  = SCOPE_COLORS[user.scope]   || SCOPE_COLORS.Main;
   const color       = roleColor(user.role_id);
 
   const selectStyle = {
@@ -226,24 +228,28 @@ function UserRow({ user, roles, isSaving, onUpdate, onOpenProfile }) {
         </select>
       </td>
 
-      <td style={{ padding: '11px 14px' }}>
-        <select value={user.scope || 'Main'} onChange={(e) => onUpdate('scope', e.target.value)} disabled={isSaving} style={{ ...selectStyle, background: scopeStyle.bg, color: scopeStyle.text, border: 'none', fontWeight: 650 }}>
-          {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </td>
-
       <td style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
         {timeAgo(user.last_login_at)}
         {isSaving && <span style={{ marginLeft: 8, color: palette.accentBlue.hex }}>Saving…</span>}
       </td>
 
       <td style={{ padding: '11px 14px' }}>
-        <button
-          onClick={onOpenProfile}
-          style={{ padding: '5px 12px', borderRadius: 6, background: hexToRgba(palette.primaryDeepPlum.hex, 0.07), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.primaryDeepPlum.hex, 0.8), cursor: 'pointer' }}
-        >
-          Profile
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {canEditPerms && (
+            <button
+              onClick={onOpenPermissions}
+              style={{ padding: '5px 12px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.1), border: 'none', fontSize: 12, fontWeight: 650, color: palette.primaryMagenta.hex, cursor: 'pointer' }}
+            >
+              Permissions
+            </button>
+          )}
+          <button
+            onClick={onOpenProfile}
+            style={{ padding: '5px 12px', borderRadius: 6, background: hexToRgba(palette.primaryDeepPlum.hex, 0.07), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.primaryDeepPlum.hex, 0.8), cursor: 'pointer' }}
+          >
+            Profile
+          </button>
+        </div>
       </td>
     </tr>
   );
