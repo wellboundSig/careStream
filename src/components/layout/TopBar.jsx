@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
-import { getMyTasks } from '../../api/tasks.js';
-import { getPatients } from '../../api/patients.js';
+import { useCareStore } from '../../store/careStore.js';
 import CommandPalette from '../search/CommandPalette.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -222,42 +221,29 @@ function SearchBar({ onOpen }) {
 
 // ── Notification bell ──────────────────────────────────────────────────────────
 function NotificationBell() {
-  const navigate                  = useNavigate();
-  const { appUserId }             = useCurrentAppUser();
-  const [open, setOpen]           = useState(false);
-  const [tasks, setTasks]         = useState([]);
-  const [patientNames, setPatientNames] = useState({});
-  const [loadingTasks, setLoadingTasks] = useState(false);
-  const wrapperRef                = useRef(null);
+  const navigate        = useNavigate();
+  const { appUserId }   = useCurrentAppUser();
+  const [open, setOpen] = useState(false);
+  const wrapperRef      = useRef(null);
 
-  // Fetch tasks when user is resolved
-  useEffect(() => {
-    if (!appUserId) return;
-    setLoadingTasks(true);
-    getMyTasks(appUserId)
-      .then(async (records) => {
-        const myTasks = records
-          .map((r) => ({ _id: r.id, ...r.fields }))
-          .filter((t) => t.status !== 'Completed' && t.status !== 'Cancelled')
-          .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-          .slice(0, 5);
-        setTasks(myTasks);
+  const storeTasks   = useCareStore((s) => s.tasks);
+  const storePatients = useCareStore((s) => s.patients);
 
-        // Resolve patient names for these tasks
-        const pids = [...new Set(myTasks.map((t) => t.patient_id).filter(Boolean))];
-        if (pids.length) {
-          const formula = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
-          const patients = await getPatients({ filterByFormula: formula }).catch(() => []);
-          const nameMap = {};
-          patients.forEach((p) => {
-            if (p.fields.id) nameMap[p.fields.id] = `${p.fields.first_name || ''} ${p.fields.last_name || ''}`.trim();
-          });
-          setPatientNames(nameMap);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingTasks(false));
-  }, [appUserId]);
+  const { tasks, patientNames } = useMemo(() => {
+    if (!appUserId) return { tasks: [], patientNames: {} };
+    const myTasks = Object.values(storeTasks)
+      .filter((t) => t.assigned_to === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      .slice(0, 5);
+
+    const nameMap = {};
+    for (const t of myTasks) {
+      if (!t.patient_id) continue;
+      const p = Object.values(storePatients).find((pt) => pt.id === t.patient_id);
+      if (p) nameMap[t.patient_id] = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    }
+    return { tasks: myTasks, patientNames: nameMap };
+  }, [appUserId, storeTasks, storePatients]);
 
   // Close on outside click
   useEffect(() => {
@@ -357,19 +343,13 @@ function NotificationBell() {
           </div>
 
           {/* Task cards */}
-          {loadingTasks && (
-            <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-              Loading…
-            </div>
-          )}
-
-          {!loadingTasks && tasks.length === 0 && (
+          {tasks.length === 0 && (
             <div style={{ padding: '22px 14px', textAlign: 'center' }}>
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>No open tasks assigned to you.</p>
             </div>
           )}
 
-          {!loadingTasks && tasks.map((task) => {
+          {tasks.map((task) => {
             const patientName = patientNames[task.patient_id] || null;
             const typeColor   = TASK_TYPE_COLORS[task.type] || hexToRgba(palette.backgroundDark.hex, 0.35);
             return (

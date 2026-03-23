@@ -1,18 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPatients } from '../../api/patients.js';
-import { getReferrals } from '../../api/referrals.js';
-import { getPhysicians } from '../../api/physicians.js';
-import { getReferralSources } from '../../api/referralSources.js';
-import { getMarketers } from '../../api/marketers.js';
-import { getFacilities } from '../../api/facilities.js';
+import { useCareStore } from '../../store/careStore.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
-
-// Module-level cache — persists across palette opens within the session
-let _cache    = null;
-let _loading  = false; // prevent duplicate parallel fetches
 
 function matchStr(text, q) {
   if (!text || !q) return false;
@@ -48,8 +39,7 @@ const CATEGORY_META = {
 export default function CommandPalette({ isOpen, onClose }) {
   const [query, setQuery]     = useState('');
   const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState(-1); // flat index for keyboard nav
+  const [focused, setFocused] = useState(-1);
 
   const inputRef    = useRef(null);
   const listRef     = useRef(null);
@@ -57,8 +47,46 @@ export default function CommandPalette({ isOpen, onClose }) {
   const { open: openDrawer } = usePatientDrawer();
   const { openPhysician, openFacility, openMarketer } = useDirectoryDrawer();
 
-  // Preload data on mount so search is instant when palette opens
-  useEffect(() => { if (!_cache && !_loading) loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Read directly from the hydrated Zustand store — zero API calls
+  const patients      = useCareStore((s) => s.patients);
+  const referrals     = useCareStore((s) => s.referrals);
+  const storePhysicians = useCareStore((s) => s.physicians);
+  const storeSources  = useCareStore((s) => s.referralSources);
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const storeFacilities = useCareStore((s) => s.facilities);
+
+  const searchData = useMemo(() => {
+    const patientMap = {};
+    for (const p of Object.values(patients)) {
+      if (p.id) patientMap[p.id] = p;
+      patientMap[p._id] = p;
+    }
+
+    const seenPatients = new Set();
+    const enrichedReferrals = [];
+    Object.values(referrals)
+      .sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0))
+      .forEach((r) => {
+        const pid = r.patient_id;
+        if (!pid || seenPatients.has(pid)) return;
+        seenPatients.add(pid);
+        const p = patientMap[pid];
+        enrichedReferrals.push({
+          ...r,
+          patientName: p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : pid,
+          patientDob:  p?.dob || null,
+          patient:     p || null,
+        });
+      });
+
+    return {
+      patients:   enrichedReferrals,
+      physicians: Object.values(storePhysicians),
+      sources:    Object.values(storeSources),
+      marketers:  Object.values(storeMarketers),
+      facilities: Object.values(storeFacilities),
+    };
+  }, [patients, referrals, storePhysicians, storeSources, storeMarketers, storeFacilities]);
 
   // Focus input & reset on open
   useEffect(() => {
@@ -78,62 +106,10 @@ export default function CommandPalette({ isOpen, onClose }) {
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  async function loadData() {
-    if (_loading) return;
-    _loading = true;
-    setLoading(true);
-    try {
-      const [rawPatients, rawReferrals, rawPhysicians, rawSources, rawMarketers, rawFacilities] =
-        await Promise.all([
-          getPatients(),
-          getReferrals(),
-          getPhysicians(),
-          getReferralSources(),
-          getMarketers(),
-          getFacilities(),
-        ]);
-
-      // Build patient map keyed by app-level id
-      const patientMap = {};
-      rawPatients.forEach((p) => {
-        if (p.fields.id) patientMap[p.fields.id] = p;
-        patientMap[p.id] = p; // fallback by Airtable record ID
-      });
-
-      // Enrich referrals with patient data (one referral per patient, most recent)
-      const seenPatients = new Set();
-      const enrichedReferrals = [];
-      rawReferrals
-        .sort((a, b) => new Date(b.fields.referral_date || 0) - new Date(a.fields.referral_date || 0))
-        .forEach((r) => {
-          const pid = r.fields.patient_id;
-          if (!pid || seenPatients.has(pid)) return;
-          seenPatients.add(pid);
-          const p = patientMap[pid];
-          enrichedReferrals.push({
-            _id:         r.id,
-            ...r.fields,
-            patientName: p ? `${p.fields.first_name || ''} ${p.fields.last_name || ''}`.trim() : pid,
-            patientDob:  p?.fields.dob || null,
-            patient:     p ? { _id: p.id, ...p.fields } : null,
-          });
-        });
-
-      _cache = {
-        patients:   enrichedReferrals,
-        physicians: rawPhysicians.map((r) => ({ _id: r.id, ...r.fields })),
-        sources:    rawSources.map((r)    => ({ _id: r.id, ...r.fields })),
-        marketers:  rawMarketers.map((r)  => ({ _id: r.id, ...r.fields })),
-        facilities: rawFacilities.map((r) => ({ _id: r.id, ...r.fields })),
-      };
-      if (query) runFilter(query);
-    } catch { /* fail silently */ }
-    finally { _loading = false; setLoading(false); }
-  }
-
   const runFilter = useCallback((q) => {
-    if (!_cache || !q.trim()) { setResults(null); return; }
-    const patients = _cache.patients.filter((r) =>
+    if (!q.trim()) { setResults(null); return; }
+
+    const matchedPatients = searchData.patients.filter((r) =>
       matchStr(r.patientName, q) ||
       matchStr(r.patient?.medicaid_number, q) ||
       matchStr(r.patient?.phone_primary, q) ||
@@ -142,30 +118,35 @@ export default function CommandPalette({ isOpen, onClose }) {
       matchStr(r.division, q)
     ).slice(0, 5);
 
-    const physicians = _cache.physicians.filter((p) =>
+    const matchedPhysicians = searchData.physicians.filter((p) =>
       matchStr(`${p.first_name} ${p.last_name}`, q) ||
       matchStr(p.npi, q)
     ).slice(0, 4);
 
-    const sources = _cache.sources.filter((s) =>
+    const matchedSources = searchData.sources.filter((s) =>
       matchStr(s.name, q)
     ).slice(0, 4);
 
-    const marketers = _cache.marketers.filter((m) =>
+    const matchedMarketers = searchData.marketers.filter((m) =>
       matchStr(`${m.first_name} ${m.last_name}`, q)
     ).slice(0, 4);
 
-    const facilities = _cache.facilities.filter((f) =>
+    const matchedFacilities = searchData.facilities.filter((f) =>
       matchStr(f.name, q) ||
       matchStr(f.address, q)
     ).slice(0, 4);
 
-    // Always set a full object so every key is defined — empty arrays are fine
-    setResults({ patients, physicians, sources, marketers, facilities });
-  }, []);
+    setResults({
+      patients: matchedPatients,
+      physicians: matchedPhysicians,
+      sources: matchedSources,
+      marketers: matchedMarketers,
+      facilities: matchedFacilities,
+    });
+  }, [searchData]);
 
   useEffect(() => {
-    if (_cache) runFilter(query);
+    runFilter(query);
     setFocused(-1);
   }, [query, runFilter]);
 
@@ -263,9 +244,6 @@ export default function CommandPalette({ isOpen, onClose }) {
               background: 'transparent',
             }}
           />
-          {loading && (
-            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>Loading…</span>
-          )}
           <kbd style={{
             fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.35),
             background: hexToRgba(palette.backgroundDark.hex, 0.06),
@@ -289,18 +267,11 @@ export default function CommandPalette({ isOpen, onClose }) {
           )}
 
           {/* No results */}
-          {query.trim() && results && !flatItems.length && !loading && (
+          {query.trim() && results && !flatItems.length && (
             <div style={{ padding: '28px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
                 No results for <strong>"{query}"</strong>
               </p>
-            </div>
-          )}
-
-          {/* Still loading data on first open */}
-          {query.trim() && !results && loading && (
-            <div style={{ padding: '28px 20px', textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>Loading index…</p>
             </div>
           )}
 

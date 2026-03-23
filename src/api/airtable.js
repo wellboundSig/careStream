@@ -104,5 +104,50 @@ async function remove(tableName, recordId) {
   return res.json();
 }
 
-export const airtable = { fetchAll, fetchOne, create, update, remove };
+// ── Batch operations (up to 10 records per call) ────────────────────────────
+
+const BATCH_SIZE = 10;
+
+async function createBatch(tableName, recordsFields) {
+  const results = [];
+  for (let i = 0; i < recordsFields.length; i += BATCH_SIZE) {
+    const chunk = recordsFields.slice(i, i + BATCH_SIZE);
+    const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: chunk.map((fields) => ({ fields })) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || 'Batch create failed');
+    }
+    const data = await res.json();
+    results.push(...data.records);
+  }
+  return results;
+}
+
+async function updateBatch(tableName, recordUpdates) {
+  const results = [];
+  for (let i = 0; i < recordUpdates.length; i += BATCH_SIZE) {
+    const chunk = recordUpdates.slice(i, i + BATCH_SIZE);
+    const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
+      method: 'PATCH',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: chunk.map(({ id, fields }) => ({ id, fields })) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || 'Batch update failed');
+    }
+    const data = await res.json();
+    results.push(...data.records);
+  }
+  return results;
+}
+
+export const airtable = {
+  fetchAll, fetchOne, create, update, remove,
+  createBatch, updateBatch,
+};
 export default airtable;

@@ -1,9 +1,11 @@
 /**
  * worker-airtable
  *
- * Two responsibilities:
+ * Responsibilities:
  *   1. Proxy all Airtable REST API calls from the browser (no token in bundle).
  *   2. Handle Clerk webhooks to auto-create/update Airtable user records on signup.
+ *   3. Manage Airtable webhooks — poll for payloads and push change notifications
+ *      to connected clients via Server-Sent Events (SSE).
  *
  * Required Worker Secrets (Settings → Variables and Secrets):
  *   AIRTABLE_TOKEN        — Airtable Personal Access Token (pat...)
@@ -12,6 +14,9 @@
  *
  * Required Worker Variable (plain text, not secret):
  *   DEFAULT_ROLE_ID       — role_id assigned to new users (e.g. rol_001)
+ *
+ * Optional KV Namespace Binding (for webhook cursor persistence):
+ *   WEBHOOK_KV            — KV namespace for storing webhook cursors
  */
 
 const ALLOWED_ORIGINS = [
@@ -161,6 +166,167 @@ async function handleClerkWebhook(request, env) {
   return new Response('OK', { status: 200 });
 }
 
+// ── SSE client registry (in-memory per isolate) ────────────────────────────
+
+const sseClients = new Set();
+
+function broadcastSSE(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const controller of sseClients) {
+    try { controller.enqueue(new TextEncoder().encode(msg)); }
+    catch { sseClients.delete(controller); }
+  }
+}
+
+function handleSSE(request, origin) {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  sseClients.add(writer);
+  writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'connected' })}\n\n`));
+
+  request.signal?.addEventListener('abort', () => {
+    sseClients.delete(writer);
+    writer.close().catch(() => {});
+  });
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+// ── Airtable Webhook helpers ────────────────────────────────────────────────
+// These are called via the /webhooks/setup and scheduled() handler.
+
+const AT_WEBHOOK_URL = (baseId) =>
+  `https://api.airtable.com/v0/bases/${baseId}/webhooks`;
+
+async function listWebhooks(env) {
+  const res = await fetch(AT_WEBHOOK_URL(env.AIRTABLE_BASE_ID), {
+    headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.webhooks || [];
+}
+
+async function createWebhook(env, notificationUrl) {
+  const res = await fetch(AT_WEBHOOK_URL(env.AIRTABLE_BASE_ID), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      notificationUrl,
+      specification: {
+        options: {
+          filters: {
+            dataTypes: ['tableData'],
+          },
+        },
+      },
+    }),
+  });
+  return res.json();
+}
+
+async function fetchWebhookPayloads(env, webhookId, cursor) {
+  let url = `${AT_WEBHOOK_URL(env.AIRTABLE_BASE_ID)}/${webhookId}/payloads`;
+  if (cursor) url += `?cursor=${cursor}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+  });
+  if (!res.ok) return { payloads: [], cursor: null };
+  return res.json();
+}
+
+async function handleWebhookNotification(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const webhookId = body.webhook?.id;
+  if (!webhookId) return new Response('OK', { status: 200 });
+
+  const cursorKey = `webhook_cursor_${webhookId}`;
+  let cursor = env.WEBHOOK_KV ? await env.WEBHOOK_KV.get(cursorKey) : null;
+
+  let hasChanges = false;
+  const changedTables = new Set();
+
+  let mightHaveMore = true;
+  while (mightHaveMore) {
+    const result = await fetchWebhookPayloads(env, webhookId, cursor);
+    const payloads = result.payloads || [];
+    mightHaveMore = result.mightHaveMore || false;
+    if (result.cursor) cursor = String(result.cursor);
+
+    for (const p of payloads) {
+      hasChanges = true;
+      const tableName = p.changedTablesById
+        ? Object.keys(p.changedTablesById)
+        : [];
+      tableName.forEach((t) => changedTables.add(t));
+    }
+  }
+
+  if (env.WEBHOOK_KV && cursor) {
+    await env.WEBHOOK_KV.put(cursorKey, String(cursor));
+  }
+
+  if (hasChanges) {
+    broadcastSSE({
+      type: 'airtable_change',
+      tables: [...changedTables],
+      timestamp: Date.now(),
+    });
+  }
+
+  return new Response('OK', { status: 200 });
+}
+
+async function handleWebhookSetup(env, origin) {
+  try {
+    const existing = await listWebhooks(env);
+    return new Response(JSON.stringify({
+      webhooks: existing,
+      instructions: 'Use POST /webhooks/register with { "notificationUrl": "https://your-worker.workers.dev/webhooks/airtable" } to create a webhook.',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+}
+
+async function handleWebhookRegister(request, env, origin) {
+  try {
+    const body = await request.json();
+    const notificationUrl = body.notificationUrl;
+    if (!notificationUrl) {
+      return new Response(JSON.stringify({ error: 'notificationUrl required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+      });
+    }
+    const result = await createWebhook(env, notificationUrl);
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 export default {
@@ -168,9 +334,27 @@ export default {
     const origin = request.headers.get('Origin') || '';
     const url    = new URL(request.url);
 
-    // Clerk webhook — no CORS headers needed (server-to-server)
+    // Clerk webhook
     if (url.pathname === '/webhooks/clerk' && request.method === 'POST') {
       return handleClerkWebhook(request, env);
+    }
+
+    // Airtable webhook notification receiver
+    if (url.pathname === '/webhooks/airtable' && request.method === 'POST') {
+      return handleWebhookNotification(request, env);
+    }
+
+    // Webhook management endpoints
+    if (url.pathname === '/webhooks/setup' && request.method === 'GET') {
+      return handleWebhookSetup(env, origin);
+    }
+    if (url.pathname === '/webhooks/register' && request.method === 'POST') {
+      return handleWebhookRegister(request, env, origin);
+    }
+
+    // SSE endpoint for real-time change notifications
+    if (url.pathname === '/events') {
+      return handleSSE(request, origin);
     }
 
     if (request.method === 'OPTIONS') {

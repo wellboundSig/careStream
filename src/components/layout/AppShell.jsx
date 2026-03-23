@@ -18,6 +18,7 @@ import { prefetchClinicians } from '../../hooks/useEsperClinicians.js';
 import { useCareStore, setupBroadcastSync } from '../../store/careStore.js';
 import { hydrateStore } from '../../store/hydrate.js';
 import { startSync, stopSync } from '../../store/sync.js';
+import { startRealtime, stopRealtime } from '../../store/realtime.js';
 import { isPopOutWindow, openPopOut } from '../../utils/windowManager.js';
 
 function getBreadcrumbs(pathname) {
@@ -76,12 +77,15 @@ export default function AppShell() {
     hydrateStore();
     setupBroadcastSync();
     prefetchClinicians();
-    return () => stopSync();
+    return () => { stopSync(); stopRealtime(); };
   }, []);
 
-  // Only the main window runs sync polling; pop-outs receive via BroadcastChannel
+  // Only the main window runs sync polling + SSE; pop-outs receive via BroadcastChannel
   useEffect(() => {
-    if (hydrated && !isPopOut) startSync();
+    if (hydrated && !isPopOut) {
+      startSync();
+      startRealtime();
+    }
   }, [hydrated]);
 
   // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)

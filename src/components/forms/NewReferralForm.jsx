@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
-import { getMarketers } from '../../api/marketers.js';
-import { getReferralSources } from '../../api/referralSources.js';
 import { createPatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
-import { mergeEntities } from '../../store/careStore.js';
+import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -152,9 +150,10 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const { appUser, appUserId } = useCurrentAppUser();
   const isMobile = useIsMobile();
 
-  const [marketers, setMarketers] = useState([]);
-  const [sources, setSources] = useState([]);
-  const [loadingOptions, setLoadingOptions] = useState(true);
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const storeSources   = useCareStore((s) => s.referralSources);
+  const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
+  const sources   = useMemo(() => Object.values(storeSources),   [storeSources]);
 
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [showReferralDetails, setShowReferralDetails] = useState(false);
@@ -201,18 +200,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }));
   }
-
-  // Load marketers and sources
-  useEffect(() => {
-    setLoadingOptions(true);
-    Promise.all([getMarketers(), getReferralSources()])
-      .then(([mkts, srcs]) => {
-        setMarketers(mkts.map((r) => ({ _id: r.id, ...r.fields })));
-        setSources(srcs.map((r) => ({ _id: r.id, ...r.fields })));
-      })
-      .catch(() => {})
-      .finally(() => setLoadingOptions(false));
-  }, []);
 
   // Auto-fill marketer if logged-in user is a marketer
   useEffect(() => {
@@ -417,17 +404,13 @@ export default function NewReferralForm({ onClose, onSuccess }) {
             </p>
             <FieldGroup>
               <FieldBox label="Lead Source" required>
-                {loadingOptions ? (
-                  <div style={{ ...inputBase, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>Loading sources…</div>
-                ) : (
-                  <Select
-                    value={form.referral_source_id}
-                    onChange={(v) => setField('referral_source_id', v)}
-                    options={sourceOptions}
-                    placeholder="Select lead source…"
-                    hasError={!!errors.referral_source_id}
-                  />
-                )}
+                <Select
+                  value={form.referral_source_id}
+                  onChange={(v) => setField('referral_source_id', v)}
+                  options={sourceOptions}
+                  placeholder="Select lead source…"
+                  hasError={!!errors.referral_source_id}
+                />
                 {errors.referral_source_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_id}</p>}
                 {form.referral_source_id === 'other' && (
                   <div style={{ marginTop: 8 }}>
@@ -438,17 +421,13 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               </FieldBox>
 
               <FieldBox label="Marketer" required>
-                {loadingOptions ? (
-                  <div style={{ ...inputBase, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>Loading marketers…</div>
-                ) : (
-                  <Select
-                    value={form.marketer_id}
-                    onChange={(v) => setField('marketer_id', v)}
-                    options={marketerOptions}
-                    placeholder="Select marketer…"
-                    hasError={!!errors.marketer_id}
-                  />
-                )}
+                <Select
+                  value={form.marketer_id}
+                  onChange={(v) => setField('marketer_id', v)}
+                  options={marketerOptions}
+                  placeholder="Select marketer…"
+                  hasError={!!errors.marketer_id}
+                />
                 {errors.marketer_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.marketer_id}</p>}
                 {form.marketer_id && form.marketer_id !== 'other' && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
                   <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled — you are the marketer for this referral</p>
