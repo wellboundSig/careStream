@@ -175,7 +175,7 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
 }
 
 // ── New Task Form ──────────────────────────────────────────────────────────────
-const EMPTY = { type: '', title: '', description: '', priority: 'Normal', due_date: '' };
+const EMPTY = { type: '', title: '', description: '', priority: 'Normal', due_date: '', scheduled_date: '' };
 
 function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated, onCancel }) {
   const [form, setForm]         = useState(EMPTY);
@@ -220,6 +220,7 @@ function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated
       patient_id:     patient?.id || undefined,
       referral_id:    referral?._id || undefined,
       due_date:       form.due_date || undefined,
+      scheduled_date: form.scheduled_date || undefined,
     }).then(() => {
       onCreated();
     }).catch((err) => {
@@ -282,31 +283,31 @@ function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated
         />
       </div>
 
-      {/* Priority + Due date (side by side) */}
+      {/* Priority */}
+      <div style={{ marginBottom: 10 }}>
+        <label style={lbl}>Priority</label>
+        <div style={{ display: 'flex', gap: 4, marginTop: 5 }}>
+          {PRIORITIES.map((p) => (
+            <button key={p} onClick={() => set('priority', p)} style={{
+              flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
+              border: `1px solid ${form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+              background: form.priority === p ? hexToRgba(PRIORITY_COLORS[p], 0.1) : 'transparent',
+              color: form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.45),
+              cursor: 'pointer', transition: 'all 0.1s',
+            }}>{p}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Due date + Scheduled date (side by side) */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
-          <label style={lbl}>Priority</label>
-          <div style={{ display: 'flex', gap: 4, marginTop: 5 }}>
-            {PRIORITIES.map((p) => (
-              <button key={p} onClick={() => set('priority', p)} style={{
-                flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                border: `1px solid ${form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-                background: form.priority === p ? hexToRgba(PRIORITY_COLORS[p], 0.1) : 'transparent',
-                color: form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.45),
-                cursor: 'pointer', transition: 'all 0.1s',
-              }}>{p}</button>
-            ))}
-          </div>
+          <label style={lbl}>Due Date <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
+          <input type="date" value={form.due_date} min={new Date().toISOString().split('T')[0]} onChange={(e) => set('due_date', e.target.value)} style={{ ...inp, marginTop: 5 }} />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={lbl}>Due Date <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
-          <input
-            type="date"
-            value={form.due_date}
-            min={new Date().toISOString().split('T')[0]}
-            onChange={(e) => set('due_date', e.target.value)}
-            style={{ ...inp, marginTop: 5 }}
-          />
+          <label style={lbl}>Scheduled Date <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
+          <input type="date" value={form.scheduled_date} min={new Date().toISOString().split('T')[0]} onChange={(e) => set('scheduled_date', e.target.value)} style={{ ...inp, marginTop: 5 }} />
         </div>
       </div>
 

@@ -54,6 +54,9 @@ export const PERMISSION_KEYS = {
   SCHEDULING_SOC_SCHEDULE: 'scheduling.soc_schedule',
   SCHEDULING_SOC_COMPLETE: 'scheduling.soc_complete',
 
+  // Calendar
+  CALENDAR_VIEW: 'calendar.view',
+
   // Reports
   REPORT_VIEW: 'report.view',
   REPORT_EXPORT: 'report.export',
@@ -86,6 +89,7 @@ export const PERMISSION_CATEGORIES = [
   'Notes',
   'Conflicts',
   'Scheduling',
+  'Calendar',
   'Reports',
   'Directory',
   'Administration',
@@ -144,6 +148,9 @@ export const PERMISSION_CATALOG = [
   { key: K.SCHEDULING_SOC_SCHEDULE,  label: 'Schedule Start of Care',            category: 'Scheduling', description: 'Set SOC dates and create episodes', sort: 92 },
   { key: K.SCHEDULING_SOC_COMPLETE,  label: 'Mark SOC completed',                category: 'Scheduling', description: 'Finalize SOC and generate EMR packets', sort: 93 },
 
+  // Calendar
+  { key: K.CALENDAR_VIEW,  label: 'View calendar',        category: 'Calendar', description: 'Access the Calendar page with tasks and F2F dates', sort: 95 },
+
   // Reports
   { key: K.REPORT_VIEW,   label: 'View reports',         category: 'Reports', description: 'Access the Reports page', sort: 100 },
   { key: K.REPORT_EXPORT, label: 'Export reports & data', category: 'Reports', description: 'Download CSV/PDF exports', sort: 101 },
@@ -172,6 +179,7 @@ export const DEFAULT_PRESETS = [
   },
   {
     id: 'preset_intake',
+
     name: 'Intake Coordinator',
     description: 'Front-line referral intake, eligibility, and patient onboarding.',
     is_system: true,
@@ -180,7 +188,7 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
-      K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE,
+      K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.FILE_UPLOAD,
       K.NOTE_CREATE, K.NOTE_PIN,
       K.CONFLICT_FLAG,
@@ -198,7 +206,7 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_VIEW, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW, K.CLINICAL_F2F, K.CLINICAL_ELIGIBILITY,
-      K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE,
+      K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.FILE_UPLOAD, K.FILE_UPLOAD_F2F,
       K.NOTE_CREATE, K.NOTE_PIN,
       K.CONFLICT_FLAG, K.CONFLICT_RESOLVE,
@@ -230,7 +238,7 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_VIEW, K.REFERRAL_TRANSITION,
       K.PATIENT_VIEW,
       K.SCHEDULING_STAFFING, K.SCHEDULING_ADMIN_CONFIRM, K.SCHEDULING_SOC_SCHEDULE, K.SCHEDULING_SOC_COMPLETE,
-      K.TASK_VIEW, K.TASK_CREATE, K.TASK_ASSIGN, K.TASK_COMPLETE,
+      K.TASK_VIEW, K.TASK_CREATE, K.TASK_ASSIGN, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
@@ -247,7 +255,7 @@ export const DEFAULT_PRESETS = [
       K.PATIENT_VIEW,
       K.CLINICAL_ELIGIBILITY,
       K.AUTH_SUBMIT, K.AUTH_DECIDE,
-      K.TASK_VIEW, K.TASK_CREATE,
+      K.TASK_VIEW, K.TASK_CREATE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
       K.REPORT_VIEW, K.REPORT_EXPORT,
       K.DIRECTORY_VIEW,

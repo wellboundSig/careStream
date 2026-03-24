@@ -100,7 +100,20 @@ export function deleteNoteOptimistic(recordId) {
   return optimisticDelete('notes', 'Notes', recordId);
 }
 
+export function getNextTaskId() {
+  const tasks = useCareStore.getState().tasks;
+  let max = 0;
+  for (const t of Object.values(tasks)) {
+    const match = (t.id || '').match(/^task_(\d+)$/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  return `task_${String(max + 1).padStart(3, '0')}`;
+}
+
 export function createTaskOptimistic(fields) {
+  if (!fields.id) fields = { ...fields, id: getNextTaskId() };
+  const now = new Date().toISOString();
+  if (!fields.created_at) fields = { ...fields, created_at: now, updated_at: now };
   return optimisticCreate('tasks', 'Tasks', fields);
 }
 

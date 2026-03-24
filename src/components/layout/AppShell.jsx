@@ -27,6 +27,7 @@ function getBreadcrumbs(pathname) {
     '/pipeline': ['Pipeline'],
     '/patients': ['Patients'],
     '/tasks': ['Tasks'],
+    '/calendar': ['Calendar'],
     '/reports': ['Reports'],
     '/directory/marketers': ['Directory', 'Marketers'],
 

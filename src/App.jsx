@@ -19,6 +19,7 @@ import ReferralSources from './pages/directory/ReferralSources.jsx';
 import Tasks from './pages/Tasks.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
 import Settings from './pages/Settings.jsx';
+import CalendarPage from './pages/Calendar.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 
         <Route path="tasks" element={<Tasks />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="reports" element={<Reports />} />
         <Route path="directory/marketers" element={<Marketers />} />
         <Route path="directory/facilities" element={<Facilities />} />

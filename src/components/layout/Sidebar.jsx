@@ -35,6 +35,7 @@ const NAV_ITEMS = [
     section: 'WORK',
     items: [
       { label: 'Tasks', path: '/tasks', icon: TasksIcon },
+      { label: 'Calendar', path: '/calendar', icon: CalendarIcon },
       { label: 'Reports', path: '/reports', icon: ReportsIcon },
     ],
   },
@@ -592,6 +593,15 @@ function TasksIcon({ size = 16, color }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path d="M9 11l3 3L22 4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CalendarIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="4" width="18" height="18" rx="2" stroke={color} strokeWidth="1.6" />
+      <path d="M16 2v4M8 2v4M3 10h18" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
