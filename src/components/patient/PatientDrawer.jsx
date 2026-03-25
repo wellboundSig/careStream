@@ -14,6 +14,7 @@ import FilesTab from './tabs/FilesTab.jsx';
 import TasksTab from './tabs/TasksTab.jsx';
 import AuthorizationsTab from './tabs/AuthorizationsTab.jsx';
 import ConflictsTab from './tabs/ConflictsTab.jsx';
+import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
 
 const HEADER_TEXT = '#F7F7FA';
 
@@ -26,6 +27,7 @@ export const DRAWER_TABS = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'files', label: 'Files' },
   { id: 'tasks', label: 'Tasks' },
+  { id: 'clinical_review', label: 'Clinical Review' },
   { id: 'authorizations', label: 'Auth' },
   { id: 'conflicts', label: 'Conflicts' },
 ];
@@ -274,6 +276,7 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
     case 'timeline': return <TimelineTab {...props} />;
     case 'files': return <FilesTab {...props} />;
     case 'tasks': return <TasksTab {...props} autoNewTask={autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;
+    case 'clinical_review': return <ClinicalReviewTab {...props} />;
     case 'authorizations': return <AuthorizationsTab {...props} />;
     case 'conflicts': return <ConflictsTab {...props} />;
     default: return null;

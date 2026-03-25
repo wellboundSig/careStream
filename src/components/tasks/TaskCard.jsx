@@ -199,6 +199,12 @@ export default function TaskCard({ task, resolveUser, resolvePatient, resolvePat
               </span>
             )}
 
+            {task.created_at && (
+              <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>
+                Added {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+
             {task.source === 'System' && (
               <span style={{ fontSize: 10, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>System</span>
             )}

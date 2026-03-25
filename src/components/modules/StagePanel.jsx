@@ -16,6 +16,8 @@ import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERC
 import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
 import { DISCARD_REASONS } from '../../data/stageConfig.js';
+import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
+import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const PIPELINE_STAGES = [
@@ -138,6 +140,31 @@ function CollapsibleChecklist({ title, items, doneMap, onToggle }) {
           {items.map((item) => (
             <CheckItem key={item.key} label={item.label} done={!!doneMap[item.key]} onChange={() => onToggle(item.key)} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReturnedFromClinicalFlag({ note }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div data-testid="returned-from-clinical-flag" style={{ borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 12, overflow: 'hidden' }}>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
+          ↩ Returned from Clinical RN Review
+        </span>
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {expanded && note && (
+        <div style={{ padding: '0 12px 10px' }}>
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>Reason:</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
         </div>
       )}
     </div>
@@ -791,6 +818,11 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
         <InfoRow label="No F2F yet"    value={referrals.filter((r) => !r.f2f_date).length} />
       </PanelSection>
 
+      {/* Returned from Clinical flag — expandable */}
+      {ref && (ref.returned_from_clinical === 'true' || ref.returned_from_clinical === true) && (
+        <ReturnedFromClinicalFlag note={ref.returned_from_clinical_note} />
+      )}
+
       {ref && (
         <>
           <PanelSection title="F2F Status">
@@ -983,35 +1015,134 @@ function ApproveButton({ enabled, onSelect }) {
 // ── 6. Clinical Intake RN Review ──────────────────────────────────────────────
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
-  const [f2fReviewed, setF2fReviewed] = useState(false);
+  const { appUserId } = useCurrentAppUser();
+  const [checked, setChecked] = useState({});
+  const [decision, setDecision] = useState(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [sendBackNote, setSendBackNote] = useState('');
+  const [showSendBack, setShowSendBack] = useState(false);
 
-  const allDone = f2fReviewed;
+  useEffect(() => {
+    setChecked({});
+    setDecision(null);
+    setAuthRequired(false);
+    setSendBackNote('');
+    setShowSendBack(false);
+  }, [selectedReferral?._id]);
+
+  function toggleItem(key) {
+    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const checklistComplete = isChecklistComplete(checked);
+  const canConfirm = checklistComplete && (decision === 'accept' || decision === 'conditional');
+
+  function handleConfirm() {
+    if (!canConfirm || !selectedReferral) return;
+    const dest = authRequired ? 'Authorization Pending' : 'Staffing Feasibility';
+    onInitiateTransition?.(selectedReferral, dest);
+  }
+
+  function handleSendBack() {
+    if (!sendBackNote.trim() || !selectedReferral) return;
+    updateReferral(selectedReferral._id, {
+      current_stage: 'F2F/MD Orders Pending',
+      returned_from_clinical: 'true',
+      returned_from_clinical_note: sendBackNote.trim(),
+      returned_from_clinical_at: new Date().toISOString(),
+      returned_from_clinical_by: appUserId || 'unknown',
+    }).catch(() => {});
+    recordTransition({
+      referral: selectedReferral,
+      fromStage: 'Clinical Intake RN Review',
+      toStage: 'F2F/MD Orders Pending',
+      note: `[Returned from Clinical] ${sendBackNote.trim()}`,
+      authorId: appUserId,
+    });
+    triggerDataRefresh();
+    setShowSendBack(false);
+    setSendBackNote('');
+  }
+
+  function handleDecline() {
+    if (!selectedReferral) return;
+    onInitiateTransition?.(selectedReferral, 'Conflict');
+  }
 
   return (
-    <Panel>
+    <Panel width={320}>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          <PanelSection title="Review">
-            <CheckItem
-              label="F2F / MD orders reviewed"
-              done={f2fReviewed}
-              onChange={() => setF2fReviewed((v) => !v)}
-            />
+          <ClinicalChecklistUI
+            checked={checked}
+            onToggle={toggleItem}
+            decision={decision}
+            onDecisionChange={setDecision}
+            authRequired={authRequired}
+            onAuthRequiredChange={setAuthRequired}
+            compact
+          />
+
+          {/* Send back to F2F — always available, not gated by clinical permission */}
+          <PanelSection title="Send Back">
+            {!showSendBack ? (
+              <ActionBtn label="↩ Send Back to F2F / MD Orders" variant="warning" onClick={() => setShowSendBack(true)} />
+            ) : (
+              <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>Explain why this patient is being returned to F2F:</p>
+                <textarea
+                  data-testid="send-back-note"
+                  value={sendBackNote}
+                  onChange={(e) => setSendBackNote(e.target.value)}
+                  placeholder="Required — describe the documentation issue…"
+                  rows={3}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid ${sendBackNote.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box', marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={handleSendBack} disabled={!sendBackNote.trim()} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: sendBackNote.trim() ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.07), color: sendBackNote.trim() ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 11.5, fontWeight: 650, cursor: sendBackNote.trim() ? 'pointer' : 'not-allowed' }}>
+                    Send Back
+                  </button>
+                  <button onClick={() => { setShowSendBack(false); setSendBackNote(''); }} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </PanelSection>
 
+          {/* Confirm + clinical decision actions — gated by permission */}
           {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
-          <PanelSection title="Decision">
-            <ApproveButton
-              enabled={allDone}
-              onSelect={(dest) => onInitiateTransition?.(selectedReferral, dest)}
-            />
-            <ActionBtn label="Escalate to Conflict" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
+          <PanelSection title="Clinical Decision">
+            <button
+              data-testid="confirm-patient-btn"
+              onClick={handleConfirm}
+              disabled={!canConfirm}
+              style={{
+                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                background: canConfirm ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: canConfirm ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                fontSize: 13, fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed',
+                textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s', marginBottom: 6,
+              }}
+              onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+            >
+              {canConfirm
+                ? `Confirm → ${authRequired ? 'Auth Pending' : 'Staffing Feasibility'}`
+                : 'Complete checklist to confirm'}
+            </button>
+
+            {decision === 'decline' && (
+              <ActionBtn label="Decline → Conflict" variant="warning" onClick={handleDecline} />
+            )}
+
+            <ActionBtn label="Escalate to Conflict" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
           </PanelSection>
           )}
 
           <PanelSection title="Documents">
-            <ActionBtn label="Open Triage Form"     variant="default"  onClick={() => onOpenTriage?.(selectedReferral)} />
-            <ActionBtn label="View F2F / MD Orders" variant="default"  onClick={() => onOpenFiles?.(selectedReferral)} />
+            <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />
+            <ActionBtn label="View F2F / MD Orders" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
         </>
       )}

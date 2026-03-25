@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useCareStore } from '../store/careStore.js';
-import { updateTaskOptimistic } from '../store/mutations.js';
+import { updateTaskOptimistic, createTaskOptimistic } from '../store/mutations.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
@@ -35,6 +35,7 @@ export default function Tasks() {
   const [blockingOnly, setBlockingOnly]   = useState(false);
   const [search, setSearch]               = useState('');
   const [toast, setToast]                 = useState(null);
+  const [showNewTask, setShowNewTask]     = useState(false);
 
   const allTasks = useMemo(() => Object.values(storeTasks), [storeTasks]);
 
@@ -124,10 +125,16 @@ export default function Tasks() {
             </p>
           </div>
 
-          {/* Mine / All toggle — visually distinct from filter pills */}
-          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.03) }}>
-            <ScopeBtn label={`My Tasks${mineCount > 0 ? ` (${mineCount})` : ''}`} active={mode === 'mine'} onClick={() => setMode('mine')} />
-            <ScopeBtn label="All Tasks" active={mode === 'all'} onClick={() => setMode('all')} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {can(PERMISSION_KEYS.TASK_CREATE) && (
+              <button onClick={() => setShowNewTask(true)} style={{ padding: '7px 16px', borderRadius: 8, background: palette.accentGreen.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+                + Add Task
+              </button>
+            )}
+            <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.03) }}>
+              <ScopeBtn label={`My Tasks${mineCount > 0 ? ` (${mineCount})` : ''}`} active={mode === 'mine'} onClick={() => setMode('mine')} />
+              <ScopeBtn label="All Tasks" active={mode === 'all'} onClick={() => setMode('all')} />
+            </div>
           </div>
         </div>
 
@@ -185,6 +192,15 @@ export default function Tasks() {
             Blocking
           </button>
         </div>
+
+        {/* ── Inline new task form ── */}
+        {showNewTask && (
+          <PageNewTaskForm
+            appUserId={appUserId}
+            onCreated={() => { setShowNewTask(false); showToast('Task created'); }}
+            onCancel={() => setShowNewTask(false)}
+          />
+        )}
 
         {/* ── Task sections ── */}
         {!hydrated ? (
@@ -292,6 +308,62 @@ function SectionGroup({ section, tasks, resolveUser, resolvePatient, resolvePati
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Inline new task form (page-level, no patient context) ── */
+const TASK_TYPES_LIST = ['Insurance Barrier', 'Missing Document', 'Auth Needed', 'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other'];
+
+function PageNewTaskForm({ appUserId, onCreated, onCancel }) {
+  const [title, setTitle] = useState('');
+  const [type, setType] = useState('');
+  const [priority, setPriority] = useState('Normal');
+  const [dueDate, setDueDate] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const canSubmit = title.trim() && type && !saving;
+
+  function handleSubmit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    createTaskOptimistic({
+      title: title.trim(),
+      type,
+      priority,
+      status: 'Pending',
+      assigned_to_id: appUserId || undefined,
+      ...(dueDate && { due_date: dueDate }),
+      ...(description.trim() && { description: description.trim() }),
+    }).then(() => onCreated()).catch(() => setSaving(false));
+  }
+
+  const inp = { width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box' };
+
+  return (
+    <div style={{ padding: '16px 18px', borderRadius: 10, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.3)}`, background: hexToRgba(palette.accentGreen.hex, 0.04), marginBottom: 18 }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 10, letterSpacing: '0.04em', textTransform: 'uppercase' }}>New Task</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px', marginBottom: 10 }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title *" style={inp} autoFocus />
+        </div>
+        <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+          <option value="">Type *</option>
+          {TASK_TYPES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+          {['Low', 'Normal', 'High', 'Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} min={new Date().toISOString().split('T')[0]} style={inp} />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...inp, resize: 'vertical', gridColumn: '1 / -1' }} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'none', fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
+        <button onClick={handleSubmit} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, border: 'none', background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), fontSize: 12.5, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+          {saving ? 'Creating…' : 'Create Task'}
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import MarketerOverviewTab from './tabs/MarketerOverviewTab.jsx';
 import MarketerReferralsTab from './tabs/MarketerReferralsTab.jsx';
 import MarketerMetricsTab from './tabs/MarketerMetricsTab.jsx';
 import MarketerFacilitiesTab from './tabs/MarketerFacilitiesTab.jsx';
+import MarketerDataToolsTab from './tabs/MarketerDataToolsTab.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [
@@ -11,6 +12,7 @@ const TABS = [
   { id: 'referrals',  label: 'Referrals' },
   { id: 'metrics',    label: 'Metrics' },
   { id: 'facilities', label: 'Facilities' },
+  { id: 'data',       label: 'Data Tools' },
 ];
 
 const DIVISION_COLORS = {
@@ -120,6 +122,7 @@ export default function MarketerDrawer({ marketer, onClose }) {
           {activeTab === 'referrals'  && <MarketerReferralsTab referrals={referrals} />}
           {activeTab === 'metrics'    && <MarketerMetricsTab stats={stats} ntucReasons={ntucReasons} referrals={referrals} />}
           {activeTab === 'facilities' && <MarketerFacilitiesTab facilities={facilities} loading={loading} />}
+          {activeTab === 'data'       && <MarketerDataToolsTab referrals={referrals} />}
         </div>
       </div>
     </>

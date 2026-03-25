@@ -17,6 +17,7 @@ const NAV_ITEMS = [
     section: null,
     items: [
       { label: 'Dashboard', path: '/', icon: DashboardIcon, exact: true },
+      { label: 'Tasks', path: '/tasks', icon: TasksIcon },
       { label: 'Pipeline', path: '/pipeline', icon: PipelineIcon },
       { label: 'Patients', path: '/patients', icon: PatientsIcon },
     ],
@@ -34,7 +35,6 @@ const NAV_ITEMS = [
   {
     section: 'WORK',
     items: [
-      { label: 'Tasks', path: '/tasks', icon: TasksIcon },
       { label: 'Calendar', path: '/calendar', icon: CalendarIcon },
       { label: 'Reports', path: '/reports', icon: ReportsIcon },
     ],

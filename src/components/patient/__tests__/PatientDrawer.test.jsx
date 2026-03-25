@@ -16,8 +16,8 @@ describe('DRAWER_TABS definition', () => {
     expect(DRAWER_TABS[1].label).toBe('Overview');
   });
 
-  it('contains 10 tabs total', () => {
-    expect(DRAWER_TABS.length).toBe(10);
+  it('contains 11 tabs total (including Clinical Review)', () => {
+    expect(DRAWER_TABS.length).toBe(11);
   });
 
   it('has all expected tab IDs', () => {

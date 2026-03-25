@@ -47,7 +47,7 @@ export const ROLE_MODES = [
     id: 'intake',
     label: 'Intake',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Discarded Leads', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
+    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending', 'Discarded Leads'],
   },
   {
     id: 'clinical',
@@ -71,7 +71,7 @@ export const ROLE_MODES = [
     id: 'admin',
     label: 'Admin',
     color: palette.highlightYellow.hex,
-    stages: ['Admin Confirmation', 'Hold', 'NTUC'],
+    stages: ['Admin Confirmation', 'Conflict', 'NTUC', 'Discarded Leads'],
   },
   {
     id: 'all',
@@ -179,6 +179,7 @@ export const STAGE_META = {
     isGlobal: true,
     isTerminal: false,
     color: palette.highlightYellow.hex,
+    hiddenFromNav: true,
   },
   'NTUC': {
     description: 'Not taken under care',

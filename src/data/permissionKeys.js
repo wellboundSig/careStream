@@ -26,6 +26,7 @@ export const PERMISSION_KEYS = {
   PATIENT_EDIT: 'patient.edit',
 
   // Clinical
+  CLINICAL_APPROVED_SERVICES: 'clinical.approved_services',
   CLINICAL_TRIAGE: 'clinical.triage',
   CLINICAL_RN_REVIEW: 'clinical.rn_review',
   CLINICAL_F2F: 'clinical.f2f',
@@ -138,6 +139,7 @@ export const PERMISSION_CATALOG = [
   { key: K.PATIENT_EDIT, label: 'Edit patient information',   category: 'Patients', description: 'Modify demographics, contacts, and insurance', sort: 21 },
 
   // Clinical
+  { key: K.CLINICAL_APPROVED_SERVICES, label: 'Edit approved services', category: 'Clinical', description: 'Update which services are approved for a patient in Demographics', sort: 29 },
   { key: K.CLINICAL_TRIAGE,      label: 'Submit triage assessments',     category: 'Clinical', description: 'Fill or edit adult/pediatric triage forms', sort: 30 },
   { key: K.CLINICAL_RN_REVIEW,   label: 'Perform Clinical RN review',    category: 'Clinical', description: 'Approve or route from Clinical Intake RN Review stage', sort: 31 },
   { key: K.CLINICAL_F2F,         label: 'Log Face-to-Face documents',    category: 'Clinical', description: 'Record F2F received dates and expiration', sort: 32 },

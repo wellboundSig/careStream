@@ -377,6 +377,13 @@ export default function OverviewTab({ patient, referral }) {
         <EditableField label="Insurance ID"     fieldKey="insurance_id"     value={patient.insurance_id}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
       </Section>
 
+      {/* ── Approved Services (permission-gated) ── */}
+      {can(PERMISSION_KEYS.CLINICAL_APPROVED_SERVICES) && (
+        <Section title="Approved Services">
+          <EditableField label="Approved Services" fieldKey="approved_services" value={patient.approved_services} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+        </Section>
+      )}
+
       {/* ── Emergency Contact ── */}
       <Section title="Emergency Contact">
         <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />

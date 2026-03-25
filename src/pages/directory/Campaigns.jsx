@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { useCareStore } from '../../store/careStore.js';
+import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { REGION_COLORS } from './Facilities.jsx';
 import { SkeletonRect } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { createCampaign } from '../../api/campaigns.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -55,6 +56,8 @@ export default function Campaigns() {
     return campaigns.filter((c) => (c.name || '').toLowerCase().includes(q) || (c.region || '').toLowerCase().includes(q));
   }, [campaigns, search]);
 
+  const [showNewCampaign, setShowNewCampaign] = useState(false);
+
   const { can } = usePermissions();
   if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
@@ -66,10 +69,21 @@ export default function Campaigns() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Campaigns</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} campaigns</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search campaigns…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search campaigns…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+            </div>
+            {can(PERMISSION_KEYS.DIRECTORY_CREATE) && (
+              <button onClick={() => setShowNewCampaign(true)} style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.accentGreen.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+                + Add Campaign
+              </button>
+            )}
           </div>
         </div>
+
+        {showNewCampaign && (
+          <NewCampaignForm onClose={() => setShowNewCampaign(false)} onCreated={() => setShowNewCampaign(false)} />
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {!hydrated ? (
             Array.from({ length: 4 }).map((_, i) => <SkeletonRect key={i} height={90} />)
@@ -111,5 +125,97 @@ export default function Campaigns() {
         </div>
       </div>
     </>
+  );
+}
+
+const DIVISIONS_LIST = ['ALF', 'Special Needs', 'Both'];
+const STATUS_LIST = ['Active', 'Paused', 'Completed'];
+
+function NewCampaignForm({ onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [division, setDivision] = useState('');
+  const [status, setStatus] = useState('Active');
+  const [region, setRegion] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const canSubmit = name.trim() && !saving;
+
+  async function handleSave() {
+    if (!canSubmit) return;
+    setSaving(true);
+    setError('');
+    try {
+      const fields = {
+        id: `camp_${Date.now()}`,
+        name: name.trim(),
+        status,
+        created_at: new Date().toISOString(),
+        ...(division && { division }),
+        ...(region && { region }),
+        ...(startDate && { start_date: startDate }),
+        ...(endDate && { end_date: endDate }),
+        ...(notes.trim() && { notes: notes.trim() }),
+      };
+      const rec = await createCampaign(fields);
+      mergeEntities('campaigns', { [rec.id]: { _id: rec.id, ...rec.fields } });
+      onCreated();
+    } catch (err) {
+      setError(err.message || 'Failed to create campaign');
+      setSaving(false);
+    }
+  }
+
+  const inp = { width: '100%', padding: '8px 11px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box' };
+
+  return (
+    <div style={{ padding: '18px 20px', borderRadius: 12, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.3)}`, background: hexToRgba(palette.accentGreen.hex, 0.04), marginBottom: 18 }}>
+      <p style={{ fontSize: 13, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 12, letterSpacing: '0.03em', textTransform: 'uppercase' }}>New Campaign</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', marginBottom: 12 }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Name *</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" style={inp} autoFocus />
+        </div>
+        <div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Division</label>
+          <select value={division} onChange={(e) => setDivision(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+            <option value="">— select —</option>
+            {DIVISIONS_LIST.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Status</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+            {STATUS_LIST.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Region</label>
+          <input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="e.g. Brooklyn, Bronx" style={inp} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Start Date</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inp} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>End Date</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inp} />
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 4 }}>Notes</label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional campaign notes…" rows={2} style={{ ...inp, resize: 'vertical' }} />
+        </div>
+      </div>
+      {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
+        <button onClick={handleSave} disabled={!canSubmit} style={{ padding: '7px 22px', borderRadius: 7, border: 'none', background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+          {saving ? 'Creating…' : 'Create Campaign'}
+        </button>
+      </div>
+    </div>
   );
 }
