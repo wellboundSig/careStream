@@ -6,9 +6,9 @@ export function PatientDrawerProvider({ children }) {
   const [isOpen, setIsOpen] = useState(false);
   const [patient, setPatient] = useState(null);
   const [referral, setReferral] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('demographics');
 
-  const open = useCallback((patientObj, referralObj = null, tab = 'overview') => {
+  const open = useCallback((patientObj, referralObj = null, tab = 'demographics') => {
     setPatient(patientObj);
     setReferral(referralObj);
     setActiveTab(tab);

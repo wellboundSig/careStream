@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ROLE_MODES, STAGE_SLUGS } from '../../data/stageConfig.js';
+import { ROLE_MODES, STAGE_SLUGS, STAGE_META } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -18,17 +18,17 @@ const NAV_ITEMS = [
     items: [
       { label: 'Dashboard', path: '/', icon: DashboardIcon, exact: true },
       { label: 'Pipeline', path: '/pipeline', icon: PipelineIcon },
+      { label: 'Patients', path: '/patients', icon: PatientsIcon },
     ],
   },
   {
     section: 'DIRECTORY',
     items: [
-      { label: 'Patients', path: '/patients', icon: PatientsIcon },
       { label: 'Marketers', path: '/directory/marketers', icon: MarketersIcon },
       { label: 'Facilities', path: '/directory/facilities', icon: FacilitiesIcon },
       { label: 'Physicians', path: '/directory/physicians', icon: PhysiciansIcon },
-      { label: 'Campaigns', path: '/directory/campaigns', icon: CampaignsIcon },
       { label: 'Referral Sources', path: '/directory/referral-sources', icon: SourcesIcon },
+      { label: 'Campaigns', path: '/directory/campaigns', icon: CampaignsIcon },
     ],
   },
   {
@@ -307,9 +307,29 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
 }
 
 // ── Role Mode Module Nav ──────────────────────────────────────────────────────
+const STAGE_TO_MODULE_PERM = {
+  'Lead Entry': PERMISSION_KEYS.MODULE_INTAKE,
+  'Discarded Leads': PERMISSION_KEYS.MODULE_INTAKE,
+  'Intake': PERMISSION_KEYS.MODULE_INTAKE,
+  'Eligibility Verification': PERMISSION_KEYS.MODULE_INTAKE,
+  'Disenrollment Required': PERMISSION_KEYS.MODULE_INTAKE,
+  'F2F/MD Orders Pending': PERMISSION_KEYS.MODULE_INTAKE,
+  'Clinical Intake RN Review': PERMISSION_KEYS.MODULE_CLINICAL,
+  'Conflict': PERMISSION_KEYS.MODULE_CLINICAL,
+  'Authorization Pending': PERMISSION_KEYS.MODULE_AUTHORIZATION,
+  'Staffing Feasibility': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'Pre-SOC': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'SOC Scheduled': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'SOC Completed': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'Admin Confirmation': PERMISSION_KEYS.MODULE_ADMIN,
+  'Hold': PERMISSION_KEYS.MODULE_ADMIN,
+  'NTUC': PERMISSION_KEYS.MODULE_ADMIN,
+};
+
 function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropRef = useRef(null);
+  const { can: canPerm } = usePermissions();
 
   const currentMode = ROLE_MODES.find((m) => m.id === roleMode) || ROLE_MODES[0];
 
@@ -395,10 +415,13 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
         )}
       </div>
 
-      {/* Module links */}
+      {/* Module links — filtered by permission and hiddenFromNav */}
       {currentMode.stages.map((stage) => {
         const slug = STAGE_SLUGS[stage];
         if (!slug) return null;
+        if (STAGE_META[stage]?.hiddenFromNav) return null;
+        const requiredPerm = STAGE_TO_MODULE_PERM[stage];
+        if (requiredPerm && !canPerm(requiredPerm)) return null;
         const path = `/modules/${slug}`;
         const isActive = location.pathname === path;
         return (
@@ -418,7 +441,7 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
             title={stage}
           >
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: isActive ? palette.primaryMagenta.hex : hexToRgba(NAV_TEXT, 0.35), display: 'inline-block', flexShrink: 0 }} />
-            {stage}
+            {STAGE_META[stage]?.displayName || stage}
           </NavLink>
         );
       })}

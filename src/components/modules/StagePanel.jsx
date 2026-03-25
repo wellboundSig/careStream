@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
-import ICD10Lookup from '../clinical/ICD10Lookup.jsx';
-import CliniciansPanel from '../staffing/CliniciansPanel.jsx';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
-import RadarPanel from '../staffing/RadarPanel.jsx';
 import { getChecksByPatient, createInsuranceCheck } from '../../api/insuranceChecks.js';
 import { getAuthorizationsByReferral, createAuthorization, updateAuthorization } from '../../api/authorizations.js';
 import { getConflictsByReferral } from '../../api/conflicts.js';
@@ -17,6 +14,8 @@ import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../data/eligibilityConfig.js';
 import { exportToExcel } from '../../utils/reportEngine.js';
+import { useCareStore } from '../../store/careStore.js';
+import { DISCARD_REASONS } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const PIPELINE_STAGES = [
@@ -149,47 +148,147 @@ function EmptyPanelState({ message }) {
   return <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic', textAlign: 'center', paddingTop: 24 }}>{message || 'Select a patient to see details.'}</p>;
 }
 
-// ── 1. Lead Entry ─────────────────────────────────────────────────────────────
-function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
+// ── 1. Lead Entry (Leads) ─────────────────────────────────────────────────────
+
+function DiscardModal({ referral, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+  const [explanation, setExplanation] = useState('');
+  const canSubmit = reason && explanation.trim();
+
+  return (
+    <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)` }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex }}>Discard Lead</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
+            {referral.patientName || referral.patient_id} will be moved to Discarded Leads.
+          </p>
+        </div>
+        <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <p data-testid="discard-reason-label" style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Reason *</p>
+            <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${reason ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex }}>
+              <option value="">Select a reason…</option>
+              {DISCARD_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Explanation *</p>
+            <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} placeholder="Provide details about why this lead is being discarded…" rows={3} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${explanation.trim() ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box' }} />
+          </div>
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => canSubmit && onConfirm(reason, explanation.trim())} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+            Discard Lead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
+  const { canAssignTo } = usePermissions();
+  const storeUsers = useCareStore((s) => s.users);
+  const users = Object.values(storeUsers)
+    .filter((u) => u.status === 'Active' || !u.status)
+    .filter((u) => canAssignTo(u.id));
+  const [ownerId, setOwnerId] = useState('');
+  const canSubmit = !!ownerId;
+
+  return (
+    <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)` }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex }}>Move to Intake</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
+            Assign an intake owner for {referral.patientName || referral.patient_id}.
+          </p>
+        </div>
+        <div style={{ padding: '18px 22px' }}>
+          <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Assign Owner *</p>
+          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} data-testid="owner-select" style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${ownerId ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex }}>
+            <option value="">Select staff member…</option>
+            {users.map((u) => (
+              <option key={u.id || u._id} value={u.id}>{u.first_name} {u.last_name}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => canSubmit && onConfirm(ownerId)} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+            Move to Intake
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onNewReferral, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
+  const [showDiscard, setShowDiscard] = useState(false);
+  const [showPromote, setShowPromote] = useState(false);
   const [duplicates, setDuplicates] = useState([]);
   const [dupChecked, setDupChecked] = useState(false);
 
-  const today = referrals.filter((r) => {
-    const d = new Date(r.referral_date);
-    return Date.now() - d.getTime() < 86400000;
-  }).length;
-  const thisWeek = referrals.filter((r) => {
-    const d = new Date(r.referral_date);
-    return Date.now() - d.getTime() < 7 * 86400000;
-  }).length;
+  const today = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 86400000).length;
+  const thisWeek = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 7 * 86400000).length;
 
   function checkDuplicates() {
     const seen = {};
-    referrals.forEach((r) => {
-      const name = (r.patientName || r.patient_id || '').toLowerCase().trim();
-      if (!name) return;
-      seen[name] = (seen[name] || 0) + 1;
-    });
-    const dups = referrals.filter((r) => {
-      const name = (r.patientName || r.patient_id || '').toLowerCase().trim();
-      return seen[name] > 1;
-    });
-    setDuplicates(dups);
+    referrals.forEach((r) => { const n = (r.patientName || '').toLowerCase().trim(); if (n) seen[n] = (seen[n] || 0) + 1; });
+    setDuplicates(referrals.filter((r) => seen[(r.patientName || '').toLowerCase().trim()] > 1));
     setDupChecked(true);
+  }
+
+  function handleDiscard(reason, explanation) {
+    if (!selectedReferral) return;
+    const note = `[Discarded] ${reason}\n${explanation}`;
+    updateReferral(selectedReferral._id, { current_stage: 'Discarded Leads', discard_reason: reason, discard_explanation: explanation }).catch(() => {});
+    recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Discarded Leads', note, authorId: appUserId });
+    triggerDataRefresh();
+    setShowDiscard(false);
+  }
+
+  function handlePromote(ownerId) {
+    if (!selectedReferral) return;
+    updateReferral(selectedReferral._id, { current_stage: 'Intake', intake_owner_id: ownerId, stage_entered_at: new Date().toISOString() }).catch(() => {});
+    recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Intake', note: `Promoted to Intake. Owner assigned: ${ownerId}`, authorId: appUserId });
+    triggerDataRefresh();
+    setShowPromote(false);
   }
 
   return (
     <Panel>
-      <PanelSection title="Intake Stats">
+      <PanelSection title="Lead Stats">
         <InfoRow label="Today" value={today} highlight={today > 0 ? palette.primaryMagenta.hex : null} />
         <InfoRow label="This week" value={thisWeek} />
         <InfoRow label="Total in queue" value={referrals.length} />
       </PanelSection>
 
       <PanelSection title="Quick Actions">
-        <ActionBtn label="+ New Referral"   variant="forward"  onClick={onNewReferral} />
-        <ActionBtn label="Check Duplicates" variant="default"  onClick={checkDuplicates} />
+        <ActionBtn label="+ New Referral" variant="forward" onClick={onNewReferral} />
+        <ActionBtn label="Check Duplicates" variant="default" onClick={checkDuplicates} />
       </PanelSection>
+
+      {selectedReferral && (
+        <PanelSection title="Lead Actions">
+          {canPerm(PERMISSION_KEYS.LEADS_PROMOTE_TO_INTAKE) && (
+            <ActionBtn label="Move to Intake →" variant="forward" onClick={() => setShowPromote(true)} />
+          )}
+          {!canPerm(PERMISSION_KEYS.LEADS_PROMOTE_TO_INTAKE) && (
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', marginBottom: 8 }}>
+              Only supervisors can move leads to Intake.
+            </p>
+          )}
+          {canPerm(PERMISSION_KEYS.LEADS_DISCARD) && (
+            <ActionBtn label="Discard Lead" variant="warning" onClick={() => setShowDiscard(true)} />
+          )}
+        </PanelSection>
+      )}
 
       {dupChecked && (
         <PanelSection title="Duplicate Check">
@@ -197,13 +296,9 @@ function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
             <p style={{ fontSize: 12.5, color: palette.accentGreen.hex, fontWeight: 600 }}>No duplicates found.</p>
           ) : (
             <>
-              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 650, marginBottom: 8 }}>
-                {duplicates.length} potential duplicate{duplicates.length !== 1 ? 's' : ''} detected:
-              </p>
+              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 650, marginBottom: 8 }}>{duplicates.length} potential duplicate{duplicates.length !== 1 ? 's' : ''} detected:</p>
               {duplicates.map((r) => (
-                <div key={r._id} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07), marginBottom: 4, color: palette.backgroundDark.hex }}>
-                  {r.patientName || r.patient_id}
-                </div>
+                <div key={r._id} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07), marginBottom: 4, color: palette.backgroundDark.hex }}>{r.patientName || r.patient_id}</div>
               ))}
             </>
           )}
@@ -213,18 +308,54 @@ function LeadEntryPanel({ referrals, resolveSource, onNewReferral }) {
       <PanelSection title="Source Breakdown">
         {(() => {
           const counts = {};
-          referrals.forEach((r) => {
-            const raw = r.referral_source_id || 'Unknown';
-            const label = resolveSource ? resolveSource(raw) : raw;
-            counts[label] = (counts[label] || 0) + 1;
-          });
+          referrals.forEach((r) => { const label = resolveSource ? resolveSource(r.referral_source_id || 'Unknown') : (r.referral_source_id || 'Unknown'); counts[label] = (counts[label] || 0) + 1; });
           const sorted = Object.entries(counts).sort(([, a], [, b]) => b - a);
           return sorted.length === 0
             ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No data yet.</p>
-            : sorted.slice(0, 7).map(([label, n]) => (
-                <InfoRow key={label} label={label} value={n} />
-              ));
+            : sorted.slice(0, 7).map(([label, n]) => <InfoRow key={label} label={label} value={n} />);
         })()}
+      </PanelSection>
+
+      {showDiscard && selectedReferral && <DiscardModal referral={selectedReferral} onConfirm={handleDiscard} onCancel={() => setShowDiscard(false)} />}
+      {showPromote && selectedReferral && <PromoteToIntakeModal referral={selectedReferral} onConfirm={handlePromote} onCancel={() => setShowPromote(false)} />}
+    </Panel>
+  );
+}
+
+// ── 1b. Discarded Leads ───────────────────────────────────────────────────────
+function DiscardedLeadsPanel({ referrals, selectedReferral, onInitiateTransition }) {
+  const byReason = {};
+  referrals.forEach((r) => { const k = r.discard_reason || 'Unspecified'; byReason[k] = (byReason[k] || 0) + 1; });
+
+  return (
+    <Panel>
+      <PanelSection title="Discard Summary">
+        <InfoRow label="Total discarded" value={referrals.length} />
+        {Object.entries(byReason).sort(([, a], [, b]) => b - a).map(([reason, count]) => (
+          <InfoRow key={reason} label={reason} value={count} />
+        ))}
+      </PanelSection>
+
+      {selectedReferral && (
+        <PanelSection title="Selected Lead">
+          <InfoRow label="Patient" value={selectedReferral.patientName} />
+          <InfoRow label="Reason" value={selectedReferral.discard_reason || '—'} />
+          {selectedReferral.discard_explanation && (
+            <div style={{ marginTop: 6 }}>
+              <p style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 3 }}>Explanation</p>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.5 }}>{selectedReferral.discard_explanation}</p>
+            </div>
+          )}
+          <div style={{ marginTop: 10 }}>
+            <ActionBtn label="Restore to Leads" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Lead Entry')} />
+          </div>
+        </PanelSection>
+      )}
+
+      <PanelSection title="Notes">
+        <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
+          Discarded leads are kept for reporting. They can be restored to Leads if needed.
+        </p>
       </PanelSection>
     </Panel>
   );
@@ -437,7 +568,7 @@ function EligibilityPanel({ referrals, selectedReferral }) {
                   return userNotes ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>{userNotes}</p> : null;
                 })()}
               </div>
-              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log New Check" variant="default" onClick={openForm} />}
+              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log New Check" variant="success" onClick={openForm} />}
             </PanelSection>
           ) : (
             <PanelSection title="Eligibility">
@@ -588,11 +719,6 @@ function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
               label="Escalate to Conflict"
               variant="warning"
               onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')}
-            />
-            <ActionBtn
-              label="Move to NTUC"
-              variant="danger"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')}
             />
           </PanelSection>
         </>
@@ -858,7 +984,6 @@ function ApproveButton({ enabled, onSelect }) {
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const [f2fReviewed, setF2fReviewed] = useState(false);
-  const [icdCodes, setIcdCodes] = useState([]);
 
   const allDone = f2fReviewed;
 
@@ -874,15 +999,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             />
           </PanelSection>
 
-          <PanelSection title="ICD-10 Lookup">
-            <ICD10Lookup compact onSelect={setIcdCodes} />
-            {icdCodes.length > 0 && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 6 }}>
-                {icdCodes.length} code{icdCodes.length !== 1 ? 's' : ''} selected
-              </p>
-            )}
-          </PanelSection>
-
           {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
           <PanelSection title="Decision">
             <ApproveButton
@@ -890,8 +1006,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               onSelect={(dest) => onInitiateTransition?.(selectedReferral, dest)}
             />
             <ActionBtn label="Escalate to Conflict" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
-            {canPerm(PERMISSION_KEYS.REFERRAL_HOLD) && <ActionBtn label="Place on Hold" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />}
-            {canPerm(PERMISSION_KEYS.REFERRAL_NTUC) && <ActionBtn label="Mark NTUC" variant="danger" onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />}
           </PanelSection>
           )}
 
@@ -1034,7 +1148,6 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
               <>
                 {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Approval →" variant="forward"  onClick={() => setMode('approval')} />}
                 {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Denial"      variant="danger"   onClick={() => setMode('denial')} />}
-                {canPerm(PERMISSION_KEYS.REFERRAL_HOLD) && <ActionBtn label="Place on Hold"      variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />}
               </>
             )}
 
@@ -1225,8 +1338,6 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
             </div>
             <ActionBtn label="Escalate to Disenrollment" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Disenrollment Required')} />
             <ActionBtn label="Mark NTUC"                  variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
-            <ActionBtn label="View Eligibility Check"     variant="default"  onClick={() => onOpenEligibility?.(selectedReferral)} />
-            <ActionBtn label="View Related Documents"     variant="default"  onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
         </>
       )}
@@ -1235,7 +1346,7 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
 }
 
 // ── 9. Staffing Feasibility ───────────────────────────────────────────────────
-const STAFFING_TABS = ['Clinicians', 'Zip Search', 'Radar'];
+const STAFFING_TABS = ['Zip Search'];
 
 function CollapsibleSection({ title, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -1255,7 +1366,7 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
 function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const [contacted, setContacted] = useState(false);
-  const [activeTab, setActiveTab] = useState('Clinicians');
+  const [activeTab, setActiveTab] = useState('Zip Search');
 
   return (
     <Panel width={380}>
@@ -1291,17 +1402,6 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
               Continue to Admin Confirmation →
             </button>
-            <button
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')}
-              style={{
-                width: '100%', padding: '8px 12px', borderRadius: 8, border: 'none',
-                background: palette.highlightYellow.hex, color: palette.backgroundDark.hex,
-                fontSize: 12.5, fontWeight: 650, cursor: 'pointer', textAlign: 'left', transition: 'filter 0.12s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
-              Place on Hold
-            </button>
           </div>
         </div>
       )}
@@ -1318,17 +1418,38 @@ function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition })
         ))}
       </div>
 
-      {/* Tab content — all three stay mounted to preserve state across tab switches */}
-      <div style={{ display: activeTab === 'Clinicians' ? 'block' : 'none' }}><CliniciansPanel /></div>
+      {/* Tab content */}
       <div style={{ display: activeTab === 'Zip Search' ? 'block' : 'none' }}><ZipSearchPanel /></div>
-      <div style={{ display: activeTab === 'Radar'      ? 'block' : 'none' }}><RadarPanel allReferrals={allReferrals || []} /></div>
     </Panel>
   );
 }
 
-// ── 10. Admin Confirmation ────────────────────────────────────────────────────
-function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
+// ── 10. Admin Confirmation (NTUC request review) ─────────────────────────────
+function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const hasNtucRequest = !!selectedReferral?.ntuc_request_origin_stage;
+  const originStage = selectedReferral?.ntuc_request_origin_stage;
+  const requestedByName = selectedReferral?.ntuc_requested_by
+    ? (resolveUser?.(selectedReferral.ntuc_requested_by) || selectedReferral.ntuc_requested_by)
+    : null;
+  const requestedAt = selectedReferral?.ntuc_requested_at
+    ? new Date(selectedReferral.ntuc_requested_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+
+  function handleConfirmNtuc() {
+    onInitiateTransition?.(selectedReferral, 'NTUC');
+  }
+
+  function handleDenyNtuc() {
+    onInitiateTransition?.(selectedReferral, 'Conflict');
+  }
+
+  function handleSendBack() {
+    if (originStage) {
+      onInitiateTransition?.(selectedReferral, originStage);
+    }
+  }
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
@@ -1340,10 +1461,41 @@ function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
             <InfoRow label="Days in pipeline" value={Math.floor((Date.now() - new Date(selectedReferral.referral_date).getTime()) / 86400000) + 'd'} />
           </PanelSection>
+
+          {/* NTUC Request details (when this patient was routed here for NTUC review) */}
+          {hasNtucRequest && (
+            <PanelSection title="NTUC Request">
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.2)}`, marginBottom: 8 }}>
+                <p style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex, marginBottom: 4 }}>
+                  NTUC request pending review
+                </p>
+                {requestedByName && <InfoRow label="Requested by" value={requestedByName} />}
+                {requestedAt && <InfoRow label="Requested at" value={requestedAt} />}
+                <InfoRow label="Came from" value={originStage} />
+                {selectedReferral.ntuc_reason && <InfoRow label="Reason" value={selectedReferral.ntuc_reason} />}
+              </div>
+            </PanelSection>
+          )}
+
           {canPerm(PERMISSION_KEYS.SCHEDULING_ADMIN_CONFIRM) && (
           <PanelSection title="Decision">
-            <ActionBtn label="Accept → Pre-SOC"  variant="forward"  onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
-            {canPerm(PERMISSION_KEYS.REFERRAL_NTUC) && <ActionBtn label="Decline → NTUC" variant="danger" onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />}
+            {!hasNtucRequest && (
+              <ActionBtn label="Accept → Pre-SOC" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
+            )}
+
+            {hasNtucRequest && (
+              <>
+                <ActionBtn label="Confirm NTUC" variant="danger" onClick={handleConfirmNtuc} />
+                <ActionBtn label="Deny → Conflict" variant="warning" onClick={handleDenyNtuc} />
+                {originStage && (
+                  <ActionBtn label={`Send Back → ${originStage}`} variant="default" onClick={handleSendBack} />
+                )}
+              </>
+            )}
+
+            {!hasNtucRequest && canPerm(PERMISSION_KEYS.REFERRAL_NTUC) && (
+              <ActionBtn label="Decline → NTUC" variant="danger" onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+            )}
           </PanelSection>
           )}
         </>
@@ -1353,15 +1505,23 @@ function AdminConfirmationPanel({ selectedReferral, onInitiateTransition }) {
 }
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
-function PreSocPanel({ selectedReferral }) {
+function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const actualStage = selectedReferral?.current_stage;
   const today = new Date().toISOString().split('T')[0];
+
   const [socDate, setSocDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
+  const [onboardError, setOnboardError] = useState(null);
 
-  // Reset date when selection changes
-  useEffect(() => { setSocDate(''); setError(null); }, [selectedReferral?._id]);
+  useEffect(() => {
+    setSocDate(''); setError(null); setPdfError(null); setConfirming(false); setOnboardError(null);
+  }, [selectedReferral?._id]);
 
   async function handleSchedule() {
     if (!socDate || !selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)) return;
@@ -1369,82 +1529,132 @@ function PreSocPanel({ selectedReferral }) {
     setError(null);
     try {
       const enteredAt = new Date().toISOString();
-      await updateReferral(selectedReferral._id, {
-        current_stage: 'SOC Scheduled',
-        soc_scheduled_date: socDate,
-      });
-      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
+      await updateReferral(selectedReferral._id, { current_stage: 'SOC Scheduled', soc_scheduled_date: socDate });
       updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
-      await createEpisode({
-        patient_id: selectedReferral.patient_id,
-        referral_id: selectedReferral._id,
-        soc_date: socDate,
-        episode_start: socDate,
-      });
+      await createEpisode({ patient_id: selectedReferral.patient_id, referral_id: selectedReferral._id, soc_date: socDate, episode_start: socDate });
       recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: null });
       triggerDataRefresh();
-    } catch (err) {
-      setError(err.message || 'Failed to schedule SOC');
-      setSaving(false);
-    }
+    } catch (err) { setError(err.message || 'Failed to schedule SOC'); setSaving(false); }
   }
 
-  const canSchedule = !!socDate && !saving;
+  async function handleDownloadPdf() {
+    if (!selectedReferral) return;
+    setPdfLoading(true); setPdfError(null);
+    try { await generateEmrPacket(selectedReferral, resolveSource); }
+    catch (err) { setPdfError(err.message || 'Failed to generate PDF'); }
+    finally { setPdfLoading(false); }
+  }
+
+  async function handleOnboarded() {
+    if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
+    setOnboarding(true); setOnboardError(null);
+    try {
+      const enteredAt = new Date().toISOString();
+      await updateReferral(selectedReferral._id, { current_stage: 'SOC Completed', soc_completed_date: new Date().toISOString().split('T')[0] });
+      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
+      triggerDataRefresh();
+    } catch (err) { setOnboardError(err.message || 'Failed'); setOnboarding(false); setConfirming(false); }
+  }
+
+  // Step indicator
+  const steps = [
+    { key: 'emr', label: 'EMR Onboarding', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
+    { key: 'schedule', label: 'SOC Scheduled', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
+    { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' },
+  ];
+
+  const socDateDisplay = selectedReferral?.soc_scheduled_date
+    ? new Date(selectedReferral.soc_scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
 
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="Patient">
-            <InfoRow label="Name"      value={selectedReferral.patientName} />
-            <InfoRow label="Division"  value={selectedReferral.division} />
+            <InfoRow label="Name" value={selectedReferral.patientName} />
+            <InfoRow label="Division" value={selectedReferral.division} />
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
+            <InfoRow label="DB Stage" value={actualStage} />
           </PanelSection>
 
-          <PanelSection title="Schedule SOC">
-            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.55, marginBottom: 10 }}>
-              Select the Start of Care date. Confirming will begin an episode and move this patient to SOC Scheduled.
-            </p>
-            <label style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), display: 'block', marginBottom: 5 }}>
-              SOC Date
-            </label>
-            <input
-              type="date"
-              value={socDate}
-              min={today}
-              onChange={(e) => setSocDate(e.target.value)}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                padding: '7px 9px', borderRadius: 7,
-                border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`,
-                fontSize: 13, fontFamily: 'inherit', outline: 'none',
-                background: palette.backgroundLight.hex,
-                color: palette.backgroundDark.hex,
-                marginBottom: 12,
-              }}
-            />
-
-            {error && (
-              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>
-            )}
-
-            <button
-              onClick={handleSchedule}
-              disabled={!canSchedule}
-              style={{
-                width: '100%', padding: '8px 0', borderRadius: 7, border: 'none',
-                background: canSchedule ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-                color: canSchedule ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
-                fontSize: 12.5, fontWeight: 650,
-                cursor: canSchedule ? 'pointer' : 'not-allowed',
-                transition: 'filter 0.12s',
-              }}
-              onMouseEnter={(e) => canSchedule && (e.currentTarget.style.filter = 'brightness(1.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-            >
-              {saving ? 'Scheduling…' : 'Confirm & Schedule SOC →'}
-            </button>
+          {/* Step progress indicator */}
+          <PanelSection title="Progress">
+            <div data-testid="soc-steps" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {steps.map((step, i) => (
+                <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                    background: step.done ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {step.done ? (
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    ) : (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>{i + 1}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: step.done ? 650 : 450, color: step.done ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                    {step.label}
+                  </span>
+                </div>
+              ))}
+            </div>
           </PanelSection>
+
+          {/* Step A: EMR Onboarding (only when in Pre-SOC) */}
+          {actualStage === 'Pre-SOC' && (
+            <PanelSection title="Step 1 — EMR Onboarding">
+              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+              {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
+
+              <div style={{ marginTop: 10 }}>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>SOC Date</p>
+                <input type="date" value={socDate} min={today} onChange={(e) => setSocDate(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }} />
+                {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
+                <ActionBtn label={saving ? 'Scheduling…' : 'Confirm EMR Onboarded & Schedule SOC →'} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
+              </div>
+            </PanelSection>
+          )}
+
+          {/* Step B+C: SOC Scheduled → Complete (when DB stage is SOC Scheduled) */}
+          {actualStage === 'SOC Scheduled' && (
+            <PanelSection title="Step 2 — SOC Scheduled">
+              {socDateDisplay && <InfoRow label="Scheduled for" value={socDateDisplay} highlight={palette.accentGreen.hex} />}
+
+              <div style={{ marginTop: 10 }}>
+                <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+                {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                {!confirming ? (
+                  <ActionBtn label="Mark SOC Completed →" variant="forward" onClick={() => setConfirming(true)} />
+                ) : (
+                  <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`, background: hexToRgba(palette.accentGreen.hex, 0.05), padding: '10px 11px' }}>
+                    <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>Confirm SOC Completion</p>
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
+                      Confirm that <strong>{selectedReferral.patientName}</strong> has had their Start of Care. This moves them to Completed.
+                    </p>
+                    {onboardError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{onboardError}</p>}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={handleOnboarded} disabled={onboarding} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: onboarding ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: onboarding ? 'wait' : 'pointer' }}>
+                        {onboarding ? 'Saving…' : 'Confirm'}
+                      </button>
+                      <button onClick={() => { setConfirming(false); setOnboardError(null); }} disabled={onboarding} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <ActionBtn label="Reschedule / Hold" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+              </div>
+            </PanelSection>
+          )}
         </>
       )}
     </Panel>
@@ -1831,6 +2041,7 @@ export default function StagePanel({ stage, referrals, allReferrals, selectedRef
   const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition };
   switch (stage) {
     case 'Lead Entry':                return <LeadEntryPanel {...props} />;
+    case 'Discarded Leads':           return <DiscardedLeadsPanel {...props} />;
     case 'Intake':                    return <IntakePanel {...props} />;
     case 'Eligibility Verification':  return <EligibilityPanel {...props} />;
     case 'Disenrollment Required':    return <DisenrollmentPanel {...props} />;

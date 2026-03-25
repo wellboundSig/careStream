@@ -74,7 +74,7 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
   const [confirmId, setConfirmId]= useState(null);
   const [showForm, setShowForm]  = useState(false);
 
-  const { can } = usePermissions();
+  const { can, canAssignTo } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
 
   const tasks = useMemo(() => {
@@ -141,6 +141,7 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
           appUser={appUser}
           appUserId={appUserId}
           isAdmin={isAdmin}
+          canAssignTo={canAssignTo}
           onCreated={handleTaskCreated}
           onCancel={() => setShowForm(false)}
         />
@@ -177,7 +178,7 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
 // ── New Task Form ──────────────────────────────────────────────────────────────
 const EMPTY = { type: '', title: '', description: '', priority: 'Normal', due_date: '', scheduled_date: '' };
 
-function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated, onCancel }) {
+function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, canAssignTo, onCreated, onCancel }) {
   const [form, setForm]         = useState(EMPTY);
   const [assigneeId, setAssigneeId] = useState('');
   const [saving, setSaving]     = useState(false);
@@ -188,8 +189,9 @@ function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, onCreated
     if (!isAdmin) return [];
     return Object.values(storeUsers)
       .filter((u) => u.status === 'Active')
+      .filter((u) => canAssignTo ? canAssignTo(u.id) : true)
       .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
-  }, [storeUsers, isAdmin]);
+  }, [storeUsers, isAdmin, canAssignTo]);
 
   useEffect(() => {
     if (appUserId) setAssigneeId(appUserId);

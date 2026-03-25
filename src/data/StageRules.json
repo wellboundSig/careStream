@@ -16,12 +16,13 @@
 
   "stages": {
     "Lead Entry": {
-      "displayName": "Lead Entry",
+      "displayName": "Leads",
       "gridRow": 0,
       "gridCol": 0,
       "canMoveTo": [
         "Lead Entry",
         "Intake",
+        "Discarded Leads",
         "Eligibility Verification",
         "Disenrollment Required",
         "F2F/MD Orders Pending",
@@ -42,6 +43,19 @@
       "requiresPermission": null,
       "protectedExit": false,
       "description": "Raw referral captured. Minimal information. Not yet validated."
+    },
+
+    "Discarded Leads": {
+      "displayName": "Discarded",
+      "gridRow": null,
+      "gridCol": null,
+      "canMoveTo": ["Lead Entry"],
+      "terminal": true,
+      "isGlobal": false,
+      "requiresNote": true,
+      "requiresPermission": null,
+      "protectedExit": true,
+      "description": "Lead was reviewed and discarded. Requires a reason and explanation. Can be restored to Leads."
     },
 
     "Intake": {
@@ -307,7 +321,7 @@
       "requiresPermission": "scheduling.admin_confirm",
       "protectedExit": true,
       "protectedExitMessage": "Admin Confirmation accept/decline is a protected action requiring Admin scope.",
-      "description": "Final leadership acceptance decision. Case summary reviewed. Accept moves to Pre-SOC. Decline triggers NTUC."
+      "description": "Admin review — confirm or deny NTUC. Accept moves to Pre-SOC, decline triggers NTUC."
     },
 
     "Pre-SOC": {
@@ -369,7 +383,7 @@
     },
 
     "SOC Completed": {
-      "displayName": "SOC Completed",
+      "displayName": "Completed",
       "gridRow": 2,
       "gridCol": 2,
       "canMoveTo": [],

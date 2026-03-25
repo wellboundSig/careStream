@@ -15,7 +15,8 @@ export const PANE_NAV = [
   {
     group: 'Modules',
     items: [
-      { path: '/modules/lead-entry', label: 'Lead Entry' },
+      { path: '/modules/lead-entry', label: 'Leads' },
+      { path: '/modules/discarded-leads', label: 'Discarded Leads' },
       { path: '/modules/intake', label: 'Intake' },
       { path: '/modules/eligibility', label: 'Eligibility' },
       { path: '/modules/disenrollment', label: 'Disenrollment' },
@@ -26,8 +27,7 @@ export const PANE_NAV = [
       { path: '/modules/staffing', label: 'Staffing' },
       { path: '/modules/admin-confirmation', label: 'Admin Confirmation' },
       { path: '/modules/pre-soc', label: 'Pre-SOC' },
-      { path: '/modules/soc-scheduled', label: 'SOC Scheduled' },
-      { path: '/modules/soc-completed', label: 'SOC Completed' },
+      { path: '/modules/soc-completed', label: 'Completed' },
       { path: '/modules/hold', label: 'Hold' },
       { path: '/modules/ntuc', label: 'NTUC' },
     ],

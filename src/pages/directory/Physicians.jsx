@@ -216,14 +216,6 @@ export default function Physicians() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, NPI…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
             </div>
-            {can(PERMISSION_KEYS.DIRECTORY_CREATE) && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
-              >
-                + Add Physician
-              </button>
-            )}
           </div>
         </div>
 

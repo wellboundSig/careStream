@@ -1,0 +1,97 @@
+// utils/agencies.js
+
+export const agencies = [
+    {
+      name: "Wellbound",
+      legalName: "Wellbound",
+      agencyType: "Certified Home Health Agency",
+      address: {
+        street: "7424 13th Avenue",
+        city: "Brooklyn",
+        state: "NY",
+        zip: "11228",
+      },
+      phone: "(718) 581-5799",
+      countiesServed: [
+        "Bronx",
+        "Kings",
+        "Nassau",
+        "New York",
+        "Queens",
+        "Richmond",
+        "Suffolk",
+      ],
+      services: [
+        "Home Health Aide",
+        "Medical Social Services",
+        "Medical Supplies Equipment and Appliances",
+        "Nursing",
+        "Nutritional",
+        "Personal Care",
+        "Therapy - Occupational",
+        "Therapy - Physical",
+        "Therapy - Speech Language Pathology",
+      ],
+      administrative: {
+        ownershipType: "Limited Liability Corporation",
+        pfi: "9740",
+        mpn: "337450",
+        operatingCertificate: "2914602",
+        operatedBy: "Wellbound, LLC",
+        operatedByAddress: {
+          street: "2004 McDonald Avenue, Suite 2-A",
+          city: "Brooklyn",
+          state: "NY",
+          zip: "11223",
+        },
+        dohRegionalOffice: "New York Metro - New York City",
+      },
+    },
+    {
+      name: "Wellbound II, LLC",
+      legalName: "Wellbound II, LLC",
+      agencyType: "Certified Home Health Agency",
+      address: {
+        street: "7424 13th Avenue",
+        city: "Brooklyn",
+        state: "NY",
+        zip: "11228",
+      },
+      phone: "(347) 413-8833",
+      countiesServed: [
+        "Bronx",
+        "New York",
+        "Putnam",
+        "Queens",
+        "Westchester",
+      ],
+      services: [
+        "Home Health Aide",
+        "Medical Social Services",
+        "Medical Supplies Equipment and Appliances",
+        "Nursing",
+        "Nutritional",
+        "Personal Care",
+        "Therapy - Occupational",
+        "Therapy - Physical",
+        "Therapy - Respiratory",
+        "Therapy - Speech Language Pathology",
+      ],
+      administrative: {
+        ownershipType: "Limited Liability Corporation",
+        pfi: "9633",
+        mpn: "337211",
+        operatingCertificate: "7001648",
+        operatedBy: "Wellbound II, LLC",
+        operatedByAddress: {
+        street: "7424 13th Avenue",
+          city: "Brooklyn",
+          state: "NY",
+          zip: "11228",
+        },
+        dohRegionalOffice: "New York Metro - New York City",
+      },
+    },
+  ];
+  
+  export default agencies;

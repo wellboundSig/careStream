@@ -58,6 +58,7 @@ export default function App() {
         <Route path="pending" element={<PendingApproval />} />
         {/* Module routes — all 15 pipeline stages */}
         <Route path="modules/lead-entry"          element={<ModulePage stage="Lead Entry" />} />
+        <Route path="modules/discarded-leads"    element={<ModulePage stage="Discarded Leads" />} />
         <Route path="modules/intake"              element={<ModulePage stage="Intake" />} />
         <Route path="modules/eligibility"         element={<ModulePage stage="Eligibility Verification" />} />
         <Route path="modules/disenrollment"       element={<ModulePage stage="Disenrollment Required" />} />
@@ -68,7 +69,7 @@ export default function App() {
         <Route path="modules/staffing"            element={<ModulePage stage="Staffing Feasibility" />} />
         <Route path="modules/admin-confirmation"  element={<ModulePage stage="Admin Confirmation" />} />
         <Route path="modules/pre-soc"             element={<ModulePage stage="Pre-SOC" />} />
-        <Route path="modules/soc-scheduled"       element={<ModulePage stage="SOC Scheduled" />} />
+        <Route path="modules/soc-scheduled"       element={<Navigate to="/modules/pre-soc" replace />} />
         <Route path="modules/soc-completed"       element={<ModulePage stage="SOC Completed" />} />
         <Route path="modules/hold"                element={<ModulePage stage="Hold" />} />
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />

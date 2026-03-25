@@ -8,6 +8,7 @@ import {
   PERMISSION_CATEGORIES,
   PERMISSION_KEYS,
 } from '../../data/permissionKeys.js';
+import AssigneePermissionEditor from './AssigneePermissionEditor.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const ALL_KEYS = Object.values(PERMISSION_KEYS);
@@ -319,6 +320,11 @@ export default function PermissionModal({ user, onClose }) {
               </div>
             );
           })}
+        </div>
+
+        {/* ── Assignment Permissions ── */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <AssigneePermissionEditor user={user} onSaved={() => {}} />
         </div>
 
         {/* ── Footer ── */}

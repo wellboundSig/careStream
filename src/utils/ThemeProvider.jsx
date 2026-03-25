@@ -38,6 +38,20 @@ export default function ThemeProvider({ children }) {
       ? hexToRgba(palette.primaryMagenta.hex, 0.06)
       : hexToRgba(palette.primaryDeepPlum.hex, 0.03));
 
+    // Inactive/disabled button backgrounds — must be visible in both themes
+    root.style.setProperty('--color-btn-inactive', isDark
+      ? 'rgba(226, 226, 236, 0.10)'
+      : 'rgba(11, 11, 16, 0.07)');
+    root.style.setProperty('--color-btn-inactive-text', isDark
+      ? 'rgba(226, 226, 236, 0.45)'
+      : 'rgba(11, 11, 16, 0.45)');
+
+    // Green accent — slightly brighter in dark mode for visibility
+    root.style.setProperty('--accent-green-vivid', isDark ? '#7BD937' : palette.accentGreen.hex);
+    root.style.setProperty('--accent-green-bg', isDark
+      ? 'rgba(110, 199, 43, 0.15)'
+      : 'rgba(110, 199, 43, 0.10)');
+
     // Sidebar — always plum background, always near-white text
     root.style.setProperty('--color-sidebar',             palette.primaryDeepPlum.hex);
     root.style.setProperty('--color-sidebar-hover',       hexToRgba(palette.primaryMagenta.hex, 0.12));

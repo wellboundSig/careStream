@@ -8,12 +8,14 @@ import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
 import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
+import { agencies } from '../../../agencies.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
-const SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
-const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
+
+const ALF_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA'];
+const SN_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 
 const INSURANCE_PLANS = [
   'Fidelis Care',
@@ -32,6 +34,27 @@ const INSURANCE_PLANS = [
   'Montefiore Diamond Care',
   'Healthfirst CompleteCare',
 ];
+
+// ── Licence mapping from agencies.js ────────────────────────────────────────
+const WB_AGENCY = agencies.find((a) => a.name === 'Wellbound');
+const WBII_AGENCY = agencies.find((a) => a.name === 'Wellbound II, LLC');
+const WB_COUNTIES = new Set(WB_AGENCY?.countiesServed || []);
+const WBII_COUNTIES = new Set(WBII_AGENCY?.countiesServed || []);
+const ALL_COUNTIES = [...new Set([...(WB_AGENCY?.countiesServed || []), ...(WBII_AGENCY?.countiesServed || [])])].sort();
+
+export function getLicenceForCounty(county) {
+  if (!county) return null;
+  const inWB = WB_COUNTIES.has(county);
+  const inWBII = WBII_COUNTIES.has(county);
+  if (inWB && inWBII) return 'both';
+  if (inWB) return 'WB';
+  if (inWBII) return 'WBII';
+  return null;
+}
+
+export function getServicesForDivision(division) {
+  return division === 'Special Needs' ? SN_SERVICES : ALF_SERVICES;
+}
 
 function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -82,14 +105,15 @@ function Select({ value, onChange, options, placeholder, hasError, disabled }) {
     >
       <option value="" disabled>{placeholder || 'Select…'}</option>
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
+        <option key={typeof opt === 'string' ? opt : opt.value} value={typeof opt === 'string' ? opt : opt.value}>
+          {typeof opt === 'string' ? opt : opt.label}
+        </option>
       ))}
     </select>
   );
 }
 
 function FieldGroup({ children, cols = 2 }) {
-  // cols prop is used on desktop; single column on mobile via CSS custom property
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(var(--form-cols, ${cols}), 1fr)`, gap: '12px 16px' }}>
       {children}
@@ -127,22 +151,92 @@ function SectionDivider({ title, expanded, onToggle }) {
   );
 }
 
-function CheckboxGroup({ label, options, values, onChange }) {
+function CheckboxGroup({ options, values, onChange }) {
   function toggle(opt) {
     const arr = values || [];
     onChange(arr.includes(opt) ? arr.filter((v) => v !== opt) : [...arr, opt]);
   }
   return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
+      {options.map((opt) => (
+        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={(values || []).includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
+          {opt}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// ── Multi-select insurance with checkmarks ──────────────────────────────────
+
+function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailChange }) {
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherValue, setOtherValue] = useState('');
+
+  function togglePlan(plan) {
+    if (selected.includes(plan)) {
+      onChange(selected.filter((p) => p !== plan));
+    } else {
+      onChange([...selected, plan]);
+    }
+  }
+
+  function addOther() {
+    if (!otherValue.trim()) return;
+    const label = otherValue.trim();
+    if (!selected.includes(label)) {
+      onChange([...selected, label]);
+    }
+    setOtherValue('');
+    setShowOtherInput(false);
+  }
+
+  return (
     <div>
-      <Label>{label}</Label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
-        {options.map((opt) => (
-          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" checked={(values || []).includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14 }} />
-            {opt}
+      <div style={{ maxHeight: 180, overflowY: 'auto', border: `1px solid var(--color-border)`, borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.02) }}>
+        {INSURANCE_PLANS.map((plan) => (
+          <label key={plan} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', cursor: 'pointer', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}`, background: selected.includes(plan) ? hexToRgba(palette.accentGreen.hex, 0.06) : 'transparent', transition: 'background 0.1s' }}>
+            <input type="checkbox" checked={selected.includes(plan)} onChange={() => togglePlan(plan)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{plan}</span>
+            {selected.includes(plan) && (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                <path d="M2 6l3 3 5-5" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
           </label>
         ))}
       </div>
+
+      {!showOtherInput ? (
+        <button type="button" onClick={() => setShowOtherInput(true)} style={{ marginTop: 6, background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: palette.accentBlue.hex, cursor: 'pointer', padding: '4px 0' }}>
+          + Add other insurance
+        </button>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <input value={otherValue} onChange={(e) => setOtherValue(e.target.value)} placeholder="Insurance name…" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOther())} style={{ ...inputBase, flex: 1 }} />
+          <button type="button" onClick={addOther} style={{ padding: '6px 14px', borderRadius: 7, background: palette.accentGreen.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>Add</button>
+          <button type="button" onClick={() => { setShowOtherInput(false); setOtherValue(''); }} style={{ padding: '6px 10px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>Cancel</button>
+        </div>
+      )}
+
+      {selected.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
+            Plan Details ({selected.length} selected)
+          </p>
+          {selected.map((plan) => (
+            <div key={plan} style={{ marginBottom: 6 }}>
+              <input
+                value={planDetails[plan] || ''}
+                onChange={(e) => onPlanDetailChange(plan, e.target.value)}
+                placeholder={`${plan} — member ID or plan #`}
+                style={{ ...inputBase, fontSize: 12 }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -174,7 +268,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
   const sources   = useMemo(() => Object.values(storeSources),   [storeSources]);
 
-  // Resolve whether the signed-in user is a marketer
   const currentMarketer = useMemo(() => {
     if (!appUserId || !marketers.length) return null;
     return marketers.find((m) => m.user_id === appUserId) || null;
@@ -186,7 +279,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     return /market/i.test(role?.name || '');
   }, [appUser?.role_id, storeRoles]);
 
-  // Division options: restricted for marketers based on their Marketers.division field
   const allowedDivisions = useMemo(() => {
     if (!isMarketerRole || !currentMarketer) return DIVISIONS;
     const md = currentMarketer.division;
@@ -198,7 +290,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
   const divisionLocked = allowedDivisions.length === 1;
 
-  // Facilities scoped to the marketer's MarketerFacilities (or all if not a marketer)
   const availableFacilities = useMemo(() => {
     const allFacs = Object.values(storeFacilities);
     if (!isMarketerRole || !currentMarketer) {
@@ -219,19 +310,14 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const [errors, setErrors] = useState({});
   const [selectedPhysician, setSelectedPhysician] = useState(null);
 
-  // ── Form state ──────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    // Required
     first_name: '',
     last_name: '',
     phone_primary: '',
-    insurance_plan: '',
     referral_source_id: '',
     referral_source_other: '',
     marketer_id: '',
     marketer_other: '',
-    insurance_plan_other: '',
-    // Patient details
     dob: '',
     gender: '',
     phone_secondary: '',
@@ -243,58 +329,96 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     address_city: '',
     address_state: 'NY',
     address_zip: '',
-    division: 'ALF',
+    division: '',
     facility_id: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
-    // Referral details
-    priority: 'Normal',
     services_requested: [],
     initial_notes: '',
+    // Multi-insurance
+    insurance_plans: [],
+    insurance_plan_details: {},
+    // Special Needs specifics
+    sn_age_group: '',
+    county: '',
+    services_under_licence: '',
   });
 
   function setField(key, value) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (key === 'division' && value !== 'ALF') next.facility_id = '';
+      if (key === 'division') {
+        if (value !== 'ALF') next.facility_id = '';
+        if (value !== 'Special Needs') {
+          next.sn_age_group = '';
+          next.county = '';
+          next.services_under_licence = '';
+        }
+        next.services_requested = [];
+      }
+      if (key === 'county') {
+        const lic = getLicenceForCounty(value);
+        if (lic === 'WB' || lic === 'WBII') {
+          next.services_under_licence = lic;
+        } else if (lic === 'both') {
+          next.services_under_licence = '';
+        } else {
+          next.services_under_licence = '';
+        }
+      }
       return next;
     });
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }));
   }
 
-  // Auto-fill marketer if logged-in user is a marketer
+  function setInsurancePlans(plans) {
+    setForm((prev) => ({ ...prev, insurance_plans: plans }));
+  }
+
+  function setInsurancePlanDetail(plan, value) {
+    setForm((prev) => ({
+      ...prev,
+      insurance_plan_details: { ...prev.insurance_plan_details, [plan]: value },
+    }));
+  }
+
   useEffect(() => {
     if (!appUserId || !marketers.length) return;
     const match = marketers.find((m) => m.user_id === appUserId);
     if (match) setField('marketer_id', match.id);
   }, [appUserId, marketers]);
 
-  // Auto-select division when marketer has only one allowed option
   useEffect(() => {
     if (divisionLocked && form.division !== allowedDivisions[0]) {
       setField('division', allowedDivisions[0]);
     }
   }, [divisionLocked, allowedDivisions]);
 
-  // Close on Escape
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const countyLicence = getLicenceForCounty(form.county);
+  const needsLicenceChoice = countyLicence === 'both' && !form.services_under_licence;
+
   function validate() {
     const errs = {};
     if (!form.first_name.trim()) errs.first_name = 'Required';
     if (!form.last_name.trim()) errs.last_name = 'Required';
     if (!form.phone_primary.trim()) errs.phone_primary = 'Required';
-    if (!form.insurance_plan) errs.insurance_plan = 'Required';
-    if (form.insurance_plan === 'other' && !form.insurance_plan_other.trim()) errs.insurance_plan_other = 'Required';
+    if (!form.division) errs.division = 'Required';
     if (!form.referral_source_id) errs.referral_source_id = 'Required';
     if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
     if (!form.marketer_id) errs.marketer_id = 'Required';
     if (form.marketer_id === 'other' && !form.marketer_other.trim()) errs.marketer_other = 'Required';
     if (form.division === 'ALF' && !form.facility_id) errs.facility_id = 'Required for ALF referrals';
+    if (form.division === 'Special Needs') {
+      if (!form.sn_age_group) errs.sn_age_group = 'Required for Special Needs';
+      if (!form.county) errs.county = 'Required for Special Needs';
+      if (countyLicence === 'both' && !form.services_under_licence) errs.services_under_licence = 'Choose WB or WBII for this county';
+    }
     return errs;
   }
 
@@ -310,17 +434,23 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       const patientCustomId = generateId('pat');
       const referralCustomId = generateId('ref');
 
-      // ── Create patient ──────────────────────────────────────────────────
+      const insurancePrimary = form.insurance_plans[0] || '';
+      const allInsuranceJson = form.insurance_plans.length > 0 ? JSON.stringify(form.insurance_plans) : '';
+      const planDetailsJson = Object.keys(form.insurance_plan_details).length > 0 ? JSON.stringify(form.insurance_plan_details) : '';
+
       const patientFields = {
         id: patientCustomId,
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         phone_primary: form.phone_primary.trim(),
-        insurance_plan: form.insurance_plan === 'other' ? form.insurance_plan_other.trim() : form.insurance_plan,
+        insurance_plan: insurancePrimary,
         division: form.division,
         is_active: 'TRUE',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        ...(allInsuranceJson && { insurance_plans: allInsuranceJson }),
+        ...(planDetailsJson && { insurance_plan_details: planDetailsJson }),
+        ...(form.county && { county: form.county }),
         ...(form.dob && { dob: form.dob }),
         ...(form.gender && { gender: form.gender }),
         ...(form.phone_secondary && { phone_secondary: form.phone_secondary }),
@@ -339,7 +469,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       const patientRecord = await createPatient(patientFields);
       const createdPatientId = patientRecord.fields?.id || patientCustomId;
 
-      // ── Create referral ─────────────────────────────────────────────────
       const resolvedMarketer = form.marketer_id === 'other'
         ? form.marketer_other.trim()
         : form.marketer_id;
@@ -356,7 +485,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         referral_source_id: resolvedSource,
         current_stage: 'Lead Entry',
         division: form.division,
-        priority: form.priority,
+        priority: 'Normal',
         referral_date: referralDate,
         created_at: referralDate,
         updated_at: referralDate,
@@ -364,20 +493,19 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ...(form.facility_id && { facility_id: form.facility_id }),
         ...(appUserId && { intake_owner_id: appUserId }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
+        ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
+        ...(form.services_under_licence && { services_under_licence: form.services_under_licence }),
       };
 
       const referralRecord = await createReferral(referralFields);
 
-      // Push both records into the store immediately so the name resolves on first render
       mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
       mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
 
-      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
       if (referralRecord?._id) {
         updateReferral(referralRecord._id, { stage_entered_at: referralDate }).catch(() => {});
       }
 
-      // Save initial notes as a Note record (non-blocking — don't fail the submission if this fails)
       if (form.initial_notes?.trim()) {
         createNote({
           id: `note_${Date.now()}`,
@@ -404,23 +532,17 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     }
   }
 
-  // Insurance plan options
-  const insurancePlanOptions = [
-    ...INSURANCE_PLANS.map((p) => ({ value: p, label: p })),
-    { value: 'other', label: 'Other / Not listed' },
-  ];
-
-  // Marketer options
   const marketerOptions = [
     ...marketers.map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}` })),
     { value: 'other', label: 'Other / Not listed' },
   ];
 
-  // Source options
   const sourceOptions = [
     ...sources.map((s) => ({ value: s.id, label: s.name })),
     { value: 'other', label: 'Other' },
   ];
+
+  const servicesForDivision = getServicesForDivision(form.division);
 
   return (
     <div
@@ -444,7 +566,6 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         display: 'flex', flexDirection: 'column',
         boxShadow: `0 -4px 40px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
         overflow: 'hidden',
-        // Single-column fields on mobile via CSS custom property
         '--form-cols': isMobile ? '1' : undefined,
       }}>
         {/* Header */}
@@ -453,7 +574,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>New Referral</h2>
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.55) }}>
-                Creates a patient record and initiates a Lead Entry referral
+                Creates a patient record and initiates a Leads referral
               </p>
             </div>
             <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -467,20 +588,139 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         {/* Form body */}
         <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
-          {/* ── Attribution (lead source + marketer) ── */}
+          {/* ── 1. DIVISION — primary choice at the top ── */}
+          <div style={{ padding: '16px 16px', borderRadius: 10, background: hexToRgba(palette.primaryMagenta.hex, 0.04), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.15)}`, marginBottom: 20 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.primaryMagenta.hex, 0.7), marginBottom: 10 }}>
+              Division — select first
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {allowedDivisions.map((d) => {
+                const selected = form.division === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => !divisionLocked && setField('division', d)}
+                    disabled={divisionLocked && form.division !== d}
+                    style={{
+                      flex: 1, padding: '14px 16px', borderRadius: 10, cursor: divisionLocked ? 'default' : 'pointer',
+                      background: selected ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
+                      border: `2px solid ${selected ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+                      color: selected ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                      fontSize: 14, fontWeight: 700, transition: 'all 0.15s',
+                      opacity: divisionLocked && !selected ? 0.4 : 1,
+                    }}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            {errors.division && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 6 }}>{errors.division}</p>}
+            {isMarketerRole && divisionLocked && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 6, fontStyle: 'italic' }}>
+                Locked to your assigned division
+              </p>
+            )}
+
+            {/* ALF → Facility selector */}
+            {form.division === 'ALF' && (
+              <div style={{ marginTop: 12 }}>
+                <Label required>Facility</Label>
+                <Select
+                  value={form.facility_id}
+                  onChange={(v) => setField('facility_id', v)}
+                  options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
+                  placeholder="Select facility…"
+                  hasError={!!errors.facility_id}
+                />
+                {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
+              </div>
+            )}
+
+            {/* Special Needs → Adult/Pediatric + County + Licence */}
+            {form.division === 'Special Needs' && (
+              <div style={{ marginTop: 12 }}>
+                <FieldGroup cols={2}>
+                  <FieldBox label="Age Group" required>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {['Adult', 'Pediatric'].map((ag) => {
+                        const sel = form.sn_age_group === ag;
+                        return (
+                          <button key={ag} type="button" onClick={() => setField('sn_age_group', ag)} style={{
+                            flex: 1, padding: '9px 10px', borderRadius: 7, cursor: 'pointer',
+                            background: sel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
+                            border: `1.5px solid ${sel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+                            color: sel ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                            fontSize: 12.5, fontWeight: 650, transition: 'all 0.12s',
+                          }}>
+                            {ag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.sn_age_group && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.sn_age_group}</p>}
+                  </FieldBox>
+
+                  <FieldBox label="County" required>
+                    <Select
+                      value={form.county}
+                      onChange={(v) => setField('county', v)}
+                      options={ALL_COUNTIES.map((c) => ({ value: c, label: c }))}
+                      placeholder="Select county…"
+                      hasError={!!errors.county}
+                    />
+                    {errors.county && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.county}</p>}
+                  </FieldBox>
+                </FieldGroup>
+
+                {/* Auto-assigned licence indicator */}
+                {form.county && countyLicence && countyLicence !== 'both' && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.2)}` }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: palette.accentGreen.hex }}>
+                      Services under licence: <strong>{form.services_under_licence}</strong> (auto-assigned for {form.county} county)
+                    </p>
+                  </div>
+                )}
+
+                {/* County is served by BOTH → user must choose */}
+                {form.county && countyLicence === 'both' && (
+                  <div style={{ marginTop: 8 }}>
+                    <Label required>Services Under Licence</Label>
+                    <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 6 }}>
+                      {form.county} county is served by both agencies. Please select one:
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {['WB', 'WBII'].map((lic) => {
+                        const sel = form.services_under_licence === lic;
+                        return (
+                          <button key={lic} type="button" onClick={() => setField('services_under_licence', lic)} style={{
+                            flex: 1, padding: '10px 12px', borderRadius: 7, cursor: 'pointer',
+                            background: sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
+                            border: `1.5px solid ${sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+                            color: sel ? palette.backgroundLight.hex : palette.backgroundDark.hex,
+                            fontSize: 13, fontWeight: 650, transition: 'all 0.12s',
+                          }}>
+                            {lic === 'WB' ? 'Wellbound (WB)' : 'Wellbound II (WBII)'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.services_under_licence && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.services_under_licence}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── 2. Attribution ── */}
           <div style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.04), border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.1)}`, marginBottom: 20 }}>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.primaryDeepPlum.hex, 0.6), marginBottom: 12 }}>
               Attribution — required
             </p>
             <FieldGroup>
               <FieldBox label="Lead Source" required>
-                <Select
-                  value={form.referral_source_id}
-                  onChange={(v) => setField('referral_source_id', v)}
-                  options={sourceOptions}
-                  placeholder="Select lead source…"
-                  hasError={!!errors.referral_source_id}
-                />
+                <Select value={form.referral_source_id} onChange={(v) => setField('referral_source_id', v)} options={sourceOptions} placeholder="Select lead source…" hasError={!!errors.referral_source_id} />
                 {errors.referral_source_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_id}</p>}
                 {form.referral_source_id === 'other' && (
                   <div style={{ marginTop: 8 }}>
@@ -489,15 +729,8 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                   </div>
                 )}
               </FieldBox>
-
               <FieldBox label="Marketer" required>
-                <Select
-                  value={form.marketer_id}
-                  onChange={(v) => setField('marketer_id', v)}
-                  options={marketerOptions}
-                  placeholder="Select marketer…"
-                  hasError={!!errors.marketer_id}
-                />
+                <Select value={form.marketer_id} onChange={(v) => setField('marketer_id', v)} options={marketerOptions} placeholder="Select marketer…" hasError={!!errors.marketer_id} />
                 {errors.marketer_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.marketer_id}</p>}
                 {form.marketer_id && form.marketer_id !== 'other' && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
                   <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled — you are the marketer for this referral</p>
@@ -512,7 +745,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
             </FieldGroup>
           </div>
 
-          {/* ── Required patient info ── */}
+          {/* ── 3. Patient info ── */}
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
             Patient — required
           </p>
@@ -529,137 +762,67 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               <Input value={form.phone_primary} onChange={(v) => setField('phone_primary', v)} placeholder="(XXX) XXX-XXXX" type="tel" hasError={!!errors.phone_primary} />
               {errors.phone_primary && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.phone_primary}</p>}
             </FieldBox>
-            <FieldBox label="Insurance Plan" required>
-              <Select
-                value={form.insurance_plan}
-                onChange={(v) => setField('insurance_plan', v)}
-                options={insurancePlanOptions}
-                placeholder="Select insurance plan…"
-                hasError={!!errors.insurance_plan}
-              />
-              {errors.insurance_plan && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_plan}</p>}
-              {form.insurance_plan === 'other' && (
-                <div style={{ marginTop: 8 }}>
-                  <Input value={form.insurance_plan_other} onChange={(v) => setField('insurance_plan_other', v)} placeholder="Enter insurance plan name…" hasError={!!errors.insurance_plan_other} />
-                  {errors.insurance_plan_other && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_plan_other}</p>}
-                </div>
-              )}
-            </FieldBox>
-            <FieldBox label="Division" required>
-              <Select
-                value={form.division}
-                onChange={(v) => setField('division', v)}
-                options={allowedDivisions.map((d) => ({ value: d, label: d }))}
-                placeholder="Select…"
-                disabled={divisionLocked}
-              />
-              {isMarketerRole && divisionLocked && (
-                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
-                  Locked to your assigned division
-                </p>
-              )}
-            </FieldBox>
-            {form.division === 'ALF' && (
-              <FieldBox label="Facility" required>
-                <Select
-                  value={form.facility_id}
-                  onChange={(v) => setField('facility_id', v)}
-                  options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
-                  placeholder="Select facility…"
-                  hasError={!!errors.facility_id}
-                />
-                {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
-                {isMarketerRole && availableFacilities.length === 0 && (
-                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>
-                    No facilities assigned to you. Contact an administrator.
-                  </p>
-                )}
-              </FieldBox>
-            )}
           </FieldGroup>
 
-          {/* ── PCP ── */}
+          {/* ── 4. Insurance + Physician side by side ── */}
           <div style={{ marginTop: 20, marginBottom: 4 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>
-              Referring / Ordering Physician
-            </p>
-            <PhysicianPicker
-              physicianId={null}
-              onChange={setSelectedPhysician}
-            />
-            {selectedPhysician && (
-              <p style={{ fontSize: 11, color: palette.accentGreen.hex, fontWeight: 600, marginTop: 6 }}>
-                Physician will be linked to this referral.
-              </p>
-            )}
-            {!selectedPhysician && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 6 }}>
-                You may change this later.
-              </p>
-            )}
+            <FieldGroup cols={2}>
+              <FieldBox label="Insurance Plans">
+                <InsuranceMultiSelect
+                  selected={form.insurance_plans}
+                  onChange={setInsurancePlans}
+                  planDetails={form.insurance_plan_details}
+                  onPlanDetailChange={setInsurancePlanDetail}
+                />
+              </FieldBox>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>
+                  Referring / Ordering Physician
+                </p>
+                <PhysicianPicker physicianId={null} onChange={setSelectedPhysician} />
+                {selectedPhysician && (
+                  <p style={{ fontSize: 11, color: palette.accentGreen.hex, fontWeight: 600, marginTop: 6 }}>
+                    Physician will be linked to this referral.
+                  </p>
+                )}
+                {!selectedPhysician && (
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 6 }}>
+                    You may change this later.
+                  </p>
+                )}
+              </div>
+            </FieldGroup>
           </div>
 
-          {/* ── Optional patient details ── */}
-          <SectionDivider
-            title="Additional Patient Info"
-            expanded={showPatientDetails}
-            onToggle={() => setShowPatientDetails((v) => !v)}
-          />
+          {/* ── 5. Optional patient details ── */}
+          <SectionDivider title="Additional Patient Info" expanded={showPatientDetails} onToggle={() => setShowPatientDetails((v) => !v)} />
           {showPatientDetails && (
             <FieldGroup cols={2}>
-              <FieldBox label="Date of Birth">
-                <Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" />
-              </FieldBox>
-              <FieldBox label="Gender">
-                <Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" />
-              </FieldBox>
-              <FieldBox label="Secondary Phone">
-                <Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" />
-              </FieldBox>
-              <FieldBox label="Email">
-                <Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" />
-              </FieldBox>
-              <FieldBox label="Medicaid #">
-                <Input value={form.medicaid_number} onChange={(v) => setField('medicaid_number', v)} placeholder="Medicaid number" />
-              </FieldBox>
-              <FieldBox label="Medicare #">
-                <Input value={form.medicare_number} onChange={(v) => setField('medicare_number', v)} placeholder="Medicare number" />
-              </FieldBox>
-              <FieldBox label="Insurance Member ID">
-                <Input value={form.insurance_id} onChange={(v) => setField('insurance_id', v)} placeholder="Member ID" />
-              </FieldBox>
-              <FieldBox label="Address">
-                <Input value={form.address_street} onChange={(v) => setField('address_street', v)} placeholder="Street address" />
-              </FieldBox>
-              <FieldBox label="City">
-                <Input value={form.address_city} onChange={(v) => setField('address_city', v)} placeholder="City" />
-              </FieldBox>
-              <FieldBox label="Zip">
-                <Input value={form.address_zip} onChange={(v) => setField('address_zip', v)} placeholder="Zip code" />
-              </FieldBox>
-              <FieldBox label="Emergency Contact Name">
-                <Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" />
-              </FieldBox>
-              <FieldBox label="Emergency Contact Phone">
-                <Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" />
-              </FieldBox>
+              <FieldBox label="Date of Birth"><Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" /></FieldBox>
+              <FieldBox label="Gender"><Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" /></FieldBox>
+              <FieldBox label="Secondary Phone"><Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
+              <FieldBox label="Email"><Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" /></FieldBox>
+              <FieldBox label="Medicaid #"><Input value={form.medicaid_number} onChange={(v) => setField('medicaid_number', v)} placeholder="Medicaid number" /></FieldBox>
+              <FieldBox label="Medicare #"><Input value={form.medicare_number} onChange={(v) => setField('medicare_number', v)} placeholder="Medicare number" /></FieldBox>
+              <FieldBox label="Insurance Member ID"><Input value={form.insurance_id} onChange={(v) => setField('insurance_id', v)} placeholder="Member ID" /></FieldBox>
+              <FieldBox label="Address"><Input value={form.address_street} onChange={(v) => setField('address_street', v)} placeholder="Street address" /></FieldBox>
+              <FieldBox label="City"><Input value={form.address_city} onChange={(v) => setField('address_city', v)} placeholder="City" /></FieldBox>
+              <FieldBox label="Zip"><Input value={form.address_zip} onChange={(v) => setField('address_zip', v)} placeholder="Zip code" /></FieldBox>
+              <FieldBox label="Emergency Contact Name"><Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" /></FieldBox>
+              <FieldBox label="Emergency Contact Phone"><Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
             </FieldGroup>
           )}
 
-          {/* ── Optional referral details ── */}
-          <SectionDivider
-            title="Referral Details"
-            expanded={showReferralDetails}
-            onToggle={() => setShowReferralDetails((v) => !v)}
-          />
+          {/* ── 6. Optional referral details (services conditional on division) ── */}
+          <SectionDivider title="Referral Details" expanded={showReferralDetails} onToggle={() => setShowReferralDetails((v) => !v)} />
           {showReferralDetails && (
             <FieldGroup cols={2}>
-              <FieldBox label="Priority">
-                <Select value={form.priority} onChange={(v) => setField('priority', v)} options={PRIORITIES.map((p) => ({ value: p, label: p }))} placeholder="Normal" />
-              </FieldBox>
-              <div />
               <FieldBox label="Services Requested" fullWidth>
-                <CheckboxGroup options={SERVICES} values={form.services_requested} onChange={(v) => setField('services_requested', v)} />
+                {!form.division ? (
+                  <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>Select a division first to see available services.</p>
+                ) : (
+                  <CheckboxGroup options={servicesForDivision} values={form.services_requested} onChange={(v) => setField('services_requested', v)} />
+                )}
               </FieldBox>
               <FieldBox label="Initial Notes" fullWidth>
                 <textarea
@@ -677,41 +840,38 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
         </form>
 
-        {/* Footer — sticky, always visible even on mobile with keyboard up */}
+        {/* Footer */}
         <div style={{ padding: '14px 24px 18px', borderTop: `1px solid var(--color-border)`, flexShrink: 0 }}>
-
-          {/* Error banner — lives in the footer so it's never scrolled out of view */}
           {error && (
             <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
               {error}
             </div>
           )}
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-            Creates patient + starts a Lead Entry referral
-          </p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: `1px solid var(--color-border)`, fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting}
-              style={{ padding: '9px 24px', borderRadius: 8, background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 8 }}
-            >
-              {submitting && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.75s linear infinite' }}>
-                  <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-                  <circle cx="12" cy="12" r="10" stroke={hexToRgba(palette.backgroundLight.hex, 0.3)} strokeWidth="2.5" />
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
-                </svg>
-              )}
-              {submitting ? 'Creating…' : 'Create Referral'}
-            </button>
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+              Creates patient + starts a Leads referral
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: `1px solid var(--color-border)`, fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                style={{ padding: '9px 24px', borderRadius: 8, background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {submitting && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.75s linear infinite' }}>
+                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                    <circle cx="12" cy="12" r="10" stroke={hexToRgba(palette.backgroundLight.hex, 0.3)} strokeWidth="2.5" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
+                  </svg>
+                )}
+                {submitting ? 'Creating…' : 'Create Referral'}
+              </button>
+            </div>
           </div>
-          </div> {/* end flex row */}
         </div>
       </div>
     </div>

@@ -8,35 +8,50 @@ const ALL_KEYS_SET = new Set(Object.values(PERMISSION_KEYS));
 /**
  * Returns permission-check helpers for the currently signed-in user.
  *
- * - `can(key)`          → boolean — does the user have this permission?
- * - `canAny(...keys)`   → boolean — does the user have at least one of these?
- * - `canAll(...keys)`   → boolean — does the user have every one of these?
- * - `hasDivision(name)` → boolean — can the user see this division's data?
- * - `granted`           → Set<string> of all granted keys (for UI rendering)
+ * Feature permissions:
+ * - `can(key)`          → boolean
+ * - `canAny(...keys)`   → boolean
+ * - `canAll(...keys)`   → boolean
+ * - `hasDivision(name)` → boolean
+ * - `granted`           → Set<string>
  *
- * Migration safety: if no UserPermissions record exists for the user yet,
- * ALL permissions are granted so nobody is locked out before admins configure.
+ * Assignment permissions ("Can assign to"):
+ * - `allowedAssignees`       → Set<string> of user IDs this user can assign to (null = unrestricted)
+ * - `canAssignTo(userId)`    → boolean
+ * - `isAssignmentRestricted` → boolean — true if the user has an explicit restriction set
+ *
+ * Migration safety: if no UserPermissions record exists, ALL permissions
+ * are granted and assignment is unrestricted.
  */
 export function usePermissions() {
   const { appUserId } = useCurrentAppUser();
   const userPermissions = useCareStore((s) => s.userPermissions);
 
+  const record = useMemo(() => {
+    if (!appUserId) return null;
+    return Object.values(userPermissions).find((up) => up.user_id === appUserId) || null;
+  }, [appUserId, userPermissions]);
+
   const granted = useMemo(() => {
-    if (!appUserId) return ALL_KEYS_SET;
-
-    const record = Object.values(userPermissions).find(
-      (up) => up.user_id === appUserId,
-    );
-
     if (!record?.permissions) return ALL_KEYS_SET;
-
     try {
       const keys = JSON.parse(record.permissions);
       return new Set(Array.isArray(keys) ? keys : []);
     } catch {
       return ALL_KEYS_SET;
     }
-  }, [appUserId, userPermissions]);
+  }, [record]);
+
+  const { allowedAssignees, isAssignmentRestricted } = useMemo(() => {
+    if (!record?.allowed_assignees) return { allowedAssignees: null, isAssignmentRestricted: false };
+    try {
+      const ids = JSON.parse(record.allowed_assignees);
+      if (Array.isArray(ids) && ids.length >= 0) {
+        return { allowedAssignees: new Set(ids), isAssignmentRestricted: true };
+      }
+    } catch { /* fall through */ }
+    return { allowedAssignees: null, isAssignmentRestricted: false };
+  }, [record]);
 
   const can    = useCallback((key) => granted.has(key), [granted]);
   const canAny = useCallback((...keys) => keys.some((k) => granted.has(k)), [granted]);
@@ -51,5 +66,13 @@ export function usePermissions() {
     [granted],
   );
 
-  return { can, canAny, canAll, hasDivision, granted };
+  const canAssignTo = useCallback(
+    (userId) => {
+      if (!allowedAssignees) return true;
+      return allowedAssignees.has(userId);
+    },
+    [allowedAssignees],
+  );
+
+  return { can, canAny, canAll, hasDivision, granted, allowedAssignees, isAssignmentRestricted, canAssignTo };
 }

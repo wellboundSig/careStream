@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { useCareStore, updateEntity } from '../../store/careStore.js';
+import { useCareStore, updateEntity, mergeEntities } from '../../store/careStore.js';
 import airtable from '../../api/airtable.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { updateUserPermission, createUserPermission } from '../../api/userPermissions.js';
 import UserProfileDrawer from '../../components/users/UserProfileDrawer.jsx';
 import PermissionModal from '../../components/users/PermissionModal.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
@@ -66,12 +67,54 @@ export default function UserManagement() {
   const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT);
   const canEditPerms = can(PERMISSION_KEYS.ADMIN_PERMISSIONS);
 
+  const storePresets   = useCareStore((s) => s.permissionPresets);
+  const storeUserPerms = useCareStore((s) => s.userPermissions);
+  const storeRoles     = useCareStore((s) => s.roles);
+
+  function findPresetForRole(roleId) {
+    const role = Object.values(storeRoles).find((r) => r.id === roleId);
+    if (!role?.name) return null;
+    const roleLower = role.name.toLowerCase();
+    return Object.values(storePresets).find((p) => {
+      const presetLower = (p.name || '').toLowerCase();
+      return presetLower.includes(roleLower) || roleLower.includes(presetLower.split('/')[0].trim());
+    }) || null;
+  }
+
+  async function applyPresetToUser(userId, preset) {
+    if (!preset?.permissions) return;
+    const now = new Date().toISOString();
+    const existingRec = Object.values(storeUserPerms).find((up) => up.user_id === userId);
+    try {
+      if (existingRec?._id) {
+        const fields = { permissions: preset.permissions, last_preset_id: preset.id, updated_at: now, updated_by: appUserId || '' };
+        await updateUserPermission(existingRec._id, fields);
+        mergeEntities('userPermissions', { [existingRec._id]: { ...existingRec, ...fields } });
+      } else {
+        const fields = { id: `up_${userId}`, user_id: userId, permissions: preset.permissions, last_preset_id: preset.id, updated_at: now, updated_by: appUserId || '' };
+        const rec = await createUserPermission(fields);
+        mergeEntities('userPermissions', { [rec.id]: { _id: rec.id, ...rec.fields } });
+      }
+    } catch { /* best-effort — role change still succeeds */ }
+  }
+
   async function updateUser(userId, airtableId, field, value) {
     setSaving((prev) => ({ ...prev, [userId]: true }));
     updateEntity('users', airtableId, { [field]: value });
     try {
       await airtable.update('Users', airtableId, { [field]: value });
-      showToast(`Updated ${field} for ${userId}`);
+
+      if (field === 'role_id') {
+        const matchedPreset = findPresetForRole(value);
+        if (matchedPreset) {
+          await applyPresetToUser(userId, matchedPreset);
+          showToast(`Role updated → permissions synced to "${matchedPreset.name}"`);
+        } else {
+          showToast(`Role updated (no matching preset found)`);
+        }
+      } else {
+        showToast(`Updated ${field} for ${userId}`);
+      }
     } catch (err) {
       showToast(`Failed: ${err.message}`, 'error');
     } finally {

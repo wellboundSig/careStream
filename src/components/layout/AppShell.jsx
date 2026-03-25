@@ -52,7 +52,7 @@ const NAV_TEXT_POPOUT = '#F7F7FA';
 
 export default function AppShell() {
   useTheme();
-  const { prefs, save } = usePreferences();
+  const { prefs, save, reorderPins } = usePreferences();
   const { open: openDrawer } = usePatientDrawer();
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
@@ -272,7 +272,7 @@ export default function AppShell() {
       />
 
       {prefs.subnavEnabled && prefs.pinnedPages.length > 0 && (
-        <SubNav pinnedPages={prefs.pinnedPages} />
+        <SubNav pinnedPages={prefs.pinnedPages} onReorder={reorderPins} />
       )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

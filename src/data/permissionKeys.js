@@ -8,6 +8,10 @@ export const PERMISSION_KEYS = {
   DIVISION_ALF: 'division.alf',
   DIVISION_SN: 'division.sn',
 
+  // Leads
+  LEADS_PROMOTE_TO_INTAKE: 'leads.promote_to_intake',
+  LEADS_DISCARD: 'leads.discard',
+
   // Referrals
   REFERRAL_CREATE: 'referral.create',
   REFERRAL_VIEW: 'referral.view',
@@ -15,6 +19,7 @@ export const PERMISSION_KEYS = {
   REFERRAL_TRANSITION: 'referral.transition',
   REFERRAL_HOLD: 'referral.hold',
   REFERRAL_NTUC: 'referral.ntuc',
+  REFERRAL_NTUC_DIRECT: 'referral.ntuc_direct',
 
   // Patients
   PATIENT_VIEW: 'patient.view',
@@ -66,6 +71,16 @@ export const PERMISSION_KEYS = {
   DIRECTORY_EDIT: 'directory.edit',
   DIRECTORY_CREATE: 'directory.create',
 
+  // Module Visibility (per stage group — controls sidebar and page access)
+  MODULE_INTAKE: 'module.intake',
+  MODULE_CLINICAL: 'module.clinical',
+  MODULE_AUTHORIZATION: 'module.authorization',
+  MODULE_SCHEDULING: 'module.scheduling',
+  MODULE_ADMIN: 'module.admin',
+
+  // Dashboard
+  DASHBOARD_MODE_TOGGLE: 'dashboard.mode_toggle',
+
   // Administration
   ADMIN_USER_MANAGEMENT: 'admin.user_management',
   ADMIN_PERMISSIONS: 'admin.permissions',
@@ -80,6 +95,7 @@ const ALL_KEYS = Object.values(K);
 
 export const PERMISSION_CATEGORIES = [
   'Division Access',
+  'Leads',
   'Referrals',
   'Patients',
   'Clinical',
@@ -92,6 +108,8 @@ export const PERMISSION_CATEGORIES = [
   'Calendar',
   'Reports',
   'Directory',
+  'Dashboard',
+  'Modules',
   'Administration',
 ];
 
@@ -102,6 +120,10 @@ export const PERMISSION_CATALOG = [
   { key: K.DIVISION_ALF,  label: 'Access ALF division data',       category: 'Division Access', description: 'See patients, referrals, and pipeline data tagged ALF', sort: 1 },
   { key: K.DIVISION_SN,   label: 'Access Special Needs division data', category: 'Division Access', description: 'See patients, referrals, and pipeline data tagged Special Needs', sort: 2 },
 
+  // Leads
+  { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',      category: 'Leads', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 8 },
+  { key: K.LEADS_DISCARD,           label: 'Discard leads',                 category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 9 },
+
   // Referrals
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals',              category: 'Referrals', description: 'Open the New Referral form and submit', sort: 10 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',             category: 'Referrals', description: 'See referral cards, drawers, and detail panels', sort: 11 },
@@ -109,6 +131,7 @@ export const PERMISSION_CATALOG = [
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',     category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 13 },
   { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',           category: 'Referrals', description: 'Move any active referral to Hold stage', sort: 14 },
   { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',            category: 'Referrals', description: 'Move referrals to Unable to Convert (terminal)', sort: 15 },
+  { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Referrals', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Without this, NTUC requests go through Admin Confirmation first.', sort: 16 },
 
   // Patients
   { key: K.PATIENT_VIEW, label: 'View patient records',      category: 'Patients', description: 'See patient list, drawer, and details', sort: 20 },
@@ -160,6 +183,16 @@ export const PERMISSION_CATALOG = [
   { key: K.DIRECTORY_EDIT,   label: 'Edit directory entries',    category: 'Directory', description: 'Modify existing directory records', sort: 111 },
   { key: K.DIRECTORY_CREATE, label: 'Create directory entries',  category: 'Directory', description: 'Add new physicians, facilities, etc.', sort: 112 },
 
+  // Dashboard
+  { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',   category: 'Dashboard', description: 'Allow user to switch between executive and caseload dashboard views', sort: 113 },
+
+  // Modules
+  { key: K.MODULE_INTAKE,        label: 'View Intake modules',         category: 'Modules', description: 'Access Leads, Intake, Eligibility, Disenrollment, F2F module pages', sort: 114 },
+  { key: K.MODULE_CLINICAL,      label: 'View Clinical modules',       category: 'Modules', description: 'Access Clinical RN Review and Conflict module pages', sort: 115 },
+  { key: K.MODULE_AUTHORIZATION, label: 'View Authorization modules',  category: 'Modules', description: 'Access Authorization Pending module page', sort: 116 },
+  { key: K.MODULE_SCHEDULING,    label: 'View Scheduling modules',     category: 'Modules', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 117 },
+  { key: K.MODULE_ADMIN,         label: 'View Admin modules',          category: 'Modules', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 118 },
+
   // Administration
   { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',    category: 'Administration', description: 'View and edit users, roles, and statuses', sort: 120 },
   { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions',    category: 'Administration', description: 'Open permission modals and edit presets', sort: 121 },
@@ -185,6 +218,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
+      K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
@@ -194,6 +228,7 @@ export const DEFAULT_PRESETS = [
       K.CONFLICT_FLAG,
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
+      K.MODULE_INTAKE,
     ],
   },
   {
@@ -212,6 +247,7 @@ export const DEFAULT_PRESETS = [
       K.CONFLICT_FLAG, K.CONFLICT_RESOLVE,
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
+      K.MODULE_INTAKE, K.MODULE_CLINICAL,
     ],
   },
   {
@@ -242,6 +278,7 @@ export const DEFAULT_PRESETS = [
       K.NOTE_CREATE,
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
+      K.MODULE_SCHEDULING, K.MODULE_ADMIN,
     ],
   },
   {
@@ -259,6 +296,7 @@ export const DEFAULT_PRESETS = [
       K.NOTE_CREATE,
       K.REPORT_VIEW, K.REPORT_EXPORT,
       K.DIRECTORY_VIEW,
+      K.MODULE_INTAKE, K.MODULE_AUTHORIZATION,
     ],
   },
   {

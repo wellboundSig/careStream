@@ -1,8 +1,24 @@
 import palette, { hexToRgba } from '../utils/colors.js';
 
 // ── Stage slug mapping ────────────────────────────────────────────────────────
+// ── Discard reasons — PLACEHOLDER ────────────────────────────────────────────
+// TODO: Replace with final business-approved enum values.
+// These are the broad-reason options shown in the Discard Lead dropdown.
+export const DISCARD_REASONS = [
+  'Duplicate referral',
+  'Patient declined services',
+  'Out of service area',
+  'Insurance not accepted',
+  'Incomplete / invalid referral',
+  'Referred to another agency',
+  'Patient unreachable',
+  'Other',
+];
+
+// ── Stage slug mapping ────────────────────────────────────────────────────────
 export const STAGE_SLUGS = {
   'Lead Entry':                'lead-entry',
+  'Discarded Leads':           'discarded-leads',
   'Intake':                    'intake',
   'Eligibility Verification':  'eligibility',
   'Disenrollment Required':    'disenrollment',
@@ -31,7 +47,7 @@ export const ROLE_MODES = [
     id: 'intake',
     label: 'Intake',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
+    stages: ['Lead Entry', 'Discarded Leads', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
   },
   {
     id: 'clinical',
@@ -49,7 +65,7 @@ export const ROLE_MODES = [
     id: 'scheduler',
     label: 'Scheduler',
     color: palette.accentGreen.hex,
-    stages: ['Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed'],
+    stages: ['Staffing Feasibility', 'Pre-SOC', 'SOC Completed'],
   },
   {
     id: 'admin',
@@ -68,10 +84,18 @@ export const ROLE_MODES = [
 // ── Stage display metadata ────────────────────────────────────────────────────
 export const STAGE_META = {
   'Lead Entry': {
+    displayName: 'Leads',
     description: 'New referral submissions',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentBlue.hex,
+  },
+  'Discarded Leads': {
+    displayName: 'Discarded',
+    description: 'Leads that were reviewed and discarded with a reason',
+    isGlobal: false,
+    isTerminal: true,
+    color: hexToRgba(palette.backgroundDark.hex, 0.35),
   },
   'Intake': {
     description: 'Referrals being processed by intake',
@@ -123,25 +147,28 @@ export const STAGE_META = {
     color: palette.accentBlue.hex,
   },
   'Admin Confirmation': {
-    description: 'Final review',
+    description: 'Admin review — confirm or deny NTUC. Accept moves to Pre-SOC, decline triggers NTUC.',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryDeepPlum.hex,
     protected: true,
   },
   'Pre-SOC': {
-    description: 'Case accepted — preparing and scheduling start of care',
+    description: 'EMR onboarding → SOC scheduling → SOC completion',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentGreen.hex,
+    consolidatedStages: ['Pre-SOC', 'SOC Scheduled'],
   },
   'SOC Scheduled': {
     description: 'Start of care visit officially scheduled',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentGreen.hex,
+    hiddenFromNav: true,
   },
   'SOC Completed': {
+    displayName: 'Completed',
     description: 'SOC performed — patient transferred to HCHB',
     isGlobal: false,
     isTerminal: true,

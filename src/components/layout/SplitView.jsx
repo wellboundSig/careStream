@@ -1,5 +1,5 @@
 import { Panel, Group, Separator } from 'react-resizable-panels';
-import { MemoryRouter, Routes, Route, Outlet, UNSAFE_LocationContext } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Navigate, Outlet, UNSAFE_LocationContext } from 'react-router-dom';
 import PaneNavigation from './PaneNavigation.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -98,7 +98,7 @@ export default function SplitView({ children, division, roleMode, onClose }) {
                     <Route path="modules/staffing" element={<ModulePage stage="Staffing Feasibility" />} />
                     <Route path="modules/admin-confirmation" element={<ModulePage stage="Admin Confirmation" />} />
                     <Route path="modules/pre-soc" element={<ModulePage stage="Pre-SOC" />} />
-                    <Route path="modules/soc-scheduled" element={<ModulePage stage="SOC Scheduled" />} />
+                    <Route path="modules/soc-scheduled" element={<Navigate to="/modules/pre-soc" replace />} />
                     <Route path="modules/soc-completed" element={<ModulePage stage="SOC Completed" />} />
                     <Route path="modules/hold" element={<ModulePage stage="Hold" />} />
                     <Route path="modules/ntuc" element={<ModulePage stage="NTUC" />} />

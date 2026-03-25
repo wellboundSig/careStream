@@ -384,57 +384,6 @@ export default function OverviewTab({ patient, referral }) {
         <EditableField label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="email" fullWidth />
       </Section>
 
-      {/* ── Referral Info ── */}
-      {referral && (
-        <Section title="Referral Info">
-          {/* Read-only system fields */}
-          <ReadField label="Referral ID"   value={referral.id} />
-          <ReadField label="Referral Date" value={referral.referral_date ? new Date(referral.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null} />
-          <ReadField label="Marketer"      value={resolveMarketer(referral.marketer_id)} />
-          <ReadField label="Intake Owner"  value={resolveUser(referral.intake_owner_id)} />
-          {referral.referral_source_id && (
-            <ReadField label="Referral Source" value={resolveSource(referral.referral_source_id)} />
-          )}
-          {referral.facility_id && (
-            <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />
-          )}
-
-          {/* Editable referral fields */}
-          <EditableReferralSelect
-            label="Division" fieldKey="division"
-            value={referral.division} referralId={referralId}
-            onSave={handleReferralSave} options={DIVISIONS}
-          />
-          <EditableReferralSelect
-            label="Priority" fieldKey="priority"
-            value={referral.priority} referralId={referralId}
-            onSave={handleReferralSave} options={PRIORITIES}
-          />
-          <EditableReferralServices
-            value={referral.services_requested}
-            referralId={referralId}
-            onSave={handleReferralSave}
-            fullWidth
-          />
-
-          {/* Physician — full-width with PhysicianPicker */}
-          <EditableReferralPhysician referral={referral} onSave={handleReferralSave} />
-
-          {/* Conditional read-only fields */}
-          {referral.f2f_date && (
-            <ReadField label="F2F Date" value={new Date(referral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-          )}
-          {referral.f2f_expiration && (
-            <ReadField label="F2F Expiration" value={new Date(referral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-          )}
-          {referral.hold_reason && (
-            <ReadField label="Hold Reason" value={referral.hold_reason} fullWidth />
-          )}
-          {referral.ntuc_reason && (
-            <ReadField label="NTUC Reason" value={referral.ntuc_reason} fullWidth />
-          )}
-        </Section>
-      )}
     </div>
   );
 }

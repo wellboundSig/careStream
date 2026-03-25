@@ -8,7 +8,7 @@ import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { updateReferral } from '../api/referrals.js';
 import { recordTransition } from '../utils/recordTransition.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
-import StageRules from '../data/StageRules.json';
+import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import QuickNoteModal from '../components/patients/QuickNoteModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
@@ -48,18 +48,6 @@ function fmtDate(d) {
 function daysInStage(updatedAt) {
   if (!updatedAt) return null;
   return Math.max(0, Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000));
-}
-function canMoveFromTo(from, to) {
-  if (from === to) return false;
-  const r = StageRules.stages[from];
-  if (!r || r.terminal) return false;
-  if (to === 'Hold' && StageRules.globalRules.anyActiveStageCanMoveToHold) return true;
-  return r.canMoveTo?.includes(to) ?? false;
-}
-function needsModal(from, to) {
-  const r = StageRules.stages[from];
-  const t = StageRules.stages[to];
-  return !!(r?.requiresNote || r?.protectedExit || to === 'Hold' || to === 'NTUC' || t?.destinationPrompt);
 }
 
 // ── F2F Countdown cell ─────────────────────────────────────────────────────────
@@ -369,16 +357,24 @@ export default function PatientList() {
     const enteredAt = new Date().toISOString();
     setTransitioning(true);
     setPendingTransition(null);
-    const updateFields = { current_stage: toStage };
-    if (toStage === 'Hold' && note) updateFields.hold_reason = note;
-    if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
+
+    const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
+      requestedStage: toStage,
+      fromStage,
+      canDirect: () => can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
+      userId: appUserId,
+    });
+
+    const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
+    if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
+    if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
+    if (wasIntercepted && note) updateFields.ntuc_reason = note;
     try {
       await updateReferral(referral._id, updateFields);
-      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
       updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
-      recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
+      recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
       triggerDataRefresh();
-      showToast(`Moved to ${toStage}`);
+      showToast(wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `Moved to ${effectiveStage}`);
     } catch {
       showToast('Stage change failed', 'error');
     } finally {

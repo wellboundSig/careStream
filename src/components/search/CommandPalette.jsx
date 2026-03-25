@@ -22,8 +22,7 @@ const STAGE_ROUTES = {
   'Staffing Feasibility':      '/modules/staffing',
   'Admin Confirmation':        '/modules/admin-confirmation',
   'Pre-SOC':                   '/modules/pre-soc',
-  'SOC Scheduled':             '/modules/soc-scheduled',
-  'SOC Completed':             '/modules/soc-completed',
+  'Completed':                 '/modules/soc-completed',
   'Hold':                      '/modules/hold',
   'NTUC':                      '/modules/ntuc',
 };

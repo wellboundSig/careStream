@@ -2,8 +2,12 @@ import { useState, useMemo, useRef } from 'react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
+import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { usePreferences } from '../context/UserPreferencesContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
+import { useLookups } from '../hooks/useLookups.js';
+import { useCareStore } from '../store/careStore.js';
 import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
@@ -86,6 +90,224 @@ function daysAgo(d) {
 }
 
 export default function Dashboard() {
+  const { prefs, save } = usePreferences();
+  const { can } = usePermissions();
+  const mode = prefs.dashboardMode || 'executive';
+  const canToggle = can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE);
+
+  function handleToggle() {
+    const next = mode === 'executive' ? 'caseload' : 'executive';
+    save({ dashboardMode: next });
+  }
+
+  return (
+    <>
+      {canToggle && (
+        <DashboardModeToggle mode={mode} onToggle={handleToggle} />
+      )}
+      {mode === 'caseload' ? <CaseloadDashboard /> : <ExecutiveDashboard />}
+    </>
+  );
+}
+
+function DashboardModeToggle({ mode, onToggle }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 24px 0' }}>
+      <button
+        onClick={onToggle}
+        data-testid="dashboard-mode-toggle"
+        style={{
+          padding: '5px 14px', borderRadius: 20, cursor: 'pointer',
+          background: hexToRgba(palette.primaryDeepPlum.hex, 0.06),
+          border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.15)}`,
+          fontSize: 11.5, fontWeight: 650, color: palette.primaryDeepPlum.hex,
+          display: 'flex', alignItems: 'center', gap: 7, transition: 'all 0.15s',
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+          <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+        {mode === 'executive' ? 'My Caseload' : 'Executive View'}
+      </button>
+    </div>
+  );
+}
+
+// ── Caseload Dashboard ────────────────────────────────────────────────────────
+
+function CaseloadDashboard() {
+  const { division } = useOutletContext();
+  const { data: referrals, loading } = usePipelineData();
+  const { appUserId, appUserName } = useCurrentAppUser();
+  const { open: openPatient } = usePatientDrawer();
+  const { resolveSource, resolveUser } = useLookups();
+  const allTasks = useCareStore((s) => s.tasks);
+  const isMobile = useIsMobile();
+
+  const myReferrals = useMemo(() => {
+    if (!appUserId) return [];
+    return referrals
+      .filter((r) => r.intake_owner_id === appUserId)
+      .filter((r) => division === 'All' || r.division === division)
+      .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
+  }, [referrals, appUserId, division]);
+
+  const myTasks = useMemo(() => {
+    if (!appUserId) return [];
+    return Object.values(allTasks)
+      .filter((t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled');
+  }, [allTasks, appUserId]);
+
+  const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState('days');
+  const [sortDir, setSortDir] = useState('desc');
+
+  const filteredRefs = useMemo(() => {
+    let list = myReferrals;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((r) =>
+        (r.patientName || '').toLowerCase().includes(q) ||
+        (r.current_stage || '').toLowerCase().includes(q)
+      );
+    }
+    return [...list].sort((a, b) => {
+      if (sortField === 'days') {
+        const da = a.updated_at ? Math.floor((Date.now() - new Date(a.updated_at).getTime()) / 86400000) : 0;
+        const db = b.updated_at ? Math.floor((Date.now() - new Date(b.updated_at).getTime()) / 86400000) : 0;
+        return sortDir === 'desc' ? db - da : da - db;
+      }
+      if (sortField === 'name') {
+        return sortDir === 'asc'
+          ? (a.patientName || '').localeCompare(b.patientName || '')
+          : (b.patientName || '').localeCompare(a.patientName || '');
+      }
+      if (sortField === 'stage') {
+        return sortDir === 'asc'
+          ? (a.current_stage || '').localeCompare(b.current_stage || '')
+          : (b.current_stage || '').localeCompare(a.current_stage || '');
+      }
+      return 0;
+    });
+  }, [myReferrals, search, sortField, sortDir]);
+
+  function toggleSort(field) {
+    if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('desc'); }
+  }
+
+  const stageBuckets = useMemo(() => {
+    const buckets = {};
+    myReferrals.forEach((r) => { buckets[r.current_stage] = (buckets[r.current_stage] || 0) + 1; });
+    return Object.entries(buckets).sort(([, a], [, b]) => b - a);
+  }, [myReferrals]);
+
+  const overdue = myReferrals.filter((r) => {
+    if (!r.updated_at || r.current_stage === 'Hold') return false;
+    return Math.floor((Date.now() - new Date(r.updated_at).getTime()) / 86400000) > 14;
+  }).length;
+
+  if (loading) return <DashboardSkeleton isMobile={isMobile} />;
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>My Caseload</h1>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            {appUserName} · {myReferrals.length} active case{myReferrals.length !== 1 ? 's' : ''}
+            {division !== 'All' && ` · ${division}`}
+          </p>
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+        <StatCard label="My Cases" value={myReferrals.length} sub="active referrals" color={palette.primaryMagenta.hex} />
+        <StatCard label="Open Tasks" value={myTasks.length} sub="assigned to me" color={palette.accentBlue.hex} />
+        <StatCard label="Overdue" value={overdue} sub="in stage >14 days" color={overdue > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdue > 0} />
+        <StatCard label="Stages" value={stageBuckets.length} sub="across modules" color={palette.primaryDeepPlum.hex} />
+      </div>
+
+      {/* Stage breakdown pills */}
+      {stageBuckets.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+          {stageBuckets.map(([stage, count]) => (
+            <span key={stage} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+              <StageBadge stage={stage} size="small" /> {count}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: '1px solid var(--color-border)', borderRadius: 7, padding: '0 10px', height: 32, flex: 1, maxWidth: 300 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search my cases..." style={{ background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: palette.backgroundDark.hex, width: '100%' }} />
+          {search && <button onClick={() => setSearch('')} style={{ background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', borderRadius: 4, width: 16, height: 16, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>×</button>}
+        </div>
+        {[{ label: 'Days', field: 'days' }, { label: 'Name', field: 'name' }, { label: 'Stage', field: 'stage' }].map((s) => {
+          const active = sortField === s.field;
+          return (
+            <button key={s.field} onClick={() => toggleSort(s.field)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: active ? palette.primaryMagenta.hex : 'none', color: active ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+              {s.label}{active && <span style={{ fontSize: 9 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Queue table */}
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+        {filteredRefs.length === 0 ? (
+          <EmptyState title="No cases in your caseload" subtitle={search ? 'Try a different search.' : 'Cases assigned to you will appear here.'} />
+        ) : (
+          <table data-testid="caseload-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--color-border)', background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
+                {['Patient', 'Module / Stage', 'Division', 'Days', 'Source', 'Referral Date'].map((h) => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.4), textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRefs.map((ref) => {
+                const days = ref.updated_at ? Math.max(0, Math.floor((Date.now() - new Date(ref.updated_at).getTime()) / 86400000)) : 0;
+                return (
+                  <tr key={ref._id}
+                    onDoubleClick={() => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
+                    style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, transition: 'background 0.1s', cursor: 'default' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.03))}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    title="Double-click to open"
+                  >
+                    <td style={{ padding: '11px 14px' }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
+                      {ref.patient?.medicaid_number && <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Medicaid: {ref.patient.medicaid_number}</p>}
+                    </td>
+                    <td style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>
+                        {days === 0 ? 'Today' : `${days}d`}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>{ref.referral_date ? formatDate(ref.referral_date) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Executive Dashboard (preserved existing behavior) ─────────────────────────
+
+function ExecutiveDashboard() {
   const { division } = useOutletContext();
   const { data: referrals, loading } = usePipelineData();
   const { open: openPatient } = usePatientDrawer();

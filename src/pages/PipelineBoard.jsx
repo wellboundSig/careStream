@@ -6,7 +6,8 @@ import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordTransition } from '../utils/recordTransition.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
-import StageRules from '../data/StageRules.json';
+import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { STAGE_META } from '../data/stageConfig.js';
 
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
 import ContextMenu from '../components/pipeline/ContextMenu.jsx';
@@ -24,6 +25,7 @@ const ROW_GROUPS = [
   {
     label: 'Intake & Eligibility',
     color: palette.accentBlue.hex,
+    displayNames: { 'Lead Entry': 'Leads' },
     stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending'],
   },
   {
@@ -43,26 +45,6 @@ const STATUS_GROUP = {
   color: hexToRgba(palette.backgroundDark.hex, 0.3),
   stages: ['Hold', 'NTUC'],
 };
-
-function canMoveFromTo(fromStage, toStage) {
-  if (fromStage === toStage) return false;
-  const fromRule = StageRules.stages[fromStage];
-  if (!fromRule || fromRule.terminal) return false;
-  if (toStage === 'Hold' && StageRules.globalRules.anyActiveStageCanMoveToHold) return true;
-  return fromRule.canMoveTo?.includes(toStage) ?? false;
-}
-
-function needsModal(fromStage, toStage) {
-  const fromRule = StageRules.stages[fromStage];
-  const toRule   = StageRules.stages[toStage];
-  return !!(
-    fromRule?.requiresNote ||
-    fromRule?.protectedExit ||
-    toStage === 'Hold' ||
-    toStage === 'NTUC' ||
-    toRule?.destinationPrompt
-  );
-}
 
 export default function PipelineBoard() {
   const { division } = useOutletContext();
@@ -110,18 +92,25 @@ export default function PipelineBoard() {
     const fromStage = referral.current_stage;
     setPendingTransition(null);
 
-    const updateFields = { current_stage: toStage };
-    if (toStage === 'Hold' && note) updateFields.hold_reason = note;
-    if (toStage === 'NTUC' && note) updateFields.ntuc_reason = note;
+    const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
+      requestedStage: toStage,
+      fromStage,
+      canDirect: () => can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
+      userId: appUserId,
+    });
 
-    // Optimistic: store updates in 1ms, card moves instantly.
-    // Background Airtable write rolls back on failure.
+    const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
+    if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
+    if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
+    if (wasIntercepted && note) updateFields.ntuc_reason = note;
+
     updateReferralOptimistic(referral._id, updateFields).catch(() => {
       showToast(`Failed to move ${referral.patientName || referral.patient_id} — reverted`, 'error');
     });
 
-    recordTransition({ referral, fromStage, toStage, note, authorId: appUserId });
-    showToast(`${referral.patientName || referral.patient_id} moved to ${toStage}`);
+    recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
+    const label = wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${effectiveStage}`;
+    showToast(`${referral.patientName || referral.patient_id} ${label}`);
   }
 
   function handleDragStart(referral) {

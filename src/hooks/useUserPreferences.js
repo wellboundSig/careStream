@@ -14,7 +14,7 @@ export function useUserPreferences() {
   // Stable ref so callbacks never stale-close over the record ID
   const recordIdRef = useRef(null);
 
-  const [prefs, setPrefs] = useState({ subnavEnabled: false, pinnedPages: [], splitScreenEnabled: false });
+  const [prefs, setPrefs] = useState({ subnavEnabled: false, pinnedPages: [], splitScreenEnabled: false, dashboardMode: 'executive' });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,6 +29,7 @@ export function useUserPreferences() {
             subnavEnabled:      rec.fields.subnav_enabled ?? false,
             pinnedPages:        safeParseJSON(rec.fields.pinned_pages, []),
             splitScreenEnabled: rec.fields.split_screen_enabled ?? false,
+            dashboardMode:      rec.fields.dashboard_mode || 'executive',
           });
         }
       })
@@ -138,5 +139,16 @@ export function useUserPreferences() {
     });
   }, [user]);
 
-  return { prefs, save, loading, pinPage, unpinPage, togglePin, MAX_PINS };
+  const reorderPins = useCallback((newOrder) => {
+    setPrefs((prev) => {
+      const next = { ...prev, pinnedPages: newOrder };
+      (async () => {
+        try { if (recordIdRef.current) await updatePreferences(recordIdRef.current, { pinnedPages: newOrder }); }
+        catch { setPrefs(prev); }
+      })();
+      return next;
+    });
+  }, []);
+
+  return { prefs, save, loading, pinPage, unpinPage, togglePin, reorderPins, MAX_PINS };
 }

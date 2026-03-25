@@ -268,6 +268,30 @@ export default function Settings() {
         </div>
       </Section>
 
+      {/* ── Dashboard Mode ── */}
+      <Section
+        title="Dashboard"
+        description="Choose your default dashboard experience."
+      >
+        <SettingRow
+          label="Dashboard Mode"
+          hint="Executive shows company-wide metrics. Caseload shows your personal workload."
+        >
+          <select
+            value={prefs.dashboardMode || 'executive'}
+            onChange={(e) => save({ dashboardMode: e.target.value })}
+            style={{
+              padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)',
+              background: palette.backgroundLight.hex, fontSize: 12.5, color: palette.backgroundDark.hex,
+              cursor: 'pointer', outline: 'none', fontFamily: 'inherit',
+            }}
+          >
+            <option value="executive">Executive</option>
+            <option value="caseload">Caseload</option>
+          </select>
+        </SettingRow>
+      </Section>
+
       {/* ── Navigation Pins ── */}
       <Section
         title="Navigation Bar"
