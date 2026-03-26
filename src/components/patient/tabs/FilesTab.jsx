@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/react';
-import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
+import { getFilesByPatient, createFile, deleteFile } from '../../../api/patientFiles.js';
 import { uploadToR2 } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
@@ -165,6 +165,14 @@ export default function FilesTab({ patient, referral }) {
   const { can } = usePermissions();
 
   const r2Configured = !!import.meta.env.VITE_R2_WORKER_URL;
+
+  async function handleDeleteFile(file) {
+    if (!window.confirm(`Delete "${file.file_name || 'this file'}"? This cannot be undone.`)) return;
+    try {
+      await deleteFile(file._id);
+      setFiles((prev) => prev.filter((f) => f._id !== file._id));
+    } catch { /* silent */ }
+  }
 
   useEffect(() => {
     if (!patient?.id) return;
@@ -460,7 +468,7 @@ export default function FilesTab({ patient, referral }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {files.map((file) => (
-            <FileRow key={file._id} file={file} onPreview={setPreview} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
+            <FileRow key={file._id} file={file} onPreview={setPreview} onDelete={handleDeleteFile} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
           ))}
         </div>
       )}
@@ -470,7 +478,7 @@ export default function FilesTab({ patient, referral }) {
   );
 }
 
-function FileRow({ file, onPreview, resolveUser, resolvePhysician, appUserName }) {
+function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
   const cleanUrl = file.r2_url?.replace(/[<>\n]/g, '').trim();
@@ -546,6 +554,22 @@ function FileRow({ file, onPreview, resolveUser, resolvePhysician, appUserName }
           >
             Download
           </a>
+        )}
+        {onDelete && (
+          <button
+            onClick={() => onDelete(file)}
+            title="Delete file"
+            style={{
+              padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              background: hexToRgba(palette.primaryMagenta.hex, 0.08),
+              border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.2)}`,
+              color: palette.primaryMagenta.hex, transition: 'background 0.12s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.15))}
+            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.08))}
+          >
+            Delete
+          </button>
         )}
       </div>
     </div>

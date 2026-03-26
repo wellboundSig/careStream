@@ -21,6 +21,7 @@ import {
   ColsIcon,
 } from '../../utils/columnModel.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
+import StageBadge from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import StagePanel from './StagePanel.jsx';
@@ -316,6 +317,18 @@ export default function ModulePage({ stage }) {
           </td>
         );
       case 'triage':
+        if (meta.consolidatedStages) {
+          const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
+          return (
+            <td key="triage" style={{ padding: '11px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <StageBadge stage={referral.current_stage} size="small" />
+                {isOnTrackRow && <img src="/feasibility-badge.png" alt="On Track" title="On Track" style={{ width: 16, height: 16 }} />}
+                {referral.current_stage === 'Conflict' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: hexToRgba(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>!</span>}
+              </div>
+            </td>
+          );
+        }
         return (
           <td key="triage" style={{ padding: '11px 14px' }}>
             {isSN ? (

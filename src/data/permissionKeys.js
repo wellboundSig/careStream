@@ -82,6 +82,9 @@ export const PERMISSION_KEYS = {
   // Dashboard
   DASHBOARD_MODE_TOGGLE: 'dashboard.mode_toggle',
 
+  // Departments
+  ADMIN_DEPARTMENTS: 'admin.departments',
+
   // Administration
   ADMIN_USER_MANAGEMENT: 'admin.user_management',
   ADMIN_PERMISSIONS: 'admin.permissions',
@@ -111,6 +114,7 @@ export const PERMISSION_CATEGORIES = [
   'Directory',
   'Dashboard',
   'Modules',
+  'Departments',
   'Administration',
 ];
 
@@ -194,6 +198,9 @@ export const PERMISSION_CATALOG = [
   { key: K.MODULE_AUTHORIZATION, label: 'View Authorization modules',  category: 'Modules', description: 'Access Authorization Pending module page', sort: 116 },
   { key: K.MODULE_SCHEDULING,    label: 'View Scheduling modules',     category: 'Modules', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 117 },
   { key: K.MODULE_ADMIN,         label: 'View Admin modules',          category: 'Modules', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 118 },
+
+  // Departments
+  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',         category: 'Departments', description: 'Create, edit, and delete departments, supervisors, members, and scopes', sort: 119 },
 
   // Administration
   { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',    category: 'Administration', description: 'View and edit users, roles, and statuses', sort: 120 },

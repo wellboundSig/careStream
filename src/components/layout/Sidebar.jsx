@@ -5,6 +5,7 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
+import { useCareStore } from '../../store/careStore.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // The sidebar is always the brand plum color — its text/icons must always be
@@ -45,6 +46,7 @@ const NAV_ITEMS = [
       { label: 'Team', path: '/team', icon: UsersIcon },
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
       { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, requiresAdmin: true },
+      { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
@@ -60,6 +62,13 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
   const { prefs, pinPage, unpinPage, MAX_PINS } = usePreferences();
   const { can, hasDivision } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT) || can(PERMISSION_KEYS.ADMIN_PERMISSIONS) || can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
+
+  const storeDepts = useCareStore((s) => s.departments);
+  const appUserId = appUser?.id;
+  const supervisedDepts = useMemo(() => {
+    if (!appUserId) return [];
+    return Object.values(storeDepts || {}).filter((d) => d.supervisor === appUserId);
+  }, [storeDepts, appUserId]);
 
   const allowedDivisions = useMemo(() => {
     const divs = [];
@@ -145,7 +154,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
               const isActive = item.exact
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path) && item.path !== '/';
-              return (
+              const navLink = (
                 <NavLink
                   key={item.path}
                   to={item.path}
@@ -157,6 +166,35 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                   {!collapsed && item.label}
                 </NavLink>
               );
+
+              // Department sub-links directly under Dashboard
+              if (item.path === '/' && !collapsed && supervisedDepts.length > 0) {
+                return (
+                  <div key={item.path}>
+                    {navLink}
+                    {supervisedDepts.map((dept) => {
+                      const dPath = `/department/${dept.id}`;
+                      const dActive = location.pathname === dPath;
+                      return (
+                        <NavLink key={dept.id} to={dPath} style={{
+                          display: 'flex', alignItems: 'center', gap: 7,
+                          padding: '5px 14px 5px 30px', margin: '0 8px', borderRadius: 7,
+                          background: dActive ? hexToRgba(palette.primaryMagenta.hex, 0.2) : 'transparent',
+                          color: dActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.48),
+                          fontSize: 12, fontWeight: dActive ? 600 : 400,
+                          borderLeft: `2px solid ${dActive ? palette.primaryMagenta.hex : 'transparent'}`,
+                          textDecoration: 'none', transition: 'all 0.12s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          <DashboardIcon size={11} color={dActive ? NAV_TEXT : hexToRgba(NAV_TEXT, 0.35)} />
+                          {dept.name}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              return navLink;
             })}
           </div>
         ))}
@@ -665,10 +703,23 @@ function PermissionsIcon({ size = 16, color }) {
   );
 }
 
+function DepartmentsIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="3" width="18" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
+      <rect x="3" y="12" width="8" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
+      <rect x="13" y="12" width="8" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
+      <path d="M12 8v4M7 12v0M17 12v0" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function DataToolsIcon({ size = 16, color }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M18 20V10M12 20V4M6 20v-6" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <ellipse cx="12" cy="6" rx="8" ry="3" stroke={color} strokeWidth="1.6" />
+      <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke={color} strokeWidth="1.6" />
+      <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" stroke={color} strokeWidth="1.6" />
     </svg>
   );
 }

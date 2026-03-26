@@ -18,6 +18,7 @@ import { useCareStore } from '../../store/careStore.js';
 import { DISCARD_REASONS } from '../../data/stageConfig.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
+import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const PIPELINE_STAGES = [
@@ -761,13 +762,18 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
   const [receivedDate, setReceivedDate]     = useState('');
   const [saving, setSaving]                 = useState(false);
   const [saveError, setSaveError]           = useState(null);
+  const [reviewChecked, setReviewChecked]   = useState({});
 
-  // Reset form when patient selection changes
   useEffect(() => {
     setShowDatePicker(false);
     setReceivedDate('');
     setSaveError(null);
+    setReviewChecked({});
   }, [selectedReferral?._id]);
+
+  const reviewComplete = isF2FChecklistComplete(reviewChecked);
+  const completedReq = F2F_REQUIRED_ITEMS.filter((i) => reviewChecked[i.key]).length;
+  const totalReq = F2F_REQUIRED_ITEMS.length;
 
   function daysLeft(exp) {
     if (!exp) return null;
@@ -945,16 +951,46 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               </div>
             )}
 
-            <ActionBtn
-              label="Confirm → Clinical Intake RN Review"
-              variant="forward"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
-            />
-            <ActionBtn
-              label="Upload F2F Document"
-              variant="default"
-              onClick={() => onOpenFiles?.(selectedReferral)}
-            />
+            <ActionBtn label="Go to Files" variant="forward" onClick={() => onOpenFiles?.(selectedReferral)} />
+            <ActionBtn label="Upload F2F Document" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
+          </PanelSection>
+
+          {/* Document review checklist — gates push to Clinical RN */}
+          <PanelSection title="Document Review">
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
+                <span style={{ fontSize: 11, fontWeight: 650, color: reviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4) }}>{completedReq}/{totalReq}</span>
+              </div>
+              <div style={{ height: 3, borderRadius: 2, background: hexToRgba(palette.backgroundDark.hex, 0.08), overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
+              </div>
+              {F2F_REVIEW_CHECKLIST.map((item) => (
+                <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => setReviewChecked((p) => ({ ...p, [item.key]: !p[item.key] }))} style={{ accentColor: palette.accentGreen.hex, width: 13, height: 13, flexShrink: 0, cursor: 'pointer' }} />
+                  <span style={{ fontSize: 12, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
+                    {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <button
+              data-testid="f2f-confirm-btn"
+              onClick={() => reviewComplete && onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
+              disabled={!reviewComplete}
+              style={{
+                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                background: reviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: reviewComplete ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                fontSize: 13, fontWeight: 700, cursor: reviewComplete ? 'pointer' : 'not-allowed',
+                textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s', marginTop: 8,
+              }}
+              onMouseEnter={(e) => reviewComplete && (e.currentTarget.style.filter = 'brightness(1.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+            >
+              {reviewComplete ? 'Confirm → Clinical Intake RN Review' : 'Complete review to send to Clinical RN'}
+            </button>
           </PanelSection>
         </>
       )}
@@ -1494,63 +1530,112 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
   );
 }
 
-function StaffingPanel({ selectedReferral, allReferrals, onInitiateTransition }) {
+function StaffingPanel({ referrals, selectedReferral, allReferrals, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
-  const [contacted, setContacted] = useState(false);
-  const [activeTab, setActiveTab] = useState('Zip Search');
+  const [clinicianMatched, setClinicianMatched] = useState(false);
+
+  useEffect(() => { setClinicianMatched(false); }, [selectedReferral?._id]);
+
+  const isOnTrack = selectedReferral?.current_stage === 'Staffing Feasibility';
+  const isConflict = selectedReferral?.current_stage === 'Conflict';
+  const canConfirm = isOnTrack && clinicianMatched && canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
+
+  // Stage breakdown for the radar dashboard
+  const stageCounts = {};
+  (referrals || []).forEach((r) => { stageCounts[r.current_stage] = (stageCounts[r.current_stage] || 0) + 1; });
+  const onTrackCount = stageCounts['Staffing Feasibility'] || 0;
+  const conflictCount = stageCounts['Conflict'] || 0;
 
   return (
     <Panel width={380}>
-      {/* Patient actions — always visible when patient selected */}
+      {/* Radar summary */}
+      <PanelSection title="Radar Overview">
+        <InfoRow label="Total in radar" value={(referrals || []).length} />
+        <InfoRow label="On Track (Staffing only)" value={onTrackCount} highlight={palette.accentGreen.hex} />
+        {conflictCount > 0 && <InfoRow label="In Conflict" value={conflictCount} highlight={palette.accentOrange.hex} />}
+        {Object.entries(stageCounts).filter(([s]) => s !== 'Staffing Feasibility' && s !== 'Conflict').sort(([,a],[,b]) => b - a).slice(0, 5).map(([stage, count]) => (
+          <InfoRow key={stage} label={stage} value={count} />
+        ))}
+      </PanelSection>
+
+      {/* Selected patient detail */}
       {selectedReferral && (
         <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid var(--color-border)` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
-              {selectedReferral.patientName || selectedReferral.patient_id} · {Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'}
-            </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>
+                {selectedReferral.patientName || selectedReferral.patient_id}
+              </p>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Stage pill */}
+                <span data-testid="stage-pill" style={{ fontSize: 10.5, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: isOnTrack ? hexToRgba(palette.accentGreen.hex, 0.14) : isConflict ? hexToRgba(palette.accentOrange.hex, 0.14) : hexToRgba(palette.backgroundDark.hex, 0.08), color: isOnTrack ? palette.accentGreen.hex : isConflict ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+                  {selectedReferral.current_stage}
+                </span>
+                {/* Conflict flag */}
+                {isConflict && (
+                  <span data-testid="conflict-flag" style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: hexToRgba(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>CONFLICT</span>
+                )}
+                {/* On Track badge */}
+                {isOnTrack && (
+                  <img data-testid="on-track-badge" src="/feasibility-badge.png" alt="On Track" title="On Track — only feasibility remains" style={{ width: 20, height: 20, flexShrink: 0 }} />
+                )}
+              </div>
+            </div>
             {selectedReferral.patient?.address_zip && (
               <span style={{ fontSize: 11, fontWeight: 700, color: palette.accentBlue.hex, background: hexToRgba(palette.accentBlue.hex, 0.1), padding: '2px 8px', borderRadius: 5, flexShrink: 0, marginLeft: 8 }}>
                 ZIP {selectedReferral.patient.address_zip}
               </span>
             )}
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: contacted ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.backgroundDark.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
-            <input type="checkbox" checked={contacted} onChange={(e) => setContacted(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>Patient / parent contacted</span>
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button
-              onClick={() => contacted && canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING) && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
-              disabled={!contacted || !canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING)}
-              style={{
-                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
-                background: contacted ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-                color: contacted ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-                fontSize: 13.5, fontWeight: 700, cursor: contacted ? 'pointer' : 'not-allowed',
-                textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s',
-              }}
-              onMouseEnter={(e) => contacted && (e.currentTarget.style.filter = 'brightness(1.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}>
-              Continue to Admin Confirmation →
-            </button>
+
+          {/* Key data: services + zip */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {Array.isArray(selectedReferral.services_requested) && selectedReferral.services_requested.map((s) => (
+              <span key={s} style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 5, background: hexToRgba(palette.primaryMagenta.hex, 0.1), color: palette.primaryMagenta.hex }}>{s}</span>
+            ))}
           </div>
+
+          {/* On Track immediate attention banner */}
+          {isOnTrack && (
+            <div data-testid="on-track-banner" style={{ marginTop: 10, padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.2)}` }}>
+              <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex }}>
+                On Track — all other steps complete. Match a clinician to confirm.
+              </p>
+            </div>
+          )}
+
+          {/* Clinician matched checkbox + confirm (only for On Track patients) */}
+          {isOnTrack && canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING) && (
+            <div style={{ marginTop: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 8, background: clinicianMatched ? hexToRgba(palette.accentGreen.hex, 0.07) : hexToRgba(palette.backgroundDark.hex, 0.04), cursor: 'pointer', marginBottom: 8 }}>
+                <input type="checkbox" checked={clinicianMatched} onChange={(e) => setClinicianMatched(e.target.checked)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14 }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>Clinician found and matched</span>
+              </label>
+              <button
+                data-testid="staffing-confirm-btn"
+                onClick={() => canConfirm && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
+                disabled={!canConfirm}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                  background: canConfirm ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                  color: canConfirm ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                  fontSize: 13, fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed',
+                  textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s',
+                }}
+                onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+              >
+                {canConfirm ? 'Confirm → Admin Confirmation' : 'Match a clinician to confirm'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-        {STAFFING_TABS.map((t) => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            style={{ flex: 1, padding: '5px 0', borderRadius: 6, border: 'none', fontSize: 11.5, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
-              background: activeTab === t ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-              color: activeTab === t ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div style={{ display: activeTab === 'Zip Search' ? 'block' : 'none' }}><ZipSearchPanel /></div>
+      {/* Zip search tool */}
+      <PanelSection title="Zip Search Tool">
+        <ZipSearchPanel />
+      </PanelSection>
     </Panel>
   );
 }

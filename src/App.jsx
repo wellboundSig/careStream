@@ -23,6 +23,8 @@ import CalendarPage from './pages/Calendar.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
+import DepartmentManagement from './pages/admin/DepartmentManagement.jsx';
+import DepartmentDashboardPage from './pages/DepartmentDashboardPage.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
 import Training from './pages/Training.jsx';
 import NotFound from './pages/NotFound.jsx';
@@ -53,6 +55,7 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="department/:deptId" element={<DepartmentDashboardPage />} />
         <Route path="pipeline" element={<PipelineBoard />} />
         <Route path="patients" element={<PatientList />} />
         <Route path="pending" element={<PendingApproval />} />
@@ -85,6 +88,7 @@ export default function App() {
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/permissions" element={<Permissions />} />
+        <Route path="admin/departments" element={<DepartmentManagement />} />
         <Route path="admin/settings" element={<Settings />} />
         <Route path="admin/data-tools" element={<DataTools />} />
         <Route path="*" element={<NotFound />} />

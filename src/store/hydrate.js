@@ -37,6 +37,11 @@ const TABLES = [
   { key: 'permissions',        table: 'Permissions' },
   { key: 'permissionPresets',  table: 'PermissionPresets' },
   { key: 'userPermissions',    table: 'UserPermissions' },
+
+  // Department system
+  { key: 'departments',        table: 'Departments' },
+  { key: 'departmentScopes',   table: 'DepartmentScopes' },
+  { key: 'activityLog',        table: 'ActivityLog' },
 ];
 
 export async function hydrateStore() {

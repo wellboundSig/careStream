@@ -141,10 +141,15 @@ export const STAGE_META = {
     color: palette.primaryMagenta.hex,
   },
   'Staffing Feasibility': {
-    description: 'Clinician availability check — discipline, region, schedule',
+    description: 'Clinician availability — the entire active pipeline is your radar',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentBlue.hex,
+    consolidatedStages: [
+      'Intake', 'Eligibility Verification', 'Disenrollment Required',
+      'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
+      'Conflict', 'Staffing Feasibility',
+    ],
   },
   'Admin Confirmation': {
     description: 'Admin review — confirm or deny NTUC. Accept moves to Pre-SOC, decline triggers NTUC.',
