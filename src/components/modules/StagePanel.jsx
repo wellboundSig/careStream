@@ -2252,6 +2252,41 @@ function NtucPanel({ referrals }) {
   );
 }
 
+// ── OPWDD Enrollment ──────────────────────────────────────────────────────────
+function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransition }) {
+  return (
+    <Panel>
+      <PanelSection title="Enrollment Summary">
+        <InfoRow label="Total in OPWDD" value={referrals.length} />
+      </PanelSection>
+
+      {selectedReferral ? (
+        <>
+          <PanelSection title="Patient">
+            <InfoRow label="Name" value={selectedReferral.patientName} />
+            <InfoRow label="Division" value={selectedReferral.division} />
+            {selectedReferral.patient?.county && <InfoRow label="County" value={selectedReferral.patient.county} />}
+            <InfoRow label="Code 95" value={selectedReferral.code_95 || '—'} />
+          </PanelSection>
+
+          <PanelSection title="Actions">
+            <ActionBtn label="Push to Intake →" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Intake')} />
+            <ActionBtn label="Push to Discarded Leads" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Discarded Leads')} />
+          </PanelSection>
+
+          <PanelSection title="Notes">
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
+              This patient was routed here because Code 95 = No. A specialist handles OPWDD enrollment. Future: a checklist will be added here.
+            </p>
+          </PanelSection>
+        </>
+      ) : (
+        <EmptyPanelState message="Select a patient to see details and actions." />
+      )}
+    </Panel>
+  );
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition }) {
   const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition };
@@ -2272,6 +2307,7 @@ export default function StagePanel({ stage, referrals, allReferrals, selectedRef
     case 'SOC Completed':             return <SocCompletedPanel {...props} />;
     case 'Hold':                      return <HoldPanel {...props} />;
     case 'NTUC':                      return <NtucPanel {...props} />;
+    case 'OPWDD Enrollment':          return <OPWDDEnrollmentPanel {...props} />;
     default: return null;
   }
 }

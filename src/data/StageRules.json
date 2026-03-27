@@ -23,6 +23,7 @@
         "Lead Entry",
         "Intake",
         "Discarded Leads",
+        "OPWDD Enrollment",
         "Eligibility Verification",
         "Disenrollment Required",
         "F2F/MD Orders Pending",
@@ -436,6 +437,19 @@
       "requiresPermission": null,
       "protectedExit": true,
       "description": "Not taken under care. Terminal. Requires structured NTUC reason and financial impact tag."
+    },
+
+    "OPWDD Enrollment": {
+      "displayName": "OPWDD",
+      "gridRow": null,
+      "gridCol": null,
+      "canMoveTo": ["Intake", "Discarded Leads"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": null,
+      "protectedExit": false,
+      "description": "Special Needs referral routed for OPWDD enrollment when Code 95 = No. Specialist handles enrollment before patient re-enters pipeline."
     }
   }
 }

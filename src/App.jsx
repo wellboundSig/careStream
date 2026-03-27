@@ -74,6 +74,7 @@ export default function App() {
         <Route path="modules/pre-soc"             element={<ModulePage stage="Pre-SOC" />} />
         <Route path="modules/soc-scheduled"       element={<Navigate to="/modules/pre-soc" replace />} />
         <Route path="modules/soc-completed"       element={<ModulePage stage="SOC Completed" />} />
+        <Route path="modules/opwdd-enrollment"    element={<ModulePage stage="OPWDD Enrollment" />} />
         <Route path="modules/hold"                element={<ModulePage stage="Hold" />} />
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 

@@ -5,6 +5,7 @@ import {
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { mergeEntities } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
@@ -200,6 +201,19 @@ function AdultForm({ data, onChange, readOnly }) {
         <Field label="Community habilitation services?"><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Services Needed">
+        <Field label="Code 95 (OPWDD) *">
+          {readOnly ? (
+            <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 || '—'}</span>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['yes', 'no'].map((v) => (
+                <button key={v} type="button" onClick={() => set('code_95')(v)} style={{ flex: 1, padding: '7px 8px', borderRadius: 7, cursor: 'pointer', background: data.code_95 === v ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04), border: `1.5px solid ${data.code_95 === v ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`, color: data.code_95 === v ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6), fontSize: 12, fontWeight: 650 }}>
+                  {v === 'yes' ? 'Yes' : 'No'}
+                </button>
+              ))}
+            </div>
+          )}
+        </Field>
         <Field label="Services Needed"><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'HHA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
         <Field label="Therapy Availability"><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
       </FormSection>
@@ -277,6 +291,19 @@ function PediatricForm({ data, onChange, readOnly }) {
         <Field label="Community habilitation?"><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Services Needed">
+        <Field label="Code 95 (OPWDD) *">
+          {readOnly ? (
+            <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 || '—'}</span>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['yes', 'no'].map((v) => (
+                <button key={v} type="button" onClick={() => set('code_95')(v)} style={{ flex: 1, padding: '7px 8px', borderRadius: 7, cursor: 'pointer', background: data.code_95 === v ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04), border: `1.5px solid ${data.code_95 === v ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`, color: data.code_95 === v ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6), fontSize: 12, fontWeight: 650 }}>
+                  {v === 'yes' ? 'Yes' : 'No'}
+                </button>
+              ))}
+            </div>
+          )}
+        </Field>
         <Field label="Services Needed"><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'ABA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
         <Field label="Therapy Availability"><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
         <Field label="HHA Hours and Frequency"><TextInput value={data.hha_hours_frequency} onChange={set('hha_hours_frequency')} readOnly={readOnly} /></Field>
@@ -420,6 +447,14 @@ export default function TriageTab({ patient, referral }) {
       if (pcp_physician_id && pcp_physician_id !== triageData.pcp_physician_id && referral?._id) {
         await updateReferral(referral._id, { physician_id: pcp_physician_id }).catch(() => {});
       }
+      // If Code 95 = no, route patient to OPWDD Enrollment
+      if (draft.code_95 === 'no' && referral?._id) {
+        await updateReferral(referral._id, { current_stage: 'OPWDD Enrollment', code_95: 'no' }).catch(() => {});
+        triggerDataRefresh();
+      } else if (draft.code_95 === 'yes' && referral?._id) {
+        await updateReferral(referral._id, { code_95: 'yes' }).catch(() => {});
+      }
+
       // Preserve pcp_physician_id in local state (it's not persisted on the triage record)
       setTriageData({ ...triageFields, pcp_physician_id });
       setEditing(false);

@@ -348,6 +348,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
 const STAGE_TO_MODULE_PERM = {
   'Lead Entry': PERMISSION_KEYS.MODULE_INTAKE,
   'Discarded Leads': PERMISSION_KEYS.MODULE_INTAKE,
+  'OPWDD Enrollment': PERMISSION_KEYS.MODULE_INTAKE,
   'Intake': PERMISSION_KEYS.MODULE_INTAKE,
   'Eligibility Verification': PERMISSION_KEYS.MODULE_INTAKE,
   'Disenrollment Required': PERMISSION_KEYS.MODULE_INTAKE,

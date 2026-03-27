@@ -31,6 +31,7 @@ export const STAGE_SLUGS = {
   'Pre-SOC':                   'pre-soc',
   'SOC Scheduled':             'soc-scheduled',
   'SOC Completed':             'soc-completed',
+  'OPWDD Enrollment':          'opwdd-enrollment',
   'Hold':                      'hold',
   'NTUC':                      'ntuc',
 };
@@ -47,7 +48,7 @@ export const ROLE_MODES = [
     id: 'intake',
     label: 'Intake',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending', 'Discarded Leads'],
+    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending', 'OPWDD Enrollment', 'Discarded Leads'],
   },
   {
     id: 'clinical',
@@ -178,6 +179,13 @@ export const STAGE_META = {
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,
+  },
+  'OPWDD Enrollment': {
+    displayName: 'OPWDD',
+    description: 'Special Needs referral routed for OPWDD enrollment (Code 95 = No)',
+    isGlobal: false,
+    isTerminal: false,
+    color: palette.primaryDeepPlum.hex,
   },
   'Hold': {
     description: 'Temporarily paused, awaiting resolution',

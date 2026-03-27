@@ -6,6 +6,7 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { updateUserPermission, createUserPermission } from '../../api/userPermissions.js';
+import { updateReferralSource } from '../../api/referralSources.js';
 import UserProfileDrawer from '../../components/users/UserProfileDrawer.jsx';
 import PermissionModal from '../../components/users/PermissionModal.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
@@ -62,6 +63,8 @@ export default function UserManagement() {
   const [permUser, setPermUser] = useState(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
+  const [reassignData, setReassignData] = useState(null);
+  const storeMarketers = useCareStore((s) => s.marketers);
 
   const { can } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT);
@@ -112,6 +115,17 @@ export default function UserManagement() {
         } else {
           showToast(`Role updated (no matching preset found)`);
         }
+      } else if (field === 'status' && (value === 'Suspended' || value === 'Revoked')) {
+        // Check if this user is a marketer with assigned referral sources
+        const isMarketer = Object.values(storeMarketers || {}).some((m) => m.user_id === userId || m.id === userId);
+        if (isMarketer) {
+          const storeSources = useCareStore.getState().referralSources;
+          const assignedSources = Object.values(storeSources || {}).filter((s) => s.marketer_id === userId);
+          if (assignedSources.length > 0) {
+            setReassignData({ userId, sources: assignedSources });
+          }
+        }
+        showToast(`Updated ${field} for ${userId}`);
       } else {
         showToast(`Updated ${field} for ${userId}`);
       }
@@ -220,6 +234,21 @@ export default function UserManagement() {
       <UserProfileDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
       {permUser && <PermissionModal user={permUser} onClose={() => setPermUser(null)} />}
 
+      {reassignData && (
+        <ReassignSourcesModal
+          sources={reassignData.sources}
+          marketers={Object.values(storeMarketers).filter((m) => m.status === 'Active' && m.id !== reassignData.userId)}
+          onClose={() => setReassignData(null)}
+          onReassign={async (sourceId, newMarketerId) => {
+            const src = Object.values(useCareStore.getState().referralSources).find((s) => s.id === sourceId);
+            if (src) {
+              await updateReferralSource(src._id, { marketer_id: newMarketerId || '' });
+              mergeEntities('referralSources', { [src._id]: { ...src, marketer_id: newMarketerId || '' } });
+            }
+          }}
+        />
+      )}
+
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9997, background: toast.type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex, color: palette.backgroundLight.hex, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 550, boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {toast.msg}
@@ -295,5 +324,51 @@ function UserRow({ user, roles, isSaving, canEditPerms, onUpdate, onOpenProfile,
         </div>
       </td>
     </tr>
+  );
+}
+
+function ReassignSourcesModal({ sources, marketers, onClose, onReassign }) {
+  const [assignments, setAssignments] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    for (const [srcId, mktId] of Object.entries(assignments)) {
+      await onReassign(srcId, mktId).catch(() => {});
+    }
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div onClick={(e) => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--color-border)' }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: palette.accentOrange.hex }}>Reassign Referral Sources</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginTop: 4 }}>
+            This marketer has {sources.length} referral source{sources.length !== 1 ? 's' : ''}. Reassign them or leave as unassigned.
+          </p>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px' }}>
+          {sources.map((src) => (
+            <div key={src.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex }}>{src.name}</p>
+                {src.type && <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{src.type}</p>}
+              </div>
+              <select value={assignments[src.id] || ''} onChange={(e) => setAssignments((p) => ({ ...p, [src.id]: e.target.value }))}
+                style={{ padding: '6px 10px', borderRadius: 7, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, color: palette.backgroundDark.hex, cursor: 'pointer', minWidth: 160 }}>
+                <option value="">Leave unassigned</option>
+                {marketers.map((m) => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}>Skip for now</button>
+          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 22px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Saving…' : 'Save Assignments'}</button>
+        </div>
+      </div>
+    </div>
   );
 }

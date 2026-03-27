@@ -40,6 +40,12 @@ const ROW_GROUPS = [
   },
 ];
 
+const SPECIAL_GROUP = {
+  label: 'Special Programs',
+  color: palette.primaryDeepPlum.hex,
+  stages: ['OPWDD Enrollment'],
+};
+
 const STATUS_GROUP = {
   label: 'Status',
   color: hexToRgba(palette.backgroundDark.hex, 0.3),
@@ -294,6 +300,16 @@ export default function PipelineBoard() {
               </div>
             </section>
           ))}
+
+          {/* Special Programs section */}
+          <section>
+            <RowGroupLabel label={SPECIAL_GROUP.label} color={SPECIAL_GROUP.color} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, minHeight: 80 }}>
+              {SPECIAL_GROUP.stages.map((stage) => (
+                <PipelineStage key={stage} stage={stage} cards={filtered.filter((r) => r.current_stage === stage)} canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false} isBeingDragged={(id) => id === draggingId} activeDragFromStage={draggingFrom} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onContextMenu={handleContextMenu} onDrop={handleDrop} onInitiateTransition={initiateTransition} />
+              ))}
+            </div>
+          </section>
 
           {/* Status section */}
           <section>

@@ -28,6 +28,7 @@ export const PANE_NAV = [
       { path: '/modules/admin-confirmation', label: 'Admin Confirmation' },
       { path: '/modules/pre-soc', label: 'Pre-SOC' },
       { path: '/modules/soc-completed', label: 'Completed' },
+      { path: '/modules/opwdd-enrollment', label: 'OPWDD Enrollment' },
       { path: '/modules/hold', label: 'Hold' },
       { path: '/modules/ntuc', label: 'NTUC' },
     ],

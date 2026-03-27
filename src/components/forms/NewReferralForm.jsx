@@ -342,6 +342,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     sn_age_group: '',
     county: '',
     services_under_licence: '',
+    code_95: '',
   });
 
   function setField(key, value) {
@@ -353,6 +354,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           next.sn_age_group = '';
           next.county = '';
           next.services_under_licence = '';
+          next.code_95 = '';
         }
         next.services_requested = [];
       }
@@ -483,7 +485,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         patient_id: createdPatientId,
         marketer_id: resolvedMarketer,
         referral_source_id: resolvedSource,
-        current_stage: 'Lead Entry',
+        current_stage: (form.division === 'Special Needs' && form.code_95 === 'no') ? 'OPWDD Enrollment' : 'Lead Entry',
         division: form.division,
         priority: 'Normal',
         referral_date: referralDate,
@@ -495,6 +497,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
         ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
         ...(form.services_under_licence && { services_under_licence: form.services_under_licence }),
+        ...(form.code_95 && { code_95: form.code_95 }),
       };
 
       const referralRecord = await createReferral(referralFields);
@@ -709,6 +712,32 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                     {errors.services_under_licence && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.services_under_licence}</p>}
                   </div>
                 )}
+
+                {/* Code 95 — optional at lead entry */}
+                <div style={{ marginTop: 12 }}>
+                  <Label>Code 95 (OPWDD)</Label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }].map((opt) => {
+                      const sel = form.code_95 === opt.value;
+                      return (
+                        <button key={opt.value} type="button" onClick={() => setField('code_95', opt.value)} style={{
+                          flex: 1, padding: '8px 6px', borderRadius: 7, cursor: 'pointer',
+                          background: sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
+                          border: `1.5px solid ${sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+                          color: sel ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                          fontSize: 12, fontWeight: 650, transition: 'all 0.12s',
+                        }}>
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ textAlign: 'center', marginTop: 6 }}>
+                    <button type="button" onClick={() => setField('code_95', '')} style={{ background: 'none', border: 'none', padding: '2px 0', fontSize: 11, fontWeight: 600, color: palette.primaryDeepPlum.hex, cursor: 'pointer' }}>
+                      Skip for now
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
