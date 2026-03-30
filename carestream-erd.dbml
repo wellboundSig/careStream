@@ -1,0 +1,516 @@
+// Wellbound CareStream — Database Schema (DBML)
+// Generated from Airtable metadata API — 2026-03-30
+// Paste into https://dbdiagram.io to visualize
+
+// ─── Core Entities ──────────────────────────────────────────────────────────
+
+Table Patients {
+  id                     string    [pk]
+  first_name             string    [not null]
+  last_name              string    [not null]
+  dob                    dateTime  [not null]
+  gender                 enum      [note: 'Female, Male']
+  address_street         string
+  address_city           string
+  address_state          enum      [note: 'NY, NJ, IL, CT']
+  address_zip            string
+  phone_primary          string
+  phone_secondary        string
+  email                  string
+  medicaid_number        string
+  medicare_number        string
+  insurance_plan         string
+  insurance_id           string
+  division               enum      [not null, note: 'ALF, Special Needs']
+  emergency_contact_name string
+  emergency_contact_phone string
+  emergency_contact_email string
+  is_active              string    [note: 'default true']
+  created_at             dateTime
+  updated_at             dateTime
+  county                 string
+  insurance_plans        text      [note: 'JSON array of plan objects']
+  insurance_plan_details text      [note: 'JSON array of plan detail objects']
+}
+
+Table Referrals {
+  id                        string    [pk]
+  patient_id                string    [ref: > Patients.id, not null]
+  referral_source_id        string    [ref: > ReferralSources.id]
+  facility_id               string    [ref: > Facilities.id]
+  marketer_id               string    [ref: > Marketers.id]
+  campaign_id               enum      [ref: > Campaigns.id, note: 'camp_001, camp_002, camp_003']
+  intake_owner_id           string    [ref: > Users.id]
+  division                  enum      [not null, note: 'ALF, Special Needs']
+  current_stage             enum      [not null, note: 'Lead Entry, Intake, Eligibility Verification, Disenrollment Required, F2F/MD Orders Pending, Clinical Intake RN Review, Authorization Pending, Conflict, Staffing Feasibility, Admin Confirmation, Pre-SOC, SOC Scheduled, SOC Completed, Hold, NTUC, OPWDD Pending']
+  services_requested        multiselect [note: 'SN, PT, HHA, OT, ST, ABA']
+  priority                  enum      [note: 'Normal, High']
+  referral_date             dateTime  [not null]
+  f2f_date                  dateTime
+  f2f_expiration            dateTime
+  f2f_urgency               enum      [note: 'Green, Yellow, Orange, Expired, Red']
+  physician_id              string    [ref: > Physicians.id]
+  is_pecos_verified         string
+  is_opra_verified          checkbox
+  ntuc_reason               string
+  ntuc_financial_impact     string
+  hold_reason               string
+  hold_owner_id             string    [ref: > Users.id]
+  hold_expected_resolution  dateTime
+  hold_return_stage         string
+  admitted_date             dateTime
+  soc_scheduled_date        dateTime
+  soc_completed_date        dateTime
+  hchb_entered              checkbox
+  created_at                dateTime
+  updated_at                dateTime
+  services_under_licence    string    [note: 'WB or WBII based on county']
+  sn_age_group              string    [note: 'Adult or Pediatric']
+  discard_reason            string
+  discard_explanation       string
+  ntuc_request_origin_stage string    [note: 'Stage that requested NTUC']
+  ntuc_requested_by         string    [ref: > Users.id]
+  ntuc_requested_at         string
+  code_95                   string    [note: 'yes, no, or blank']
+  clinical_review_decision  string    [note: 'accept, conditional, decline']
+  clinical_review_by        string    [ref: > Users.id]
+  clinical_review_at        string
+}
+
+Table StageHistory {
+  id            string    [pk]
+  referral_id   enum      [ref: > Referrals.id, not null]
+  from_stage    enum      [note: 'Nullable on initial entry']
+  to_stage      enum      [not null]
+  changed_by_id enum      [ref: > Users.id, not null]
+  reason        string
+  metadata      string    [note: 'JSON snapshot']
+  timestamp     dateTime
+}
+
+Table Notes {
+  id          string    [pk]
+  patient_id  string    [ref: > Patients.id, not null]
+  referral_id string    [ref: > Referrals.id]
+  author_id   string    [ref: > Users.id, not null]
+  content     text      [not null]
+  is_pinned   checkbox
+  created_at  dateTime
+  updated_at  dateTime
+}
+
+Table Files {
+  id             string    [pk]
+  patient_id     string    [ref: > Patients.id, not null]
+  referral_id    string    [ref: > Referrals.id]
+  uploaded_by_id string    [ref: > Users.id, not null]
+  file_name      string    [not null]
+  file_type      string    [not null]
+  file_size      integer   [not null, note: 'bytes']
+  r2_key         string    [not null]
+  r2_url         richText  [not null]
+  category       enum      [note: 'Insurance, F2F, MD Orders, Other, Authorization, Consent, Discharge']
+  created_at     dateTime
+}
+
+// ─── Insurance & Clinical ───────────────────────────────────────────────────
+
+Table InsuranceChecks {
+  id                  string    [pk]
+  referral_id         string    [ref: > Referrals.id, not null]
+  patient_id          string    [ref: > Patients.id, not null]
+  checked_by_id       string    [ref: > Users.id, not null]
+  check_source        string    [note: 'Waystar, ePACES, Availity, Manual']
+  check_date          dateTime  [not null]
+  medicare_part_a     string
+  medicare_part_b     string
+  medicaid_active     checkbox
+  managed_care_plan   string
+  managed_care_id     string
+  has_open_hh_episode checkbox
+  open_episode_agency string
+  hospice_overlap     checkbox
+  snf_present         checkbox
+  hospital_present    checkbox
+  qmb_status          checkbox
+  cdpap_active        checkbox
+  auth_required       checkbox
+  disenrollment_needed checkbox
+  result_summary      string
+  raw_response        string    [note: 'JSON']
+  created_at          dateTime
+}
+
+Table Conflicts {
+  id              string    [pk]
+  referral_id     string    [ref: > Referrals.id, not null]
+  type            string    [not null]
+  description     string    [not null]
+  severity        string    [note: 'Low, Medium, High, Critical']
+  status          enum      [not null, note: 'In Progress, Resolved']
+  flagged_by_id   enum      [ref: > Users.id, not null]
+  resolved_by_id  string    [ref: > Users.id]
+  resolution_note string
+  resolved_at     dateTime
+  created_at      dateTime
+}
+
+Table Authorizations {
+  id                        string    [pk]
+  referral_id               string    [ref: > Referrals.id, not null]
+  insurance_check_id        string    [ref: > InsuranceChecks.id]
+  plan_name                 string    [not null]
+  auth_number               string
+  services_authorized       multiselect [note: 'SN, PT, OT, ABA, HHA']
+  status                    enum      [not null, note: 'Pending, Approved, Denied']
+  submitted_date            dateTime
+  approved_date             dateTime
+  effective_start           dateTime
+  effective_end             dateTime
+  denial_reason             string
+  denial_document_file_id   string    [ref: > Files.id]
+  notes                     string
+  created_at                dateTime
+  updated_at                dateTime
+}
+
+// ─── Tasks & Episodes ───────────────────────────────────────────────────────
+
+Table Tasks {
+  id                        string    [pk]
+  referral_id               string    [ref: > Referrals.id]
+  patient_id                string    [ref: > Patients.id]
+  title                     string    [not null]
+  description               text
+  type                      enum      [not null, note: 'Follow-Up, Insurance Barrier, Disenrollment, Missing Document, Auth Needed, Staffing, Escalation, Scheduling, Other']
+  route_to_role             enum      [not null, note: 'Intake, Clinical, Scheduling, Admin']
+  assigned_to_id            string    [ref: > Users.id]
+  status                    enum      [not null, note: 'Pending, In Progress, Completed']
+  priority                  enum      [note: 'Normal, High, Urgent']
+  due_date                  dateTime
+  completed_at              dateTime
+  completed_by_id           string    [ref: > Users.id]
+  blocks_stage_progression  checkbox
+  source                    enum      [note: 'System, Manual']
+  created_at                dateTime
+  updated_at                dateTime
+  scheduled_date            dateTime
+}
+
+Table Episodes {
+  id                   string    [pk]
+  patient_id           string    [ref: > Patients.id, not null]
+  referral_id          string    [ref: > Referrals.id]
+  soc_date             dateTime  [not null]
+  episode_start        dateTime  [not null]
+  episode_end          string
+  current_30day_period integer
+  recert_due_date      dateTime
+  auth_window_start    string
+  auth_window_end      string
+  status               enum      [not null, note: 'Active']
+  revenue_risk_flag    checkbox
+  revenue_risk_reason  string
+  hchb_synced          string
+  created_at           dateTime
+  updated_at           dateTime
+}
+
+// ─── Triage Forms ───────────────────────────────────────────────────────────
+
+Table TriageAdult {
+  id                   string    [pk]
+  referral_id          string    [ref: > Referrals.id, not null, note: 'unique']
+  filled_by_id         string    [ref: > Users.id, not null]
+  caregiver_name       string
+  caregiver_phone      string
+  caregiver_email      string
+  has_pets             checkbox
+  pet_details          string
+  has_homecare_services checkbox
+  homecare_agency_name string
+  homecare_hours       string
+  homecare_days        string
+  has_community_hab    checkbox
+  services_needed      multiselect [note: 'SN, PT, ST, OT']
+  therapy_availability string
+  is_diabetic          checkbox
+  diabetes_monitor_by  string
+  pcp_name             string
+  pcp_last_visit       dateTime
+  pcp_phone            string
+  pcp_fax              string
+  pcp_address          string
+  cm_name              string
+  cm_company           string
+  cm_phone             string
+  cm_fax_or_email      string
+  created_at           dateTime
+  updated_at           dateTime
+}
+
+Table TriagePediatric {
+  id                        string    [pk]
+  referral_id               string    [ref: > Referrals.id, not null, note: 'unique']
+  filled_by_id              string    [ref: > Users.id, not null]
+  phone_call_made_to        string
+  household_description     string
+  has_pets                  checkbox
+  pet_details               string
+  has_homecare_services     checkbox
+  homecare_agency_name      string
+  homecare_hours            string
+  homecare_days             string
+  boe_services              string
+  has_community_hab         checkbox
+  services_needed           multiselect [note: 'SN, PT, ST, OT, ABA']
+  therapy_availability      string
+  hha_hours_frequency       string
+  is_diabetic               checkbox
+  diabetes_monitor_by       string
+  immunizations_up_to_date  string
+  school_bus_time           string
+  recent_hospitalization    string
+  pcp_name                  string
+  pcp_last_visit            dateTime
+  pcp_phone                 string
+  pcp_fax                   string
+  pcp_address               string
+  cm_name                   string
+  cm_company                string
+  cm_phone                  string
+  potential_soc_date        dateTime
+  created_at                dateTime
+  updated_at                dateTime
+}
+
+Table TriageALF {
+  Name        string    [pk]
+  Notes       text
+  Assignee    collaborator
+  Status      enum      [note: 'Todo, In progress, Done']
+  Attachments attachment
+  Attachment_Summary aiText
+}
+
+// ─── Directory: People & Places ─────────────────────────────────────────────
+
+Table Marketers {
+  id                    string    [pk]
+  user_id               string    [ref: > Users.id]
+  first_name            string    [not null]
+  last_name             string    [not null]
+  email                 string    [not null]
+  phone                 string
+  region                multiselect [note: 'Regional, Bronx, Pelham, Putnam, Queens, Westchester']
+  division              string    [note: 'ALF, Special Needs, Both']
+  status                enum      [note: 'Active']
+  created_at            dateTime
+  supervising_marketer  checkbox
+}
+
+Table Physicians {
+  id                string    [pk]
+  first_name        string    [not null]
+  last_name         string    [not null]
+  npi               string    [note: 'unique']
+  phone             string
+  fax               string
+  address_street    string
+  address_city      string
+  address_state     enum      [note: 'NY']
+  address_zip       string
+  is_pecos_enrolled checkbox
+  is_opra_enrolled  checkbox
+  pecos_last_checked dateTime
+  facility_id       string    [ref: > Facilities.id]
+  is_active         string    [note: 'default true']
+  created_at        dateTime
+}
+
+Table Facilities {
+  id                              string    [pk]
+  name                            string    [not null]
+  type                            enum      [note: 'NURSING HOME, ASSISTED LIVING FACILITY, CARE COORDINATION ORG, SKILLED NURSING FACILITY, HOSPITAL, OTHER, PHARMACY, REFERRAL SOURCE, FUNERAL HOME']
+  address_street                  string
+  address_city                    string
+  address_state                   enum      [note: 'NY']
+  address_zip                     integer
+  phone                           string
+  fax                             string
+  primary_contact_name            string
+  primary_contact_phone           string
+  primary_contact_email           string
+  region                          enum      [note: 'Bronx, LI, Westchester, NYC, County, NASSAU, BRONX, KINGS, SUFFOLK, NEW YORK, QUEENS, WESTCHESTER, BROOME, BERGEN, RICHMOND, ROCKLAND, MONMOUTH, PUTNAM, DUTCHESS, DALLAS']
+  services_provided_internally    string
+  notes                           string
+  is_active                       string
+  created_at                      dateTime
+}
+
+Table NetworkFacilities {
+  id              string    [pk]
+  name            string    [not null]
+  region          string
+  marketer_id     string    [ref: > Marketers.id]
+  case_manager    string
+  type            enum      [note: 'NURSING HOME, ASSISTED LIVING FACILITY, CARE COORDINATION ORG, SKILLED NURSING FACILITY, HOSPITAL, OTHER, PHARMACY, REFERRAL SOURCE, FUNERAL HOME']
+  address_street  string
+  zipcode         string
+}
+
+Table ReferralSources {
+  id          string    [pk]
+  name        string    [not null]
+  type        string    [not null]
+  is_active   string    [note: 'default true']
+  created_at  dateTime
+  marketer_id string    [ref: > Marketers.id]
+}
+
+Table Campaigns {
+  id          string    [pk]
+  name        string    [not null]
+  division    enum      [note: 'ALF, Special Needs']
+  region      string
+  start_date  dateTime
+  end_date    dateTime
+  status      enum      [note: 'Active']
+  notes       string
+  created_at  dateTime
+}
+
+// ─── Join Tables ────────────────────────────────────────────────────────────
+
+Table MarketerFacilities {
+  id            string    [pk]
+  marketer_id   enum      [ref: > Marketers.id, not null]
+  facility_id   string    [ref: > Facilities.id, not null]
+  is_primary    checkbox
+  assigned_date dateTime
+}
+
+Table CampaignMarketers {
+  id          string    [pk]
+  campaign_id string    [ref: > Campaigns.id, not null]
+  marketer_id string    [ref: > Marketers.id, not null]
+}
+
+// ─── Users, Roles & Permissions ─────────────────────────────────────────────
+
+Table Users {
+  id              string    [pk]
+  clerk_user_id   string    [not null, note: 'unique — from Clerk']
+  email           string    [not null]
+  first_name      string    [not null]
+  last_name       string    [not null]
+  role_id         string    [ref: > Roles.id, not null]
+  status          enum      [note: 'Active']
+  scope           enum      [note: 'DEPRECATED — DevNurse, Main']
+  last_login_at   dateTime
+  created_at      dateTime
+  updated_at      dateTime
+  clerk_image_url url
+  department_id   string    [ref: > Departments.id]
+}
+
+Table Roles {
+  id          string    [pk]
+  name        string    [not null, note: 'unique']
+  description string
+  created_at  dateTime
+}
+
+Table Permissions {
+  id          string    [pk]
+  key         string    [not null, note: 'unique']
+  label       string    [not null]
+  category    enum      [not null, note: 'Referrals, Clinical, Reports, Settings, Division Access, Patients, Authorization, Tasks, Documents, Notes, Conflicts, Scheduling, Directory, Administration']
+  created_at  dateTime
+  description string
+  sort_order  integer
+}
+
+Table RolePermissions {
+  id            string    [pk]
+  role_id       enum      [ref: > Roles.id, not null]
+  permission_id enum      [ref: > Permissions.id, not null]
+  allowed       string
+}
+
+Table UserPermissionOverrides {
+  id            string    [pk]
+  user_id       string    [ref: > Users.id, not null]
+  permission_id string    [ref: > Permissions.id]
+  allowed       string
+}
+
+Table PermissionPresets {
+  id          string    [pk]
+  name        string    [not null, note: 'unique']
+  description string
+  permissions text      [not null, note: 'JSON array of permission keys']
+  is_system   checkbox
+  created_at  string
+  updated_at  string
+}
+
+Table UserPermissions {
+  id                string    [pk]
+  user_id           string    [ref: > Users.id, not null, note: 'unique — one per user']
+  permissions       text      [not null, note: 'JSON array of permission keys']
+  last_preset_id    string    [ref: > PermissionPresets.id]
+  updated_at        string
+  updated_by        string    [ref: > Users.id]
+  allowed_assignees text      [note: 'JSON array of user IDs']
+}
+
+// ─── Departments ────────────────────────────────────────────────────────────
+
+Table Departments {
+  id                  string    [pk]
+  name                string    [not null]
+  supervisor          string    [ref: > Users.id]
+  division            string
+  department_scope_id string    [ref: > DepartmentScopes.id]
+}
+
+Table DepartmentScopes {
+  id           string    [pk]
+  name         string    [not null]
+  stage_access multiselect [note: 'Lead Entry, Intake, Eligibility Verification, Disenrollment Required, F2F/MD Orders Pending, Clinical Intake RN Review, Authorization Pending, Conflict, Staffing Feasibility, Admin Confirmation, Pre-SOC, SOC Scheduled, SOC Completed, Hold, NTUC, OPWDD Pending']
+}
+
+// ─── Preferences & Audit ────────────────────────────────────────────────────
+
+Table UserPreferences {
+  clerk_user_id        string    [pk, note: 'matches Users.clerk_user_id']
+  subnav_enabled       checkbox
+  pinned_pages         text      [note: 'JSON array of page slugs']
+  split_screen_enabled checkbox
+  dashboard_mode       string    [note: 'executive or caseload']
+}
+
+Table ActivityLog {
+  id          string    [pk]
+  actor_id    enum      [ref: > Users.id, not null]
+  patient_id  enum      [ref: > Patients.id]
+  referral_id enum      [ref: > Referrals.id]
+  action      enum      [not null, note: 'Referral Created, Stage Change, Note Added, Task Created, Patient Created, File Uploaded, Insurance Check, Conflict Flagged, Triage Submitted, Conflict Resolved, Task Completed, Hold Placed, NTUC Recorded']
+  detail      string
+  metadata    string    [note: 'JSON']
+  timestamp   dateTime
+}
+
+// ─── Calls ──────────────────────────────────────────────────────────────────
+
+Table Calls {
+  call_id            string    [pk]
+  caller_usr_id      string    [ref: > Users.id]
+  related_patient_id string    [ref: > Patients.id]
+  conflict_id        string    [ref: > Conflicts.id]
+  date_of_call       createdTime
+  topic              enum      [note: 'General Follow-up, Other']
+  call_answered      string
+  call_description   string
+}

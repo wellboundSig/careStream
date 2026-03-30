@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
-import { useCareStore } from '../../store/careStore.js';
+import { useState, useMemo, useCallback } from 'react';
+import { useCareStore, mergeEntities, removeEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import FacilityDrawer from '../../components/facilities/FacilityDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { createMarketerFacility, updateMarketerFacility, deleteMarketerFacility } from '../../api/marketerFacilities.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -149,7 +150,10 @@ export default function Facilities() {
     });
   }, [facilities, search, typeFilter, regionFilter, sortField, sortDir]);
 
+  const [editingMkts, setEditingMkts] = useState(null);
+
   const { can } = usePermissions();
+  const canEditMarketers = can(PERMISSION_KEYS.FACILITY_EDIT_MARKETERS);
   if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
 
   function toggleSort(f) {
@@ -265,6 +269,8 @@ export default function Facilities() {
                   refCount={refCounts[fac.id] || 0}
                   resolveMarketer={resolveMarketer}
                   onOpen={() => setSelected(fac)}
+                  canEditMarketers={canEditMarketers}
+                  onEditMarketers={(f) => setEditingMkts(f)}
                 />
               ))}
             </tbody>
@@ -273,11 +279,129 @@ export default function Facilities() {
       </div>
 
       <FacilityDrawer facility={selected} onClose={() => setSelected(null)} />
+      {editingMkts && <MarketerAssignModal facility={editingMkts} onClose={() => setEditingMkts(null)} />}
     </>
   );
 }
 
-function FacilityRow({ facility, liaison, refCount, resolveMarketer, onOpen }) {
+function MarketerAssignModal({ facility, onClose }) {
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const storeMF = useCareStore((s) => s.marketerFacilities);
+  const marketers = useMemo(() => Object.values(storeMarketers).sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`)), [storeMarketers]);
+  const links = useMemo(() => Object.values(storeMF).filter((mf) => mf.facility_id === facility.id), [storeMF, facility.id]);
+  const [saving, setSaving] = useState(false);
+  const [addId, setAddId] = useState('');
+
+  const unlinkedMarketers = useMemo(() => {
+    const linked = new Set(links.map((l) => l.marketer_id));
+    return marketers.filter((m) => !linked.has(m.id));
+  }, [marketers, links]);
+
+  async function handleAdd() {
+    if (!addId || saving) return;
+    setSaving(true);
+    try {
+      const rec = await createMarketerFacility({
+        id: `mf_${Date.now()}`,
+        facility_id: facility.id,
+        marketer_id: addId,
+        is_primary: links.length === 0,
+      });
+      mergeEntities('marketerFacilities', { [rec.id]: { _id: rec.id, ...rec.fields } });
+      setAddId('');
+    } catch (err) {
+      console.error('Failed to add marketer:', err);
+    }
+    setSaving(false);
+  }
+
+  async function handleSetPrimary(recordId) {
+    setSaving(true);
+    try {
+      for (const link of links) {
+        if (link._id === recordId) {
+          await updateMarketerFacility(link._id, { is_primary: true });
+          mergeEntities('marketerFacilities', { [link._id]: { ...link, is_primary: true } });
+        } else if (link.is_primary === true || link.is_primary === 'true') {
+          await updateMarketerFacility(link._id, { is_primary: false });
+          mergeEntities('marketerFacilities', { [link._id]: { ...link, is_primary: false } });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to set primary:', err);
+    }
+    setSaving(false);
+  }
+
+  async function handleRemove(recordId) {
+    setSaving(true);
+    try {
+      await deleteMarketerFacility(recordId);
+      removeEntity('marketerFacilities', recordId);
+    } catch (err) {
+      console.error('Failed to remove marketer:', err);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: hexToRgba(palette.backgroundDark.hex, 0.35) }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9991, background: palette.backgroundLight.hex, borderRadius: 14, width: 'min(460px, 90vw)', maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: `0 8px 32px ${hexToRgba(palette.backgroundDark.hex, 0.2)}` }}>
+        <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>Manage Marketers</h3>
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{facility.name}</p>
+          </div>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
+          {links.length === 0 && (
+            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', marginBottom: 12 }}>No marketers assigned yet.</p>
+          )}
+          {links.map((link) => {
+            const m = marketers.find((mk) => mk.id === link.marketer_id);
+            const isPrimary = link.is_primary === true || link.is_primary === 'true';
+            return (
+              <div key={link._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex }}>
+                  {m ? `${m.first_name} ${m.last_name}` : link.marketer_id}
+                </span>
+                {isPrimary ? (
+                  <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 12, background: hexToRgba(palette.accentGreen.hex, 0.15), color: palette.accentGreen.hex }}>★ Primary</span>
+                ) : (
+                  <button onClick={() => handleSetPrimary(link._id)} disabled={saving} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>
+                    Set primary
+                  </button>
+                )}
+                <button onClick={() => handleRemove(link._id)} disabled={saving} style={{ fontSize: 11, color: palette.primaryMagenta.hex, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <select value={addId} onChange={(e) => setAddId(e.target.value)} style={{ flex: 1, height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit' }}>
+              <option value="">Add a marketer…</option>
+              {unlinkedMarketers.map((m) => (
+                <option key={m._id} value={m.id}>{m.first_name} {m.last_name}</option>
+              ))}
+            </select>
+            <button onClick={handleAdd} disabled={!addId || saving} style={{ padding: '0 16px', height: 34, borderRadius: 8, background: addId ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', color: addId ? '#fff' : hexToRgba(palette.backgroundDark.hex, 0.35), fontSize: 12.5, fontWeight: 650, cursor: addId ? 'pointer' : 'default' }}>
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function FacilityRow({ facility, liaison, refCount, resolveMarketer, onOpen, canEditMarketers, onEditMarketers }) {
   const [hovered, setHovered] = useState(false);
   const liaisonName = liaison ? resolveMarketer(liaison) : null;
 
@@ -296,16 +420,23 @@ function FacilityRow({ facility, liaison, refCount, resolveMarketer, onOpen }) {
         {facility.primary_contact_phone && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{facility.primary_contact_phone}</p>}
       </td>
       <td style={{ padding: '12px 14px' }}>
-        {liaisonName && liaisonName !== liaison ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 22, height: 22, borderRadius: '50%', background: hexToRgba(palette.accentOrange.hex, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9.5, fontWeight: 800, color: palette.accentOrange.hex, flexShrink: 0 }}>
-              {liaisonName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {liaisonName && liaisonName !== liaison ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1 }}>
+              <span style={{ width: 22, height: 22, borderRadius: '50%', background: hexToRgba(palette.accentOrange.hex, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9.5, fontWeight: 800, color: palette.accentOrange.hex, flexShrink: 0 }}>
+                {liaisonName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </span>
+              <span style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7) }}>{liaisonName}</span>
             </span>
-            <span style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7) }}>{liaisonName}</span>
-          </span>
-        ) : (
-          <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>
-        )}
+          ) : (
+            <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3), flex: 1 }}>—</span>
+          )}
+          {canEditMarketers && hovered && (
+            <button onClick={(e) => { e.stopPropagation(); onEditMarketers(facility); }} style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), border: 'none', color: palette.primaryDeepPlum.hex, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+              Edit
+            </button>
+          )}
+        </div>
       </td>
       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
         <span style={{ fontSize: 13, fontWeight: refCount > 0 ? 650 : 400, color: refCount > 0 ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.3) }}>{refCount}</span>

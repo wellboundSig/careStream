@@ -80,12 +80,18 @@ vi.mock('../../../hooks/useIsMobile.js', () => ({
 vi.mock('../../../store/careStore.js', () => ({
   useCareStore: (selector) => {
     const state = {
-      marketers: { m1: { _id: 'm1', id: 'mkt_1', first_name: 'Jane', last_name: 'Doe', user_id: 'usr_other', division: 'Both' } },
+      marketers: {
+        m1: { _id: 'm1', id: 'mkt_1', first_name: 'Jane', last_name: 'Doe', user_id: 'usr_other', division: 'Both' },
+        m2: { _id: 'm2', id: 'mkt_2', first_name: 'Bob', last_name: 'Smith', user_id: 'usr_bob', division: 'ALF' },
+      },
       referralSources: { s1: { _id: 's1', id: 'src_1', name: 'Hospital A' } },
       roles: { r1: { _id: 'r1', id: 'rol_001', name: 'Intake Coordinator' } },
       facilities: { f1: { _id: 'f1', id: 'fac_1', name: 'Sunrise ALF', is_active: 'TRUE' } },
       networkFacilities: { nf1: { _id: 'nf1', id: 'fac_1', name: 'Sunrise ALF', region: 'KINGS' } },
-      marketerFacilities: {},
+      marketerFacilities: {
+        mf1: { _id: 'mf1', facility_id: 'fac_1', marketer_id: 'mkt_1', is_primary: true },
+        mf2: { _id: 'mf2', facility_id: 'fac_1', marketer_id: 'mkt_2', is_primary: false },
+      },
     };
     return selector(state);
   },
@@ -432,5 +438,74 @@ describe('NewReferralForm — services_under_licence in submission', () => {
     const payload = createReferral.mock.calls[0][0];
     expect(payload.services_under_licence).toBe('WBII');
     expect(payload.sn_age_group).toBe('Pediatric');
+  });
+});
+
+describe('NewReferralForm — Facility-Marketer filtering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCan.mockReturnValue(true);
+  });
+
+  it('shows all marketers when no facility is selected (non-ALF)', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+
+    const comboboxes = screen.getAllByRole('combobox');
+    const marketerSelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent.includes('Jane Doe'))
+    );
+    expect(marketerSelect).toBeTruthy();
+    const options = within(marketerSelect).getAllByRole('option');
+    const labels = options.map((o) => o.textContent);
+    expect(labels.some((l) => l.includes('Jane Doe'))).toBe(true);
+    expect(labels.some((l) => l.includes('Bob Smith'))).toBe(true);
+  });
+
+  it('filters marketer list to facility-linked marketers when ALF facility is chosen', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+
+    const comboboxes = screen.getAllByRole('combobox');
+    const facilitySelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Sunrise ALF')
+    );
+    fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
+
+    const marketerSelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent.includes('Primary'))
+    );
+    if (marketerSelect) {
+      const options = within(marketerSelect).getAllByRole('option');
+      const labels = options.map((o) => o.textContent);
+      expect(labels.some((l) => l.includes('Jane Doe') && l.includes('Primary'))).toBe(true);
+      expect(labels.some((l) => l.includes('Bob Smith'))).toBe(true);
+    }
+  });
+
+  it('auto-selects the primary marketer when a facility is chosen', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+
+    const comboboxes = screen.getAllByRole('combobox');
+    const facilitySelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Sunrise ALF')
+    );
+    fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
+
+    expect(screen.getByText(/Primary marketer for this facility/i)).toBeTruthy();
+  });
+
+  it('shows facility marketer count indicator', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+
+    const comboboxes = screen.getAllByRole('combobox');
+    const facilitySelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Sunrise ALF')
+    );
+    fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
+
+    expect(screen.getByText(/2 marketers assigned to this facility/i)).toBeTruthy();
   });
 });

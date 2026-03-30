@@ -350,6 +350,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           next.code_95 = '';
         }
         next.services_requested = [];
+        if (value !== 'ALF') next.marketer_id = '';
       }
       if (key === 'county') {
         const lic = getLicenceForCounty(value);
@@ -360,6 +361,24 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         } else {
           next.services_under_licence = '';
         }
+      }
+      if (key === 'facility_id' && value) {
+        const links = Object.values(storeMarketerFacs).filter(
+          (mf) => mf.facility_id === value
+        );
+        const primary = links.find(
+          (l) => l.is_primary === true || l.is_primary === 'true'
+        );
+        if (primary) {
+          next.marketer_id = primary.marketer_id;
+        } else if (links.length === 1) {
+          next.marketer_id = links[0].marketer_id;
+        } else if (links.length === 0) {
+          next.marketer_id = prev.marketer_id;
+        }
+      }
+      if (key === 'facility_id' && !value) {
+        next.marketer_id = '';
       }
       return next;
     });
@@ -528,10 +547,37 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     }
   }
 
-  const marketerOptions = [
-    ...marketers.map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}` })),
-    { value: 'other', label: 'Other / Not listed' },
-  ];
+  const facilityMarketerLinks = useMemo(() => {
+    if (!form.facility_id || form.division !== 'ALF') return null;
+    const links = Object.values(storeMarketerFacs).filter(
+      (mf) => mf.facility_id === form.facility_id
+    );
+    if (links.length === 0) return null;
+    return links;
+  }, [form.facility_id, form.division, storeMarketerFacs]);
+
+  const marketerOptions = useMemo(() => {
+    if (facilityMarketerLinks) {
+      const linked = facilityMarketerLinks
+        .map((link) => {
+          const m = marketers.find((mk) => mk.id === link.marketer_id);
+          if (!m) return null;
+          const isPrimary = link.is_primary === true || link.is_primary === 'true';
+          return {
+            value: m.id,
+            label: `${m.first_name} ${m.last_name}${isPrimary ? '  ★ Primary' : ''}`,
+            isPrimary,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+      return [...linked, { value: 'other', label: 'Other / Not listed' }];
+    }
+    return [
+      ...marketers.map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}` })),
+      { value: 'other', label: 'Other / Not listed' },
+    ];
+  }, [facilityMarketerLinks, marketers]);
 
   const sourceOptions = [
     ...sources.map((s) => ({ value: s.id, label: s.name })),
@@ -752,10 +798,21 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                 )}
               </FieldBox>
               <FieldBox label="Marketer" required>
-                <Select value={form.marketer_id} onChange={(v) => setField('marketer_id', v)} options={marketerOptions} placeholder="Select marketer…" hasError={!!errors.marketer_id} />
+                <Select value={form.marketer_id} onChange={(v) => setField('marketer_id', v)} options={marketerOptions} placeholder={facilityMarketerLinks ? 'Select facility marketer…' : 'Select marketer…'} hasError={!!errors.marketer_id} />
                 {errors.marketer_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.marketer_id}</p>}
-                {form.marketer_id && form.marketer_id !== 'other' && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
+                {facilityMarketerLinks && form.marketer_id && form.marketer_id !== 'other' && (() => {
+                  const link = facilityMarketerLinks.find((l) => l.marketer_id === form.marketer_id);
+                  const isPrimary = link && (link.is_primary === true || link.is_primary === 'true');
+                  if (isPrimary) return <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>★ Primary marketer for this facility — auto-selected</p>;
+                  return null;
+                })()}
+                {form.marketer_id && form.marketer_id !== 'other' && !facilityMarketerLinks && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
                   <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled — you are the marketer for this referral</p>
+                )}
+                {facilityMarketerLinks && (
+                  <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
+                    Showing {facilityMarketerLinks.length} marketer{facilityMarketerLinks.length !== 1 ? 's' : ''} assigned to this facility
+                  </p>
                 )}
                 {form.marketer_id === 'other' && (
                   <div style={{ marginTop: 8 }}>

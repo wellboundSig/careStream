@@ -71,6 +71,7 @@ export const PERMISSION_KEYS = {
   DIRECTORY_VIEW: 'directory.view',
   DIRECTORY_EDIT: 'directory.edit',
   DIRECTORY_CREATE: 'directory.create',
+  FACILITY_EDIT_MARKETERS: 'facility.edit_marketers',
 
   // Module Visibility (per stage group — controls sidebar and page access)
   MODULE_INTAKE: 'module.intake',
@@ -188,6 +189,7 @@ export const PERMISSION_CATALOG = [
   { key: K.DIRECTORY_VIEW,   label: 'View directory pages',     category: 'Directory', description: 'Browse marketers, facilities, physicians, etc.', sort: 110 },
   { key: K.DIRECTORY_EDIT,   label: 'Edit directory entries',    category: 'Directory', description: 'Modify existing directory records', sort: 111 },
   { key: K.DIRECTORY_CREATE, label: 'Create directory entries',  category: 'Directory', description: 'Add new physicians, facilities, etc.', sort: 112 },
+  { key: K.FACILITY_EDIT_MARKETERS, label: 'Edit facility marketer assignments', category: 'Directory', description: 'Assign or remove marketers from facilities and set primary marketer', sort: 113 },
 
   // Dashboard
   { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',   category: 'Dashboard', description: 'Allow user to switch between executive and caseload dashboard views', sort: 113 },

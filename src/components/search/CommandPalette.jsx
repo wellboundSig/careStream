@@ -257,7 +257,7 @@ export default function CommandPalette({ isOpen, onClose }) {
         <div ref={listRef} style={{ overflowY: 'auto', flex: 1 }}>
 
           {/* Empty state — no query */}
-          {!query.trim() && !loading && (
+          {!query.trim() && (
             <div style={{ padding: '28px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), lineHeight: 1.6 }}>
                 Search by patient name, Medicaid number, phone, physician, facility, referral source, or marketer.
