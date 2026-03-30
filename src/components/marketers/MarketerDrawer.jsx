@@ -95,7 +95,12 @@ export default function MarketerDrawer({ marketer, onClose }) {
             </button>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {marketer.region && <span style={{ fontSize: 11.5, fontWeight: 650, padding: '3px 9px', borderRadius: 20, background: hexToRgba(palette.backgroundLight.hex, 0.14), color: hexToRgba(palette.backgroundLight.hex, 0.85) }}>{marketer.region}</span>}
+            {marketer.region && (() => {
+              const regions = Array.isArray(marketer.region) ? marketer.region : String(marketer.region).split(',').map((r) => r.trim()).filter(Boolean);
+              return regions.map((r) => (
+                <span key={r} style={{ fontSize: 11.5, fontWeight: 650, padding: '3px 9px', borderRadius: 20, background: hexToRgba(palette.backgroundLight.hex, 0.14), color: hexToRgba(palette.backgroundLight.hex, 0.85) }}>{r}</span>
+              ));
+            })()}
             {marketer.division && <span style={{ fontSize: 11.5, fontWeight: 650, padding: '3px 9px', borderRadius: 20, background: divStyle.bg, color: divStyle.text }}>{marketer.division}</span>}
             <span style={{ fontSize: 11.5, fontWeight: 650, padding: '3px 9px', borderRadius: 20, background: marketer.status === 'Active' ? hexToRgba(palette.accentGreen.hex, 0.22) : hexToRgba(palette.backgroundDark.hex, 0.2), color: marketer.status === 'Active' ? palette.accentGreen.hex : hexToRgba(palette.backgroundLight.hex, 0.55) }}>{marketer.status}</span>
           </div>
@@ -117,7 +122,7 @@ export default function MarketerDrawer({ marketer, onClose }) {
         </div>
 
         {/* Tab content */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {activeTab === 'overview'   && <MarketerOverviewTab marketer={marketer} stats={stats} />}
           {activeTab === 'referrals'  && <MarketerReferralsTab referrals={referrals} />}
           {activeTab === 'metrics'    && <MarketerMetricsTab stats={stats} ntucReasons={ntucReasons} referrals={referrals} />}

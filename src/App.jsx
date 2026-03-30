@@ -16,6 +16,7 @@ import Facilities from './pages/directory/Facilities.jsx';
 import Physicians from './pages/directory/Physicians.jsx';
 import Campaigns from './pages/directory/Campaigns.jsx';
 import ReferralSources from './pages/directory/ReferralSources.jsx';
+import Clinicians from './pages/directory/Clinicians.jsx';
 import Tasks from './pages/Tasks.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
 import Settings from './pages/Settings.jsx';
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="directory/physicians" element={<Physicians />} />
         <Route path="directory/campaigns" element={<Campaigns />} />
         <Route path="directory/referral-sources" element={<ReferralSources />} />
+        <Route path="directory/clinicians" element={<Clinicians />} />
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/permissions" element={<Permissions />} />

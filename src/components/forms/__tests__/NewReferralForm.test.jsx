@@ -84,6 +84,7 @@ vi.mock('../../../store/careStore.js', () => ({
       referralSources: { s1: { _id: 's1', id: 'src_1', name: 'Hospital A' } },
       roles: { r1: { _id: 'r1', id: 'rol_001', name: 'Intake Coordinator' } },
       facilities: { f1: { _id: 'f1', id: 'fac_1', name: 'Sunrise ALF', is_active: 'TRUE' } },
+      networkFacilities: { nf1: { _id: 'nf1', id: 'fac_1', name: 'Sunrise ALF', region: 'KINGS' } },
       marketerFacilities: {},
     };
     return selector(state);

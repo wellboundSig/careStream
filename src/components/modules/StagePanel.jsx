@@ -1076,6 +1076,11 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const dest = authRequired ? 'Authorization Pending' : 'Staffing Feasibility';
+    updateReferral(selectedReferral._id, {
+      clinical_review_decision: decision,
+      clinical_review_by: appUserId || 'unknown',
+      clinical_review_at: new Date().toISOString(),
+    }).catch(() => {});
     onInitiateTransition?.(selectedReferral, dest);
   }
 
@@ -1102,6 +1107,11 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 
   function handleDecline() {
     if (!selectedReferral) return;
+    updateReferral(selectedReferral._id, {
+      clinical_review_decision: 'decline',
+      clinical_review_by: appUserId || 'unknown',
+      clinical_review_at: new Date().toISOString(),
+    }).catch(() => {});
     onInitiateTransition?.(selectedReferral, 'Conflict');
   }
 

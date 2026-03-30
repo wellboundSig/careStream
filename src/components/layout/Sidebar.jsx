@@ -30,6 +30,7 @@ const NAV_ITEMS = [
       { label: 'Facilities', path: '/directory/facilities', icon: FacilitiesIcon },
       { label: 'Physicians', path: '/directory/physicians', icon: PhysiciansIcon },
       { label: 'Referral Sources', path: '/directory/referral-sources', icon: SourcesIcon },
+      { label: 'Clinicians', path: '/directory/clinicians', icon: PhysiciansIcon },
       { label: 'Campaigns', path: '/directory/campaigns', icon: CampaignsIcon },
     ],
   },

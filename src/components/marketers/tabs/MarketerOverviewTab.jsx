@@ -36,7 +36,11 @@ export default function MarketerOverviewTab({ marketer, stats }) {
       <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginBottom: 10 }}>Contact Info</p>
       <InfoRow label="Email" value={marketer.email} />
       <InfoRow label="Phone" value={marketer.phone} />
-      <InfoRow label="Region" value={marketer.region} />
+      <InfoRow label="Region" value={(() => {
+        if (!marketer.region) return '—';
+        const regions = Array.isArray(marketer.region) ? marketer.region : String(marketer.region).split(',').map((r) => r.trim()).filter(Boolean);
+        return regions.join(', ');
+      })()} />
       <InfoRow label="Division" value={marketer.division} />
       <InfoRow label="Status" value={marketer.status} />
       <InfoRow label="Last Referral" value={lastRef} />

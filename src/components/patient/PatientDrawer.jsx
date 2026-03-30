@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { useCareStore } from '../../store/careStore.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -95,6 +96,50 @@ export default function PatientDrawer() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, close, setActiveTab]);
 
+  // Tab completeness — computed from patient + referral + store data
+  const storeInsChecks = useCareStore((s) => s.insuranceChecks);
+  const storeTriageA = useCareStore((s) => s.triageAdult);
+  const storeTriageP = useCareStore((s) => s.triagePediatric);
+  const storeAuths = useCareStore((s) => s.authorizations);
+
+  const tabComplete = useMemo(() => {
+    if (!patient || !referral) return {};
+    const p = patient;
+    const r = referral;
+    const result = {};
+
+    // Demographics: core fields filled
+    const demoFields = [p.first_name, p.last_name, p.phone_primary, p.dob, p.address_street, p.address_city, p.address_state, p.address_zip];
+    result.demographics = demoFields.every((f) => f && String(f).trim());
+
+    // Overview: has owner + marketer + source
+    result.overview = !!(r.intake_owner_id && r.marketer_id && r.referral_source_id);
+
+    // Eligibility: at least one check exists AND patient is not currently back in Eligibility stage
+    const hasCheck = Object.values(storeInsChecks).some((c) => c.patient_id === p.id);
+    const inEligStage = r.current_stage === 'Eligibility Verification';
+    result.eligibility = hasCheck && !inEligStage;
+
+    // Triage: a triage record exists for this referral (SN only; ALF is N/A so mark complete)
+    if (r.division === 'Special Needs') {
+      const hasTriageA = Object.values(storeTriageA).some((t) => t.referral_id === r.id);
+      const hasTriageP = Object.values(storeTriageP).some((t) => t.referral_id === r.id);
+      result.triage = hasTriageA || hasTriageP;
+    } else {
+      result.triage = true;
+    }
+
+    // Clinical Review: decision was made
+    result.clinical_review = !!r.clinical_review_decision;
+
+    // Auth: at least one auth record AND not currently in Auth Pending stage
+    const hasAuth = Object.values(storeAuths).some((a) => a.referral_id === r.id);
+    const inAuthStage = r.current_stage === 'Authorization Pending';
+    result.authorizations = hasAuth && !inAuthStage;
+
+    return result;
+  }, [patient, referral, storeInsChecks, storeTriageA, storeTriageP, storeAuths]);
+
   if (!visible) return null;
 
   const f2f = referral ? getF2FStatus(referral.f2f_expiration) : null;
@@ -105,7 +150,7 @@ export default function PatientDrawer() {
       <div onClick={close} style={{ position: 'fixed', inset: 0, background: animated ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)', zIndex: 1000, transition: 'background 0.3s ease', backdropFilter: animated ? 'blur(2px)' : 'none' }} />
       <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 100vw)', background: palette.backgroundLight.hex, zIndex: 1001, display: 'flex', flexDirection: 'column', boxShadow: `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`, transform: animated ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden' }}>
         <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} />
-        <ScrollableTabBar tabs={DRAWER_TABS} activeTab={activeTab} setActiveTab={setActiveTab} />
+        <ScrollableTabBar tabs={DRAWER_TABS} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
           {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
         </div>
@@ -162,7 +207,7 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
 
 // ── Scrollable TabBar with arrow buttons + click-and-drag scroll ────────────
 
-function ScrollableTabBar({ tabs, activeTab, setActiveTab }) {
+function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
   const scrollRef = useRef(null);
   const [showLeft, setShowLeft] = useState(false);
   const [showRight, setShowRight] = useState(false);
@@ -248,16 +293,27 @@ function ScrollableTabBar({ tabs, activeTab, setActiveTab }) {
       >
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
+          const isComplete = tabComplete[tab.id] === true;
+          const tabColor = isActive ? palette.primaryMagenta.hex : isComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.5);
           return (
             <button key={tab.id} data-tab={tab.id} onClick={() => setActiveTab(tab.id)}
               style={{
                 padding: '11px 16px', background: 'none', border: 'none',
                 borderBottom: `2px solid ${isActive ? palette.primaryMagenta.hex : 'transparent'}`,
-                fontSize: 12.5, fontWeight: isActive ? 650 : 450,
-                color: isActive ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
+                fontSize: 12.5, fontWeight: isActive ? 650 : isComplete ? 600 : 450,
+                color: tabColor,
                 cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.15s, border-color 0.15s', flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center', gap: 4,
               }}
-            >{tab.label}</button>
+            >
+              {tab.label}
+              {isComplete && (
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
+                  <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
           );
         })}
       </div>

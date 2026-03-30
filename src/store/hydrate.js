@@ -38,6 +38,9 @@ const TABLES = [
   { key: 'permissionPresets',  table: 'PermissionPresets' },
   { key: 'userPermissions',    table: 'UserPermissions' },
 
+  // Network facilities
+  { key: 'networkFacilities',  table: 'NetworkFacilities' },
+
   // Department system
   { key: 'departments',        table: 'Departments' },
   { key: 'departmentScopes',   table: 'DepartmentScopes' },

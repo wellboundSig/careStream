@@ -4,6 +4,8 @@ import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePreferences } from '../context/UserPreferencesContext.jsx';
 import { PIN_GROUPS } from '../components/layout/SubNav.jsx';
 import { refreshClinicians, getCliniciansLastFetched } from '../hooks/useEsperClinicians.js';
+import { usePermissions } from '../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
 
@@ -138,6 +140,7 @@ function ThemePreview({ isDark }) {
 // ── Settings page ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { isDark, toggleTheme } = useTheme();
+  const { can } = usePermissions();
   const { appUser, appUserName } = useCurrentAppUser();
   const { prefs, save, pinPage, unpinPage, MAX_PINS } = usePreferences();
 
@@ -271,12 +274,13 @@ export default function Settings() {
       {/* ── Dashboard Mode ── */}
       <Section
         title="Dashboard"
-        description="Choose your default dashboard experience."
+        description={can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE) ? 'Choose your default dashboard experience.' : 'Your dashboard mode is set by your administrator.'}
       >
         <SettingRow
           label="Dashboard Mode"
-          hint="Executive shows company-wide metrics. Caseload shows your personal workload."
+          hint={can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE) ? 'Executive shows company-wide metrics. Caseload shows your personal workload.' : 'Contact an admin to change your dashboard mode.'}
         >
+          {can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE) ? (
           <select
             value={prefs.dashboardMode || 'executive'}
             onChange={(e) => save({ dashboardMode: e.target.value })}
@@ -289,6 +293,11 @@ export default function Settings() {
             <option value="executive">Executive</option>
             <option value="caseload">Caseload</option>
           </select>
+          ) : (
+            <span style={{ fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.05), color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+              {(prefs.dashboardMode || 'executive') === 'executive' ? 'Executive' : 'Caseload'}
+            </span>
+          )}
         </SettingRow>
       </Section>
 

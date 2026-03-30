@@ -149,7 +149,19 @@ function MarketerRow({ marketer, stats, onOpen }) {
         </div>
       </td>
       <td style={{ padding: '11px 14px' }}>
-        {marketer.region ? <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: regionBg, color: palette.backgroundDark.hex }}>{marketer.region}</span> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
+        {(() => {
+          if (!marketer.region) return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>;
+          const regions = Array.isArray(marketer.region) ? marketer.region : String(marketer.region).split(',').map((r) => r.trim()).filter(Boolean);
+          if (!regions.length) return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>;
+          const first = regions[0];
+          const firstBg = REGION_COLORS[first] || hexToRgba(palette.backgroundDark.hex, 0.07);
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: firstBg, color: palette.backgroundDark.hex }}>{first}</span>
+              {regions.length > 1 && <span style={{ fontSize: 10.5, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>+{regions.length - 1}</span>}
+            </span>
+          );
+        })()}
       </td>
       <td style={{ padding: '11px 14px', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{marketer.division || '—'}</td>
       <td style={{ padding: '11px 14px' }}>

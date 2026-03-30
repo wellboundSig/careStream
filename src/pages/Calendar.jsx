@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import enUS from 'date-fns/locale/en-US';
@@ -29,11 +29,56 @@ const TASK_TYPES = [
   'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other',
 ];
 
+function OutlookGate({ onBypass }) {
+  const [showBypass, setShowBypass] = useState(false);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.shiftKey && (e.key === 'B' || e.key === 'b')) setShowBypass(true);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 40 }}>
+      <div style={{ textAlign: 'center', maxWidth: 420 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 16, background: hexToRgba(palette.accentBlue.hex, 0.1), display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="4" width="18" height="18" rx="2" stroke={palette.accentBlue.hex} strokeWidth="1.6" />
+            <path d="M16 2v4M8 2v4M3 10h18" stroke={palette.accentBlue.hex} strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 8 }}>Connect Your Calendar</h2>
+        <p style={{ fontSize: 14, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.6, marginBottom: 24 }}>
+          Sync your Microsoft Outlook calendar.
+        </p>
+        <button style={{ padding: '12px 28px', borderRadius: 8, background: '#0078d4', border: 'none', fontSize: 14, fontWeight: 650, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <svg width="18" height="18" viewBox="0 0 23 23" fill="none">
+            <path d="M1 1h10v10H1z" fill="#f25022"/><path d="M12 1h10v10H12z" fill="#7fba00"/>
+            <path d="M1 12h10v10H1z" fill="#00a4ef"/><path d="M12 12h10v10H12z" fill="#ffb900"/>
+          </svg>
+          Sign in with Microsoft
+        </button>
+        <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 16 }}>
+          This will connect your Outlook calendar to CareStream.
+        </p>
+        {showBypass && (
+          <button onClick={onBypass} style={{ marginTop: 20, padding: '8px 20px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>
+            Use local calendar (dev bypass)
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const { can } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
+  const [calendarBypassed, setCalendarBypassed] = useState(false);
 
   const storeReferrals = useCareStore((s) => s.referrals);
   const storePatients  = useCareStore((s) => s.patients);
@@ -45,9 +90,8 @@ export default function CalendarPage() {
   const [view, setView]                   = useState('month');
   const [date, setDate]                   = useState(new Date());
 
-  if (!can(PERMISSION_KEYS.CALENDAR_VIEW)) {
-    return <AccessDenied message="You do not have permission to view the calendar." />;
-  }
+  const showAccessDenied = !can(PERMISSION_KEYS.CALENDAR_VIEW);
+  const showOutlookGate = !showAccessDenied && !calendarBypassed;
 
   const patientMap = storePatients;
   const referralMap = storeReferrals;
@@ -184,6 +228,9 @@ export default function CalendarPage() {
     .rbc-allday-cell { border: none !important; }
     .rbc-header + .rbc-header { border-left: none !important; }
   `;
+
+  if (showAccessDenied) return <AccessDenied message="You do not have permission to view the calendar." />;
+  if (showOutlookGate) return <OutlookGate onBypass={() => setCalendarBypassed(true)} />;
 
   return (
     <div style={{ padding: '24px 28px', height: '100%', display: 'flex', flexDirection: 'column' }}>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
 import { getMarketerFacilities, getFacilities } from '../api/marketerFacilities.js';
+import { useCareStore } from '../store/careStore.js';
 import airtable from '../api/airtable.js';
 
 export function useMarketerData(marketer) {
@@ -38,6 +39,13 @@ export function useMarketerData(marketer) {
         const facilityMap = {};
         allFacilities.forEach((f) => {
           facilityMap[f.fields.id] = { _id: f.id, ...f.fields };
+        });
+        // Also include NetworkFacilities from the store so net_fac_* IDs resolve
+        const storeNetFacs = useCareStore.getState().networkFacilities || {};
+        Object.values(storeNetFacs).forEach((nf) => {
+          if (nf.id && !facilityMap[nf.id]) {
+            facilityMap[nf.id] = { ...nf, type: 'ALF' };
+          }
         });
 
         const linked = mfLinks.map((r) => ({

@@ -163,12 +163,65 @@ export default function Facilities() {
     </th>
   );
 
+  const storeNetFacs = useCareStore((s) => s.networkFacilities);
+  const networkFacs = useMemo(() => Object.values(storeNetFacs || {}).sort((a, b) => (a.name || '').localeCompare(b.name || '')), [storeNetFacs]);
+  const [netSearch, setNetSearch] = useState('');
+  const filteredNet = useMemo(() => {
+    if (!netSearch.trim()) return networkFacs;
+    const q = netSearch.toLowerCase();
+    return networkFacs.filter((f) => (f.name || '').toLowerCase().includes(q) || (f.region || '').toLowerCase().includes(q));
+  }, [networkFacs, netSearch]);
+
   return (
     <>
       <div style={{ padding: '24px 28px' }}>
+        {/* ── Network Facilities ── */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Network Facilities</h1>
+              <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filteredNet.length} ALF network facilities</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: '1px solid var(--color-border)', borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/><path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/></svg>
+              <input value={netSearch} onChange={(e) => setNetSearch(e.target.value)} placeholder="Search network…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+            </div>
+          </div>
+          <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: '1px solid var(--color-border)' }}>
+                  {['Facility', 'Region', 'Marketer'].map((h) => (
+                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNet.length === 0 ? (
+                  <tr><td colSpan={3} style={{ padding: '30px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No network facilities found.</td></tr>
+                ) : filteredNet.map((f) => {
+                  const mktName = f.marketer_id ? resolveMarketer(f.marketer_id) : null;
+                  return (
+                    <tr key={f._id} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.025))}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding: '11px 14px', fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{f.name}</td>
+                      <td style={{ padding: '11px 14px' }}><RegionBadge region={f.region} /></td>
+                      <td style={{ padding: '11px 14px', fontSize: 12.5, color: mktName && mktName !== f.marketer_id ? hexToRgba(palette.backgroundDark.hex, 0.6) : hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: !mktName ? 'italic' : 'normal' }}>
+                        {mktName && mktName !== f.marketer_id ? mktName : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── External Facilities ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Facilities</h1>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>External Facilities</h2>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} of {facilities.length} facilities</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

@@ -290,17 +290,10 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
   const divisionLocked = allowedDivisions.length === 1;
 
+  const storeNetFacs = useCareStore((s) => s.networkFacilities);
   const availableFacilities = useMemo(() => {
-    const allFacs = Object.values(storeFacilities);
-    if (!isMarketerRole || !currentMarketer) {
-      return allFacs.filter((f) => f.is_active !== false && f.is_active !== 'FALSE');
-    }
-    const mfJoins = Object.values(storeMarketerFacs).filter(
-      (mf) => mf.marketer_id === currentMarketer.id,
-    );
-    const facilityIds = new Set(mfJoins.map((mf) => mf.facility_id));
-    return allFacs.filter((f) => facilityIds.has(f.id) && f.is_active !== false && f.is_active !== 'FALSE');
-  }, [storeFacilities, storeMarketerFacs, isMarketerRole, currentMarketer]);
+    return Object.values(storeNetFacs || {}).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [storeNetFacs]);
 
   const [showPatientDetails, setShowPatientDetails] = useState(false);
   const [showReferralDetails, setShowReferralDetails] = useState(false);

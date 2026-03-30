@@ -36,6 +36,9 @@ export const useCareStore = create((set, get) => ({
   permissionPresets: {},
   userPermissions: {},
 
+  // ── Network facilities ──────────────────────────────────────────────────
+  networkFacilities: {},
+
   // ── Department system ──────────────────────────────────────────────────
   departments: {},
   departmentScopes: {},
@@ -87,6 +90,7 @@ const SYNC_KEYS = [
   'triageAdult', 'triagePediatric', 'marketers', 'users', 'referralSources',
   'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',
   'campaignMarketers', 'permissions', 'permissionPresets', 'userPermissions',
+  'networkFacilities',
   'departments', 'departmentScopes', 'activityLog',
   'lastSyncAt',
 ];
