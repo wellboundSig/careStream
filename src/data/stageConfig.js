@@ -21,6 +21,7 @@ export const STAGE_SLUGS = {
   'Discarded Leads':           'discarded-leads',
   'Intake':                    'intake',
   'Eligibility Verification':  'eligibility',
+  'OPWDD Enrollment':          'opwdd-enrollment',
   'Disenrollment Required':    'disenrollment',
   'F2F/MD Orders Pending':     'f2f',
   'Clinical Intake RN Review': 'clinical-rn',
@@ -31,7 +32,6 @@ export const STAGE_SLUGS = {
   'Pre-SOC':                   'pre-soc',
   'SOC Scheduled':             'soc-scheduled',
   'SOC Completed':             'soc-completed',
-  'OPWDD Enrollment':          'opwdd-enrollment',
   'Hold':                      'hold',
   'NTUC':                      'ntuc',
 };
@@ -48,7 +48,7 @@ export const ROLE_MODES = [
     id: 'intake',
     label: 'Intake',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required', 'F2F/MD Orders Pending', 'OPWDD Enrollment', 'Discarded Leads'],
+    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'OPWDD Enrollment', 'Disenrollment Required', 'F2F/MD Orders Pending', 'Discarded Leads'],
   },
   {
     id: 'clinical',

@@ -7,7 +7,7 @@ const DIVISIONS = {
     text: palette.highlightYellow.hex,
   },
   'Special Needs': {
-    label: 'SN',
+    label: 'SPN',
     bg: hexToRgba(palette.primaryMagenta.hex, 0.28),
     text: palette.primaryMagenta.hex,
   },

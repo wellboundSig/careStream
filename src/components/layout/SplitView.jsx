@@ -90,6 +90,7 @@ export default function SplitView({ children, division, roleMode, onClose }) {
                     <Route path="modules/lead-entry" element={<ModulePage stage="Lead Entry" />} />
                     <Route path="modules/intake" element={<ModulePage stage="Intake" />} />
                     <Route path="modules/eligibility" element={<ModulePage stage="Eligibility Verification" />} />
+                    <Route path="modules/opwdd-enrollment" element={<ModulePage stage="OPWDD Enrollment" />} />
                     <Route path="modules/disenrollment" element={<ModulePage stage="Disenrollment Required" />} />
                     <Route path="modules/f2f" element={<ModulePage stage="F2F/MD Orders Pending" />} />
                     <Route path="modules/clinical-rn" element={<ModulePage stage="Clinical Intake RN Review" />} />

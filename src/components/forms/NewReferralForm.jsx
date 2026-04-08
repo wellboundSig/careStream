@@ -15,7 +15,7 @@ const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
 
 const ALF_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA'];
-const SN_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
+const SPN_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 
 const INSURANCE_PLANS = [
   'Fidelis Care',
@@ -53,7 +53,7 @@ export function getLicenceForCounty(county) {
 }
 
 export function getServicesForDivision(division) {
-  return division === 'Special Needs' ? SN_SERVICES : ALF_SERVICES;
+  return division === 'Special Needs' ? SPN_SERVICES : ALF_SERVICES;
 }
 
 function generateId(prefix) {

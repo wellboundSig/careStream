@@ -26,6 +26,7 @@ const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disen
 const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
+  { key: 'licence',         label: 'Licence',           defaultOn: true,  filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
   { key: 'days', label: 'Days', tooltip: 'Days the patient has been in their current stage. Turns orange at >14 days to flag overdue referrals.', defaultOn: true, filterable: false },
@@ -249,6 +250,9 @@ export default function PatientList() {
           case 'division':
             if (p.division) vals.add(p.division);
             break;
+          case 'licence':
+            if (ref?.services_under_licence) vals.add(ref.services_under_licence);
+            break;
           case 'stage':
             if (ref?.current_stage) vals.add(ref.current_stage);
             break;
@@ -306,6 +310,7 @@ export default function PatientList() {
         let cellVal = '';
         switch (key) {
           case 'division':       cellVal = (p.division || '').toLowerCase(); break;
+          case 'licence':        cellVal = (ref?.services_under_licence || '').toLowerCase(); break;
           case 'stage':          cellVal = (ref?.current_stage || '').toLowerCase(); break;
           case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id).toLowerCase(); break;
           case 'insurance':      cellVal = (p.insurance_plan || '').toLowerCase(); break;
@@ -637,6 +642,23 @@ function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubl
         );
       case 'division':
         return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
+      case 'licence': {
+        const lic = referral?.services_under_licence;
+        if (!lic) return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        const isWBII = lic === 'WBII';
+        return (
+          <td key="licence" style={{ padding: '11px 14px' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
+              fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
+              background: isWBII ? hexToRgba(palette.accentBlue.hex, 0.14) : hexToRgba(palette.accentGreen.hex, 0.14),
+              color: isWBII ? palette.accentBlue.hex : palette.accentGreen.hex,
+            }}>
+              {lic}
+            </span>
+          </td>
+        );
+      }
       case 'stage':
         return (
           <td key="stage" style={{ padding: '11px 14px' }}>

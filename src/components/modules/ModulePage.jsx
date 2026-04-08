@@ -126,6 +126,7 @@ export default function ModulePage({ stage }) {
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
+          case 'licence': cellVal = r.services_under_licence || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
           case 'owner': cellVal = resolveUser(r.intake_owner_id) || ''; break;
           case 'insurance': cellVal = r.patient?.insurance_plan || ''; break;
@@ -165,6 +166,7 @@ export default function ModulePage({ stage }) {
       base.forEach((r) => {
         switch (col.key) {
           case 'division': if (r.division) vals.add(r.division); break;
+          case 'licence': if (r.services_under_licence) vals.add(r.services_under_licence); break;
           case 'source': { const v = resolveSource(r.referral_source_id); if (v && v !== '—') vals.add(v); break; }
           case 'owner': { const v = resolveUser(r.intake_owner_id); if (v && v !== r.intake_owner_id && v !== '—') vals.add(v); break; }
           case 'insurance': { const v = r.patient?.insurance_plan; if (v) vals.add(v); break; }
@@ -310,6 +312,23 @@ export default function ModulePage({ stage }) {
         );
       case 'division':
         return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={referral.division} size="small" /></td>;
+      case 'licence': {
+        const lic = referral.services_under_licence;
+        if (!lic) return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        const isWBII = lic === 'WBII';
+        return (
+          <td key="licence" style={{ padding: '11px 14px' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
+              fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
+              background: isWBII ? hexToRgba(palette.accentBlue.hex, 0.14) : hexToRgba(palette.accentGreen.hex, 0.14),
+              color: isWBII ? palette.accentBlue.hex : palette.accentGreen.hex,
+            }}>
+              {lic}
+            </span>
+          </td>
+        );
+      }
       case 'source':
         return (
           <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
@@ -427,7 +446,7 @@ export default function ModulePage({ stage }) {
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
             </div>
-            <StageActions stage={stage} onNewReferral={() => setShowNewReferral(true)} />
+            <StageActions stage={stage} onNewReferral={() => setShowNewReferral(true)} selectedReferral={selectedReferral} onSendToConflict={(ref) => initiateTransition(ref, 'Conflict')} />
           </div>
 
           {/* Toolbar */}
@@ -615,12 +634,40 @@ function SortBtn({ label, field, current, dir, onSort }) {
   );
 }
 
-function StageActions({ stage, onNewReferral }) {
+function StageActions({ stage, onNewReferral, selectedReferral, onSendToConflict }) {
+  const showConflictBtn = stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC';
+  const canSendToConflict = showConflictBtn && selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
+
+  const conflictBtn = showConflictBtn ? (
+    <button
+      onClick={canSendToConflict ? () => onSendToConflict(selectedReferral) : undefined}
+      disabled={!canSendToConflict}
+      title={canSendToConflict ? `Send ${selectedReferral?.patientName || 'patient'} to Conflict` : 'Select a patient to send to Conflict'}
+      style={{
+        padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 650, cursor: canSendToConflict ? 'pointer' : 'default',
+        border: 'none',
+        background: canSendToConflict ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.12),
+        color: canSendToConflict ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+        display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.12s',
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </svg>
+      Send to Conflict
+    </button>
+  ) : null;
+
   if (stage === 'Lead Entry') {
     return (
-      <button onClick={onNewReferral} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
-        + New Referral
-      </button>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {conflictBtn}
+        <button onClick={onNewReferral} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
+          + New Referral
+        </button>
+      </div>
     );
   }
   const secondaryActions = {
@@ -629,10 +676,14 @@ function StageActions({ stage, onNewReferral }) {
     'NTUC': 'Export NTUC Report',
   };
   const label = secondaryActions[stage];
-  if (!label) return null;
   return (
-    <button style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.04), color: hexToRgba(palette.backgroundDark.hex, 0.7), fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-      {label}
-    </button>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      {conflictBtn}
+      {label && (
+        <button style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.04), color: hexToRgba(palette.backgroundDark.hex, 0.7), fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+          {label}
+        </button>
+      )}
+    </div>
   );
 }

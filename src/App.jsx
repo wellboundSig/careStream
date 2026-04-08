@@ -65,6 +65,7 @@ export default function App() {
         <Route path="modules/discarded-leads"    element={<ModulePage stage="Discarded Leads" />} />
         <Route path="modules/intake"              element={<ModulePage stage="Intake" />} />
         <Route path="modules/eligibility"         element={<ModulePage stage="Eligibility Verification" />} />
+        <Route path="modules/opwdd-enrollment"    element={<ModulePage stage="OPWDD Enrollment" />} />
         <Route path="modules/disenrollment"       element={<ModulePage stage="Disenrollment Required" />} />
         <Route path="modules/f2f"                 element={<ModulePage stage="F2F/MD Orders Pending" />} />
         <Route path="modules/clinical-rn"         element={<ModulePage stage="Clinical Intake RN Review" />} />
@@ -75,7 +76,6 @@ export default function App() {
         <Route path="modules/pre-soc"             element={<ModulePage stage="Pre-SOC" />} />
         <Route path="modules/soc-scheduled"       element={<Navigate to="/modules/pre-soc" replace />} />
         <Route path="modules/soc-completed"       element={<ModulePage stage="SOC Completed" />} />
-        <Route path="modules/opwdd-enrollment"    element={<ModulePage stage="OPWDD Enrollment" />} />
         <Route path="modules/hold"                element={<ModulePage stage="Hold" />} />
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 

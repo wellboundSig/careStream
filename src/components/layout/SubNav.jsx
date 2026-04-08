@@ -29,6 +29,7 @@ export const PIN_GROUPS = [
       { label: 'Leads',          path: '/modules/lead-entry' },
       { label: 'Intake',         path: '/modules/intake' },
       { label: 'Eligibility',    path: '/modules/eligibility' },
+      { label: 'OPWDD',          path: '/modules/opwdd-enrollment' },
       { label: 'Disenrollment',  path: '/modules/disenrollment' },
       { label: 'F2F / MD Orders',path: '/modules/f2f' },
       { label: 'Clinical Intake',path: '/modules/clinical-rn' },

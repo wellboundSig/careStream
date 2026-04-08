@@ -5,6 +5,7 @@ import palette, { hexToRgba } from './colors.js';
 export const PATIENT_COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',         defaultOn: true,  alwaysOn: true,  sortField: 'last_name',      filterable: false },
   { key: 'division',        label: 'Division',         defaultOn: true,  sortField: 'division',        filterable: true  },
+  { key: 'licence',         label: 'Licence',          defaultOn: true,  filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'stage',           label: 'Stage',            defaultOn: true,  sortField: 'stage',           filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
   { key: 'days', label: 'Days', tooltip: 'Days the patient has been in their current stage. Turns orange at >14 days to flag overdue referrals.', defaultOn: true, filterable: false },
@@ -20,6 +21,7 @@ export const PATIENT_COLUMN_DEFS = [
 export const MODULE_COLUMN_DEFS = [
   { key: 'patient',   label: 'Patient',    defaultOn: true, alwaysOn: true, filterable: false },
   { key: 'division',  label: 'Division',   defaultOn: true, filterable: true },
+  { key: 'licence',   label: 'Licence',    defaultOn: true, filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
   { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: false },
   { key: 'days',      label: 'Days',       defaultOn: true, filterable: false, tooltip: 'Days in current stage' },

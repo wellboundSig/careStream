@@ -184,7 +184,7 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
         {patient?.division && (
           <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: patient.division === 'Special Needs' ? hexToRgba(palette.primaryMagenta.hex, 0.32) : hexToRgba(palette.highlightYellow.hex, 0.32), color: patient.division === 'Special Needs' ? palette.primaryMagenta.hex : palette.highlightYellow.hex }}>
-            {patient.division === 'Special Needs' ? 'SN' : 'ALF'}
+            {patient.division === 'Special Needs' ? 'SPN' : 'ALF'}
           </span>
         )}
         {referral?.current_stage && (

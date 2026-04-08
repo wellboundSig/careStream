@@ -335,7 +335,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                   transition: 'all 0.12s',
                 }}
               >
-                {d === 'Special Needs' ? 'SN' : d}
+                {d === 'Special Needs' ? 'SPN' : d}
               </button>
             ))}
           </div>
