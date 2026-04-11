@@ -31,7 +31,6 @@ export const PIN_GROUPS = [
       { label: 'Eligibility',    path: '/modules/eligibility' },
       { label: 'OPWDD',          path: '/modules/opwdd-enrollment' },
       { label: 'Disenrollment',  path: '/modules/disenrollment' },
-      { label: 'F2F / MD Orders',path: '/modules/f2f' },
       { label: 'Clinical Intake',path: '/modules/clinical-rn' },
       { label: 'Auth Pending',   path: '/modules/authorization' },
       { label: 'Conflict',       path: '/modules/conflict' },

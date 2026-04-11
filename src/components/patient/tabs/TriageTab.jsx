@@ -14,6 +14,8 @@ import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import { isTriageComplete } from '../../../utils/triageCompleteness.js';
+import { normalizePhone, formatPhone } from '../../../utils/validation.js';
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -85,10 +87,10 @@ function FormSection({ title, children }) {
   );
 }
 
-function Field({ label, required, children }) {
+function Field({ label, required, error, children }) {
   return (
-    <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 5 }}>
+    <div style={error ? { borderLeft: `2px solid ${palette.primaryMagenta.hex}`, paddingLeft: 8 } : undefined}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: error ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 5 }}>
         {label} {required && <span style={{ color: palette.primaryMagenta.hex }}>*</span>}
       </label>
       {children}
@@ -158,8 +160,9 @@ function CheckboxGroup({ options, values = [], onChange, readOnly }) {
   );
 }
 
-function AdultForm({ data, onChange, readOnly }) {
+function AdultForm({ data, onChange, readOnly, missingFields }) {
   const set = (k) => (v) => onChange({ ...data, [k]: v });
+  const phoneSet = (k) => (v) => onChange({ ...data, [k]: v.replace(/\D/g, '').slice(0, 10) });
 
   function handlePcpSelect(phy) {
     if (!phy) {
@@ -179,29 +182,29 @@ function AdultForm({ data, onChange, readOnly }) {
   return (
     <>
       <FormSection title="Caregiver Information">
-        <Field label="Caregiver Name"><TextInput value={data.caregiver_name} onChange={set('caregiver_name')} readOnly={readOnly} /></Field>
-        <Field label="Caregiver Phone"><TextInput value={data.caregiver_phone} onChange={set('caregiver_phone')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="Caregiver Name" required error={missingFields?.has('caregiver_name')}><TextInput value={data.caregiver_name} onChange={set('caregiver_name')} readOnly={readOnly} /></Field>
+        <Field label="Caregiver Phone" required error={missingFields?.has('caregiver_phone')}><TextInput value={readOnly ? formatPhone(data.caregiver_phone) : data.caregiver_phone} onChange={phoneSet('caregiver_phone')} type="tel" readOnly={readOnly} /></Field>
         <Field label="Caregiver Email"><TextInput value={data.caregiver_email} onChange={set('caregiver_email')} type="email" readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Home Environment">
-        <Field label="Are there pets in the home?"><RadioGroup value={data.has_pets === true || data.has_pets === 'true' ? 'Yes' : data.has_pets === false || data.has_pets === 'false' ? 'No' : ''} onChange={(v) => set('has_pets')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Are there pets in the home?" required error={missingFields?.has('has_pets')}><RadioGroup value={data.has_pets === true || data.has_pets === 'true' ? 'Yes' : data.has_pets === false || data.has_pets === 'false' ? 'No' : ''} onChange={(v) => set('has_pets')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.has_pets === true || data.has_pets === 'true' || data.has_pets === 'Yes') && (
-          <Field label="Pet Details"><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
+          <Field label="Pet Details" error={missingFields?.has('pet_details')}><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
         )}
       </FormSection>
       <FormSection title="Existing Services">
-        <Field label="Does the patient have homecare services (LHCSA / CHHA)?"><RadioGroup value={data.has_homecare_services === true || data.has_homecare_services === 'true' ? 'Yes' : data.has_homecare_services === false || data.has_homecare_services === 'false' ? 'No' : ''} onChange={(v) => set('has_homecare_services')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Does the patient have homecare services (LHCSA / CHHA)?" required error={missingFields?.has('has_homecare_services')}><RadioGroup value={data.has_homecare_services === true || data.has_homecare_services === 'true' ? 'Yes' : data.has_homecare_services === false || data.has_homecare_services === 'false' ? 'No' : ''} onChange={(v) => set('has_homecare_services')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.has_homecare_services === true || data.has_homecare_services === 'true') && (
           <>
-            <Field label="Agency Name"><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
-            <Field label="Hours of Service"><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
-            <Field label="Days of Service"><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
+            <Field label="Agency Name" error={missingFields?.has('homecare_agency_name')}><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
+            <Field label="Hours of Service" error={missingFields?.has('homecare_hours')}><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
+            <Field label="Days of Service" error={missingFields?.has('homecare_days')}><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
           </>
         )}
-        <Field label="Community habilitation services?"><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Community habilitation services?" required error={missingFields?.has('has_community_hab')}><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Services Needed">
-        <Field label="Code 95 (OPWDD) *">
+        <Field label="Code 95 (OPWDD)" required error={missingFields?.has('code_95')}>
           {readOnly ? (
             <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 || '—'}</span>
           ) : (
@@ -214,17 +217,17 @@ function AdultForm({ data, onChange, readOnly }) {
             </div>
           )}
         </Field>
-        <Field label="Services Needed"><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'HHA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
-        <Field label="Therapy Availability"><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
+        <Field label="Services Needed" required error={missingFields?.has('services_needed')}><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'HHA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
+        <Field label="Therapy Availability" required error={missingFields?.has('therapy_availability')}><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Medical Information">
-        <Field label="Is the patient diabetic?"><RadioGroup value={data.is_diabetic === true || data.is_diabetic === 'true' ? 'Yes' : data.is_diabetic === false || data.is_diabetic === 'false' ? 'No' : ''} onChange={(v) => set('is_diabetic')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Is the patient diabetic?" required error={missingFields?.has('is_diabetic')}><RadioGroup value={data.is_diabetic === true || data.is_diabetic === 'true' ? 'Yes' : data.is_diabetic === false || data.is_diabetic === 'false' ? 'No' : ''} onChange={(v) => set('is_diabetic')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.is_diabetic === true || data.is_diabetic === 'true') && (
-          <Field label="Who performs monitoring/treatment?"><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
+          <Field label="Who performs monitoring/treatment?" error={missingFields?.has('diabetes_monitor_by')}><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
         )}
       </FormSection>
       <FormSection title="PCP Information">
-        <Field label="PCP">
+        <Field label="PCP" required error={missingFields?.has('pcp_name')}>
           <PhysicianPicker
             physicianId={data.pcp_physician_id}
             physicianName={data.pcp_name}
@@ -233,23 +236,24 @@ function AdultForm({ data, onChange, readOnly }) {
             compact
           />
         </Field>
-        <Field label="Date of Last PCP Visit"><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
-        <Field label="PCP Phone"><TextInput value={data.pcp_phone} onChange={set('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Fax"><TextInput value={data.pcp_fax} onChange={set('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="Date of Last PCP Visit" required error={missingFields?.has('pcp_last_visit')}><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
+        <Field label="PCP Phone" required error={missingFields?.has('pcp_phone')}><TextInput value={readOnly ? formatPhone(data.pcp_phone) : data.pcp_phone} onChange={phoneSet('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="PCP Fax"><TextInput value={readOnly ? formatPhone(data.pcp_fax) : data.pcp_fax} onChange={phoneSet('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
         <Field label="PCP Address"><TextArea value={data.pcp_address} onChange={set('pcp_address')} rows={2} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Case Manager">
-        <Field label="CM Name"><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
-        <Field label="Company"><TextInput value={data.cm_company} onChange={set('cm_company')} readOnly={readOnly} /></Field>
-        <Field label="CM Phone"><TextInput value={data.cm_phone} onChange={set('cm_phone')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="CM Name" required error={missingFields?.has('cm_name')}><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
+        <Field label="Company" required error={missingFields?.has('cm_company')}><TextInput value={data.cm_company} onChange={set('cm_company')} readOnly={readOnly} /></Field>
+        <Field label="CM Phone" required error={missingFields?.has('cm_phone')}><TextInput value={readOnly ? formatPhone(data.cm_phone) : data.cm_phone} onChange={phoneSet('cm_phone')} type="tel" readOnly={readOnly} /></Field>
         <Field label="CM Fax or Email"><TextInput value={data.cm_fax_or_email} onChange={set('cm_fax_or_email')} readOnly={readOnly} /></Field>
       </FormSection>
     </>
   );
 }
 
-function PediatricForm({ data, onChange, readOnly }) {
+function PediatricForm({ data, onChange, readOnly, missingFields }) {
   const set = (k) => (v) => onChange({ ...data, [k]: v });
+  const phoneSet = (k) => (v) => onChange({ ...data, [k]: v.replace(/\D/g, '').slice(0, 10) });
 
   function handlePcpSelect(phy) {
     if (!phy) {
@@ -269,29 +273,32 @@ function PediatricForm({ data, onChange, readOnly }) {
   return (
     <>
       <FormSection title="Intake Info">
-        <Field label="Phone call made to"><TextInput value={data.phone_call_made_to} onChange={set('phone_call_made_to')} readOnly={readOnly} /></Field>
+        <Field label="Phone call made to" required error={missingFields?.has('phone_call_made_to')}><TextInput value={data.phone_call_made_to} onChange={set('phone_call_made_to')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Household">
-        <Field label="Who does the patient live with?"><TextArea value={data.household_description} onChange={set('household_description')} rows={2} readOnly={readOnly} /></Field>
-        <Field label="Pets in the home?"><RadioGroup value={data.has_pets === true || data.has_pets === 'true' ? 'Yes' : data.has_pets === false || data.has_pets === 'false' ? 'No' : ''} onChange={(v) => set('has_pets')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Who does the patient live with?" required error={missingFields?.has('household_description')}><TextArea value={data.household_description} onChange={set('household_description')} rows={2} readOnly={readOnly} /></Field>
+        <Field label="Pets in the home?" required error={missingFields?.has('has_pets')}><RadioGroup value={data.has_pets === true || data.has_pets === 'true' ? 'Yes' : data.has_pets === false || data.has_pets === 'false' ? 'No' : ''} onChange={(v) => set('has_pets')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.has_pets === true || data.has_pets === 'true') && (
-          <Field label="Pet Details"><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
+          <Field label="Pet Details" error={missingFields?.has('pet_details')}><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
         )}
       </FormSection>
       <FormSection title="Existing Services">
-        <Field label="Does the patient have homecare services (LHCSA / CHHA / ABA)?"><RadioGroup value={data.has_homecare_services === true || data.has_homecare_services === 'true' ? 'Yes' : data.has_homecare_services === false || data.has_homecare_services === 'false' ? 'No' : ''} onChange={(v) => set('has_homecare_services')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Does the patient have homecare services (LHCSA / CHHA / ABA)?" required error={missingFields?.has('has_homecare_services')}><RadioGroup value={data.has_homecare_services === true || data.has_homecare_services === 'true' ? 'Yes' : data.has_homecare_services === false || data.has_homecare_services === 'false' ? 'No' : ''} onChange={(v) => set('has_homecare_services')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.has_homecare_services === true || data.has_homecare_services === 'true') && (
           <>
-            <Field label="Agency Name"><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
-            <Field label="Hours of Service"><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
-            <Field label="Days of Service"><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
+            <Field label="Agency Name" error={missingFields?.has('homecare_agency_name')}><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
+            <Field label="Hours of Service" error={missingFields?.has('homecare_hours')}><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
+            <Field label="Days of Service" error={missingFields?.has('homecare_days')}><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
           </>
         )}
-        <Field label="BOE services currently received"><TextArea value={data.boe_services} onChange={set('boe_services')} rows={2} readOnly={readOnly} /></Field>
-        <Field label="Community habilitation?"><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Does the patient receive BOE services?" required error={missingFields?.has('has_boe_services')}><RadioGroup value={data.has_boe_services === true || data.has_boe_services === 'true' ? 'Yes' : data.has_boe_services === false || data.has_boe_services === 'false' ? 'No' : ''} onChange={(v) => set('has_boe_services')(v === 'Yes')} readOnly={readOnly} /></Field>
+        {(data.has_boe_services === true || data.has_boe_services === 'true') && (
+          <Field label="BOE Services Details" error={missingFields?.has('boe_services')}><TextArea value={data.boe_services} onChange={set('boe_services')} rows={2} readOnly={readOnly} /></Field>
+        )}
+        <Field label="Community habilitation?" required error={missingFields?.has('has_community_hab')}><RadioGroup value={data.has_community_hab === true || data.has_community_hab === 'true' ? 'Yes' : data.has_community_hab === false || data.has_community_hab === 'false' ? 'No' : ''} onChange={(v) => set('has_community_hab')(v === 'Yes')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Services Needed">
-        <Field label="Code 95 (OPWDD) *">
+        <Field label="Code 95 (OPWDD)" required error={missingFields?.has('code_95')}>
           {readOnly ? (
             <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 || '—'}</span>
           ) : (
@@ -304,21 +311,24 @@ function PediatricForm({ data, onChange, readOnly }) {
             </div>
           )}
         </Field>
-        <Field label="Services Needed"><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'ABA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
-        <Field label="Therapy Availability"><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
-        <Field label="HHA Hours and Frequency"><TextInput value={data.hha_hours_frequency} onChange={set('hha_hours_frequency')} readOnly={readOnly} /></Field>
+        <Field label="Services Needed" required error={missingFields?.has('services_needed')}><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'ABA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
+        <Field label="Therapy Availability" required error={missingFields?.has('therapy_availability')}><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
+        <Field label="HHA Hours and Frequency" required error={missingFields?.has('hha_hours_frequency')}><TextInput value={data.hha_hours_frequency} onChange={set('hha_hours_frequency')} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Medical">
-        <Field label="Is the patient diabetic?"><RadioGroup value={data.is_diabetic === true || data.is_diabetic === 'true' ? 'Yes' : data.is_diabetic === false || data.is_diabetic === 'false' ? 'No' : ''} onChange={(v) => set('is_diabetic')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="Is the patient diabetic?" required error={missingFields?.has('is_diabetic')}><RadioGroup value={data.is_diabetic === true || data.is_diabetic === 'true' ? 'Yes' : data.is_diabetic === false || data.is_diabetic === 'false' ? 'No' : ''} onChange={(v) => set('is_diabetic')(v === 'Yes')} readOnly={readOnly} /></Field>
         {(data.is_diabetic === true || data.is_diabetic === 'true') && (
-          <Field label="Who performs monitoring/treatment?"><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
+          <Field label="Who performs monitoring/treatment?" error={missingFields?.has('diabetes_monitor_by')}><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
         )}
-        <Field label="Immunizations up to date?"><RadioGroup value={data.immunizations_up_to_date === true || data.immunizations_up_to_date === 'true' ? 'Yes' : data.immunizations_up_to_date === false || data.immunizations_up_to_date === 'false' ? 'No' : ''} onChange={(v) => set('immunizations_up_to_date')(v === 'Yes')} readOnly={readOnly} /></Field>
-        <Field label="What time does the patient get off the school bus?"><TextInput value={data.school_bus_time} onChange={set('school_bus_time')} type="time" readOnly={readOnly} /></Field>
-        <Field label="Any recent hospitalization"><TextArea value={data.recent_hospitalization} onChange={set('recent_hospitalization')} rows={2} readOnly={readOnly} /></Field>
+        <Field label="Immunizations up to date?" required error={missingFields?.has('immunizations_up_to_date')}><RadioGroup value={data.immunizations_up_to_date === true || data.immunizations_up_to_date === 'true' ? 'Yes' : data.immunizations_up_to_date === false || data.immunizations_up_to_date === 'false' ? 'No' : ''} onChange={(v) => set('immunizations_up_to_date')(v === 'Yes')} readOnly={readOnly} /></Field>
+        <Field label="What time does the patient get off the school bus?" required error={missingFields?.has('school_bus_time')}><TextInput value={data.school_bus_time} onChange={set('school_bus_time')} type="time" readOnly={readOnly} /></Field>
+        <Field label="Any recent hospitalization?" required error={missingFields?.has('has_recent_hospitalization')}><RadioGroup value={data.has_recent_hospitalization === true || data.has_recent_hospitalization === 'true' ? 'Yes' : data.has_recent_hospitalization === false || data.has_recent_hospitalization === 'false' ? 'No' : ''} onChange={(v) => set('has_recent_hospitalization')(v === 'Yes')} readOnly={readOnly} /></Field>
+        {(data.has_recent_hospitalization === true || data.has_recent_hospitalization === 'true') && (
+          <Field label="Hospitalization Details" error={missingFields?.has('recent_hospitalization')}><TextArea value={data.recent_hospitalization} onChange={set('recent_hospitalization')} rows={2} readOnly={readOnly} /></Field>
+        )}
       </FormSection>
       <FormSection title="PCP Information">
-        <Field label="PCP">
+        <Field label="PCP" required error={missingFields?.has('pcp_name')}>
           <PhysicianPicker
             physicianId={data.pcp_physician_id}
             physicianName={data.pcp_name}
@@ -327,15 +337,15 @@ function PediatricForm({ data, onChange, readOnly }) {
             compact
           />
         </Field>
-        <Field label="Date of Last PCP Visit"><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
-        <Field label="PCP Phone"><TextInput value={data.pcp_phone} onChange={set('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Fax"><TextInput value={data.pcp_fax} onChange={set('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="Date of Last PCP Visit" required error={missingFields?.has('pcp_last_visit')}><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
+        <Field label="PCP Phone" required error={missingFields?.has('pcp_phone')}><TextInput value={readOnly ? formatPhone(data.pcp_phone) : data.pcp_phone} onChange={phoneSet('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="PCP Fax"><TextInput value={readOnly ? formatPhone(data.pcp_fax) : data.pcp_fax} onChange={phoneSet('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
         <Field label="PCP Address"><TextArea value={data.pcp_address} onChange={set('pcp_address')} rows={2} readOnly={readOnly} /></Field>
       </FormSection>
       <FormSection title="Case Manager">
-        <Field label="CM Name"><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
+        <Field label="CM Name" required error={missingFields?.has('cm_name')}><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
         <Field label="CM Company"><TextInput value={data.cm_company} onChange={set('cm_company')} readOnly={readOnly} /></Field>
-        <Field label="CM Phone"><TextInput value={data.cm_phone} onChange={set('cm_phone')} type="tel" readOnly={readOnly} /></Field>
+        <Field label="CM Phone" required error={missingFields?.has('cm_phone')}><TextInput value={readOnly ? formatPhone(data.cm_phone) : data.cm_phone} onChange={phoneSet('cm_phone')} type="tel" readOnly={readOnly} /></Field>
         <Field label="Potential SOC Date"><TextInput value={data.potential_soc_date ? data.potential_soc_date.split('T')[0] : ''} onChange={set('potential_soc_date')} type="date" readOnly={readOnly} /></Field>
       </FormSection>
     </>
@@ -354,6 +364,7 @@ export default function TriageTab({ patient, referral }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [draft, setDraft] = useState({});
+  const [validationWarnings, setValidationWarnings] = useState([]);
 
   const isSpecialNeeds = referral?.division === 'Special Needs' || patient?.division === 'Special Needs';
   const age = calcAge(patient?.dob);
@@ -381,17 +392,28 @@ export default function TriageTab({ patient, referral }) {
 
   function startEdit() {
     setDraft({ ...triageData });
+    setValidationWarnings([]);
     setEditing(true);
   }
 
   async function save() {
     if (!can(PERMISSION_KEYS.CLINICAL_TRIAGE)) return;
+    const { missing } = isTriageComplete(draft, triageType);
+    setValidationWarnings(missing);
     setSaving(true);
     setSaveError(null);
     try {
       // Strip virtual/local fields that don't exist as Airtable columns
       // eslint-disable-next-line no-unused-vars
       const { pcp_physician_id, ...triageFields } = draft;
+      const PHONE_FIELDS = ['caregiver_phone', 'pcp_phone', 'pcp_fax', 'cm_phone'];
+      for (const pf of PHONE_FIELDS) {
+        if (triageFields[pf]) {
+          const result = normalizePhone(triageFields[pf]);
+          triageFields[pf] = result.valid ? result.digits : triageFields[pf].replace(/\D/g, '');
+        }
+      }
+
       const rawFields = {
         ...triageFields,
         referral_id: referral.id,
@@ -403,6 +425,7 @@ export default function TriageTab({ patient, referral }) {
       // immunizations_up_to_date is a text field in Airtable that stores "TRUE"/"FALSE" → string
       const CHECKBOX_FIELDS = new Set([
         'has_pets', 'has_homecare_services', 'has_community_hab', 'is_diabetic',
+        'has_recent_hospitalization', 'has_boe_services',
       ]);
       const TEXT_BOOL_FIELDS = new Set(['immunizations_up_to_date']);
 
@@ -479,6 +502,7 @@ export default function TriageTab({ patient, referral }) {
   const hasData = Object.keys(triageData).length > 0;
   const filledByName = triageData.filled_by_id ? resolveUser(triageData.filled_by_id) : null;
   const filledAt = triageData.updated_at || triageData.created_at;
+  const validationWarningSet = new Set(validationWarnings);
 
   function handlePrint() {
     const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Patient';
@@ -552,11 +576,18 @@ export default function TriageTab({ patient, referral }) {
         </div>
       )}
 
+      {validationWarnings.length > 0 && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(230,126,34,0.08)', border: '1px solid rgba(230,126,34,0.3)', fontSize: 12.5, color: '#B7590A', lineHeight: 1.5 }}>
+          <strong>{validationWarnings.length} required field{validationWarnings.length > 1 ? 's' : ''} incomplete:</strong>{' '}
+          {validationWarnings.map((k) => k.replace(/^has_/, '').replace(/_/g, ' ')).join(', ')}
+        </div>
+      )}
+
       <div id="triage-form-content">
         {triageType === 'adult' ? (
-          <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
+          <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} missingFields={validationWarningSet} />
         ) : (
-          <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} />
+          <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} missingFields={validationWarningSet} />
         )}
       </div>
 

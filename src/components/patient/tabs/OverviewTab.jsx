@@ -6,17 +6,20 @@ import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { normalizePhone, formatPhone, validateEmail, lookupZip } from '../../../utils/validation.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
 const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
+const GENDER_OPTIONS   = ['Male', 'Female'];
 
 // Style helpers — functions so palette values are read on every render (dark mode reactive)
 const fl  = () => ({ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 3, letterSpacing: '0.02em' });
 const ds  = () => ({ fontSize: 13, color: palette.backgroundDark.hex, padding: '4px 6px', borderRadius: 6, cursor: 'text', border: '1px solid transparent', transition: 'border-color 0.12s, background 0.12s', wordBreak: 'break-word' });
 const ei  = () => ({ width: '100%', padding: '5px 8px', borderRadius: 6, border: `1px solid ${palette.primaryMagenta.hex}`, fontSize: 13, color: palette.backgroundDark.hex, background: hexToRgba(palette.backgroundDark.hex, 0.03), outline: 'none', fontFamily: 'inherit' });
+const ve  = () => ({ fontSize: 11, color: '#c62828', marginTop: 2, fontWeight: 500 });
 
 // ── Layout helpers ─────────────────────────────────────────────────────────────
 
@@ -80,6 +83,277 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
           <input autoFocus type={type} value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={save} onKeyDown={onKeyDown} style={ei()} />
         )
+      ) : (
+        <p onClick={startEdit} title="Click to edit"
+          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          {saving ? 'Saving…' : (value || empty)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Patient select field (dropdown for patient data) ──────────────────────────
+
+function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const { can } = usePermissions();
+
+  async function handleChange(e) {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
+    const v = e.target.value;
+    if (v === value) { setEditing(false); return; }
+    onSave(fieldKey, v);
+    setEditing(false);
+    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: v });
+    setSaving(true);
+    try {
+      await updatePatient(patientId, { [fieldKey]: v });
+    } catch {
+      onSave(fieldKey, value);
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
+      <p style={fl()}>{label}</p>
+      {editing ? (
+        <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)}
+          style={{ ...ei(), cursor: 'pointer' }}>
+          <option value="" disabled>Select…</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <p onClick={() => setEditing(true)} title="Click to edit"
+          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          {saving ? 'Saving…' : (value || empty)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Phone field (validates + formats as (XXX) XXX-XXXX) ───────────────────────
+
+function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const { can } = usePermissions();
+
+  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+
+  async function save() {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
+    if (draft === (value || '')) { setEditing(false); setError(''); return; }
+    if (!draft.trim()) {
+      setError('');
+      onSave(fieldKey, '');
+      setEditing(false);
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: '' });
+      setSaving(true);
+      try { await updatePatient(patientId, { [fieldKey]: '' }); }
+      catch { onSave(fieldKey, value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' }); }
+      finally { setSaving(false); }
+      return;
+    }
+    const result = normalizePhone(draft);
+    if (!result.valid) { setError(result.error); return; }
+    setError('');
+    onSave(fieldKey, result.digits);
+    setEditing(false);
+    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: result.digits });
+    setSaving(true);
+    try {
+      await updatePatient(patientId, { [fieldKey]: result.digits });
+    } catch {
+      onSave(fieldKey, value || '');
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') { setEditing(false); setError(''); }
+  }
+
+  const display = value ? formatPhone(value.replace(/\D/g, '')) : null;
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
+      <p style={fl()}>{label}</p>
+      {editing ? (
+        <>
+          <input autoFocus type="tel" value={draft} onChange={(e) => setDraft(e.target.value)}
+            onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
+          {error && <p style={ve()}>{error}</p>}
+        </>
+      ) : (
+        <p onClick={startEdit} title="Click to edit"
+          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          {saving ? 'Saving…' : (display || empty)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Email field (validates format) ────────────────────────────────────────────
+
+function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const { can } = usePermissions();
+
+  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+
+  async function save() {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
+    if (draft === (value || '')) { setEditing(false); setError(''); return; }
+    if (!draft.trim()) {
+      setError('');
+      onSave(fieldKey, '');
+      setEditing(false);
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: '' });
+      setSaving(true);
+      try { await updatePatient(patientId, { [fieldKey]: '' }); }
+      catch { onSave(fieldKey, value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' }); }
+      finally { setSaving(false); }
+      return;
+    }
+    const result = validateEmail(draft);
+    if (!result.valid) { setError(result.error); return; }
+    setError('');
+    const trimmed = draft.trim();
+    onSave(fieldKey, trimmed);
+    setEditing(false);
+    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: trimmed });
+    setSaving(true);
+    try {
+      await updatePatient(patientId, { [fieldKey]: trimmed });
+    } catch {
+      onSave(fieldKey, value || '');
+      if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') { setEditing(false); setError(''); }
+  }
+
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
+      <p style={fl()}>{label}</p>
+      {editing ? (
+        <>
+          <input autoFocus type="email" value={draft} onChange={(e) => setDraft(e.target.value)}
+            onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
+          {error && <p style={ve()}>{error}</p>}
+        </>
+      ) : (
+        <p onClick={startEdit} title="Click to edit"
+          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          {saving ? 'Saving…' : (value || empty)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── ZIP field (validates + auto-populates city/state) ─────────────────────────
+
+function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, onSave, fullWidth = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const { can } = usePermissions();
+
+  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+
+  async function save() {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
+    if (draft === (value || '')) { setEditing(false); setError(''); return; }
+    if (!draft.trim()) {
+      setError('');
+      onSave('address_zip', '');
+      setEditing(false);
+      if (patientRecordId) updateEntity('patients', patientRecordId, { address_zip: '' });
+      setSaving(true);
+      try { await updatePatient(patientId, { address_zip: '' }); }
+      catch { onSave('address_zip', value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { address_zip: value || '' }); }
+      finally { setSaving(false); }
+      return;
+    }
+    const result = lookupZip(draft);
+    if (!result.valid) { setError(result.error); return; }
+    setError('');
+    const updates = { address_zip: result.zip, address_city: result.city, address_state: result.state };
+    onSave('address_zip', result.zip);
+    onSave('address_city', result.city);
+    onSave('address_state', result.state);
+    setEditing(false);
+    if (patientRecordId) updateEntity('patients', patientRecordId, updates);
+    setSaving(true);
+    try {
+      await updatePatient(patientId, updates);
+    } catch {
+      onSave('address_zip', value || '');
+      onSave('address_city', cityValue || '');
+      onSave('address_state', stateValue || '');
+      if (patientRecordId) updateEntity('patients', patientRecordId, {
+        address_zip: value || '', address_city: cityValue || '', address_state: stateValue || '',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') { setEditing(false); setError(''); }
+  }
+
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
+      <p style={fl()}>ZIP</p>
+      {editing ? (
+        <>
+          <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+            onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
+          {error && <p style={ve()}>{error}</p>}
+        </>
       ) : (
         <p onClick={startEdit} title="Click to edit"
           style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
@@ -356,17 +630,19 @@ export default function OverviewTab({ patient, referral }) {
 
       {/* ── Patient Information ── */}
       <Section title="Patient Information">
-        <EditableField label="First Name"       fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Last Name"        fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Date of Birth"    fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" />
-        <EditableField label="Gender"           fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Primary Phone"    fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Secondary Phone"  fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Email"            fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="email" />
-        <EditableField label="Address"          fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
-        <EditableField label="City"             fieldKey="address_city"     value={patient.address_city}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="State"            fieldKey="address_state"    value={patient.address_state}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Zip"              fieldKey="address_zip"      value={patient.address_zip?.toString()} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Date of Birth"     fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" />
+        <EditablePatientSelect label="Gender"    fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} options={GENDER_OPTIONS} />
+        <PhoneField label="Primary Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EmailField label="Email"                fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EditableField label="Address"           fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 16px' }}>
+          <ZipField value={patient.address_zip?.toString()} cityValue={patient.address_city} stateValue={patient.address_state} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+          <EditableField label="City"            fieldKey="address_city"     value={patient.address_city}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+          <EditableField label="State"           fieldKey="address_state"    value={patient.address_state}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        </div>
       </Section>
 
       {/* ── Insurance ── */}
@@ -387,8 +663,8 @@ export default function OverviewTab({ patient, referral }) {
       {/* ── Emergency Contact ── */}
       <Section title="Emergency Contact">
         <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="tel" />
-        <EditableField label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="email" fullWidth />
+        <PhoneField    label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <EmailField    label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
       </Section>
 
     </div>

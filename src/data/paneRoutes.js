@@ -21,7 +21,6 @@ export const PANE_NAV = [
       { path: '/modules/eligibility', label: 'Eligibility' },
       { path: '/modules/opwdd-enrollment', label: 'OPWDD Enrollment' },
       { path: '/modules/disenrollment', label: 'Disenrollment' },
-      { path: '/modules/f2f', label: 'F2F / MD Orders' },
       { path: '/modules/clinical-rn', label: 'Clinical RN Review' },
       { path: '/modules/authorization', label: 'Authorization' },
       { path: '/modules/conflict', label: 'Conflict' },

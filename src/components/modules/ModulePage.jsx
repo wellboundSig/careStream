@@ -299,9 +299,6 @@ export default function ModulePage({ stage }) {
             <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1 }}>
               {referral.patientName || referral.patient_id || '—'}
             </p>
-            {referral.patient?.medicaid_number && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Medicaid: {referral.patient.medicaid_number}</p>
-            )}
             {fileUploadFlags.has(referral.patient_id) && (
               <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -468,6 +465,8 @@ export default function ModulePage({ stage }) {
 
             <div style={{ flex: 1 }} />
 
+            <DuplicateChecker stageReferrals={stageReferrals} allReferrals={allReferrals} stage={stage} />
+
             {/* Filter toggle */}
             <button
               onClick={() => setShowFilters((v) => !v)}
@@ -631,6 +630,194 @@ function SortBtn({ label, field, current, dir, onSort }) {
       {label}
       {active && <span style={{ fontSize: 9 }}>{dir === 'asc' ? '▲' : '▼'}</span>}
     </button>
+  );
+}
+
+// ── Duplicate Checker ────────────────────────────────────────────────────────
+
+const DupIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+    <rect x="8" y="2" width="13" height="16" rx="2" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M16 18v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2" stroke="currentColor" strokeWidth="1.7" />
+  </svg>
+);
+
+const ModuleScanIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+  </svg>
+);
+
+const PipelineScanIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" />
+  </svg>
+);
+
+const EmrScanIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+    <path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="19" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" />
+    <path d="M21.5 20.5L23 22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
+function buildIdentityKeys(r) {
+  const keys = [];
+  const name = (r.patientName || '').trim().toLowerCase();
+  const dob = r.patient?.dob || '';
+  if (name && dob) keys.push(`name:${name}|dob:${dob}`);
+  const medicaid = (r.patient?.medicaid_number || '').trim().toLowerCase();
+  if (medicaid) keys.push(`medicaid:${medicaid}`);
+  return keys;
+}
+
+function findDuplicatePatients(referrals) {
+  const seen = {};
+  for (const r of referrals) {
+    for (const key of buildIdentityKeys(r)) {
+      (seen[key] ||= []).push(r);
+    }
+  }
+  const matched = new Map();
+  for (const group of Object.values(seen)) {
+    const uniquePatientIds = [...new Set(group.map((r) => r.patient_id))];
+    if (uniquePatientIds.length < 2) continue;
+    const groupKey = uniquePatientIds.sort().join('|');
+    if (!matched.has(groupKey)) {
+      const deduped = [];
+      const idsSeen = new Set();
+      for (const r of group) {
+        if (!idsSeen.has(r.patient_id)) { idsSeen.add(r.patient_id); deduped.push(r); }
+      }
+      matched.set(groupKey, deduped);
+    }
+  }
+  return [...matched.values()];
+}
+
+function DuplicateChecker({ stageReferrals, allReferrals, stage }) {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState(null); // { type, groups }
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(e) { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setResults(null); } }
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [open]);
+
+  useEffect(() => { setResults(null); }, [stage]);
+
+  function runModuleScan() {
+    const groups = findDuplicatePatients(stageReferrals);
+    setResults({ type: 'module', groups });
+  }
+
+  function runPipelineScan() {
+    const groups = findDuplicatePatients(allReferrals);
+    setResults({ type: 'pipeline', groups });
+  }
+
+  const hasResults = results && results.groups;
+  const dupCount = hasResults ? results.groups.length : 0;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => { setOpen((v) => !v); if (open) setResults(null); }}
+        style={{
+          height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
+          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          background: open ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+          color: open ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+          transition: 'all 0.12s',
+        }}
+      >
+        <DupIcon /> Duplicates
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
+          width: hasResults ? 380 : 240,
+          background: palette.backgroundLight.hex,
+          borderRadius: 12, overflow: 'hidden',
+          boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}, 0 2px 8px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+          transition: 'width 0.2s ease',
+        }}>
+          {/* Action buttons */}
+          <div style={{ padding: '6px' }}>
+            {[
+              { key: 'module', label: 'This Module', icon: <ModuleScanIcon />, action: runModuleScan, active: results?.type === 'module' },
+              { key: 'pipeline', label: 'All Pipeline', icon: <PipelineScanIcon />, action: runPipelineScan, active: results?.type === 'pipeline' },
+              { key: 'emr', label: 'EMR Records', icon: <EmrScanIcon />, action: null, active: false },
+            ].map(({ key, label, icon, action, active }) => (
+              <button
+                key={key}
+                onClick={action || undefined}
+                style={{
+                  width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                  background: active ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'none',
+                  border: 'none', borderRadius: 8, cursor: action ? 'pointer' : 'default',
+                  fontSize: 13, fontWeight: active ? 650 : 500, textAlign: 'left',
+                  color: !action ? hexToRgba(palette.backgroundDark.hex, 0.25) : active ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
+                  transition: 'all 0.1s',
+                }}
+                onMouseEnter={(e) => { if (action && !active) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04); }}
+                onMouseLeave={(e) => { if (action && !active) e.currentTarget.style.background = 'none'; }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: active ? hexToRgba(palette.primaryMagenta.hex, 0.12) : hexToRgba(palette.backgroundDark.hex, 0.05), color: !action ? hexToRgba(palette.backgroundDark.hex, 0.2) : active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.45), flexShrink: 0, transition: 'all 0.1s' }}>
+                  {icon}
+                </span>
+                {label}
+                {active && (
+                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: dupCount > 0 ? palette.primaryMagenta.hex : palette.accentGreen.hex, color: palette.backgroundLight.hex }}>
+                    {dupCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Results */}
+          {hasResults && (
+            <div style={{ maxHeight: 280, overflowY: 'auto', padding: '0 6px 6px' }}>
+              {dupCount === 0 ? (
+                <div style={{ padding: '16px 12px', textAlign: 'center' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 6px', display: 'block', opacity: 0.4 }}>
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <p style={{ fontSize: 12.5, fontWeight: 600, color: palette.accentGreen.hex }}>No duplicates found</p>
+                </div>
+              ) : (
+                results.groups.map((group, gi) => (
+                  <div key={gi} style={{ background: hexToRgba(palette.primaryMagenta.hex, 0.04), borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}>
+                    {group.map((r, ri) => (
+                      <div key={r._id || ri} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: ri === 0 ? palette.primaryMagenta.hex : hexToRgba(palette.primaryMagenta.hex, 0.35), flexShrink: 0 }} />
+                        <span style={{ fontSize: 12.5, fontWeight: ri === 0 ? 650 : 450, color: palette.backgroundDark.hex, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.patientName || r.patient_id}
+                        </span>
+                        <span style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0 }}>
+                          {r.current_stage}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

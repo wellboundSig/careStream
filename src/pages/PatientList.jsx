@@ -26,7 +26,7 @@ const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disen
 const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
-  { key: 'licence',         label: 'Licence',           defaultOn: true,  filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
+  { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
   { key: 'days', label: 'Days', tooltip: 'Days the patient has been in their current stage. Turns orange at >14 days to flag overdue referrals.', defaultOn: true, filterable: false },
@@ -634,10 +634,7 @@ function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubl
       case 'patient':
         return (
           <td key="patient" style={{ padding: '11px 14px' }}>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1 }}>{patient.first_name} {patient.last_name}</p>
-            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
-              {patient.medicaid_number ? `Medicaid: ${patient.medicaid_number}` : patient.medicare_number ? `Medicare: ${patient.medicare_number}` : patient.dob ? `Age ${Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 86400000))}` : ''}
-            </p>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{patient.first_name} {patient.last_name}</p>
           </td>
         );
       case 'division':

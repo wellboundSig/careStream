@@ -37,7 +37,7 @@ export const CLINICAL_CHECKLIST = [
     ],
   },
   {
-    section: 'Level of Care Determination',
+    section: 'Level of Care Validation',
     items: [
       { key: 'loc_sn',            label: 'Skilled Nursing needed',                   required: false },
       { key: 'loc_pt',            label: 'Physical Therapy needed',                  required: false },

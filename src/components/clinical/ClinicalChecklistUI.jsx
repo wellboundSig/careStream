@@ -71,10 +71,10 @@ export default function ClinicalChecklistUI({ checked, onToggle, decision, onDec
         </div>
       ))}
 
-      {/* Clinical Decision */}
+      {/* Clinical Validation */}
       <div style={{ marginBottom: compact ? 10 : 14 }}>
         <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
-          Clinical Decision
+          Clinical Validation
         </p>
         <div style={{ display: 'flex', gap: 6 }}>
           {CLINICAL_DECISIONS.map((d) => {

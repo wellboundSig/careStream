@@ -20,6 +20,7 @@ import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import PatientSnapshot from './PatientSnapshot.jsx';
 
 const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
@@ -399,37 +400,162 @@ const INTAKE_DEMO_FIELDS = [
   { key: 'medicaid_number', label: 'Medicaid number' },
 ];
 
-function IntakePanel({ referrals, selectedReferral, onOpenTriage, onInitiateTransition }) {
+function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
+  const { can: canPerm } = usePermissions();
   const p = selectedReferral?.patient;
   const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [key, !!(p?.[key])]));
   const isSN = selectedReferral?.division === 'Special Needs';
+  const isF2F = selectedReferral?.current_stage === 'F2F/MD Orders Pending';
+
+  const triageAdultStore = useCareStore((s) => s.triageAdult);
+  const triagePedStore = useCareStore((s) => s.triagePediatric);
+  const insuranceCheckStore = useCareStore((s) => s.insuranceChecks);
+  const refId = selectedReferral?.id;
+  const refAirtableId = selectedReferral?._id;
+  const triageData = [...Object.values(triageAdultStore || {}), ...Object.values(triagePedStore || {})].find((t) => {
+    const tid = t.referral_id;
+    if (!tid || !refId) return false;
+    if (tid === refId || tid === refAirtableId) return true;
+    if (Array.isArray(tid) && (tid.includes(refId) || tid.includes(refAirtableId))) return true;
+    return false;
+  }) || null;
+  const patientInsuranceChecks = Object.values(insuranceCheckStore || {}).filter((c) => {
+    const pid = c.patient_id;
+    const target = selectedReferral?.patient_id;
+    if (!pid || !target) return false;
+    if (pid === target) return true;
+    if (Array.isArray(pid) && pid.includes(target)) return true;
+    return false;
+  });
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [receivedDate, setReceivedDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [reviewChecked, setReviewChecked] = useState({});
+
+  useEffect(() => {
+    setShowDatePicker(false);
+    setReceivedDate('');
+    setReviewChecked({});
+  }, [selectedReferral?._id]);
+
+  const reviewComplete = isF2FChecklistComplete(reviewChecked);
+  const completedReq = F2F_REQUIRED_ITEMS.filter((i) => reviewChecked[i.key]).length;
+  const totalReq = F2F_REQUIRED_ITEMS.length;
+
+  function daysLeft(exp) {
+    if (!exp) return null;
+    return Math.ceil((new Date(exp) - Date.now()) / 86400000);
+  }
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0];
+  }
+  async function handleLogReceived() {
+    if (!receivedDate || !selectedReferral) return;
+    setSaving(true);
+    try {
+      const expiration = addDays(receivedDate, 90);
+      await updateReferral(selectedReferral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
+      triggerDataRefresh();
+      setShowDatePicker(false); setReceivedDate('');
+    } catch {} finally { setSaving(false); }
+  }
+
+  const days = selectedReferral ? daysLeft(selectedReferral.f2f_expiration) : null;
+  const urgencyColor = days === null ? null : days < 0 ? palette.primaryMagenta.hex : days <= 7 ? palette.primaryMagenta.hex : days <= 14 ? palette.accentOrange.hex : days <= 30 ? '#7A5F00' : palette.accentGreen.hex;
 
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
+          {/* Sub-stage indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: isF2F ? hexToRgba(palette.accentOrange.hex, 0.12) : hexToRgba(palette.accentBlue.hex, 0.12), color: isF2F ? palette.accentOrange.hex : palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              {isF2F ? 'F2F/MD Orders' : 'Intake'}
+            </span>
+          </div>
+
+          <PatientSnapshot
+            patient={selectedReferral?.patient}
+            referral={selectedReferral}
+            triageData={triageData}
+            insuranceChecks={patientInsuranceChecks}
+          />
+
           <PanelSection title="Demographics">
-            <CollapsibleChecklist
-              title="Basic fields"
-              items={INTAKE_DEMO_FIELDS}
-              doneMap={doneMap}
-              onToggle={() => {}}
-            />
+            <CollapsibleChecklist title="Basic fields" items={INTAKE_DEMO_FIELDS} doneMap={doneMap} onToggle={() => {}} />
           </PanelSection>
 
+          {/* F2F section — shown for F2F-stage referrals */}
+          {isF2F && (
+            <>
+              <PanelSection title="F2F Status">
+                {days !== null ? (
+                  <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
+                    <p style={{ fontSize: 28, fontWeight: 800, color: urgencyColor, lineHeight: 1 }}>{days < 0 ? 'EXPIRED' : `${days}d`}</p>
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3 }}>{days < 0 ? 'F2F has expired' : 'until expiration'}</p>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '6px 0' }}>No F2F date recorded</p>
+                )}
+                <InfoRow label="PECOS" value={selectedReferral.is_pecos_verified === 'TRUE' || selectedReferral.is_pecos_verified === true ? 'Yes' : 'No'} highlight={selectedReferral.is_pecos_verified === 'TRUE' || selectedReferral.is_pecos_verified === true ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
+                <InfoRow label="OPRA" value={selectedReferral.is_opra_verified === 'TRUE' || selectedReferral.is_opra_verified === true ? 'Yes' : 'No'} />
+              </PanelSection>
+
+              {canPerm(PERMISSION_KEYS.CLINICAL_F2F) && (
+                <PanelSection title="Log F2F Date">
+                  {!showDatePicker ? (
+                    <ActionBtn
+                      label={selectedReferral.f2f_date ? 'Update F2F Date' : 'F2F / MD Orders Received'}
+                      variant={selectedReferral.f2f_date ? 'default' : 'success'}
+                      onClick={() => { if (selectedReferral.f2f_date) setReceivedDate(new Date(selectedReferral.f2f_date).toISOString().split('T')[0]); setShowDatePicker(true); }}
+                    />
+                  ) : (
+                    <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '10px' }}>
+                      <input type="date" value={receivedDate} max={new Date().toISOString().split('T')[0]} onChange={(e) => setReceivedDate(e.target.value)}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', outline: 'none', marginBottom: 6 }} />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={handleLogReceived} disabled={!receivedDate || saving} style={{ flex: 1, padding: '6px', borderRadius: 6, border: 'none', background: receivedDate ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), color: receivedDate ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 11, fontWeight: 650, cursor: receivedDate ? 'pointer' : 'not-allowed' }}>{saving ? 'Saving...' : 'Confirm'}</button>
+                        <button onClick={() => { setShowDatePicker(false); setReceivedDate(''); }} style={{ flex: 1, padding: '6px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 11, fontWeight: 650, cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  <ActionBtn label="Go to Files" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
+                </PanelSection>
+              )}
+
+              <PanelSection title="Document Review">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: reviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4) }}>{completedReq}/{totalReq}</span>
+                </div>
+                <div style={{ height: 3, borderRadius: 2, background: hexToRgba(palette.backgroundDark.hex, 0.08), overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+                {F2F_REVIEW_CHECKLIST.map((item) => (
+                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => setReviewChecked((prev) => ({ ...prev, [item.key]: !prev[item.key] }))} style={{ accentColor: palette.accentGreen.hex, width: 12, height: 12, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11.5, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
+                      {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
+                    </span>
+                  </label>
+                ))}
+              </PanelSection>
+            </>
+          )}
+
           <PanelSection title="Actions">
-            <ActionBtn
-              label="Continue to Eligibility Verification →"
-              variant="forward"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
-            />
-            {isSN && (
+            {isF2F ? (
               <ActionBtn
-                label="Open Triage Form"
-                variant="default"
-                onClick={() => onOpenTriage?.(selectedReferral)}
+                label={reviewComplete ? 'Confirm → Clinical Intake RN Review' : 'Complete review to send to Clinical RN'}
+                variant={reviewComplete ? 'forward' : 'default'}
+                disabled={!reviewComplete}
+                onClick={() => reviewComplete && onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
               />
+            ) : (
+              <ActionBtn label="Continue to Eligibility Verification →" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')} />
             )}
+            {isSN && <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />}
           </PanelSection>
         </>
       )}
@@ -1158,7 +1284,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 
           {/* Confirm + clinical decision actions — gated by permission */}
           {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
-          <PanelSection title="Clinical Decision">
+          <PanelSection title="Clinical Validation">
             <button
               data-testid="confirm-patient-btn"
               onClick={handleConfirm}
@@ -1546,6 +1672,27 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onInitiateTr
 
   useEffect(() => { setClinicianMatched(false); }, [selectedReferral?._id]);
 
+  const triageAdultStore = useCareStore((s) => s.triageAdult);
+  const triagePedStore = useCareStore((s) => s.triagePediatric);
+  const insuranceCheckStore = useCareStore((s) => s.insuranceChecks);
+  const sRefId = selectedReferral?.id;
+  const sRefAirtableId = selectedReferral?._id;
+  const staffingTriageData = [...Object.values(triageAdultStore || {}), ...Object.values(triagePedStore || {})].find((t) => {
+    const tid = t.referral_id;
+    if (!tid || !sRefId) return false;
+    if (tid === sRefId || tid === sRefAirtableId) return true;
+    if (Array.isArray(tid) && (tid.includes(sRefId) || tid.includes(sRefAirtableId))) return true;
+    return false;
+  }) || null;
+  const staffingInsuranceChecks = Object.values(insuranceCheckStore || {}).filter((c) => {
+    const pid = c.patient_id;
+    const target = selectedReferral?.patient_id;
+    if (!pid || !target) return false;
+    if (pid === target) return true;
+    if (Array.isArray(pid) && pid.includes(target)) return true;
+    return false;
+  });
+
   const isOnTrack = selectedReferral?.current_stage === 'Staffing Feasibility';
   const isConflict = selectedReferral?.current_stage === 'Conflict';
   const canConfirm = isOnTrack && clinicianMatched && canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
@@ -1571,6 +1718,12 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onInitiateTr
       {/* Selected patient detail */}
       {selectedReferral && (
         <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid var(--color-border)` }}>
+          <PatientSnapshot
+            patient={selectedReferral?.patient}
+            referral={selectedReferral}
+            triageData={staffingTriageData}
+            insuranceChecks={staffingInsuranceChecks}
+          />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <div>
               <p style={{ fontSize: 12, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>

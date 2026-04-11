@@ -131,24 +131,44 @@ function renderForm(props = {}) {
   return { ...result, onClose, onSuccess };
 }
 
+function selectDivision(value) {
+  const selects = screen.getAllByRole('combobox');
+  const divSelect = selects.find((s) => [...s.options].some((o) => o.value === 'ALF'));
+  fireEvent.change(divSelect, { target: { value } });
+}
+
+function selectAgeGroup(value) {
+  const selects = screen.getAllByRole('combobox');
+  const ageSelect = selects.find((s) => [...s.options].some((o) => o.value === 'Adult'));
+  fireEvent.change(ageSelect, { target: { value } });
+}
+
+function selectEntity(value) {
+  const selects = screen.getAllByRole('combobox');
+  const entitySelect = selects.find((s) => [...s.options].some((o) => o.value === 'WB'));
+  fireEvent.change(entitySelect, { target: { value } });
+}
+
 describe('NewReferralForm — Division selector', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCan.mockReturnValue(true);
   });
 
-  it('renders division selector at the top with ALF and Special Needs buttons', () => {
+  it('renders division selector at the top with ALF and Special Needs options', () => {
     renderForm();
-    const alfBtn = screen.getByRole('button', { name: 'ALF' });
-    const snBtn = screen.getByRole('button', { name: 'Special Needs' });
-    expect(alfBtn).toBeTruthy();
-    expect(snBtn).toBeTruthy();
+    const selects = screen.getAllByRole('combobox');
+    const divSelect = selects.find((s) => [...s.options].some((o) => o.value === 'ALF'));
+    expect(divSelect).toBeTruthy();
+    const optionValues = [...divSelect.options].map((o) => o.value);
+    expect(optionValues).toContain('ALF');
+    expect(optionValues).toContain('Special Needs');
   });
 
   it('does not show facility selector until ALF is chosen', () => {
     renderForm();
     expect(screen.queryByText('Facility')).toBeFalsy();
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
     expect(screen.getByText('Facility')).toBeTruthy();
   });
 
@@ -156,16 +176,16 @@ describe('NewReferralForm — Division selector', () => {
     renderForm();
     expect(screen.queryByText('Age Group')).toBeFalsy();
     expect(screen.queryByText('County')).toBeFalsy();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
     expect(screen.getByText('Age Group')).toBeTruthy();
     expect(screen.getByText('County')).toBeTruthy();
   });
 
   it('clears SN-specific fields when switching from SN to ALF', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Adult' }));
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('Special Needs');
+    selectAgeGroup('Adult');
+    selectDivision('ALF');
     expect(screen.queryByText('Age Group')).toBeFalsy();
   });
 });
@@ -176,9 +196,12 @@ describe('NewReferralForm — Insurance (optional, multi-select)', () => {
     mockCan.mockReturnValue(true);
   });
 
-  it('renders insurance as a multi-select with checkboxes', () => {
+  it('renders insurance as a dropdown selector', () => {
     renderForm();
     expect(screen.getByText('Insurance Plans')).toBeTruthy();
+    const trigger = screen.getByText('Select insurance plans...');
+    expect(trigger).toBeTruthy();
+    fireEvent.click(trigger);
     expect(screen.getByText('Fidelis Care')).toBeTruthy();
     expect(screen.getByText('Medicaid')).toBeTruthy();
   });
@@ -192,20 +215,13 @@ describe('NewReferralForm — Insurance (optional, multi-select)', () => {
     expect(hasRequiredStar).toBe(false);
   });
 
-  it('generates plan detail inputs when multiple insurances are selected', () => {
+  it('generates plan detail inputs when plans are selected from dropdown', () => {
     renderForm();
-    const fidelisCheckbox = screen.getAllByRole('checkbox').find((cb) => {
-      const label = cb.closest('label');
-      return label?.textContent?.includes('Fidelis Care');
-    });
-    const medicaidCheckbox = screen.getAllByRole('checkbox').find((cb) => {
-      const label = cb.closest('label');
-      return label?.textContent?.includes('Medicaid');
-    });
-    fireEvent.click(fidelisCheckbox);
-    fireEvent.click(medicaidCheckbox);
-    expect(screen.getByPlaceholderText('Fidelis Care — member ID or plan #')).toBeTruthy();
-    expect(screen.getByPlaceholderText('Medicaid — member ID or plan #')).toBeTruthy();
+    fireEvent.click(screen.getByText('Select insurance plans...'));
+    fireEvent.click(screen.getByText('Fidelis Care'));
+    fireEvent.click(screen.getByText('Medicaid'));
+    expect(screen.getByPlaceholderText('Fidelis Care member ID or plan #')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Medicaid member ID or plan #')).toBeTruthy();
   });
 });
 
@@ -215,16 +231,20 @@ describe('NewReferralForm — Special Needs requirements', () => {
     mockCan.mockReturnValue(true);
   });
 
-  it('shows Adult and Pediatric buttons for SN', () => {
+  it('shows Adult and Pediatric options in age group select for SN', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
-    expect(screen.getByRole('button', { name: 'Adult' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Pediatric' })).toBeTruthy();
+    selectDivision('Special Needs');
+    const selects = screen.getAllByRole('combobox');
+    const ageSelect = selects.find((s) => [...s.options].some((o) => o.value === 'Adult'));
+    expect(ageSelect).toBeTruthy();
+    const optionValues = [...ageSelect.options].map((o) => o.value);
+    expect(optionValues).toContain('Adult');
+    expect(optionValues).toContain('Pediatric');
   });
 
   it('shows county dropdown from agencies.js', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
     const countySelect = screen.getAllByRole('combobox').find((s) => {
       const options = within(s).queryAllByRole('option');
       return options.some((o) => o.textContent === 'Bronx');
@@ -240,30 +260,32 @@ describe('NewReferralForm — Special Needs requirements', () => {
 
   it('auto-assigns WB for Kings county (WB only)', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
     const countySelect = screen.getAllByRole('combobox').find((s) =>
       within(s).queryAllByRole('option').some((o) => o.textContent === 'Kings')
     );
     fireEvent.change(countySelect, { target: { value: 'Kings' } });
-    expect(screen.getByText(/auto-assigned for Kings county/i)).toBeTruthy();
-    expect(screen.getByText('WB')).toBeTruthy();
+    expect(screen.getByText(/auto-assigned for Kings/i)).toBeTruthy();
   });
 
   it('shows WB/WBII chooser for ambiguous counties like Bronx', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
     const countySelect = screen.getAllByRole('combobox').find((s) =>
       within(s).queryAllByRole('option').some((o) => o.textContent === 'Bronx')
     );
     fireEvent.change(countySelect, { target: { value: 'Bronx' } });
-    expect(screen.getByText(/served by both agencies/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Wellbound (WB)' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Wellbound II (WBII)' })).toBeTruthy();
+    const selects = screen.getAllByRole('combobox');
+    const entitySelect = selects.find((s) => [...s.options].some((o) => o.value === 'WB'));
+    expect(entitySelect).toBeTruthy();
+    const optionValues = [...entitySelect.options].map((o) => o.value);
+    expect(optionValues).toContain('WB');
+    expect(optionValues).toContain('WBII');
   });
 
   it('validation fails without age group and county for SN', async () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
 
     // Fill other required fields
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'John' } });
@@ -295,11 +317,11 @@ describe('NewReferralForm — Priority', () => {
   it('defaults priority to Normal in the submission payload', async () => {
     renderForm();
 
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
 
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Jane' } });
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Smith' } });
-    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '5551234567' } });
+    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '2125551234' } });
 
     // Select source and marketer
     const comboboxes = screen.getAllByRole('combobox');
@@ -343,7 +365,7 @@ describe('NewReferralForm — Services conditional on division', () => {
 
   it('shows ABA for Special Needs but not for ALF', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
     fireEvent.click(screen.getByText('Referral Details'));
 
     const checkboxLabels = screen.getAllByRole('checkbox')
@@ -353,7 +375,7 @@ describe('NewReferralForm — Services conditional on division', () => {
     expect(checkboxLabels).not.toContain('ABA');
 
     // Switch to SN
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
     const snLabels = screen.getAllByRole('checkbox')
       .map((cb) => cb.closest('label')?.textContent)
       .filter(Boolean);
@@ -369,8 +391,8 @@ describe('NewReferralForm — services_under_licence in submission', () => {
 
   it('sends services_under_licence=WB for Kings county', async () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Adult' }));
+    selectDivision('Special Needs');
+    selectAgeGroup('Adult');
 
     const countySelect = screen.getAllByRole('combobox').find((s) =>
       within(s).queryAllByRole('option').some((o) => o.textContent === 'Kings')
@@ -379,7 +401,7 @@ describe('NewReferralForm — services_under_licence in submission', () => {
 
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Test' } });
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'User' } });
-    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '5551112222' } });
+    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '2125551234' } });
 
     const comboboxes = screen.getAllByRole('combobox');
     const sourceSelect = comboboxes.find((s) =>
@@ -404,8 +426,8 @@ describe('NewReferralForm — services_under_licence in submission', () => {
 
   it('sends chosen licence for ambiguous county after user picks', async () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pediatric' }));
+    selectDivision('Special Needs');
+    selectAgeGroup('Pediatric');
 
     const countySelect = screen.getAllByRole('combobox').find((s) =>
       within(s).queryAllByRole('option').some((o) => o.textContent === 'Bronx')
@@ -413,11 +435,11 @@ describe('NewReferralForm — services_under_licence in submission', () => {
     fireEvent.change(countySelect, { target: { value: 'Bronx' } });
 
     // Choose WBII
-    fireEvent.click(screen.getByRole('button', { name: 'Wellbound II (WBII)' }));
+    selectEntity('WBII');
 
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Test' } });
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Child' } });
-    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '5559998888' } });
+    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '7185559876' } });
 
     const comboboxes = screen.getAllByRole('combobox');
     const sourceSelect = comboboxes.find((s) =>
@@ -449,7 +471,7 @@ describe('NewReferralForm — Facility-Marketer filtering', () => {
 
   it('shows all marketers when no facility is selected (non-ALF)', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Special Needs' }));
+    selectDivision('Special Needs');
 
     const comboboxes = screen.getAllByRole('combobox');
     const marketerSelect = comboboxes.find((s) =>
@@ -464,7 +486,7 @@ describe('NewReferralForm — Facility-Marketer filtering', () => {
 
   it('filters marketer list to facility-linked marketers when ALF facility is chosen', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
 
     const comboboxes = screen.getAllByRole('combobox');
     const facilitySelect = comboboxes.find((s) =>
@@ -485,7 +507,7 @@ describe('NewReferralForm — Facility-Marketer filtering', () => {
 
   it('auto-selects the primary marketer when a facility is chosen', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
 
     const comboboxes = screen.getAllByRole('combobox');
     const facilitySelect = comboboxes.find((s) =>
@@ -498,7 +520,7 @@ describe('NewReferralForm — Facility-Marketer filtering', () => {
 
   it('shows facility marketer count indicator', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'ALF' }));
+    selectDivision('ALF');
 
     const comboboxes = screen.getAllByRole('combobox');
     const facilitySelect = comboboxes.find((s) =>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -10,6 +10,7 @@ import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { normalizePhone, validateEmail, lookupZip } from '../../utils/validation.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -73,10 +74,11 @@ function Label({ children, required }) {
 
 const inputBase = {
   width: '100%', padding: '9px 11px', borderRadius: 8,
-  border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.12)}`,
-  background: hexToRgba(palette.backgroundDark.hex, 0.03),
+  border: 'none',
+  background: hexToRgba(palette.backgroundDark.hex, 0.05),
   fontSize: 13, color: palette.backgroundDark.hex,
-  outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.15s',
+  outline: 'none', fontFamily: 'inherit', transition: 'box-shadow 0.15s',
+  boxSizing: 'border-box',
 };
 
 function Input({ value, onChange, placeholder, type = 'text', hasError }) {
@@ -86,9 +88,9 @@ function Input({ value, onChange, placeholder, type = 'text', hasError }) {
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12) }}
-      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-      onBlur={(e) => (e.target.style.borderColor = hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
+      style={{ ...inputBase, boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none' }}
+      onFocus={(e) => (e.target.style.boxShadow = `0 0 0 1.5px ${palette.primaryMagenta.hex}`)}
+      onBlur={(e) => (e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none')}
     />
   );
 }
@@ -99,11 +101,11 @@ function Select({ value, onChange, options, placeholder, hasError, disabled }) {
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      style={{ ...inputBase, borderColor: hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12), cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
-      onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-      onBlur={(e) => (e.target.style.borderColor = hasError ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
+      style={{ ...inputBase, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none' }}
+      onFocus={(e) => (e.target.style.boxShadow = `0 0 0 1.5px ${palette.primaryMagenta.hex}`)}
+      onBlur={(e) => (e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none')}
     >
-      <option value="" disabled>{placeholder || 'Select…'}</option>
+      <option value="" disabled>{placeholder || 'Select...'}</option>
       {options.map((opt) => (
         <option key={typeof opt === 'string' ? opt : opt.value} value={typeof opt === 'string' ? opt : opt.value}>
           {typeof opt === 'string' ? opt : opt.label}
@@ -136,17 +138,15 @@ function SectionDivider({ title, expanded, onToggle }) {
       type="button"
       onClick={onToggle}
       style={{
-        width: '100%', padding: '10px 0', background: 'none', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 10, color: hexToRgba(palette.backgroundDark.hex, 0.55),
-        fontSize: 12, fontWeight: 650, letterSpacing: '0.04em', textTransform: 'uppercase',
+        width: '100%', padding: '14px 0 6px', background: 'none', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 8, color: hexToRgba(palette.backgroundDark.hex, 0.45),
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
       }}
     >
-      <span style={{ flex: 1, height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.1) }} />
       {title}
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
         <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span style={{ flex: 1, height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.1) }} />
     </button>
   );
 }
@@ -171,8 +171,17 @@ function CheckboxGroup({ options, values, onChange }) {
 // ── Multi-select insurance with checkmarks ──────────────────────────────────
 
 function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailChange }) {
-  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [open, setOpen] = useState(false);
   const [otherValue, setOtherValue] = useState('');
+  const [showOther, setShowOther] = useState(false);
+  const dropRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(e) { if (dropRef.current && !dropRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [open]);
 
   function togglePlan(plan) {
     if (selected.includes(plan)) {
@@ -182,55 +191,133 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
     }
   }
 
+  function removePlan(plan) {
+    onChange(selected.filter((p) => p !== plan));
+  }
+
   function addOther() {
     if (!otherValue.trim()) return;
     const label = otherValue.trim();
-    if (!selected.includes(label)) {
-      onChange([...selected, label]);
-    }
+    if (!selected.includes(label)) onChange([...selected, label]);
     setOtherValue('');
-    setShowOtherInput(false);
+    setShowOther(false);
   }
+
+  const unselected = INSURANCE_PLANS.filter((p) => !selected.includes(p));
 
   return (
     <div>
-      <div style={{ maxHeight: 180, overflowY: 'auto', border: `1px solid var(--color-border)`, borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.02) }}>
-        {INSURANCE_PLANS.map((plan) => (
-          <label key={plan} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', cursor: 'pointer', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}`, background: selected.includes(plan) ? hexToRgba(palette.accentGreen.hex, 0.06) : 'transparent', transition: 'background 0.1s' }}>
-            <input type="checkbox" checked={selected.includes(plan)} onChange={() => togglePlan(plan)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{plan}</span>
-            {selected.includes(plan) && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                <path d="M2 6l3 3 5-5" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </label>
-        ))}
+      {/* Dropdown trigger */}
+      <div ref={dropRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          style={{
+            ...inputBase, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer', textAlign: 'left',
+            color: selected.length > 0 ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+          }}
+        >
+          <span>{selected.length > 0 ? `${selected.length} plan${selected.length !== 1 ? 's' : ''} selected` : 'Select insurance plans...'}</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {open && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 100,
+            maxHeight: 220, overflowY: 'auto', borderRadius: 10,
+            background: palette.backgroundLight.hex,
+            boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+            padding: '4px 0',
+          }}>
+            {INSURANCE_PLANS.map((plan) => {
+              const isSelected = selected.includes(plan);
+              return (
+                <button key={plan} type="button" onClick={() => togglePlan(plan)} style={{
+                  width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 9,
+                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  fontSize: 12.5, color: palette.backgroundDark.hex, transition: 'background 0.08s',
+                }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04))}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                >
+                  <span style={{
+                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isSelected ? palette.primaryMagenta.hex : 'none',
+                    border: isSelected ? 'none' : `1.5px solid ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+                  }}>
+                    {isSelected && (
+                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 5l2.5 2.5L8 3" stroke={palette.backgroundLight.hex} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  {plan}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {!showOtherInput ? (
-        <button type="button" onClick={() => setShowOtherInput(true)} style={{ marginTop: 6, background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: palette.accentBlue.hex, cursor: 'pointer', padding: '4px 0' }}>
-          + Add other insurance
-        </button>
-      ) : (
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          <input value={otherValue} onChange={(e) => setOtherValue(e.target.value)} placeholder="Insurance name…" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOther())} style={{ ...inputBase, flex: 1 }} />
-          <button type="button" onClick={addOther} style={{ padding: '6px 14px', borderRadius: 7, background: palette.accentGreen.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>Add</button>
-          <button type="button" onClick={() => { setShowOtherInput(false); setOtherValue(''); }} style={{ padding: '6px 10px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>Cancel</button>
+      {/* Tags */}
+      {selected.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+          {selected.map((plan) => (
+            <span key={plan} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '4px 8px', borderRadius: 4,
+              background: hexToRgba(palette.backgroundDark.hex, 0.06),
+              fontSize: 11.5, fontWeight: 550, color: palette.backgroundDark.hex,
+            }}>
+              {plan}
+              <button type="button" onClick={() => removePlan(plan)} style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: hexToRgba(palette.backgroundDark.hex, 0.35), display: 'flex', alignItems: 'center',
+              }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
+      {/* Other */}
+      {!showOther ? (
+        <button type="button" onClick={() => setShowOther(true)} style={{ marginTop: 6, background: 'none', border: 'none', fontSize: 11.5, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer', padding: '4px 0' }}>
+          + Other
+        </button>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <input
+            value={otherValue}
+            onChange={(e) => setOtherValue(e.target.value)}
+            placeholder="Insurance name"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOther())}
+            style={{ ...inputBase, flex: 1, fontSize: 12 }}
+          />
+          <button type="button" onClick={addOther} disabled={!otherValue.trim()} style={{
+            padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 650, cursor: otherValue.trim() ? 'pointer' : 'not-allowed',
+            background: otherValue.trim() ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.08),
+            color: otherValue.trim() ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+          }}>Add</button>
+        </div>
+      )}
+
+      {/* Plan detail inputs */}
       {selected.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
-            Plan Details ({selected.length} selected)
-          </p>
           {selected.map((plan) => (
             <div key={plan} style={{ marginBottom: 6 }}>
               <input
                 value={planDetails[plan] || ''}
                 onChange={(e) => onPlanDetailChange(plan, e.target.value)}
-                placeholder={`${plan} — member ID or plan #`}
+                placeholder={`${plan} member ID or plan #`}
                 style={{ ...inputBase, fontSize: 12 }}
               />
             </div>
@@ -421,7 +508,20 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     const errs = {};
     if (!form.first_name.trim()) errs.first_name = 'Required';
     if (!form.last_name.trim()) errs.last_name = 'Required';
-    if (!form.phone_primary.trim()) errs.phone_primary = 'Required';
+    if (!form.phone_primary.trim()) {
+      errs.phone_primary = 'Required';
+    } else {
+      const phoneResult = normalizePhone(form.phone_primary);
+      if (!phoneResult.valid) errs.phone_primary = phoneResult.error;
+    }
+    if (form.email && form.email.trim()) {
+      const emailResult = validateEmail(form.email);
+      if (!emailResult.valid) errs.email = emailResult.error;
+    }
+    if (form.address_zip && form.address_zip.trim()) {
+      const zipResult = lookupZip(form.address_zip);
+      if (!zipResult.valid) errs.address_zip = zipResult.error;
+    }
     if (!form.division) errs.division = 'Required';
     if (!form.referral_source_id) errs.referral_source_id = 'Required';
     if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
@@ -440,6 +540,26 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
+
+    const primaryNorm = normalizePhone(form.phone_primary);
+    if (primaryNorm.valid) form.phone_primary = primaryNorm.digits;
+
+    if (form.phone_secondary) {
+      const secNorm = normalizePhone(form.phone_secondary);
+      if (secNorm.valid) form.phone_secondary = secNorm.digits;
+    }
+    if (form.emergency_contact_phone) {
+      const ecNorm = normalizePhone(form.emergency_contact_phone);
+      if (ecNorm.valid) form.emergency_contact_phone = ecNorm.digits;
+    }
+
+    if (form.address_zip && form.address_zip.trim()) {
+      const zipInfo = lookupZip(form.address_zip);
+      if (zipInfo.valid) {
+        if (!form.address_city) form.address_city = zipInfo.city;
+        if (!form.address_state) form.address_state = zipInfo.state;
+      }
+    }
 
     setSubmitting(true);
     setError(null);
@@ -611,7 +731,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         '--form-cols': isMobile ? '1' : undefined,
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0, background: palette.primaryDeepPlum.hex }}>
+        <div style={{ padding: '20px 24px 16px', flexShrink: 0, background: palette.primaryDeepPlum.hex }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>New Referral</h2>
@@ -630,42 +750,24 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         {/* Form body */}
         <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
-          {/* ── 1. DIVISION — primary choice at the top ── */}
-          <div style={{ padding: '16px 16px', borderRadius: 10, background: hexToRgba(palette.primaryMagenta.hex, 0.04), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.15)}`, marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.primaryMagenta.hex, 0.7), marginBottom: 10 }}>
-              Division — select first
+          {/* ── 1. DIVISION ── */}
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>
+              Division <span style={{ color: palette.primaryMagenta.hex }}>*</span>
             </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {allowedDivisions.map((d) => {
-                const selected = form.division === d;
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => !divisionLocked && setField('division', d)}
-                    disabled={divisionLocked && form.division !== d}
-                    style={{
-                      flex: 1, padding: '14px 16px', borderRadius: 10, cursor: divisionLocked ? 'default' : 'pointer',
-                      background: selected ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
-                      border: `2px solid ${selected ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-                      color: selected ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-                      fontSize: 14, fontWeight: 700, transition: 'all 0.15s',
-                      opacity: divisionLocked && !selected ? 0.4 : 1,
-                    }}
-                  >
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
-            {errors.division && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 6 }}>{errors.division}</p>}
+            <Select
+              value={form.division}
+              onChange={(v) => !divisionLocked && setField('division', v)}
+              options={allowedDivisions.map((d) => ({ value: d, label: d === 'Special Needs' ? 'SPN (Special Needs)' : d }))}
+              placeholder="Select division..."
+              hasError={!!errors.division}
+              disabled={divisionLocked}
+            />
+            {errors.division && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.division}</p>}
             {isMarketerRole && divisionLocked && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 6, fontStyle: 'italic' }}>
-                Locked to your assigned division
-              </p>
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>Locked to your assigned division</p>
             )}
 
-            {/* ALF → Facility selector */}
             {form.division === 'ALF' && (
               <div style={{ marginTop: 12 }}>
                 <Label required>Facility</Label>
@@ -673,118 +775,75 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                   value={form.facility_id}
                   onChange={(v) => setField('facility_id', v)}
                   options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
-                  placeholder="Select facility…"
+                  placeholder="Select facility..."
                   hasError={!!errors.facility_id}
                 />
                 {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
               </div>
             )}
 
-            {/* Special Needs → Adult/Pediatric + County + Licence */}
             {form.division === 'Special Needs' && (
               <div style={{ marginTop: 12 }}>
                 <FieldGroup cols={2}>
                   <FieldBox label="Age Group" required>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {['Adult', 'Pediatric'].map((ag) => {
-                        const sel = form.sn_age_group === ag;
-                        return (
-                          <button key={ag} type="button" onClick={() => setField('sn_age_group', ag)} style={{
-                            flex: 1, padding: '9px 10px', borderRadius: 7, cursor: 'pointer',
-                            background: sel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
-                            border: `1.5px solid ${sel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-                            color: sel ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-                            fontSize: 12.5, fontWeight: 650, transition: 'all 0.12s',
-                          }}>
-                            {ag}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <Select
+                      value={form.sn_age_group}
+                      onChange={(v) => setField('sn_age_group', v)}
+                      options={[{ value: 'Adult', label: 'Adult' }, { value: 'Pediatric', label: 'Pediatric' }]}
+                      placeholder="Select..."
+                      hasError={!!errors.sn_age_group}
+                    />
                     {errors.sn_age_group && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.sn_age_group}</p>}
                   </FieldBox>
-
                   <FieldBox label="County" required>
                     <Select
                       value={form.county}
                       onChange={(v) => setField('county', v)}
                       options={ALL_COUNTIES.map((c) => ({ value: c, label: c }))}
-                      placeholder="Select county…"
+                      placeholder="Select county..."
                       hasError={!!errors.county}
                     />
                     {errors.county && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.county}</p>}
                   </FieldBox>
                 </FieldGroup>
 
-                {/* Auto-assigned licence indicator */}
                 {form.county && countyLicence && countyLicence !== 'both' && (
-                  <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.2)}` }}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: palette.accentGreen.hex }}>
-                      Services under licence: <strong>{form.services_under_licence}</strong> (auto-assigned for {form.county} county)
-                    </p>
-                  </div>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: palette.primaryMagenta.hex, marginTop: 8 }}>
+                    Entity: <strong>{form.services_under_licence}</strong> (auto-assigned for {form.county})
+                  </p>
                 )}
 
-                {/* County is served by BOTH → user must choose */}
                 {form.county && countyLicence === 'both' && (
                   <div style={{ marginTop: 8 }}>
-                    <Label required>Services Under Licence</Label>
-                    <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 6 }}>
-                      {form.county} county is served by both agencies. Please select one:
-                    </p>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {['WB', 'WBII'].map((lic) => {
-                        const sel = form.services_under_licence === lic;
-                        return (
-                          <button key={lic} type="button" onClick={() => setField('services_under_licence', lic)} style={{
-                            flex: 1, padding: '10px 12px', borderRadius: 7, cursor: 'pointer',
-                            background: sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
-                            border: `1.5px solid ${sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-                            color: sel ? palette.backgroundLight.hex : palette.backgroundDark.hex,
-                            fontSize: 13, fontWeight: 650, transition: 'all 0.12s',
-                          }}>
-                            {lic === 'WB' ? 'Wellbound (WB)' : 'Wellbound II (WBII)'}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <Label required>Entity</Label>
+                    <Select
+                      value={form.services_under_licence}
+                      onChange={(v) => setField('services_under_licence', v)}
+                      options={[{ value: 'WB', label: 'Wellbound (WB)' }, { value: 'WBII', label: 'Wellbound II (WBII)' }]}
+                      placeholder="Select entity..."
+                      hasError={!!errors.services_under_licence}
+                    />
                     {errors.services_under_licence && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.services_under_licence}</p>}
                   </div>
                 )}
 
-                {/* Code 95 — optional at lead entry */}
                 <div style={{ marginTop: 12 }}>
                   <Label>Code 95 (OPWDD)</Label>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }].map((opt) => {
-                      const sel = form.code_95 === opt.value;
-                      return (
-                        <button key={opt.value} type="button" onClick={() => setField('code_95', opt.value)} style={{
-                          flex: 1, padding: '8px 6px', borderRadius: 7, cursor: 'pointer',
-                          background: sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.04),
-                          border: `1.5px solid ${sel ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-                          color: sel ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-                          fontSize: 12, fontWeight: 650, transition: 'all 0.12s',
-                        }}>
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ textAlign: 'center', marginTop: 6 }}>
-                    <button type="button" onClick={() => setField('code_95', '')} style={{ background: 'none', border: 'none', padding: '2px 0', fontSize: 11, fontWeight: 600, color: palette.primaryDeepPlum.hex, cursor: 'pointer' }}>
-                      Skip for now
-                    </button>
-                  </div>
+                  <Select
+                    value={form.code_95}
+                    onChange={(v) => setField('code_95', v)}
+                    options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+                    placeholder="Select..."
+                  />
                 </div>
               </div>
             )}
           </div>
 
           {/* ── 2. Attribution ── */}
-          <div style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.04), border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.1)}`, marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.primaryDeepPlum.hex, 0.6), marginBottom: 12 }}>
-              Attribution — required
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
+              Attribution
             </p>
             <FieldGroup>
               <FieldBox label="Lead Source" required>
@@ -803,11 +862,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                 {facilityMarketerLinks && form.marketer_id && form.marketer_id !== 'other' && (() => {
                   const link = facilityMarketerLinks.find((l) => l.marketer_id === form.marketer_id);
                   const isPrimary = link && (link.is_primary === true || link.is_primary === 'true');
-                  if (isPrimary) return <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>★ Primary marketer for this facility — auto-selected</p>;
+                  if (isPrimary) return <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Primary marketer for this facility (auto-selected)</p>;
                   return null;
                 })()}
                 {form.marketer_id && form.marketer_id !== 'other' && !facilityMarketerLinks && appUserId && marketers.find((m) => m.id === form.marketer_id)?.user_id === appUserId && (
-                  <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled — you are the marketer for this referral</p>
+                  <p style={{ fontSize: 11, color: palette.accentGreen.hex, marginTop: 4, fontWeight: 600 }}>Auto-filled (you are the marketer for this referral)</p>
                 )}
                 {facilityMarketerLinks && (
                   <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
@@ -825,8 +884,8 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           </div>
 
           {/* ── 3. Patient info ── */}
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
-            Patient — required
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12 }}>
+            Patient
           </p>
           <FieldGroup cols={2}>
             <FieldBox label="First Name" required>
@@ -880,13 +939,29 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               <FieldBox label="Date of Birth"><Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" /></FieldBox>
               <FieldBox label="Gender"><Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" /></FieldBox>
               <FieldBox label="Secondary Phone"><Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
-              <FieldBox label="Email"><Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" /></FieldBox>
+              <FieldBox label="Email">
+                <Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" hasError={!!errors.email} />
+                {errors.email && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.email}</p>}
+              </FieldBox>
               <FieldBox label="Medicaid #"><Input value={form.medicaid_number} onChange={(v) => setField('medicaid_number', v)} placeholder="Medicaid number" /></FieldBox>
               <FieldBox label="Medicare #"><Input value={form.medicare_number} onChange={(v) => setField('medicare_number', v)} placeholder="Medicare number" /></FieldBox>
               <FieldBox label="Insurance Member ID"><Input value={form.insurance_id} onChange={(v) => setField('insurance_id', v)} placeholder="Member ID" /></FieldBox>
               <FieldBox label="Address"><Input value={form.address_street} onChange={(v) => setField('address_street', v)} placeholder="Street address" /></FieldBox>
               <FieldBox label="City"><Input value={form.address_city} onChange={(v) => setField('address_city', v)} placeholder="City" /></FieldBox>
-              <FieldBox label="Zip"><Input value={form.address_zip} onChange={(v) => setField('address_zip', v)} placeholder="Zip code" /></FieldBox>
+              <FieldBox label="Zip">
+                <input
+                  type="text"
+                  value={form.address_zip || ''}
+                  onChange={(e) => setField('address_zip', e.target.value)}
+                  placeholder="Zip code"
+                  maxLength={5}
+                  pattern="[0-9]*"
+                  style={{ ...inputBase, borderColor: errors.address_zip ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12) }}
+                  onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                  onBlur={(e) => (e.target.style.borderColor = errors.address_zip ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.12))}
+                />
+                {errors.address_zip && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.address_zip}</p>}
+              </FieldBox>
               <FieldBox label="Emergency Contact Name"><Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" /></FieldBox>
               <FieldBox label="Emergency Contact Phone"><Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
             </FieldGroup>
@@ -922,16 +997,13 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         {/* Footer */}
         <div style={{ padding: '14px 24px 18px', borderTop: `1px solid var(--color-border)`, flexShrink: 0 }}>
           {error && (
-            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
+            <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
               {error}
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-              Creates patient + starts a Leads referral
-            </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: `1px solid var(--color-border)`, fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+              <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
                 Cancel
               </button>
               <button

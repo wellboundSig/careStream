@@ -1070,3 +1070,153 @@ describe('FLOW 20: WB/WBII licence field handling', () => {
     expect(getRef().services_under_licence).toBeUndefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOW 21: Patient Snapshot Readiness Flags
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { computeSnapshotFlags } from '../components/modules/PatientSnapshot.jsx';
+import { isTriageComplete } from '../utils/triageCompleteness.js';
+import { normalizePhone, validateEmail, lookupZip } from '../utils/validation.js';
+
+describe('FLOW 21: Patient snapshot flags', () => {
+  it('all flags pass with complete data', () => {
+    const patient = {
+      first_name: 'Maria', last_name: 'Rodriguez', dob: '1985-06-15',
+      gender: 'Female', phone_primary: '2125551234',
+      address_street: '123 Main St', address_city: 'New York',
+      address_state: 'NY', address_zip: '10001', medicaid_number: 'AB12345C',
+    };
+    const referral = {
+      division: 'ALF', f2f_date: '2026-03-20',
+      is_pecos_verified: 'TRUE', is_opra_verified: true,
+    };
+    const flags = computeSnapshotFlags(patient, referral, null, [{ id: 'check1' }]);
+    expect(flags.demographics).toBe(true);
+    expect(flags.triage).toBe(true); // ALF auto-passes
+    expect(flags.f2f).toBe(true);
+    expect(flags.insurance).toBe(true);
+    expect(flags.pecos).toBe(true);
+  });
+
+  it('demographics fails when required field is missing', () => {
+    const patient = { first_name: 'Maria', last_name: 'Rodriguez', dob: '1985-06-15' };
+    const flags = computeSnapshotFlags(patient, {}, null, []);
+    expect(flags.demographics).toBe(false);
+  });
+
+  it('triage auto-passes for ALF', () => {
+    const flags = computeSnapshotFlags({}, { division: 'ALF' }, null, []);
+    expect(flags.triage).toBe(true);
+  });
+
+  it('triage fails for SPN without triage data', () => {
+    const flags = computeSnapshotFlags({ dob: '1985-01-01' }, { division: 'Special Needs' }, null, []);
+    expect(flags.triage).toBe(false);
+  });
+
+  it('triage passes for SPN with complete adult triage', () => {
+    const triageData = {
+      caregiver_name: 'J', caregiver_phone: '2125550100',
+      has_pets: false, has_homecare_services: false, has_community_hab: false,
+      code_95: 'no', services_needed: ['SN'], therapy_availability: 'AM',
+      is_diabetic: false, pcp_name: 'Dr. X', pcp_last_visit: '2026-01-01',
+      pcp_phone: '2125550200', cm_name: 'CM', cm_company: 'Co', cm_phone: '2125550300',
+    };
+    const flags = computeSnapshotFlags(
+      { dob: '1985-01-01' }, { division: 'Special Needs' }, triageData, []
+    );
+    expect(flags.triage).toBe(true);
+  });
+
+  it('f2f flag passes only when f2f_date exists', () => {
+    expect(computeSnapshotFlags({}, { f2f_date: '2026-03-01' }, null, []).f2f).toBe(true);
+    expect(computeSnapshotFlags({}, {}, null, []).f2f).toBe(false);
+  });
+
+  it('insurance flag requires at least one check', () => {
+    expect(computeSnapshotFlags({}, {}, null, []).insurance).toBe(false);
+    expect(computeSnapshotFlags({}, {}, null, [{ id: 'c1' }]).insurance).toBe(true);
+  });
+
+  it('pecos flag requires both verifications', () => {
+    expect(computeSnapshotFlags({}, { is_pecos_verified: 'TRUE', is_opra_verified: true }, null, []).pecos).toBe(true);
+    expect(computeSnapshotFlags({}, { is_pecos_verified: 'TRUE', is_opra_verified: false }, null, []).pecos).toBe(false);
+    expect(computeSnapshotFlags({}, { is_pecos_verified: false, is_opra_verified: 'TRUE' }, null, []).pecos).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOW 22: Triage completeness across pipeline transitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FLOW 22: Triage completeness integration', () => {
+  it('incomplete adult triage blocks snapshot flag', () => {
+    const partial = { caregiver_name: 'Jane', code_95: 'no' };
+    const { complete } = isTriageComplete(partial, 'adult');
+    expect(complete).toBe(false);
+    const flags = computeSnapshotFlags(
+      { dob: '1985-01-01' }, { division: 'Special Needs' }, partial, []
+    );
+    expect(flags.triage).toBe(false);
+  });
+
+  it('complete pediatric triage passes snapshot flag', () => {
+    const fullPed = {
+      phone_call_made_to: 'Mother', household_description: 'Parents',
+      has_pets: false, has_homecare_services: false, has_community_hab: false,
+      has_boe_services: false, code_95: 'yes', services_needed: ['SN', 'ABA'],
+      therapy_availability: 'After school', hha_hours_frequency: '4h/day',
+      is_diabetic: false, immunizations_up_to_date: 'true',
+      school_bus_time: '15:30', has_recent_hospitalization: false,
+      pcp_name: 'Dr. J', pcp_last_visit: '2026-02-01', pcp_phone: '2125550400',
+      cm_name: 'CM', cm_phone: '2125550500',
+    };
+    const { complete } = isTriageComplete(fullPed, 'pediatric');
+    expect(complete).toBe(true);
+    const flags = computeSnapshotFlags(
+      { dob: '2015-01-01' }, { division: 'Special Needs' }, fullPed, []
+    );
+    expect(flags.triage).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOW 23: Validation utilities in pipeline context
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FLOW 23: Validation in pipeline context', () => {
+  it('phone normalization works for patient data', () => {
+    const result = normalizePhone('1 (212) 555-1234');
+    expect(result.valid).toBe(true);
+    expect(result.digits).toBe('2125551234');
+    expect(result.formatted).toBe('(212) 555-1234');
+  });
+
+  it('rejects invalid phone during referral creation', () => {
+    const result = normalizePhone('555-12');
+    expect(result.valid).toBe(false);
+  });
+
+  it('email validation works for patient emails', () => {
+    expect(validateEmail('patient@fidelis.com').valid).toBe(true);
+    expect(validateEmail('not-an-email').valid).toBe(false);
+  });
+
+  it('ZIP lookup returns city/state for auto-population', () => {
+    const result = lookupZip('10001');
+    expect(result.valid).toBe(true);
+    expect(result.state).toBe('NY');
+    expect(result.city).toBeTruthy();
+  });
+
+  it('ZIP lookup rejects invalid format', () => {
+    expect(lookupZip('ABCDE').valid).toBe(false);
+    expect(lookupZip('123').valid).toBe(false);
+  });
+
+  it('Intake consolidation includes F2F stage', () => {
+    expect(STAGE_META['Intake'].consolidatedStages).toContain('F2F/MD Orders Pending');
+    expect(STAGE_META['Intake'].consolidatedStages).toContain('Intake');
+  });
+});

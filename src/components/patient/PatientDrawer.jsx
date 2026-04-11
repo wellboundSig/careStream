@@ -9,6 +9,7 @@ import OverviewTab from './tabs/OverviewTab.jsx';
 import ReferralInfoTab from './tabs/ReferralInfoTab.jsx';
 import EligibilityTab from './tabs/EligibilityTab.jsx';
 import TriageTab from './tabs/TriageTab.jsx';
+import F2FTab from './tabs/F2FTab.jsx';
 import NotesTab from './tabs/NotesTab.jsx';
 import TimelineTab from './tabs/TimelineTab.jsx';
 import FilesTab from './tabs/FilesTab.jsx';
@@ -20,10 +21,11 @@ import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
 const HEADER_TEXT = '#F7F7FA';
 
 export const DRAWER_TABS = [
+  { id: 'overview', label: 'Referral' },
   { id: 'demographics', label: 'Demographics' },
-  { id: 'overview', label: 'Overview' },
-  { id: 'eligibility', label: 'Eligibility' },
   { id: 'triage', label: 'Triage' },
+  { id: 'f2f', label: 'Face to Face' },
+  { id: 'eligibility', label: 'Eligibility' },
   { id: 'notes', label: 'Notes' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'files', label: 'Files' },
@@ -324,10 +326,11 @@ function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
 function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
   const props = { patient, referral };
   switch (tab) {
-    case 'demographics': return <OverviewTab {...props} />;
     case 'overview': return <ReferralInfoTab {...props} />;
-    case 'eligibility': return <EligibilityTab {...props} />;
+    case 'demographics': return <OverviewTab {...props} />;
     case 'triage': return <TriageTab {...props} />;
+    case 'f2f': return <F2FTab {...props} />;
+    case 'eligibility': return <EligibilityTab {...props} />;
     case 'notes': return <NotesTab {...props} />;
     case 'timeline': return <TimelineTab {...props} />;
     case 'files': return <FilesTab {...props} />;

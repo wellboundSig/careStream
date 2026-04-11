@@ -283,7 +283,6 @@ function CaseloadDashboard() {
                   >
                     <td style={{ padding: '11px 14px' }}>
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
-                      {ref.patient?.medicaid_number && <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Medicaid: {ref.patient.medicaid_number}</p>}
                     </td>
                     <td style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
                     <td style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>

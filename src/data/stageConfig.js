@@ -48,7 +48,7 @@ export const ROLE_MODES = [
     id: 'intake',
     label: 'Intake',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'OPWDD Enrollment', 'Disenrollment Required', 'F2F/MD Orders Pending', 'Discarded Leads'],
+    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'OPWDD Enrollment', 'Disenrollment Required', 'Discarded Leads'],
   },
   {
     id: 'clinical',
@@ -103,6 +103,7 @@ export const STAGE_META = {
     isGlobal: false,
     isTerminal: false,
     color: palette.accentBlue.hex,
+    consolidatedStages: ['Intake', 'F2F/MD Orders Pending'],
   },
   'Eligibility Verification': {
     description: 'Insurance and episode eligibility check',
