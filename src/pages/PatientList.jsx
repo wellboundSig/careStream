@@ -376,7 +376,6 @@ export default function PatientList() {
     if (wasIntercepted && note) updateFields.ntuc_reason = note;
     try {
       await updateReferral(referral._id, updateFields);
-      updateReferral(referral._id, { stage_entered_at: enteredAt }).catch(() => {});
       recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
       triggerDataRefresh();
       showToast(wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `Moved to ${effectiveStage}`);

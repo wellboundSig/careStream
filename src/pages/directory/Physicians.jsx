@@ -9,6 +9,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { normalizePhone, lookupZip } from '../../utils/validation.js';
 
 const BASE_INPUT = {
   width: '100%', padding: '7px 10px', borderRadius: 6,
@@ -18,11 +19,12 @@ const BASE_INPUT = {
   outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
 };
 
-function TInput({ value, onChange, placeholder, type = 'text', autoFocus }) {
+function TInput({ value, onChange, placeholder, type = 'text', autoFocus, maxLength }) {
   return (
     <input
       type={type} value={value || ''} placeholder={placeholder} autoFocus={autoFocus}
       onChange={(e) => onChange(e.target.value)}
+      maxLength={maxLength}
       style={BASE_INPUT}
       onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
       onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.15))}
@@ -45,6 +47,7 @@ function AddPhysicianModal({ onClose, onAdded }) {
   const [form, setForm] = useState({ first_name: '', last_name: '', npi: '', phone: '', fax: '', address_street: '', address_city: '', address_state: '', address_zip: '', is_pecos_enrolled: false, is_opra_enrolled: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function handleSave() {
@@ -52,6 +55,38 @@ function AddPhysicianModal({ onClose, onAdded }) {
       setError('First name and last name are required.');
       return;
     }
+
+    const errs = {};
+    let cleanPhone = form.phone?.trim() || '';
+    let cleanFax = form.fax?.trim() || '';
+    let cleanCity = form.address_city;
+    let cleanState = form.address_state;
+
+    if (cleanPhone) {
+      const r = normalizePhone(cleanPhone);
+      if (!r.valid) errs.phone = r.error;
+      else cleanPhone = r.digits;
+    }
+    if (cleanFax) {
+      const r = normalizePhone(cleanFax);
+      if (!r.valid) errs.fax = r.error;
+      else cleanFax = r.digits;
+    }
+    if (form.address_zip?.trim()) {
+      const r = lookupZip(form.address_zip);
+      if (!r.valid) errs.address_zip = r.error;
+      else {
+        if (!cleanCity?.trim()) cleanCity = r.city;
+        if (!cleanState?.trim()) cleanState = r.state;
+      }
+    }
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
+    setForm(f => ({ ...f, phone: cleanPhone, fax: cleanFax, address_city: cleanCity, address_state: cleanState }));
+
     setSaving(true);
     setError('');
     try {
@@ -60,12 +95,12 @@ function AddPhysicianModal({ onClose, onAdded }) {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         ...(form.npi            ? { npi: form.npi.trim() }               : {}),
-        ...(form.phone          ? { phone: form.phone.trim() }           : {}),
-        ...(form.fax            ? { fax: form.fax.trim() }               : {}),
+        ...(cleanPhone          ? { phone: cleanPhone }                   : {}),
+        ...(cleanFax            ? { fax: cleanFax }                       : {}),
         ...(form.address_street ? { address_street: form.address_street.trim() } : {}),
-        ...(form.address_city   ? { address_city: form.address_city.trim() }     : {}),
-        ...(form.address_state  ? { address_state: form.address_state.trim() }   : {}),
-        ...(form.address_zip    ? { address_zip: form.address_zip.trim() }       : {}),
+        ...(cleanCity?.trim()   ? { address_city: cleanCity.trim() }      : {}),
+        ...(cleanState?.trim()  ? { address_state: cleanState.trim() }    : {}),
+        ...(form.address_zip    ? { address_zip: form.address_zip.trim() }: {}),
         ...(form.is_pecos_enrolled ? { is_pecos_enrolled: true } : {}),
         ...(form.is_opra_enrolled  ? { is_opra_enrolled: true }  : {}),
         is_active: 'Active',
@@ -103,14 +138,23 @@ function AddPhysicianModal({ onClose, onAdded }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <FG label="NPI"><TInput value={form.npi} onChange={set('npi')} placeholder="1234567890" /></FG>
-            <FG label="Phone"><TInput value={form.phone} onChange={set('phone')} type="tel" placeholder="(718) 555-1234" /></FG>
+            <FG label="Phone">
+              <TInput value={form.phone} onChange={(v) => { set('phone')(v.replace(/\D/g, '').slice(0, 10)); if (fieldErrors.phone) setFieldErrors(e => ({ ...e, phone: '' })); }} type="tel" placeholder="(718) 555-1234" />
+              {fieldErrors.phone && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.phone}</p>}
+            </FG>
           </div>
-          <FG label="Fax"><TInput value={form.fax} onChange={set('fax')} type="tel" placeholder="(718) 555-5678" /></FG>
+          <FG label="Fax">
+            <TInput value={form.fax} onChange={(v) => { set('fax')(v.replace(/\D/g, '').slice(0, 10)); if (fieldErrors.fax) setFieldErrors(e => ({ ...e, fax: '' })); }} type="tel" placeholder="(718) 555-5678" />
+            {fieldErrors.fax && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.fax}</p>}
+          </FG>
           <FG label="Address"><TInput value={form.address_street} onChange={set('address_street')} placeholder="Street address" /></FG>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
             <FG label="City"><TInput value={form.address_city} onChange={set('address_city')} placeholder="City" /></FG>
             <FG label="State"><TInput value={form.address_state} onChange={set('address_state')} placeholder="NY" /></FG>
-            <FG label="Zip"><TInput value={form.address_zip} onChange={set('address_zip')} placeholder="11201" /></FG>
+            <FG label="Zip">
+              <TInput value={form.address_zip} onChange={(v) => { set('address_zip')(v); if (fieldErrors.address_zip) setFieldErrors(e => ({ ...e, address_zip: '' })); }} placeholder="11201" maxLength={5} />
+              {fieldErrors.address_zip && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.address_zip}</p>}
+            </FG>
           </div>
           <div style={{ display: 'flex', gap: 20 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>

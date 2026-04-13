@@ -333,7 +333,7 @@ export default function ModulePage({ stage }) {
           </td>
         );
       case 'triage':
-        if (meta.consolidatedStages) {
+        if (meta.consolidatedStages && meta.consolidatedStages.length > 2) {
           const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
           return (
             <td key="triage" style={{ padding: '11px 14px' }}>
@@ -443,7 +443,7 @@ export default function ModulePage({ stage }) {
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
             </div>
-            <StageActions stage={stage} onNewReferral={() => setShowNewReferral(true)} selectedReferral={selectedReferral} onSendToConflict={(ref) => initiateTransition(ref, 'Conflict')} />
+            <StageActions stage={stage} onNewReferral={() => setShowNewReferral(true)} />
           </div>
 
           {/* Toolbar */}
@@ -490,6 +490,32 @@ export default function ModulePage({ stage }) {
                 <ColumnPicker columnDefs={MODULE_COLUMN_DEFS} visibleCols={visibleCols} onChange={setVisibleCols} onClose={() => setShowColPicker(false)} />
               )}
             </div>
+
+            {/* Send to Conflict */}
+            {stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC' && (() => {
+              const canSend = selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
+              return (
+                <button
+                  onClick={canSend ? () => initiateTransition(selectedReferral, 'Conflict') : undefined}
+                  disabled={!canSend}
+                  title={canSend ? `Send ${selectedReferral?.patientName || 'patient'} to Conflict` : 'Select a patient to send to Conflict'}
+                  style={{
+                    height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
+                    borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: canSend ? 'pointer' : 'default', flexShrink: 0,
+                    background: canSend ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+                    color: canSend ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                  Conflict
+                </button>
+              );
+            })()}
 
             {/* Clear all */}
             <button
@@ -821,40 +847,12 @@ function DuplicateChecker({ stageReferrals, allReferrals, stage }) {
   );
 }
 
-function StageActions({ stage, onNewReferral, selectedReferral, onSendToConflict }) {
-  const showConflictBtn = stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC';
-  const canSendToConflict = showConflictBtn && selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
-
-  const conflictBtn = showConflictBtn ? (
-    <button
-      onClick={canSendToConflict ? () => onSendToConflict(selectedReferral) : undefined}
-      disabled={!canSendToConflict}
-      title={canSendToConflict ? `Send ${selectedReferral?.patientName || 'patient'} to Conflict` : 'Select a patient to send to Conflict'}
-      style={{
-        padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 650, cursor: canSendToConflict ? 'pointer' : 'default',
-        border: 'none',
-        background: canSendToConflict ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.12),
-        color: canSendToConflict ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-        display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.12s',
-      }}
-    >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-      Send to Conflict
-    </button>
-  ) : null;
-
+function StageActions({ stage, onNewReferral }) {
   if (stage === 'Lead Entry') {
     return (
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {conflictBtn}
-        <button onClick={onNewReferral} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
-          + New Referral
-        </button>
-      </div>
+      <button onClick={onNewReferral} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
+        + New Referral
+      </button>
     );
   }
   const secondaryActions = {
@@ -863,14 +861,10 @@ function StageActions({ stage, onNewReferral, selectedReferral, onSendToConflict
     'NTUC': 'Export NTUC Report',
   };
   const label = secondaryActions[stage];
+  if (!label) return null;
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      {conflictBtn}
-      {label && (
-        <button style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.04), color: hexToRgba(palette.backgroundDark.hex, 0.7), fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
-          {label}
-        </button>
-      )}
-    </div>
+    <button style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.04), color: hexToRgba(palette.backgroundDark.hex, 0.7), fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+      {label}
+    </button>
   );
 }

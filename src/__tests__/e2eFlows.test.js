@@ -1117,11 +1117,12 @@ describe('FLOW 21: Patient snapshot flags', () => {
 
   it('triage passes for SPN with complete adult triage', () => {
     const triageData = {
-      caregiver_name: 'J', caregiver_phone: '2125550100',
+      caregiver_name: 'J', caregiver_phone: '2125550100', caregiver_email: 'j@test.com',
       has_pets: false, has_homecare_services: false, has_community_hab: false,
       code_95: 'no', services_needed: ['SN'], therapy_availability: 'AM',
       is_diabetic: false, pcp_name: 'Dr. X', pcp_last_visit: '2026-01-01',
-      pcp_phone: '2125550200', cm_name: 'CM', cm_company: 'Co', cm_phone: '2125550300',
+      pcp_phone: '2125550200', pcp_fax: '2125550201', pcp_address: '123 St',
+      cm_name: 'CM', cm_company: 'Co', cm_phone: '2125550300', cm_fax_or_email: 'cm@co.com',
     };
     const flags = computeSnapshotFlags(
       { dob: '1985-01-01' }, { division: 'Special Needs' }, triageData, []
@@ -1170,6 +1171,7 @@ describe('FLOW 22: Triage completeness integration', () => {
       is_diabetic: false, immunizations_up_to_date: 'true',
       school_bus_time: '15:30', has_recent_hospitalization: false,
       pcp_name: 'Dr. J', pcp_last_visit: '2026-02-01', pcp_phone: '2125550400',
+      pcp_fax: '2125550401', pcp_address: '456 Oak Ave',
       cm_name: 'CM', cm_phone: '2125550500',
     };
     const { complete } = isTriageComplete(fullPed, 'pediatric');

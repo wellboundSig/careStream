@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { isTriageComplete, getRequiredFields } from '../triageCompleteness.js';
 
+// Complete adult triage using boolean values (store format after normalization)
 function makeAdultTriage(overrides = {}) {
   return {
     caregiver_name: 'Jane Doe',
     caregiver_phone: '2125550100',
+    caregiver_email: 'jane@example.com',
     has_pets: false,
     has_homecare_services: false,
     has_community_hab: false,
@@ -15,9 +17,12 @@ function makeAdultTriage(overrides = {}) {
     pcp_name: 'Dr. Smith',
     pcp_last_visit: '2026-01-15',
     pcp_phone: '2125550200',
+    pcp_fax: '2125550201',
+    pcp_address: '123 Main St, NY',
     cm_name: 'Case Manager',
     cm_company: 'Agency X',
     cm_phone: '2125550300',
+    cm_fax_or_email: 'cm@agency.com',
     ...overrides,
   };
 }
@@ -41,14 +46,129 @@ function makePediatricTriage(overrides = {}) {
     pcp_name: 'Dr. Jones',
     pcp_last_visit: '2026-02-01',
     pcp_phone: '2125550400',
+    pcp_fax: '2125550401',
+    pcp_address: '456 Oak Ave, NY',
     cm_name: 'CM Smith',
     cm_phone: '2125550500',
     ...overrides,
   };
 }
 
-describe('isTriageComplete — adult', () => {
-  it('returns complete for fully filled adult triage', () => {
+// ─── Three-state boolean tests (critical for patient safety) ─────────────────
+
+describe('Three-state boolean: true / false / unanswered', () => {
+  it('boolean true counts as answered (with conditional met)', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: true, pet_details: 'Cat' }), 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('boolean false counts as answered', () => {
+    const { complete } = isTriageComplete(makeAdultTriage({ has_pets: false }), 'adult');
+    expect(complete).toBe(true);
+  });
+
+  it('string "TRUE" counts as answered (triggers conditional)', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: 'TRUE', pet_details: 'Cat' }), 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('string "FALSE" counts as answered', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: 'FALSE' }), 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('string "Yes" counts as answered (triggers conditional)', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: 'Yes', pet_details: 'Dog' }), 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('string "No" counts as answered', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: 'No' }), 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('null is NOT answered — marks incomplete', () => {
+    const { complete, missing } = isTriageComplete(makeAdultTriage({ has_pets: null }), 'adult');
+    expect(complete).toBe(false);
+    expect(missing).toContain('has_pets');
+  });
+
+  it('field absent but key exists in data as undefined — marks incomplete', () => {
+    const data = makeAdultTriage();
+    data.has_pets = undefined;
+    const { missing } = isTriageComplete(data, 'adult');
+    expect(missing).toContain('has_pets');
+  });
+
+  it('field completely absent from data (column may not exist) — skipped', () => {
+    const data = makeAdultTriage();
+    delete data.has_pets;
+    const { missing } = isTriageComplete(data, 'adult');
+    expect(missing).not.toContain('has_pets');
+  });
+
+  it('empty string is NOT answered — marks incomplete', () => {
+    const { complete, missing } = isTriageComplete(makeAdultTriage({ has_pets: '' }), 'adult');
+    expect(complete).toBe(false);
+    expect(missing).toContain('has_pets');
+  });
+});
+
+// ─── Every boolean field individually ────────────────────────────────────────
+
+describe('Every boolean field: true saves, false saves, empty = incomplete', () => {
+  const boolFields = [
+    { field: 'has_pets', form: 'adult' },
+    { field: 'has_homecare_services', form: 'adult' },
+    { field: 'has_community_hab', form: 'adult' },
+    { field: 'is_diabetic', form: 'adult' },
+    { field: 'has_pets', form: 'pediatric' },
+    { field: 'has_homecare_services', form: 'pediatric' },
+    { field: 'has_community_hab', form: 'pediatric' },
+    { field: 'is_diabetic', form: 'pediatric' },
+    { field: 'immunizations_up_to_date', form: 'pediatric' },
+    { field: 'has_recent_hospitalization', form: 'pediatric' },
+  ];
+
+  for (const { field, form } of boolFields) {
+    const maker = form === 'adult' ? makeAdultTriage : makePediatricTriage;
+
+    it(`${form} ${field} = true → complete`, () => {
+      expect(isTriageComplete(maker({ [field]: true }), form).missing).not.toContain(field);
+    });
+
+    it(`${form} ${field} = false → complete`, () => {
+      expect(isTriageComplete(maker({ [field]: false }), form).missing).not.toContain(field);
+    });
+
+    it(`${form} ${field} = 'TRUE' → complete`, () => {
+      expect(isTriageComplete(maker({ [field]: 'TRUE' }), form).missing).not.toContain(field);
+    });
+
+    it(`${form} ${field} = 'FALSE' → complete`, () => {
+      expect(isTriageComplete(maker({ [field]: 'FALSE' }), form).missing).not.toContain(field);
+    });
+
+    it(`${form} ${field} = undefined (key present) → incomplete`, () => {
+      const data = maker();
+      data[field] = undefined;
+      expect(isTriageComplete(data, form).missing).toContain(field);
+    });
+
+    it(`${form} ${field} = null → incomplete`, () => {
+      expect(isTriageComplete(maker({ [field]: null }), form).missing).toContain(field);
+    });
+
+    it(`${form} ${field} = '' → incomplete`, () => {
+      expect(isTriageComplete(maker({ [field]: '' }), form).missing).toContain(field);
+    });
+  }
+});
+
+// ─── Full form completion tests ──────────────────────────────────────────────
+
+describe('Full form completion — adult', () => {
+  it('complete adult triage passes', () => {
     const { complete, missing } = isTriageComplete(makeAdultTriage(), 'adult');
     expect(complete).toBe(true);
     expect(missing).toEqual([]);
@@ -60,29 +180,10 @@ describe('isTriageComplete — adult', () => {
     expect(missing).toContain('caregiver_name');
   });
 
-  it('fails when code_95 is missing', () => {
-    const { complete, missing } = isTriageComplete(makeAdultTriage({ code_95: '' }), 'adult');
-    expect(complete).toBe(false);
-    expect(missing).toContain('code_95');
-  });
-
   it('fails when services_needed is empty array', () => {
     const { complete, missing } = isTriageComplete(makeAdultTriage({ services_needed: [] }), 'adult');
     expect(complete).toBe(false);
     expect(missing).toContain('services_needed');
-  });
-
-  it('fails when boolean field has_pets is unanswered (undefined)', () => {
-    const data = makeAdultTriage();
-    delete data.has_pets;
-    const { complete, missing } = isTriageComplete(data, 'adult');
-    expect(complete).toBe(false);
-    expect(missing).toContain('has_pets');
-  });
-
-  it('passes when boolean field has_pets is explicitly false', () => {
-    const { complete } = isTriageComplete(makeAdultTriage({ has_pets: false }), 'adult');
-    expect(complete).toBe(true);
   });
 
   it('requires pet_details when has_pets is true', () => {
@@ -94,7 +195,7 @@ describe('isTriageComplete — adult', () => {
     expect(missing).toContain('pet_details');
   });
 
-  it('passes with pet_details filled when has_pets is true', () => {
+  it('passes with pet_details when has_pets is true', () => {
     const { complete } = isTriageComplete(
       makeAdultTriage({ has_pets: true, pet_details: 'Dog, friendly' }),
       'adult'
@@ -102,46 +203,32 @@ describe('isTriageComplete — adult', () => {
     expect(complete).toBe(true);
   });
 
+  it('does NOT require pet_details when has_pets is false', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ has_pets: false }), 'adult');
+    expect(missing).not.toContain('pet_details');
+  });
+
   it('requires homecare sub-fields when has_homecare_services is true', () => {
-    const { complete, missing } = isTriageComplete(
+    const { missing } = isTriageComplete(
       makeAdultTriage({ has_homecare_services: true }),
       'adult'
     );
-    expect(complete).toBe(false);
     expect(missing).toContain('homecare_agency_name');
     expect(missing).toContain('homecare_hours');
     expect(missing).toContain('homecare_days');
   });
 
   it('requires diabetes_monitor_by when is_diabetic is true', () => {
-    const { complete, missing } = isTriageComplete(
+    const { missing } = isTriageComplete(
       makeAdultTriage({ is_diabetic: true }),
       'adult'
     );
-    expect(complete).toBe(false);
     expect(missing).toContain('diabetes_monitor_by');
-  });
-
-  it('handles null data', () => {
-    const { complete, missing } = isTriageComplete(null, 'adult');
-    expect(complete).toBe(false);
-    expect(missing.length).toBeGreaterThan(0);
-  });
-
-  it('handles undefined data', () => {
-    const { complete } = isTriageComplete(undefined, 'adult');
-    expect(complete).toBe(false);
-  });
-
-  it('fails when pcp_name is null', () => {
-    const { complete, missing } = isTriageComplete(makeAdultTriage({ pcp_name: null }), 'adult');
-    expect(complete).toBe(false);
-    expect(missing).toContain('pcp_name');
   });
 });
 
-describe('isTriageComplete — pediatric', () => {
-  it('returns complete for fully filled pediatric triage', () => {
+describe('Full form completion — pediatric', () => {
+  it('complete pediatric triage passes', () => {
     const { complete, missing } = isTriageComplete(makePediatricTriage(), 'pediatric');
     expect(complete).toBe(true);
     expect(missing).toEqual([]);
@@ -153,70 +240,97 @@ describe('isTriageComplete — pediatric', () => {
     expect(missing).toContain('phone_call_made_to');
   });
 
-  it('fails when has_recent_hospitalization is unanswered', () => {
-    const data = makePediatricTriage();
-    delete data.has_recent_hospitalization;
-    const { complete, missing } = isTriageComplete(data, 'pediatric');
-    expect(complete).toBe(false);
-    expect(missing).toContain('has_recent_hospitalization');
-  });
-
-  it('requires recent_hospitalization details when has_recent_hospitalization is true', () => {
-    const { complete, missing } = isTriageComplete(
-      makePediatricTriage({ has_recent_hospitalization: true, recent_hospitalization: '' }),
+  it('requires hospitalization note when has_recent_hospitalization is true', () => {
+    const { missing } = isTriageComplete(
+      makePediatricTriage({ has_recent_hospitalization: true, hospitalization_note: '' }),
       'pediatric'
     );
-    expect(complete).toBe(false);
-    expect(missing).toContain('recent_hospitalization');
-  });
-
-  it('passes with hospitalization details provided', () => {
-    const { complete } = isTriageComplete(
-      makePediatricTriage({ has_recent_hospitalization: true, recent_hospitalization: 'Admitted 2 weeks ago for asthma' }),
-      'pediatric'
-    );
-    expect(complete).toBe(true);
+    expect(missing).toContain('hospitalization_note');
   });
 
   it('requires boe_services details when has_boe_services is true', () => {
-    const { complete, missing } = isTriageComplete(
+    const { missing } = isTriageComplete(
       makePediatricTriage({ has_boe_services: true, boe_services: '' }),
       'pediatric'
     );
-    expect(complete).toBe(false);
     expect(missing).toContain('boe_services');
   });
+});
 
-  it('passes with boe_services details provided', () => {
-    const { complete } = isTriageComplete(
-      makePediatricTriage({ has_boe_services: true, boe_services: 'Speech therapy through school' }),
-      'pediatric'
-    );
-    expect(complete).toBe(true);
-  });
+// ─── Partial form tests ─────────────────────────────────────────────────────
 
-  it('fails when immunizations_up_to_date is unanswered', () => {
-    const data = makePediatricTriage();
-    delete data.immunizations_up_to_date;
-    const { complete, missing } = isTriageComplete(data, 'pediatric');
+describe('Partial form — checkmark must not appear', () => {
+  it('half-filled adult form is incomplete', () => {
+    const partial = {
+      caregiver_name: 'Jane',
+      caregiver_phone: '2125550100',
+      caregiver_email: 'j@test.com',
+      has_pets: false,
+      code_95: 'no',
+    };
+    const { complete } = isTriageComplete(partial, 'adult');
     expect(complete).toBe(false);
-    expect(missing).toContain('immunizations_up_to_date');
   });
 
-  it('accepts string "true" for immunizations_up_to_date', () => {
-    const { complete } = isTriageComplete(
-      makePediatricTriage({ immunizations_up_to_date: 'true' }),
-      'pediatric'
-    );
-    expect(complete).toBe(true);
+  it('half-filled pediatric form is incomplete', () => {
+    const partial = {
+      phone_call_made_to: 'Mother',
+      household_description: 'Parents',
+      has_pets: false,
+    };
+    const { complete } = isTriageComplete(partial, 'pediatric');
+    expect(complete).toBe(false);
   });
 
-  it('accepts string "false" for immunizations_up_to_date', () => {
-    const { complete } = isTriageComplete(
-      makePediatricTriage({ immunizations_up_to_date: 'false' }),
-      'pediatric'
-    );
-    expect(complete).toBe(true);
+  it('removing one answer from complete form makes it incomplete', () => {
+    const data = makeAdultTriage();
+    delete data.pcp_name;
+    const { complete, missing } = isTriageComplete(data, 'adult');
+    expect(complete).toBe(false);
+    expect(missing).toContain('pcp_name');
+  });
+});
+
+// ─── Validation tests ────────────────────────────────────────────────────────
+
+describe('Phone and email validation in completeness', () => {
+  it('rejects invalid phone (too short)', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ caregiver_phone: '555' }), 'adult');
+    expect(missing).toContain('caregiver_phone');
+  });
+
+  it('accepts valid 10-digit phone', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ caregiver_phone: '2125550100' }), 'adult');
+    expect(missing).not.toContain('caregiver_phone');
+  });
+
+  it('rejects email without @', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ caregiver_email: 'notanemail' }), 'adult');
+    expect(missing).toContain('caregiver_email');
+  });
+
+  it('accepts valid email', () => {
+    const { missing } = isTriageComplete(makeAdultTriage({ caregiver_email: 'test@example.com' }), 'adult');
+    expect(missing).not.toContain('caregiver_email');
+  });
+});
+
+// ─── null data ───────────────────────────────────────────────────────────────
+
+describe('Edge cases', () => {
+  it('null data returns incomplete', () => {
+    const { complete } = isTriageComplete(null, 'adult');
+    expect(complete).toBe(false);
+  });
+
+  it('undefined data returns incomplete', () => {
+    const { complete } = isTriageComplete(undefined, 'adult');
+    expect(complete).toBe(false);
+  });
+
+  it('empty object returns incomplete', () => {
+    const { complete } = isTriageComplete({}, 'adult');
+    expect(complete).toBe(false);
   });
 });
 

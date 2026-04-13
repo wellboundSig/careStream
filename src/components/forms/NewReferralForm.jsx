@@ -637,9 +637,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
       mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
 
-      if (referralRecord?._id) {
-        updateReferral(referralRecord._id, { stage_entered_at: referralDate }).catch(() => {});
-      }
+      // stage_entered_at not a column in Referrals — skip
 
       if (form.initial_notes?.trim()) {
         createNote({

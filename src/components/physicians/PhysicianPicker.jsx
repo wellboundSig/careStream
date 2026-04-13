@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPhysician } from '../../api/physicians.js';
 import { clearLookupsCache } from '../../hooks/useLookups.js';
+import { useCareStore } from '../../store/careStore.js';
 import {
   prefetchPhysicians,
   refreshPhysicians,
@@ -18,6 +19,7 @@ import {
   subscribeToPhysicians,
 } from '../../hooks/usePhysicians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { normalizePhone, lookupZip } from '../../utils/validation.js';
 
 // Kept for backward-compat — any existing callers of this still work.
 export function invalidatePhysicianPickerCache() {
@@ -48,7 +50,7 @@ function FieldGroup({ label, required, children }) {
     </div>
   );
 }
-function TInput({ value, onChange, placeholder, type = 'text', autoFocus }) {
+function TInput({ value, onChange, placeholder, type = 'text', autoFocus, maxLength }) {
   return (
     <input
       type={type}
@@ -56,6 +58,7 @@ function TInput({ value, onChange, placeholder, type = 'text', autoFocus }) {
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       autoFocus={autoFocus}
+      maxLength={maxLength}
       style={BASE_INPUT}
       onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
       onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.15))}
@@ -73,46 +76,29 @@ function phyAddress(phy) {
 }
 
 export default function PhysicianPicker({ physicianId, physicianName, onChange, readOnly, compact = false }) {
-  const [physicians, setPhysicians] = useState([]);
+  const storePhysicians = useCareStore((s) => s.physicians);
+  const physicians = Object.values(storePhysicians || {}).sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
+
   const [query, setQuery] = useState('');
   const [showDrop, setShowDrop] = useState(false);
-  // mode: 'idle' | 'searching' | 'selected' | 'adding'
   const [mode, setMode] = useState('idle');
   const [selected, setSelected] = useState(null);
   const [addForm, setAddForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Load physicians from shared cache (populated by prefetchPhysicians in AppShell)
   useEffect(() => {
-    function applyList(list) {
-      setPhysicians(list);
-      if (physicianId) {
-        const found = list.find((p) => p.id === physicianId || p._id === physicianId);
-        if (found) { setSelected(found); setMode('selected'); }
-        else if (physicianName) {
-          setSelected({ _notInDb: true, display: physicianName });
-          setMode('selected');
-        }
-      }
+    if (!physicianId) return;
+    const found = physicians.find((p) => p.id === physicianId || p._id === physicianId);
+    if (found) { setSelected(found); setMode('selected'); }
+    else if (physicianName) {
+      setSelected({ _notInDb: true, display: physicianName });
+      setMode('selected');
     }
-
-    const cached = getPhysiciansCache();
-    if (cached) {
-      applyList(cached);
-    } else {
-      prefetchPhysicians();
-    }
-
-    // Subscribe so we update when the background fetch completes
-    const unsub = subscribeToPhysicians(() => {
-      const latest = getPhysiciansCache();
-      if (latest) applyList(latest);
-    });
-    return unsub;
-  }, [physicianId, physicianName]);
+  }, [physicianId, physicianName, physicians.length]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -162,6 +148,7 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
     setMode('adding');
     setShowDrop(false);
     setAddError('');
+    setFieldErrors({});
   }
 
   async function confirmAdd() {
@@ -169,6 +156,38 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
       setAddError('First name and last name are required.');
       return;
     }
+
+    const errs = {};
+    let cleanPhone = addForm.phone?.trim() || '';
+    let cleanFax = addForm.fax?.trim() || '';
+    let cleanCity = addForm.address_city;
+    let cleanState = addForm.address_state;
+
+    if (cleanPhone) {
+      const r = normalizePhone(cleanPhone);
+      if (!r.valid) errs.phone = r.error;
+      else cleanPhone = r.digits;
+    }
+    if (cleanFax) {
+      const r = normalizePhone(cleanFax);
+      if (!r.valid) errs.fax = r.error;
+      else cleanFax = r.digits;
+    }
+    if (addForm.address_zip?.trim()) {
+      const r = lookupZip(addForm.address_zip);
+      if (!r.valid) errs.address_zip = r.error;
+      else {
+        if (!cleanCity?.trim()) cleanCity = r.city;
+        if (!cleanState?.trim()) cleanState = r.state;
+      }
+    }
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
+    setAddForm(f => ({ ...f, phone: cleanPhone, fax: cleanFax, address_city: cleanCity, address_state: cleanState }));
+
     setSaving(true);
     setAddError('');
     try {
@@ -177,23 +196,22 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
         first_name: addForm.first_name.trim(),
         last_name: addForm.last_name.trim(),
         ...(addForm.npi            ? { npi: addForm.npi.trim() }                         : {}),
-        ...(addForm.phone          ? { phone: addForm.phone.trim() }                     : {}),
-        ...(addForm.fax            ? { fax: addForm.fax.trim() }                         : {}),
+        ...(cleanPhone             ? { phone: cleanPhone }                                : {}),
+        ...(cleanFax               ? { fax: cleanFax }                                    : {}),
         ...(addForm.address_street ? { address_street: addForm.address_street.trim() }   : {}),
-        ...(addForm.address_city   ? { address_city: addForm.address_city.trim() }       : {}),
-        ...(addForm.address_state  ? { address_state: addForm.address_state.trim() }     : {}),
+        ...(cleanCity?.trim()      ? { address_city: cleanCity.trim() }                  : {}),
+        ...(cleanState?.trim()     ? { address_state: cleanState.trim() }                : {}),
         ...(addForm.address_zip    ? { address_zip: addForm.address_zip.trim() }         : {}),
         is_active: 'Active',
         created_at: new Date().toISOString(),
       };
       const rec = await createPhysician(fields);
       const newPhy = { _id: rec.id, ...rec.fields };
-      // Bust shared cache so the new physician shows everywhere
       refreshPhysicians();
       clearLookupsCache();
-      setPhysicians((prev) => [...prev, newPhy].sort((a, b) =>
-        (a.last_name || '').localeCompare(b.last_name || '')
-      ));
+      useCareStore.setState((s) => ({
+        physicians: { ...s.physicians, [rec.id]: newPhy },
+      }));
       setSelected(newPhy);
       setMode('selected');
       setQuery('');
@@ -207,7 +225,8 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
 
   // ── READ-ONLY ────────────────────────────────────────────────────────────────
   if (readOnly) {
-    if (!selected) return <span style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: 'italic' }}>—</span>;
+    if (!selected && !physicianName) return <span style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: 'italic' }}>—</span>;
+    if (!selected && physicianName) return <span style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex }}>{physicianName}</span>;
     if (selected._notInDb) return <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{selected.display}</span>;
     return (
       <div style={{ fontSize: 13, color: palette.backgroundDark.hex, lineHeight: 1.6 }}>
@@ -269,14 +288,23 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
           </Row2>
           <Row2>
             <FieldGroup label="NPI"><TInput value={addForm.npi} onChange={set('npi')} placeholder="1234567890" /></FieldGroup>
-            <FieldGroup label="Phone"><TInput value={addForm.phone} onChange={set('phone')} placeholder="(718) 555-1234" type="tel" /></FieldGroup>
+            <FieldGroup label="Phone">
+              <TInput value={addForm.phone} onChange={(v) => { set('phone')(v.replace(/\D/g, '').slice(0, 10)); if (fieldErrors.phone) setFieldErrors(e => ({ ...e, phone: '' })); }} placeholder="(718) 555-1234" type="tel" />
+              {fieldErrors.phone && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.phone}</p>}
+            </FieldGroup>
           </Row2>
-          <FieldGroup label="Fax"><TInput value={addForm.fax} onChange={set('fax')} placeholder="(718) 555-5678" type="tel" /></FieldGroup>
+          <FieldGroup label="Fax">
+            <TInput value={addForm.fax} onChange={(v) => { set('fax')(v.replace(/\D/g, '').slice(0, 10)); if (fieldErrors.fax) setFieldErrors(e => ({ ...e, fax: '' })); }} placeholder="(718) 555-5678" type="tel" />
+            {fieldErrors.fax && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.fax}</p>}
+          </FieldGroup>
           <FieldGroup label="Address"><TInput value={addForm.address_street} onChange={set('address_street')} placeholder="Street address" /></FieldGroup>
           <Row4>
             <FieldGroup label="City"><TInput value={addForm.address_city} onChange={set('address_city')} placeholder="City" /></FieldGroup>
             <FieldGroup label="State"><TInput value={addForm.address_state} onChange={set('address_state')} placeholder="NY" /></FieldGroup>
-            <FieldGroup label="Zip"><TInput value={addForm.address_zip} onChange={set('address_zip')} placeholder="11201" /></FieldGroup>
+            <FieldGroup label="Zip">
+              <TInput value={addForm.address_zip} onChange={(v) => { set('address_zip')(v); if (fieldErrors.address_zip) setFieldErrors(e => ({ ...e, address_zip: '' })); }} placeholder="11201" maxLength={5} />
+              {fieldErrors.address_zip && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 2 }}>{fieldErrors.address_zip}</p>}
+            </FieldGroup>
           </Row4>
         </div>
         {addError && (
@@ -315,7 +343,6 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
           ref={inputRef}
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
-          onFocus={() => { setShowDrop(true); if (mode === 'idle') setMode('searching'); }}
           placeholder="Search physician by name or NPI…"
           style={{ ...BASE_INPUT, paddingLeft: 32 }}
           onFocus={(e) => { setShowDrop(true); if (mode === 'idle') setMode('searching'); e.target.style.borderColor = palette.primaryMagenta.hex; }}

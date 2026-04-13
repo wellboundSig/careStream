@@ -5,6 +5,7 @@ import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
+import { isTriageComplete } from '../../utils/triageCompleteness.js';
 import OverviewTab from './tabs/OverviewTab.jsx';
 import ReferralInfoTab from './tabs/ReferralInfoTab.jsx';
 import EligibilityTab from './tabs/EligibilityTab.jsx';
@@ -122,11 +123,19 @@ export default function PatientDrawer() {
     const inEligStage = r.current_stage === 'Eligibility Verification';
     result.eligibility = hasCheck && !inEligStage;
 
-    // Triage: a triage record exists for this referral (SN only; ALF is N/A so mark complete)
+    // Triage: ALL fields must be filled with valid data (SN only; ALF is N/A so mark complete)
     if (r.division === 'Special Needs') {
-      const hasTriageA = Object.values(storeTriageA).some((t) => t.referral_id === r.id);
-      const hasTriageP = Object.values(storeTriageP).some((t) => t.referral_id === r.id);
-      result.triage = hasTriageA || hasTriageP;
+      const triageRecord =
+        Object.values(storeTriageA).find((t) => t.referral_id === r.id || (Array.isArray(t.referral_id) && t.referral_id.includes(r.id))) ||
+        Object.values(storeTriageP).find((t) => t.referral_id === r.id || (Array.isArray(t.referral_id) && t.referral_id.includes(r.id)));
+      if (!triageRecord) {
+        result.triage = false;
+      } else {
+        const age = calcAge(p.dob);
+        const type = age !== null && age < 18 ? 'pediatric' : 'adult';
+        const check = isTriageComplete(triageRecord, type);
+        result.triage = check.complete === true && check.missing.length === 0;
+      }
     } else {
       result.triage = true;
     }

@@ -284,7 +284,10 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onNewRefer
 
   function handlePromote(ownerId) {
     if (!selectedReferral) return;
-    updateReferral(selectedReferral._id, { current_stage: 'Intake', intake_owner_id: ownerId, stage_entered_at: new Date().toISOString() }).catch(() => {});
+    const fields = { current_stage: 'Intake', intake_owner_id: ownerId };
+    updateReferral(selectedReferral._id, fields)
+      .then(() => { console.log('[LeadEntry] Promoted to Intake successfully'); })
+      .catch((err) => { console.error('[LeadEntry] Promote failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
     recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Intake', note: `Promoted to Intake. Owner assigned: ${ownerId}`, authorId: appUserId });
     triggerDataRefresh();
     setShowPromote(false);
@@ -481,10 +484,6 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
             triageData={triageData}
             insuranceChecks={patientInsuranceChecks}
           />
-
-          <PanelSection title="Demographics">
-            <CollapsibleChecklist title="Basic fields" items={INTAKE_DEMO_FIELDS} doneMap={doneMap} onToggle={() => {}} />
-          </PanelSection>
 
           {/* F2F section — shown for F2F-stage referrals */}
           {isF2F && (
@@ -1909,7 +1908,6 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     try {
       const enteredAt = new Date().toISOString();
       await updateReferral(selectedReferral._id, { current_stage: 'SOC Scheduled', soc_scheduled_date: socDate });
-      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
       await createEpisode({ patient_id: selectedReferral.patient_id, referral_id: selectedReferral._id, soc_date: socDate, episode_start: socDate });
       recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: null });
       triggerDataRefresh();
@@ -1930,7 +1928,6 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     try {
       const enteredAt = new Date().toISOString();
       await updateReferral(selectedReferral._id, { current_stage: 'SOC Completed', soc_completed_date: new Date().toISOString().split('T')[0] });
-      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
       recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
       triggerDataRefresh();
     } catch (err) { setOnboardError(err.message || 'Failed'); setOnboarding(false); setConfirming(false); }
@@ -2079,8 +2076,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
         current_stage: 'SOC Completed',
         soc_completed_date: new Date().toISOString().split('T')[0],
       });
-      // Best-effort: save stage timer — silently ignored if field doesn't exist in Airtable yet
-      updateReferral(selectedReferral._id, { stage_entered_at: enteredAt }).catch(() => {});
+      // stage_entered_at not a column in Referrals
       recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
       triggerDataRefresh();
     } catch (err) {

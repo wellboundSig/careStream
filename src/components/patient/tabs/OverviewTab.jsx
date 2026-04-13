@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { updatePatient } from '../../../api/patients.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { updateEntity } from '../../../store/careStore.js';
@@ -14,6 +14,14 @@ const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 const GENDER_OPTIONS   = ['Male', 'Female'];
+
+const INSURANCE_PLANS = [
+  'Fidelis Care', 'UnitedHealthcare Community Plan', 'Healthfirst',
+  'Aetna Better Health', 'Molina Healthcare', 'Anthem BCBS',
+  'Medicaid', 'Medicare', 'Hamaspik', 'VNS Health',
+  'MetroPlus MLTC', 'Fidelis Care at Home', 'Elderplan HomeFirst',
+  'Montefiore Diamond Care', 'Healthfirst CompleteCare',
+];
 
 // Style helpers — functions so palette values are read on every render (dark mode reactive)
 const fl  = () => ({ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 3, letterSpacing: '0.02em' });
@@ -607,6 +615,199 @@ function ReadField({ label, value, fullWidth = false }) {
   );
 }
 
+// ── Insurance Editor (multi-select with tags) ───────────────────────────────
+
+function InsuranceEditor({ patient, patientId, onSave }) {
+  const [open, setOpen] = useState(false);
+  const [otherValue, setOtherValue] = useState('');
+  const [showOther, setShowOther] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dropRef = useRef(null);
+
+  let plans = [];
+  try { plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; } catch { plans = []; }
+  if (!Array.isArray(plans)) plans = [];
+  if (plans.length === 0 && patient.insurance_plan) plans = [patient.insurance_plan];
+
+  let details = {};
+  try { details = patient.insurance_plan_details ? JSON.parse(patient.insurance_plan_details) : {}; } catch { details = {}; }
+  if (typeof details !== 'object' || details === null) details = {};
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(e) { if (dropRef.current && !dropRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [open]);
+
+  async function persist(nextPlans, nextDetails) {
+    const primary = nextPlans[0] || '';
+    const plansJson = nextPlans.length > 0 ? JSON.stringify(nextPlans) : '';
+    const detailsJson = Object.keys(nextDetails).length > 0 ? JSON.stringify(nextDetails) : '';
+    const fields = {
+      insurance_plans: plansJson,
+      insurance_plan_details: detailsJson,
+      insurance_plan: primary,
+    };
+    onSave('insurance_plans', plansJson);
+    onSave('insurance_plan_details', detailsJson);
+    onSave('insurance_plan', primary);
+    if (patientId) {
+      updateEntity('patients', patientId, fields);
+      setSaving(true);
+      try { await updatePatient(patientId, fields); } catch {} finally { setSaving(false); }
+    }
+  }
+
+  function togglePlan(plan) {
+    const next = plans.includes(plan) ? plans.filter((p) => p !== plan) : [...plans, plan];
+    const nextDetails = { ...details };
+    if (!next.includes(plan)) delete nextDetails[plan];
+    persist(next, nextDetails);
+  }
+
+  function removePlan(plan) {
+    const next = plans.filter((p) => p !== plan);
+    const nextDetails = { ...details };
+    delete nextDetails[plan];
+    persist(next, nextDetails);
+  }
+
+  function addOther() {
+    if (!otherValue.trim()) return;
+    const label = otherValue.trim();
+    if (!plans.includes(label)) persist([...plans, label], details);
+    setOtherValue('');
+    setShowOther(false);
+  }
+
+  function handleDetailChange(plan, value) {
+    const nextDetails = { ...details, [plan]: value };
+    persist(plans, nextDetails);
+  }
+
+  return (
+    <div>
+      <div ref={dropRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          style={{
+            width: '100%', padding: '9px 11px', borderRadius: 8, border: 'none',
+            background: hexToRgba(palette.backgroundDark.hex, 0.05),
+            fontSize: 13, fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            color: plans.length > 0 ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          <span>{plans.length > 0 ? `${plans.length} plan${plans.length !== 1 ? 's' : ''}` : 'Select insurance plans...'}</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {open && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 100,
+            maxHeight: 220, overflowY: 'auto', borderRadius: 10,
+            background: palette.backgroundLight.hex,
+            boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+            padding: '4px 0',
+          }}>
+            {INSURANCE_PLANS.map((plan) => {
+              const isSelected = plans.includes(plan);
+              return (
+                <button key={plan} type="button" onClick={() => togglePlan(plan)} style={{
+                  width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 9,
+                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  fontSize: 12.5, color: palette.backgroundDark.hex, transition: 'background 0.08s',
+                }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04))}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                >
+                  <span style={{
+                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isSelected ? palette.primaryMagenta.hex : 'none',
+                    border: isSelected ? 'none' : `1.5px solid ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+                  }}>
+                    {isSelected && (
+                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                        <path d="M2 5l2.5 2.5L8 3" stroke={palette.backgroundLight.hex} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  {plan}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {plans.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+          {plans.map((plan) => (
+            <span key={plan} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '4px 8px', borderRadius: 4,
+              background: hexToRgba(palette.backgroundDark.hex, 0.06),
+              fontSize: 11.5, fontWeight: 550, color: palette.backgroundDark.hex,
+            }}>
+              {plan}
+              <button type="button" onClick={() => removePlan(plan)} style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: hexToRgba(palette.backgroundDark.hex, 0.35), display: 'flex', alignItems: 'center',
+              }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!showOther ? (
+        <button type="button" onClick={() => setShowOther(true)} style={{ marginTop: 6, background: 'none', border: 'none', fontSize: 11.5, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer', padding: '4px 0' }}>
+          + Other
+        </button>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <input
+            value={otherValue}
+            onChange={(e) => setOtherValue(e.target.value)}
+            placeholder="Insurance name"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOther())}
+            style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12.5, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', flex: 1 }}
+          />
+          <button type="button" onClick={addOther} disabled={!otherValue.trim()} style={{
+            padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 650, cursor: otherValue.trim() ? 'pointer' : 'not-allowed',
+            background: otherValue.trim() ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.08),
+            color: otherValue.trim() ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+          }}>Add</button>
+        </div>
+      )}
+
+      {plans.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          {plans.map((plan) => (
+            <div key={plan} style={{ marginBottom: 6 }}>
+              <input
+                value={details[plan] || ''}
+                onChange={(e) => handleDetailChange(plan, e.target.value)}
+                placeholder={`${plan} member ID or plan #`}
+                style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main tab ───────────────────────────────────────────────────────────────────
 
 export default function OverviewTab({ patient, referral }) {
@@ -647,10 +848,9 @@ export default function OverviewTab({ patient, referral }) {
 
       {/* ── Insurance ── */}
       <Section title="Insurance">
-        <EditableField label="Medicaid #"       fieldKey="medicaid_number"  value={patient.medicaid_number}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Medicare #"       fieldKey="medicare_number"  value={patient.medicare_number}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Insurance Plan"   fieldKey="insurance_plan"   value={patient.insurance_plan}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Insurance ID"     fieldKey="insurance_id"     value={patient.insurance_id}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+        <div style={{ gridColumn: '1 / -1' }}>
+          <InsuranceEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
+        </div>
       </Section>
 
       {/* ── Approved Services (permission-gated) ── */}
