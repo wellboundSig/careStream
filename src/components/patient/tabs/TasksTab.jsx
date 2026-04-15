@@ -65,7 +65,7 @@ const TYPE_ACCENT = {
   'Disenrollment':     palette.accentOrange.hex,
 };
 
-export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
+export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTaskConsumed, readOnly = false }) {
   const { resolveUser }          = useLookups();
   const { appUser, appUserId }   = useCurrentAppUser();
   const allTasks                 = useCareStore((s) => s.tasks);
@@ -125,16 +125,18 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
             </button>
           ))}
         </div>
+        {!readOnly && (
         <button
           onClick={() => setShowForm((v) => !v)}
           style={{ padding: '5px 12px', borderRadius: 6, background: showForm ? hexToRgba(palette.primaryMagenta.hex, 0.12) : palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: showForm ? palette.primaryMagenta.hex : palette.backgroundLight.hex, cursor: 'pointer', transition: 'all 0.15s' }}
         >
           {showForm ? '✕ Cancel' : '+ Task'}
         </button>
+        )}
       </div>
 
       {/* Inline new task form */}
-      {showForm && (
+      {showForm && !readOnly && (
         <NewTaskForm
           patient={patient}
           referral={referral}
@@ -163,9 +165,9 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
                 task={task}
                 resolveUser={resolveUser}
                 confirmPending={confirmId === task._id}
-                onRequestComplete={() => setConfirmId(task._id)}
-                onConfirmComplete={() => markComplete(task)}
-                onCancelComplete={() => setConfirmId(null)}
+                onRequestComplete={readOnly ? undefined : () => setConfirmId(task._id)}
+                onConfirmComplete={readOnly ? undefined : () => markComplete(task)}
+                onCancelComplete={readOnly ? undefined : () => setConfirmId(null)}
               />
             ))}
           </div>
@@ -430,7 +432,7 @@ function TaskCard({ task, resolveUser, confirmPending, onRequestComplete, onConf
       </div>
 
       {/* Confirm to complete */}
-      {!isDone && (
+      {!isDone && onRequestComplete && (
         <div style={{ marginTop: 8 }}>
           {confirmPending ? (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

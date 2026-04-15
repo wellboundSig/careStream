@@ -29,7 +29,7 @@ const inputStyle = {
   color: palette.backgroundDark.hex,
 };
 
-export default function AuthorizationsTab({ referral }) {
+export default function AuthorizationsTab({ referral, readOnly = false }) {
   const [auths, setAuths]     = useState([]);
   const [loading, setLoading] = useState(true);
   const { can } = usePermissions();
@@ -131,7 +131,7 @@ export default function AuthorizationsTab({ referral }) {
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>Authorizations</h3>
-        {mode === null && can(PERMISSION_KEYS.AUTH_DECIDE) && (
+        {mode === null && !readOnly && can(PERMISSION_KEYS.AUTH_DECIDE) && (
           <button
             onClick={openForm}
             style={{
@@ -150,7 +150,7 @@ export default function AuthorizationsTab({ referral }) {
       </div>
 
       {/* ── Mode picker ── */}
-      {mode === 'pick' && (
+      {mode === 'pick' && !readOnly && (
         <div style={{ marginBottom: 18, borderRadius: 10, border: `1px solid var(--color-border)`, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>Record Authorization</p>
@@ -187,7 +187,7 @@ export default function AuthorizationsTab({ referral }) {
       )}
 
       {/* ── Approval form ── */}
-      {mode === 'approval' && (
+      {mode === 'approval' && !readOnly && (
         <div style={{ marginBottom: 18, borderRadius: 10, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`, background: hexToRgba(palette.accentGreen.hex, 0.03) }}>
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.2)}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: palette.accentGreen.hex }}>Record Approval</p>
@@ -262,7 +262,7 @@ export default function AuthorizationsTab({ referral }) {
       )}
 
       {/* ── Denial form ── */}
-      {mode === 'denial' && (
+      {mode === 'denial' && !readOnly && (
         <div style={{ marginBottom: 18, borderRadius: 10, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`, background: hexToRgba(palette.accentOrange.hex, 0.03) }}>
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.2)}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: palette.accentOrange.hex }}>Record Denial</p>

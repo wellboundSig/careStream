@@ -54,7 +54,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function EligibilityTab({ patient, referral }) {
+export default function EligibilityTab({ patient, referral, readOnly = false }) {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const { can } = usePermissions();
@@ -132,7 +132,7 @@ export default function EligibilityTab({ patient, referral }) {
     <div style={{ padding: '18px 20px 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>Eligibility</h3>
-        {can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <button onClick={openForm} style={{ padding: '6px 14px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+        {!readOnly && can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <button onClick={openForm} style={{ padding: '6px 14px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
           {latest ? 'Log New Check' : 'Log First Check'}
         </button>}
       </div>
@@ -193,7 +193,7 @@ export default function EligibilityTab({ patient, referral }) {
       )}
 
       {/* Inline form */}
-      {showForm && (
+      {showForm && !readOnly && (
         <div style={{ padding: '16px 18px', borderRadius: 12, background: hexToRgba(palette.backgroundDark.hex, 0.03), marginBottom: 20 }}>
           <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 14 }}>New Check</p>
 

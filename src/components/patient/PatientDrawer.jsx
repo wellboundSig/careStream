@@ -4,6 +4,8 @@ import { useCareStore } from '../../store/careStore.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
 import OverviewTab from './tabs/OverviewTab.jsx';
@@ -35,6 +37,21 @@ export const DRAWER_TABS = [
   { id: 'authorizations', label: 'Auth' },
   { id: 'conflicts', label: 'Conflicts' },
 ];
+
+const TAB_EDIT_PERMISSIONS = {
+  overview:        PERMISSION_KEYS.SNAPSHOT_EDIT_REFERRAL,
+  demographics:    PERMISSION_KEYS.SNAPSHOT_EDIT_DEMOGRAPHICS,
+  triage:          PERMISSION_KEYS.SNAPSHOT_EDIT_TRIAGE,
+  f2f:             PERMISSION_KEYS.SNAPSHOT_EDIT_F2F,
+  eligibility:     PERMISSION_KEYS.SNAPSHOT_EDIT_ELIGIBILITY,
+  notes:           PERMISSION_KEYS.SNAPSHOT_EDIT_NOTES,
+  timeline:        null,
+  files:           PERMISSION_KEYS.SNAPSHOT_EDIT_FILES,
+  tasks:           PERMISSION_KEYS.SNAPSHOT_EDIT_TASKS,
+  clinical_review: PERMISSION_KEYS.SNAPSHOT_EDIT_CLINICAL_REVIEW,
+  authorizations:  PERMISSION_KEYS.SNAPSHOT_EDIT_AUTHORIZATIONS,
+  conflicts:       PERMISSION_KEYS.SNAPSHOT_EDIT_CONFLICTS,
+};
 
 function calcAge(dob) {
   if (!dob) return null;
@@ -333,20 +350,44 @@ function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
 }
 
 function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
-  const props = { patient, referral };
-  switch (tab) {
-    case 'overview': return <ReferralInfoTab {...props} />;
-    case 'demographics': return <OverviewTab {...props} />;
-    case 'triage': return <TriageTab {...props} />;
-    case 'f2f': return <F2FTab {...props} />;
-    case 'eligibility': return <EligibilityTab {...props} />;
-    case 'notes': return <NotesTab {...props} />;
-    case 'timeline': return <TimelineTab {...props} />;
-    case 'files': return <FilesTab {...props} />;
-    case 'tasks': return <TasksTab {...props} autoNewTask={autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;
-    case 'clinical_review': return <ClinicalReviewTab {...props} />;
-    case 'authorizations': return <AuthorizationsTab {...props} />;
-    case 'conflicts': return <ConflictsTab {...props} />;
-    default: return null;
-  }
+  const { can } = usePermissions();
+  const editPermKey = TAB_EDIT_PERMISSIONS[tab];
+  const canEdit = editPermKey ? can(editPermKey) : false;
+  const props = { patient, referral, readOnly: !canEdit };
+
+  return (
+    <>
+      {!canEdit && editPermKey && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '7px 20px', flexShrink: 0,
+          background: hexToRgba(palette.highlightYellow.hex, 0.1),
+          borderBottom: `1px solid ${hexToRgba(palette.highlightYellow.hex, 0.25)}`,
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <rect x="3" y="11" width="18" height="11" rx="2" stroke="#7A5F00" strokeWidth="1.8" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#7A5F00" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#7A5F00' }}>View only</span>
+        </div>
+      )}
+      {(() => {
+        switch (tab) {
+          case 'overview': return <ReferralInfoTab {...props} />;
+          case 'demographics': return <OverviewTab {...props} />;
+          case 'triage': return <TriageTab {...props} />;
+          case 'f2f': return <F2FTab {...props} />;
+          case 'eligibility': return <EligibilityTab {...props} />;
+          case 'notes': return <NotesTab {...props} />;
+          case 'timeline': return <TimelineTab {...props} />;
+          case 'files': return <FilesTab {...props} />;
+          case 'tasks': return <TasksTab {...props} autoNewTask={!canEdit ? false : autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;
+          case 'clinical_review': return <ClinicalReviewTab {...props} />;
+          case 'authorizations': return <AuthorizationsTab {...props} />;
+          case 'conflicts': return <ConflictsTab {...props} />;
+          default: return null;
+        }
+      })()}
+    </>
+  );
 }

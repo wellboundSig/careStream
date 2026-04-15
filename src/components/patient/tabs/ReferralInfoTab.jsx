@@ -33,7 +33,7 @@ function ReadField({ label, value, fullWidth = false }) {
   );
 }
 
-function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false }) {
+function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const { can } = usePermissions();
@@ -60,6 +60,10 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
           <option value="" disabled>Select…</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
+      ) : forceReadOnly ? (
+        <p style={{ fontSize: 13, color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: value ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : (value || empty)}
+        </p>
       ) : (
         <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
@@ -71,14 +75,14 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
   );
 }
 
-function EditableReferralServices({ value, referralId, onSave, fullWidth = false }) {
+function EditableReferralServices({ value, referralId, onSave, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState([]);
   const [saving, setSaving] = useState(false);
   const { can } = usePermissions();
   const current = Array.isArray(value) ? value : (value ? String(value).split(/,\s*/) : []);
 
-  function startEdit() { setDraft([...current]); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft([...current]); setEditing(true); }
   function toggle(opt) { setDraft((prev) => prev.includes(opt) ? prev.filter((v) => v !== opt) : [...prev, opt]); }
   async function save() {
     if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
@@ -111,6 +115,10 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
             <button onClick={() => setEditing(false)} style={{ padding: '4px 10px', borderRadius: 5, background: 'none', border: `1px solid var(--color-border)`, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
+      ) : forceReadOnly ? (
+        <p style={{ fontSize: 13, color: displayText ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: displayText ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : (displayText || empty)}
+        </p>
       ) : (
         <p onClick={startEdit} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
@@ -122,7 +130,7 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   );
 }
 
-function EditableReferralPhysician({ referral, onSave }) {
+function EditableReferralPhysician({ referral, onSave, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const { resolvePhysician } = useLookups();
@@ -146,7 +154,7 @@ function EditableReferralPhysician({ referral, onSave }) {
     <div style={{ gridColumn: '1 / -1' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
         <p style={fl()}>Referring / Ordering Physician</p>
-        {!editing && (
+        {!editing && !forceReadOnly && (
           <button onClick={() => setEditing(true)} style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             {referral.physician_id ? 'Change' : '+ Add'}
           </button>
@@ -163,7 +171,7 @@ function EditableReferralPhysician({ referral, onSave }) {
   );
 }
 
-export default function ReferralInfoTab({ patient, referral }) {
+export default function ReferralInfoTab({ patient, referral, readOnly = false }) {
   const { updateReferralLocal } = usePatientDrawer();
   const { resolveMarketer, resolveUser, resolveSource, resolveFacility } = useLookups();
 
@@ -187,9 +195,9 @@ export default function ReferralInfoTab({ patient, referral }) {
         {referral.referral_source_id && <ReadField label="Referral Source" value={resolveSource(referral.referral_source_id)} />}
         {referral.facility_id && <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />}
 
-        <EditableReferralSelect label="Division" fieldKey="division" value={referral.division} referralId={referral._id} onSave={handleReferralSave} options={DIVISIONS} />
-        <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} fullWidth />
-        <EditableReferralPhysician referral={referral} onSave={handleReferralSave} />
+        <EditableReferralSelect label="Division" fieldKey="division" value={referral.division} referralId={referral._id} onSave={handleReferralSave} options={DIVISIONS} readOnly={readOnly} />
+        <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} fullWidth readOnly={readOnly} />
+        <EditableReferralPhysician referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
 
         {referral.f2f_date && <ReadField label="F2F Date" value={new Date(referral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
         {referral.f2f_expiration && <ReadField label="F2F Expiration" value={new Date(referral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}

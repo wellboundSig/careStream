@@ -20,7 +20,7 @@ const PRE_CLINICAL_STAGES = new Set([
   'Disenrollment Required', 'F2F/MD Orders Pending', 'OPWDD Enrollment',
 ]);
 
-export default function ClinicalReviewTab({ patient, referral }) {
+export default function ClinicalReviewTab({ patient, referral, readOnly = false }) {
   const { resolveUser } = useLookups();
 
   const decision = referral?.clinical_review_decision;
@@ -95,11 +95,11 @@ export default function ClinicalReviewTab({ patient, referral }) {
       </p>
       <ClinicalChecklistUI
         checked={checked}
-        onToggle={toggleItem}
+        onToggle={readOnly ? () => {} : toggleItem}
         decision={localDecision}
-        onDecisionChange={setLocalDecision}
+        onDecisionChange={readOnly ? () => {} : setLocalDecision}
         authRequired={authRequired}
-        onAuthRequiredChange={setAuthRequired}
+        onAuthRequiredChange={readOnly ? () => {} : setAuthRequired}
       />
     </div>
   );

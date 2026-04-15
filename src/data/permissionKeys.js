@@ -86,6 +86,19 @@ export const PERMISSION_KEYS = {
   // Departments
   ADMIN_DEPARTMENTS: 'admin.departments',
 
+  // Patient Snapshot (per-tab edit control in the patient drawer)
+  SNAPSHOT_EDIT_REFERRAL: 'snapshot.edit_referral',
+  SNAPSHOT_EDIT_DEMOGRAPHICS: 'snapshot.edit_demographics',
+  SNAPSHOT_EDIT_TRIAGE: 'snapshot.edit_triage',
+  SNAPSHOT_EDIT_F2F: 'snapshot.edit_f2f',
+  SNAPSHOT_EDIT_ELIGIBILITY: 'snapshot.edit_eligibility',
+  SNAPSHOT_EDIT_NOTES: 'snapshot.edit_notes',
+  SNAPSHOT_EDIT_FILES: 'snapshot.edit_files',
+  SNAPSHOT_EDIT_TASKS: 'snapshot.edit_tasks',
+  SNAPSHOT_EDIT_CLINICAL_REVIEW: 'snapshot.edit_clinical_review',
+  SNAPSHOT_EDIT_AUTHORIZATIONS: 'snapshot.edit_authorizations',
+  SNAPSHOT_EDIT_CONFLICTS: 'snapshot.edit_conflicts',
+
   // Administration
   ADMIN_USER_MANAGEMENT: 'admin.user_management',
   ADMIN_PERMISSIONS: 'admin.permissions',
@@ -115,6 +128,7 @@ export const PERMISSION_CATEGORIES = [
   'Directory',
   'Dashboard',
   'Modules',
+  'Patient Snapshot',
   'Departments',
   'Administration',
 ];
@@ -201,14 +215,27 @@ export const PERMISSION_CATALOG = [
   { key: K.MODULE_SCHEDULING,    label: 'View Scheduling modules',     category: 'Modules', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 117 },
   { key: K.MODULE_ADMIN,         label: 'View Admin modules',          category: 'Modules', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 118 },
 
+  // Patient Snapshot (per-tab edit permissions in the patient drawer)
+  { key: K.SNAPSHOT_EDIT_REFERRAL,         label: 'Edit Referral tab',         category: 'Patient Snapshot', description: 'Modify fields in the Referral tab of the patient drawer',              sort: 130 },
+  { key: K.SNAPSHOT_EDIT_DEMOGRAPHICS,     label: 'Edit Demographics tab',     category: 'Patient Snapshot', description: 'Modify fields in the Demographics tab of the patient drawer',          sort: 131 },
+  { key: K.SNAPSHOT_EDIT_TRIAGE,           label: 'Edit Triage tab',           category: 'Patient Snapshot', description: 'Fill out or edit triage forms in the patient drawer',                   sort: 132 },
+  { key: K.SNAPSHOT_EDIT_F2F,              label: 'Edit Face to Face tab',     category: 'Patient Snapshot', description: 'Log F2F dates and upload documents in the patient drawer',             sort: 133 },
+  { key: K.SNAPSHOT_EDIT_ELIGIBILITY,      label: 'Edit Eligibility tab',      category: 'Patient Snapshot', description: 'Log eligibility checks in the patient drawer',                        sort: 134 },
+  { key: K.SNAPSHOT_EDIT_NOTES,            label: 'Edit Notes tab',            category: 'Patient Snapshot', description: 'Create and pin notes in the patient drawer',                          sort: 135 },
+  { key: K.SNAPSHOT_EDIT_FILES,            label: 'Edit Files tab',            category: 'Patient Snapshot', description: 'Upload and manage files in the patient drawer',                       sort: 136 },
+  { key: K.SNAPSHOT_EDIT_TASKS,            label: 'Edit Tasks tab',            category: 'Patient Snapshot', description: 'Create and complete tasks in the patient drawer',                     sort: 137 },
+  { key: K.SNAPSHOT_EDIT_CLINICAL_REVIEW,  label: 'Edit Clinical Review tab',  category: 'Patient Snapshot', description: 'Interact with the clinical review checklist in the patient drawer',   sort: 138 },
+  { key: K.SNAPSHOT_EDIT_AUTHORIZATIONS,   label: 'Edit Auth tab',             category: 'Patient Snapshot', description: 'Record authorizations in the patient drawer',                        sort: 139 },
+  { key: K.SNAPSHOT_EDIT_CONFLICTS,        label: 'Edit Conflicts tab',        category: 'Patient Snapshot', description: 'Resolve conflicts in the patient drawer',                            sort: 140 },
+
   // Departments
-  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',         category: 'Departments', description: 'Create, edit, and delete departments, supervisors, members, and scopes', sort: 119 },
+  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',         category: 'Departments', description: 'Create, edit, and delete departments, supervisors, members, and scopes', sort: 141 },
 
   // Administration
-  { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',    category: 'Administration', description: 'View and edit users, roles, and statuses', sort: 120 },
-  { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions',    category: 'Administration', description: 'Open permission modals and edit presets', sort: 121 },
-  { key: K.ADMIN_DATA_TOOLS,      label: 'Access Data Tools',          category: 'Administration', description: 'Use raw data inspection and admin utilities', sort: 122 },
-  { key: K.ADMIN_SETTINGS,        label: 'Access system Settings',     category: 'Administration', description: 'Modify app-wide settings and preferences', sort: 123 },
+  { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',    category: 'Administration', description: 'View and edit users, roles, and statuses', sort: 150 },
+  { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions',    category: 'Administration', description: 'Open permission modals and edit presets', sort: 151 },
+  { key: K.ADMIN_DATA_TOOLS,      label: 'Access Data Tools',          category: 'Administration', description: 'Use raw data inspection and admin utilities', sort: 152 },
+  { key: K.ADMIN_SETTINGS,        label: 'Access system Settings',     category: 'Administration', description: 'Modify app-wide settings and preferences', sort: 153 },
 ];
 
 // ── Default presets (seeded into PermissionPresets table) ────────────────────
@@ -240,6 +267,8 @@ export const DEFAULT_PRESETS = [
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
       K.MODULE_INTAKE,
+      K.SNAPSHOT_EDIT_REFERRAL, K.SNAPSHOT_EDIT_DEMOGRAPHICS, K.SNAPSHOT_EDIT_ELIGIBILITY,
+      K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES, K.SNAPSHOT_EDIT_TASKS,
     ],
   },
   {
@@ -259,6 +288,9 @@ export const DEFAULT_PRESETS = [
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
       K.MODULE_INTAKE, K.MODULE_CLINICAL,
+      K.SNAPSHOT_EDIT_TRIAGE, K.SNAPSHOT_EDIT_F2F, K.SNAPSHOT_EDIT_ELIGIBILITY,
+      K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES, K.SNAPSHOT_EDIT_TASKS,
+      K.SNAPSHOT_EDIT_CLINICAL_REVIEW, K.SNAPSHOT_EDIT_CONFLICTS,
     ],
   },
   {
@@ -273,6 +305,7 @@ export const DEFAULT_PRESETS = [
       K.NOTE_CREATE,
       K.FILE_UPLOAD,
       K.DIRECTORY_VIEW,
+      K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,
     ],
   },
   {
@@ -290,6 +323,7 @@ export const DEFAULT_PRESETS = [
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
       K.MODULE_SCHEDULING, K.MODULE_ADMIN,
+      K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_TASKS,
     ],
   },
   {
@@ -308,6 +342,8 @@ export const DEFAULT_PRESETS = [
       K.REPORT_VIEW, K.REPORT_EXPORT,
       K.DIRECTORY_VIEW,
       K.MODULE_INTAKE, K.MODULE_AUTHORIZATION,
+      K.SNAPSHOT_EDIT_ELIGIBILITY, K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_TASKS,
+      K.SNAPSHOT_EDIT_AUTHORIZATIONS,
     ],
   },
   {
@@ -322,6 +358,7 @@ export const DEFAULT_PRESETS = [
       K.NOTE_CREATE,
       K.FILE_UPLOAD,
       K.DIRECTORY_VIEW,
+      K.SNAPSHOT_EDIT_TRIAGE, K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,
     ],
   },
 ];

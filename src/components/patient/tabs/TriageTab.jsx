@@ -373,7 +373,7 @@ function PediatricForm({ data, onChange, readOnly, missingFields }) {
   );
 }
 
-export default function TriageTab({ patient, referral }) {
+export default function TriageTab({ patient, referral, readOnly = false }) {
   const { user } = useUser();
   const { resolveUser } = useLookups();
   const { appUserId } = useCurrentAppUser();
@@ -412,6 +412,7 @@ export default function TriageTab({ patient, referral }) {
   }, [referral?.id, triageType]);
 
   function startEdit() {
+    if (readOnly) return;
     setDraft({ ...triageData, code_95: triageData.code_95 || referral?.code_95 || '' });
     setValidationWarnings([]);
     setEditing(true);
@@ -665,7 +666,7 @@ export default function TriageTab({ patient, referral }) {
           )}
         </div>
         {!editing ? (
-          can(PERMISSION_KEYS.CLINICAL_TRIAGE) && <button onClick={startEdit} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+          !readOnly && can(PERMISSION_KEYS.CLINICAL_TRIAGE) && <button onClick={startEdit} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
             {hasData ? 'Edit' : 'Fill Out'}
           </button>
         ) : (
@@ -702,7 +703,7 @@ export default function TriageTab({ patient, referral }) {
       </div>
 
       {/* Bottom save bar — visible when editing so the user doesn't scroll back up */}
-      {editing && (
+      {editing && !readOnly && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingTop: 16, borderTop: `1px solid var(--color-border)` }}>
           {saveError && (
             <p style={{ flex: 1, fontSize: 12, color: palette.primaryMagenta.hex, alignSelf: 'center' }}>{saveError}</p>

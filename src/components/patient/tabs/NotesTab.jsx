@@ -22,7 +22,7 @@ function generateNoteId() {
   return `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export default function NotesTab({ patient, referral }) {
+export default function NotesTab({ patient, referral, readOnly = false }) {
   const { appUserId, appUserName, validAuthorIds, isValidAuthor } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const allNotes = useCareStore((s) => s.notes);
@@ -121,7 +121,7 @@ export default function NotesTab({ patient, referral }) {
       </div>
     )}
 
-    {can(PERMISSION_KEYS.NOTE_CREATE) && <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
+    {!readOnly && can(PERMISSION_KEYS.NOTE_CREATE) && <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
       <textarea
           ref={textareaRef}
           value={composing}
@@ -204,7 +204,7 @@ export default function NotesTab({ patient, referral }) {
               <NoteCard
                 key={note._id}
                 note={note}
-                onTogglePin={togglePin}
+                onTogglePin={readOnly ? undefined : togglePin}
                 currentUserId={appUserId}
                 resolveUser={resolveUser}
               />
@@ -271,20 +271,22 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser }) {
               Pinned
             </span>
           )}
-          <button
-            onClick={() => onTogglePin(note)}
-            title={isPinned ? 'Unpin' : 'Pin to top'}
-            style={{
-              fontSize: 11.5, fontWeight: 600, background: 'none', border: 'none',
-              color: hexToRgba(palette.backgroundDark.hex, 0.35),
-              cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
-              transition: 'color 0.12s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = palette.highlightYellow.hex)}
-            onMouseLeave={(e) => (e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.35))}
-          >
-            {isPinned ? '⊘' : '⊙'}
-          </button>
+          {onTogglePin && (
+            <button
+              onClick={() => onTogglePin(note)}
+              title={isPinned ? 'Unpin' : 'Pin to top'}
+              style={{
+                fontSize: 11.5, fontWeight: 600, background: 'none', border: 'none',
+                color: hexToRgba(palette.backgroundDark.hex, 0.35),
+                cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+                transition: 'color 0.12s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = palette.highlightYellow.hex)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.35))}
+            >
+              {isPinned ? '⊘' : '⊙'}
+            </button>
+          )}
         </div>
       </div>
 

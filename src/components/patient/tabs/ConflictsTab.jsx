@@ -19,7 +19,7 @@ const STATUS_COLORS = {
   Waived: { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.45) },
 };
 
-export default function ConflictsTab({ referral }) {
+export default function ConflictsTab({ referral, readOnly = false }) {
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
   const { can } = usePermissions();
@@ -62,7 +62,7 @@ export default function ConflictsTab({ referral }) {
                 Active ({open.length})
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {open.map((c) => <ConflictCard key={c._id} conflict={c} onResolve={can(PERMISSION_KEYS.CONFLICT_RESOLVE) ? resolve : undefined} />)}
+                {open.map((c) => <ConflictCard key={c._id} conflict={c} onResolve={!readOnly && can(PERMISSION_KEYS.CONFLICT_RESOLVE) ? resolve : undefined} />)}
               </div>
             </div>
           )}

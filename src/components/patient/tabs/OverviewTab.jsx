@@ -46,13 +46,13 @@ function Section({ title, children }) {
 
 // ── Patient field (optimistic, saved to Patients table) ────────────────────────
 
-function EditableField({ label, value, fieldKey, patientId, patientRecordId, onSave, type = 'text', fullWidth = false }) {
+function EditableField({ label, value, fieldKey, patientId, patientRecordId, onSave, type = 'text', fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
   const { can } = usePermissions();
 
-  function startEdit() { setDraft(value || ''); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setEditing(true); }
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
@@ -92,10 +92,10 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
             onBlur={save} onKeyDown={onKeyDown} style={ei()} />
         )
       ) : (
-        <p onClick={startEdit} title="Click to edit"
-          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        <p onClick={startEdit} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
           {saving ? 'Saving…' : (value || empty)}
         </p>
@@ -106,7 +106,7 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
 
 // ── Patient select field (dropdown for patient data) ──────────────────────────
 
-function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false }) {
+function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const { can } = usePermissions();
@@ -134,17 +134,17 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
       <p style={fl()}>{label}</p>
-      {editing ? (
+      {editing && !forceReadOnly ? (
         <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)}
           style={{ ...ei(), cursor: 'pointer' }}>
           <option value="" disabled>Select…</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
-        <p onClick={() => setEditing(true)} title="Click to edit"
-          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        <p onClick={() => !forceReadOnly && setEditing(true)} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
           {saving ? 'Saving…' : (value || empty)}
         </p>
@@ -155,14 +155,14 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
 
 // ── Phone field (validates + formats as (XXX) XXX-XXXX) ───────────────────────
 
-function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false }) {
+function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const { can } = usePermissions();
 
-  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setError(''); setEditing(true); }
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
@@ -206,17 +206,17 @@ function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
       <p style={fl()}>{label}</p>
-      {editing ? (
+      {editing && !forceReadOnly ? (
         <>
           <input autoFocus type="tel" value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
           {error && <p style={ve()}>{error}</p>}
         </>
       ) : (
-        <p onClick={startEdit} title="Click to edit"
-          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        <p onClick={startEdit} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
           {saving ? 'Saving…' : (display || empty)}
         </p>
@@ -227,14 +227,14 @@ function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave
 
 // ── Email field (validates format) ────────────────────────────────────────────
 
-function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false }) {
+function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const { can } = usePermissions();
 
-  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setError(''); setEditing(true); }
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
@@ -278,17 +278,17 @@ function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
       <p style={fl()}>{label}</p>
-      {editing ? (
+      {editing && !forceReadOnly ? (
         <>
           <input autoFocus type="email" value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
           {error && <p style={ve()}>{error}</p>}
         </>
       ) : (
-        <p onClick={startEdit} title="Click to edit"
-          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        <p onClick={startEdit} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
           {saving ? 'Saving…' : (value || empty)}
         </p>
@@ -299,14 +299,14 @@ function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave
 
 // ── ZIP field (validates + auto-populates city/state) ─────────────────────────
 
-function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, onSave, fullWidth = false }) {
+function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, onSave, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const { can } = usePermissions();
 
-  function startEdit() { setDraft(value || ''); setError(''); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setError(''); setEditing(true); }
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
@@ -356,17 +356,17 @@ function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, on
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
       <p style={fl()}>ZIP</p>
-      {editing ? (
+      {editing && !forceReadOnly ? (
         <>
           <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
             onBlur={save} onKeyDown={onKeyDown} style={error ? { ...ei(), borderColor: '#c62828' } : ei()} />
           {error && <p style={ve()}>{error}</p>}
         </>
       ) : (
-        <p onClick={startEdit} title="Click to edit"
-          style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        <p onClick={startEdit} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
           {saving ? 'Saving…' : (value || empty)}
         </p>
@@ -810,7 +810,7 @@ function InsuranceEditor({ patient, patientId, onSave }) {
 
 // ── Main tab ───────────────────────────────────────────────────────────────────
 
-export default function OverviewTab({ patient, referral }) {
+export default function OverviewTab({ patient, referral, readOnly = false }) {
   const { can } = usePermissions();
   const { updatePatientLocal, updateReferralLocal } = usePatientDrawer();
   const { resolveMarketer, resolveUser, resolveSource, resolveFacility } = useLookups();
@@ -825,46 +825,52 @@ export default function OverviewTab({ patient, referral }) {
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
-      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 20 }}>
-        Click any field to edit. Press Enter or click away to save.
-      </p>
+      {!readOnly && (
+        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 20 }}>
+          Click any field to edit. Press Enter or click away to save.
+        </p>
+      )}
 
       {/* ── Patient Information ── */}
       <Section title="Patient Information">
-        <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Date of Birth"     fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" />
-        <EditablePatientSelect label="Gender"    fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} options={GENDER_OPTIONS} />
-        <PhoneField label="Primary Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EmailField label="Email"                fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EditableField label="Address"           fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+        <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EditableField label="Date of Birth"     fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" readOnly={readOnly} />
+        <EditablePatientSelect label="Gender"    fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} options={GENDER_OPTIONS} readOnly={readOnly} />
+        <PhoneField label="Primary Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EmailField label="Email"                fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EditableField label="Address"           fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
         <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 16px' }}>
-          <ZipField value={patient.address_zip?.toString()} cityValue={patient.address_city} stateValue={patient.address_state} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-          <EditableField label="City"            fieldKey="address_city"     value={patient.address_city}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-          <EditableField label="State"           fieldKey="address_state"    value={patient.address_state}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
+          <ZipField value={patient.address_zip?.toString()} cityValue={patient.address_city} stateValue={patient.address_state} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+          <EditableField label="City"            fieldKey="address_city"     value={patient.address_city}     patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+          <EditableField label="State"           fieldKey="address_state"    value={patient.address_state}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         </div>
       </Section>
 
       {/* ── Insurance ── */}
       <Section title="Insurance">
         <div style={{ gridColumn: '1 / -1' }}>
-          <InsuranceEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
+          {readOnly ? (
+            <ReadField label="Insurance" value={(() => { try { const plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; return plans.length ? plans.join(', ') : patient.insurance_plan || null; } catch { return patient.insurance_plan || null; } })()} fullWidth />
+          ) : (
+            <InsuranceEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
+          )}
         </div>
       </Section>
 
       {/* ── Approved Services (permission-gated) ── */}
       {can(PERMISSION_KEYS.CLINICAL_APPROVED_SERVICES) && (
         <Section title="Approved Services">
-          <EditableField label="Approved Services" fieldKey="approved_services" value={patient.approved_services} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+          <EditableField label="Approved Services" fieldKey="approved_services" value={patient.approved_services} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
         </Section>
       )}
 
       {/* ── Emergency Contact ── */}
       <Section title="Emergency Contact">
-        <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <PhoneField    label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} />
-        <EmailField    label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth />
+        <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <PhoneField    label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EmailField    label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
       </Section>
 
     </div>

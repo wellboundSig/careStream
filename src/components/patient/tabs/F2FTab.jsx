@@ -44,7 +44,7 @@ function InfoRow({ label, value, color }) {
   );
 }
 
-export default function F2FTab({ patient, referral }) {
+export default function F2FTab({ patient, referral, readOnly = false }) {
   const { can } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolvePhysician } = useLookups();
@@ -163,7 +163,7 @@ export default function F2FTab({ patient, referral }) {
             </p>
             {referral.f2f_date && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 3 }}>
-                Received {fmtDate(referral.f2f_date)} · Expires {fmtDate(referral.f2f_expiration)}
+                Visit {fmtDate(referral.f2f_date)} · Expires {fmtDate(referral.f2f_expiration)}
               </p>
             )}
           </div>
@@ -180,8 +180,8 @@ export default function F2FTab({ patient, referral }) {
       </Section>
 
       {/* Log F2F Date */}
-      {can(PERMISSION_KEYS.CLINICAL_F2F) && (
-        <Section title="Log F2F / MD Orders">
+      {!readOnly && can(PERMISSION_KEYS.CLINICAL_F2F) && (
+        <Section title="Date of Visit">
           {!showDatePicker ? (
             <button
               onClick={() => {
@@ -195,12 +195,12 @@ export default function F2FTab({ patient, referral }) {
                 fontSize: 13, fontWeight: 650, cursor: 'pointer',
               }}
             >
-              {referral.f2f_date ? 'Update F2F / MD Orders Date' : 'F2F / MD Orders Received'}
+              {referral.f2f_date ? 'Update Date of Visit' : 'Log Date of Visit'}
             </button>
           ) : (
             <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '12px' }}>
               <p style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 8 }}>
-                {referral.f2f_date ? 'Confirm or update received date' : 'Date documents were received'}
+                {referral.f2f_date ? 'Confirm or update date of visit' : 'When did the physician visit occur?'}
               </p>
               <input
                 type="date"
@@ -248,12 +248,14 @@ export default function F2FTab({ patient, referral }) {
           ))}
         </div>
         <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
-        <button
-          onClick={() => fileInputRef.current?.click()} disabled={uploading}
-          style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: `1.5px dashed ${hexToRgba(palette.backgroundDark.hex, 0.15)}`, background: hexToRgba(palette.backgroundDark.hex, 0.02), color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 12.5, fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}
-        >
-          {uploading ? 'Uploading...' : `Upload ${uploadCategory} Document`}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: `1.5px dashed ${hexToRgba(palette.backgroundDark.hex, 0.15)}`, background: hexToRgba(palette.backgroundDark.hex, 0.02), color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 12.5, fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}
+          >
+            {uploading ? 'Uploading...' : `Upload ${uploadCategory} Document`}
+          </button>
+        )}
 
         {loadingFiles ? (
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>Loading files...</p>
@@ -285,8 +287,8 @@ export default function F2FTab({ patient, referral }) {
           <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
         </div>
         {F2F_REVIEW_CHECKLIST.map((item) => (
-          <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => setReviewChecked((p) => ({ ...p, [item.key]: !p[item.key] }))} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+          <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: readOnly ? 'default' : 'pointer' }}>
+            <input type="checkbox" checked={!!reviewChecked[item.key]} disabled={readOnly} onChange={() => { if (!readOnly) setReviewChecked((p) => ({ ...p, [item.key]: !p[item.key] })); }} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0, cursor: readOnly ? 'default' : 'pointer' }} />
             <span style={{ fontSize: 12.5, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
               {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
             </span>

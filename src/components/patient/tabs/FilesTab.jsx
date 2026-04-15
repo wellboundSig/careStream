@@ -144,7 +144,7 @@ function PreviewModal({ file, onClose }) {
   );
 }
 
-export default function FilesTab({ patient, referral }) {
+export default function FilesTab({ patient, referral, readOnly = false }) {
   const { user } = useUser();
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser, resolvePhysician } = useLookups();
@@ -223,6 +223,7 @@ export default function FilesTab({ patient, referral }) {
         category: pendingCategory,
         created_at: new Date().toISOString(),
         ...(referral?.id ? { referral_id: referral.id } : {}),
+        ...(pendingCategory === 'F2F' && f2fDate ? { f2f_visit_date: f2fDate } : {}),
       };
 
       // Try with physician_id first. If Airtable rejects it (field not yet
@@ -244,13 +245,13 @@ export default function FilesTab({ patient, referral }) {
 
       setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
 
-      // If category is F2F and a received date was entered, start the 90-day expiration clock
+      // If category is F2F, the visit date drives the 90-day expiration clock
       if (pendingCategory === 'F2F' && f2fDate && referral?._id) {
-        const received = new Date(f2fDate);
-        const expiration = new Date(received);
+        const visitDate = new Date(f2fDate);
+        const expiration = new Date(visitDate);
         expiration.setDate(expiration.getDate() + 90);
         await updateReferral(referral._id, {
-          f2f_date: received.toISOString(),
+          f2f_date: visitDate.toISOString(),
           f2f_expiration: expiration.toISOString(),
         }).catch(() => {});
         triggerDataRefresh();
@@ -273,7 +274,7 @@ export default function FilesTab({ patient, referral }) {
   return (
     <div style={{ padding: '20px' }}>
       {/* Drop zone — only shown when no pending file */}
-      {can(PERMISSION_KEYS.FILE_UPLOAD) && !pendingFile && (
+      {!readOnly && can(PERMISSION_KEYS.FILE_UPLOAD) && !pendingFile && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -311,7 +312,7 @@ export default function FilesTab({ patient, referral }) {
       )}
 
       {/* Staging panel — shown after a file is selected, before uploading */}
-      {pendingFile && !uploading && (
+      {!readOnly && pendingFile && !uploading && (
         <div style={{ border: `1px solid var(--color-border)`, borderRadius: 10, padding: '16px', marginBottom: 16, background: hexToRgba(palette.backgroundDark.hex, 0.02) }}>
           {/* File name */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid var(--color-border)` }}>
@@ -350,16 +351,17 @@ export default function FilesTab({ patient, referral }) {
             ))}
           </div>
 
-          {/* F2F received date — only shown when F2F category is selected */}
+          {/* Date of Visit — required when F2F category is selected */}
           {pendingCategory === 'F2F' && (
             <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.05), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.2)}` }}>
-              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryMagenta.hex, marginBottom: 4 }}>F2F Received Date</p>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryMagenta.hex, marginBottom: 4 }}>
+                Date of Visit <span style={{ color: palette.primaryMagenta.hex }}>*</span>
+              </p>
 
               {f2fDatePrefilled ? (
-                /* Existing date — just confirm it */
                 <div>
                   <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
-                    This referral already has an F2F date on record. Confirm or adjust below.
+                    This referral already has a visit date on record. Confirm or adjust below.
                   </p>
                   <input
                     type="date"
@@ -374,10 +376,9 @@ export default function FilesTab({ patient, referral }) {
                   )}
                 </div>
               ) : (
-                /* No existing date — pick one */
                 <div>
                   <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
-                    Sets the 90-day F2F expiration clock on this referral.
+                    When did the physician visit occur? This starts the 90-day F2F expiration clock.
                   </p>
                   <input
                     type="date"
@@ -391,8 +392,8 @@ export default function FilesTab({ patient, referral }) {
                     </p>
                   )}
                   {!f2fDate && (
-                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 4 }}>
-                      Optional — leave blank to skip
+                    <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4, fontWeight: 550 }}>
+                      Required — the 90-day clock starts from the date of visit
                     </p>
                   )}
                 </div>
@@ -430,9 +431,15 @@ export default function FilesTab({ patient, referral }) {
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {pendingCategory === 'F2F' && !f2fDate && (
+              <p style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: palette.primaryMagenta.hex }}>
+                Enter a date of visit to upload
+              </p>
+            )}
             <button
               onClick={confirmUpload}
-              style={{ padding: '8px 20px', borderRadius: 7, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}
+              disabled={pendingCategory === 'F2F' && !f2fDate}
+              style={{ padding: '8px 20px', borderRadius: 7, background: (pendingCategory === 'F2F' && !f2fDate) ? hexToRgba(palette.backgroundDark.hex, 0.1) : palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: (pendingCategory === 'F2F' && !f2fDate) ? hexToRgba(palette.backgroundDark.hex, 0.35) : '#fff', cursor: (pendingCategory === 'F2F' && !f2fDate) ? 'not-allowed' : 'pointer' }}
             >
               Upload
             </button>
@@ -447,7 +454,7 @@ export default function FilesTab({ patient, referral }) {
       )}
 
       {/* Upload progress */}
-      {uploading && uploadProgress && (
+      {!readOnly && uploading && uploadProgress && (
         <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.06), fontSize: 13, color: palette.primaryMagenta.hex, fontWeight: 600 }}>
           {uploadProgress}
         </div>
@@ -468,7 +475,7 @@ export default function FilesTab({ patient, referral }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {files.map((file) => (
-            <FileRow key={file._id} file={file} onPreview={setPreview} onDelete={handleDeleteFile} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
+            <FileRow key={file._id} file={file} onPreview={setPreview} onDelete={readOnly ? undefined : handleDeleteFile} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
           ))}
         </div>
       )}
