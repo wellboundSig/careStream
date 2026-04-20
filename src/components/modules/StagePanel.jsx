@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
-import { getChecksByPatient, createInsuranceCheck } from '../../api/insuranceChecks.js';
-import { getAuthorizationsByReferral, createAuthorization, updateAuthorization } from '../../api/authorizations.js';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { updateReferral } from '../../api/referrals.js';
 import { createEpisode } from '../../api/episodes.js';
@@ -12,7 +10,8 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useLookups } from '../../hooks/useLookups.js';
-import { CHECK_FLAGS, CHECK_SOURCES, MEDICARE_OPTIONS, MEDICAID_OPTIONS, COMMERCIAL_PLANS, buildCheckFields, EMPTY_CHECK_FORM } from '../../data/eligibilityConfig.js';
+import EligibilityWorkspace from './shared/EligibilityWorkspace.jsx';
+import AuthorizationWorkspace from './shared/AuthorizationWorkspace.jsx';
 import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
 import { DISCARD_REASONS } from '../../data/stageConfig.js';
@@ -607,218 +606,35 @@ function PanelSelect({ value, onChange, options, placeholder }) {
   );
 }
 
-function EligibilityPanel({ referrals, selectedReferral }) {
-  const { appUserId, appUserName } = useCurrentAppUser();
-  const { can: canPerm } = usePermissions();
-  const { resolveUser } = useLookups();
-  const [lastCheck, setLastCheck] = useState(null);
-  const [loadingCheck, setLoadingCheck] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [form, setForm] = useState({ ...EMPTY_CHECK_FORM });
-  const [flagValues, setFlagValues] = useState({});
-  const isSN = selectedReferral?.division === 'Special Needs';
-
-  useEffect(() => {
-    if (!selectedReferral?.patient_id) { setLastCheck(null); setShowForm(false); return; }
-    setLoadingCheck(true);
-    getChecksByPatient(selectedReferral.patient_id)
-      .then((recs) => {
-        const sorted = recs.map((r) => ({ _id: r.id, ...r.fields }))
-          .sort((a, b) => new Date(b.check_date || 0) - new Date(a.check_date || 0));
-        setLastCheck(sorted[0] || null);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingCheck(false));
-  }, [selectedReferral?.patient_id]);
-
-  function openForm() {
-    setFlagValues({});
-    setForm({ ...EMPTY_CHECK_FORM });
-    setSaveError(null);
-    setShowForm(true);
+// EligibilityPanel — renders the shared EligibilityWorkspace inside the
+// narrow right-side <Panel>. The drawer tab (EligibilityTab.jsx) renders
+// the same EligibilityWorkspace with variant="drawer". Both subscribe to
+// useRefreshVersion, so a save in either surface re-fetches the other.
+// See src/components/modules/shared/ for the single implementation.
+function EligibilityPanel({ referrals, selectedReferral, onInitiateTransition }) {
+  if (!selectedReferral) {
+    return (
+      <Panel>
+        <PanelSection title="Queue Summary">
+          <InfoRow label="Total in queue" value={referrals.length} />
+        </PanelSection>
+        <EmptyPanelState message="Select a patient to verify insurance coverage." />
+      </Panel>
+    );
   }
-
-  async function submitCheck() {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const fields = buildCheckFields({
-        referralId: selectedReferral.id,
-        patientId: selectedReferral.patient_id,
-        authorId: appUserId,
-        form,
-        flagValues,
-        isSN,
-      });
-      const created = await createInsuranceCheck(fields);
-      setLastCheck({ _id: created.id, ...created.fields });
-      setShowForm(false);
-    } catch (err) {
-      console.error('Check save failed', err);
-      setSaveError(err.message || 'Save failed. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const checkedByName = lastCheck?.checked_by_id ? resolveUser(lastCheck.checked_by_id) : null;
-
+  // Pass the full patient record so the workspace can parse Demographics'
+  // `insurance_plans` JSON without an extra fetch when it's already loaded.
+  const patient = selectedReferral.patient
+    ? { id: selectedReferral.patient.id || selectedReferral.patient_id, ...selectedReferral.patient }
+    : { id: selectedReferral.patient_id };
   return (
     <Panel>
-      {!selectedReferral ? (
-        <>
-          <PanelSection title="Queue Summary">
-            <InfoRow label="Total in queue" value={referrals.length} />
-          </PanelSection>
-          <EmptyPanelState message="Select a patient to log or view their eligibility check." />
-        </>
-      ) : (
-        <>
-          {/* Last check */}
-          {loadingCheck ? (
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '8px 0' }}>Loading last check…</p>
-          ) : lastCheck ? (
-            <PanelSection title="Last Check">
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{checkedByName || lastCheck.checked_by_id}</span>
-                  <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>·</span>
-                  <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{lastCheck.check_source}</span>
-                </div>
-                {lastCheck.check_date && (
-                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 8 }}>
-                    {new Date(lastCheck.check_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    {' at '}
-                    {new Date(lastCheck.check_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </p>
-                )}
-                {/* Show Medicare/Medicaid info from result_summary prefix lines */}
-                {lastCheck.result_summary && lastCheck.result_summary.split('\n').filter((l) => l.startsWith('Medicare:') || l.startsWith('Medicaid:')).map((line, i) => {
-                  const [label, ...rest] = line.split(': ');
-                  const val = rest.join(': ');
-                  const isMgd = val.includes('Managed') || val.includes('MCO') || val.includes('Advantage');
-                  return (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
-                      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{label}</span>
-                      <span style={{ fontSize: 11.5, fontWeight: 650, color: val.includes('Not enrolled') ? hexToRgba(palette.backgroundDark.hex, 0.35) : isMgd ? palette.accentOrange.hex : palette.accentBlue.hex }}>{val}</span>
-                    </div>
-                  );
-                })}
-                {lastCheck.managed_care_plan && (
-                  <InfoRow label="Plan" value={lastCheck.managed_care_plan} />
-                )}
-                {lastCheck.managed_care_id && (
-                  <InfoRow label="Exception Code" value={lastCheck.managed_care_id} />
-                )}
-                {CHECK_FLAGS.filter((f) => lastCheck[f.key] !== undefined && lastCheck[f.key] !== null).map((f) => (
-                  <FlagRow key={f.key} label={f.label} value={lastCheck[f.key]} readOnly />
-                ))}
-                {/* Show user notes portion of summary (non-structured lines) */}
-                {lastCheck.result_summary && (() => {
-                  const userNotes = lastCheck.result_summary.split('\n').filter((l) => !l.startsWith('Medicare:') && !l.startsWith('Medicaid:') && !l.startsWith('Plan:') && !l.startsWith('Exception Code:')).join('\n').trim();
-                  return userNotes ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginTop: 8, lineHeight: 1.5, fontStyle: 'italic' }}>{userNotes}</p> : null;
-                })()}
-              </div>
-              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log New Check" variant="success" onClick={openForm} />}
-            </PanelSection>
-          ) : (
-            <PanelSection title="Eligibility">
-              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 10 }}>No check on record.</p>
-              {canPerm(PERMISSION_KEYS.CLINICAL_ELIGIBILITY) && <ActionBtn label="Log Eligibility Check →" variant="forward" onClick={openForm} />}
-            </PanelSection>
-          )}
-
-          {/* Inline check form */}
-          {showForm && (
-            <PanelSection title="New Manual Check">
-              <FormField label="Source">
-                <PanelSelect value={form.check_source} onChange={(v) => setForm((p) => ({ ...p, check_source: v }))} options={CHECK_SOURCES} />
-              </FormField>
-
-              <FormField label="Third Party / Commercial Plan">
-                <PanelSelect
-                  value={form.managed_care_plan}
-                  onChange={(v) => setForm((p) => ({ ...p, managed_care_plan: v }))}
-                  options={COMMERCIAL_PLANS}
-                  placeholder="— None / Not applicable —"
-                />
-              </FormField>
-
-              <FormField label="Medicare Coverage">
-                <select
-                  value={form.medicare_type}
-                  onChange={(e) => setForm((p) => ({ ...p, medicare_type: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', background: form.medicare_type === 'ffs' ? hexToRgba(palette.accentBlue.hex, 0.08) : form.medicare_type === 'advantage' ? hexToRgba(palette.accentOrange.hex, 0.08) : form.medicare_type === 'none' ? hexToRgba(palette.backgroundDark.hex, 0.05) : palette.backgroundLight.hex, cursor: 'pointer', outline: 'none', fontWeight: form.medicare_type ? 600 : 400 }}
-                  onFocus={(e) => (e.target.style.outline = `2px solid ${palette.primaryMagenta.hex}`)}
-                  onBlur={(e) => (e.target.style.outline = 'none')}
-                >
-                  {MEDICARE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </FormField>
-
-              <FormField label="Medicaid Coverage">
-                <select
-                  value={form.medicaid_type}
-                  onChange={(e) => setForm((p) => ({ ...p, medicaid_type: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', background: form.medicaid_type === 'ffs' ? hexToRgba(palette.accentBlue.hex, 0.08) : form.medicaid_type === 'mco' ? hexToRgba(palette.accentOrange.hex, 0.08) : form.medicaid_type === 'none' ? hexToRgba(palette.backgroundDark.hex, 0.05) : palette.backgroundLight.hex, cursor: 'pointer', outline: 'none', fontWeight: form.medicaid_type ? 600 : 400 }}
-                  onFocus={(e) => (e.target.style.outline = `2px solid ${palette.primaryMagenta.hex}`)}
-                  onBlur={(e) => (e.target.style.outline = 'none')}
-                >
-                  {MEDICAID_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </FormField>
-
-              {isSN && (
-                <FormField label="Exception Code (SN / Medicaid)">
-                  <input
-                    type="text"
-                    value={form.exception_code}
-                    onChange={(e) => setForm((p) => ({ ...p, exception_code: e.target.value }))}
-                    placeholder="e.g. 9, 88, 0A…"
-                    style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03) }}
-                    onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-                    onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
-                  />
-                </FormField>
-              )}
-
-              <div style={{ marginTop: 4 }}>
-                {CHECK_FLAGS.map((f) => (
-                  <FlagRow key={f.key} label={f.label} value={flagValues[f.key] || ''} onChange={(v) => setFlagValues((p) => ({ ...p, [f.key]: v }))} />
-                ))}
-              </div>
-
-              <FormField label="Notes / Summary" style={{ marginTop: 8 }}>
-                <textarea
-                  value={form.result_summary}
-                  onChange={(e) => setForm((p) => ({ ...p, result_summary: e.target.value }))}
-                  placeholder="Any findings or observations…"
-                  rows={3}
-                  style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid var(--color-border)`, fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03) }}
-                  onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-                  onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
-                />
-                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>Logged by {appUserName}</p>
-              </FormField>
-
-              {saveError && (
-                <p style={{ fontSize: 11.5, color: palette.primaryMagenta.hex, marginTop: 8, padding: '6px 9px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07) }}>
-                  {saveError}
-                </p>
-              )}
-
-              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: '7px 0', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
-                <button onClick={submitCheck} disabled={saving} style={{ flex: 2, padding: '7px 0', borderRadius: 7, background: palette.accentGreen.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-                  {saving ? 'Saving…' : 'Save Check'}
-                </button>
-              </div>
-            </PanelSection>
-          )}
-        </>
-      )}
+      <EligibilityWorkspace
+        patient={patient}
+        referral={selectedReferral}
+        variant="panel"
+        onInitiateTransition={onInitiateTransition}
+      />
     </Panel>
   );
 }
@@ -1322,219 +1138,33 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 }
 
 // ── 7. Authorization Pending ──────────────────────────────────────────────────
-const AUTH_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
-
+// Services list is policy-driven. ABA is never available in this workflow.
+// HHA is blocked when the referral division is ALF (see policy layer).
+// See src/data/policies/serviceAvailabilityPolicies.js for the source of truth.
+//
+// AuthorizationPanel — thin wrapper around the shared AuthorizationWorkspace.
+// The drawer tab (AuthorizationsTab.jsx) wraps the same workspace with
+// variant="drawer". Writes in either surface call triggerDataRefresh() so
+// both re-fetch in lockstep.
 function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
-  const { can: canPerm } = usePermissions();
-  const [auths, setAuths]               = useState([]);
-  const [loadingAuths, setLoadingAuths] = useState(false);
-
-  // form mode: null | 'approval' | 'denial'
-  const [mode, setMode]     = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-
-  // Approval form state
-  const [authNumber, setAuthNumber]     = useState('');
-  const [approvedDate, setApprovedDate] = useState('');
-  const [windowStart, setWindowStart]   = useState('');
-  const [windowEnd, setWindowEnd]       = useState('');
-  const [servicesAuth, setServicesAuth] = useState([]);
-
-  // Denial form state
-  const [denialReason, setDenialReason] = useState('');
-
-  useEffect(() => {
-    if (!selectedReferral?.id) { setAuths([]); return; }
-    setLoadingAuths(true);
-    getAuthorizationsByReferral(selectedReferral.id)
-      .then((recs) => setAuths(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoadingAuths(false));
-  }, [selectedReferral?.id]);
-
-  // Reset forms when patient changes
-  useEffect(() => {
-    setMode(null);
-    setAuthNumber(''); setApprovedDate(''); setWindowStart(''); setWindowEnd(''); setServicesAuth([]);
-    setDenialReason('');
-    setSaveError(null);
-  }, [selectedReferral?._id]);
-
-  const latestAuth = auths[0];
-
-  function toggleService(s) {
-    setServicesAuth((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+  if (!selectedReferral) {
+    return (
+      <Panel>
+        <EmptyPanelState message="Select a patient to record authorization." />
+      </Panel>
+    );
   }
-
-  async function handleApproval() {
-    if (!approvedDate || !selectedReferral || !canPerm(PERMISSION_KEYS.AUTH_DECIDE)) return;
-    setSaving(true); setSaveError(null);
-    try {
-      const fields = {
-        referral_id: selectedReferral.id,
-        plan_name: selectedReferral.patient?.insurance_plan || '',
-        status: 'Approved',
-        approved_date: approvedDate,
-        ...(authNumber.trim()  && { auth_number: authNumber.trim() }),
-        ...(windowStart        && { effective_start: windowStart }),
-        ...(windowEnd          && { effective_end: windowEnd }),
-        ...(servicesAuth.length && { services_authorized: servicesAuth }),
-      };
-      if (latestAuth?._id) {
-        await updateAuthorization(latestAuth._id, fields);
-      } else {
-        await createAuthorization(fields);
-      }
-      onInitiateTransition?.(selectedReferral, 'Staffing Feasibility');
-    } catch (err) {
-      setSaveError(err.message || 'Failed to save');
-      setSaving(false);
-    }
-  }
-
-  async function handleDenial() {
-    if (!selectedReferral || !canPerm(PERMISSION_KEYS.AUTH_DECIDE)) return;
-    setSaving(true); setSaveError(null);
-    try {
-      const fields = {
-        referral_id: selectedReferral.id,
-        plan_name: selectedReferral.patient?.insurance_plan || '',
-        status: 'Denied',
-        ...(denialReason.trim() && { denial_reason: denialReason.trim() }),
-      };
-      if (latestAuth?._id) {
-        await updateAuthorization(latestAuth._id, fields);
-      } else {
-        await createAuthorization(fields);
-      }
-      onInitiateTransition?.(selectedReferral, 'NTUC');
-    } catch (err) {
-      setSaveError(err.message || 'Failed to save');
-      setSaving(false);
-    }
-  }
-
-  const inputStyle = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '6px 9px', borderRadius: 7, marginBottom: 7,
-    border: `1px solid var(--color-border)`,
-    fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
-    background: palette.backgroundLight.hex,
-    color: palette.backgroundDark.hex,
-  };
-
+  const patient = selectedReferral.patient
+    ? { id: selectedReferral.patient.id || selectedReferral.patient_id, ...selectedReferral.patient }
+    : { id: selectedReferral.patient_id };
   return (
     <Panel>
-      {!selectedReferral ? <EmptyPanelState /> : (
-        <>
-          <PanelSection title="Auth Details">
-            <InfoRow label="Plan"      value={selectedReferral.patient?.insurance_plan} />
-            <InfoRow label="Submitted" value={latestAuth?.submitted_date
-              ? new Date(latestAuth.submitted_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              : loadingAuths ? '…' : '—'} />
-            <InfoRow label="Status"    value={latestAuth?.status || (loadingAuths ? '…' : 'Pending')}
-              highlight={latestAuth?.status === 'Approved' ? palette.accentGreen.hex
-                : latestAuth?.status === 'Denied' ? palette.primaryMagenta.hex : undefined} />
-            {latestAuth?.auth_number && (
-              <InfoRow label="Auth #" value={latestAuth.auth_number} />
-            )}
-            {latestAuth?.effective_start && (
-              <InfoRow label="Window"
-                value={`${new Date(latestAuth.effective_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} – ${latestAuth.effective_end ? new Date(latestAuth.effective_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '?'}`} />
-            )}
-          </PanelSection>
-
-          <PanelSection title="Actions">
-            {mode === null && (
-              <>
-                {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Approval →" variant="forward"  onClick={() => setMode('approval')} />}
-                {canPerm(PERMISSION_KEYS.AUTH_DECIDE) && <ActionBtn label="Record Denial"      variant="danger"   onClick={() => setMode('denial')} />}
-              </>
-            )}
-
-            {/* ── Approval Form ── */}
-            {mode === 'approval' && (
-              <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`, background: hexToRgba(palette.accentGreen.hex, 0.03), padding: '10px 11px' }}>
-                <p style={{ fontSize: 11.5, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 8 }}>Record Approval</p>
-
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Number (optional)</label>
-                <input type="text" placeholder="e.g. AUTH-12345" value={authNumber} onChange={(e) => setAuthNumber(e.target.value)} style={inputStyle} />
-
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Approval Date *</label>
-                <input type="date" value={approvedDate} max={new Date().toISOString().split('T')[0]} onChange={(e) => setApprovedDate(e.target.value)} style={{ ...inputStyle, borderColor: approvedDate ? palette.accentGreen.hex : undefined }} />
-
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Window Start</label>
-                <input type="date" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} style={inputStyle} />
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Auth Window End</label>
-                <input type="date" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} style={inputStyle} />
-
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 5 }}>Services Authorized</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
-                  {AUTH_SERVICES.map((s) => (
-                    <button key={s} onClick={() => toggleService(s)} style={{
-                      padding: '3px 9px', borderRadius: 5, border: `1px solid var(--color-border)`,
-                      fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
-                      background: servicesAuth.includes(s) ? palette.accentGreen.hex : 'none',
-                      color: servicesAuth.includes(s) ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-                    }}>{s}</button>
-                  ))}
-                </div>
-
-                {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{saveError}</p>}
-
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={handleApproval} disabled={!approvedDate || saving} style={{
-                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: approvedDate && !saving ? 'pointer' : 'not-allowed',
-                    background: approvedDate && !saving ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-                    color: approvedDate && !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
-                    fontSize: 11.5, fontWeight: 650,
-                  }}>{saving ? 'Saving…' : 'Confirm Approval'}</button>
-                  <button onClick={() => { setMode(null); setSaveError(null); }} disabled={saving} style={{
-                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    background: hexToRgba(palette.backgroundDark.hex, 0.07),
-                    color: hexToRgba(palette.backgroundDark.hex, 0.55),
-                    fontSize: 11.5, fontWeight: 650,
-                  }}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Denial Form ── */}
-            {mode === 'denial' && (
-              <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.35)}`, background: hexToRgba(palette.primaryMagenta.hex, 0.03), padding: '10px 11px' }}>
-                <p style={{ fontSize: 11.5, fontWeight: 700, color: palette.primaryMagenta.hex, marginBottom: 8 }}>Record Denial</p>
-
-                <label style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'block', marginBottom: 3 }}>Denial Reason</label>
-                <textarea
-                  value={denialReason}
-                  onChange={(e) => setDenialReason(e.target.value)}
-                  rows={3}
-                  placeholder="Describe the reason for denial..."
-                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
-                />
-
-                {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{saveError}</p>}
-
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={handleDenial} disabled={saving} style={{
-                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: !saving ? 'pointer' : 'not-allowed',
-                    background: !saving ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-                    color: !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
-                    fontSize: 11.5, fontWeight: 650,
-                  }}>{saving ? 'Saving…' : 'Confirm Denial → NTUC'}</button>
-                  <button onClick={() => { setMode(null); setSaveError(null); }} disabled={saving} style={{
-                    flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    background: hexToRgba(palette.backgroundDark.hex, 0.07),
-                    color: hexToRgba(palette.backgroundDark.hex, 0.55),
-                    fontSize: 11.5, fontWeight: 650,
-                  }}>Cancel</button>
-                </div>
-              </div>
-            )}
-          </PanelSection>
-        </>
-      )}
+      <AuthorizationWorkspace
+        patient={patient}
+        referral={selectedReferral}
+        variant="panel"
+        onInitiateTransition={onInitiateTransition}
+      />
     </Panel>
   );
 }

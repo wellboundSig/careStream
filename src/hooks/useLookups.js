@@ -13,6 +13,7 @@ export function useLookups() {
   const roles          = useCareStore((s) => s.roles);
   const facilities     = useCareStore((s) => s.facilities);
   const physicians     = useCareStore((s) => s.physicians);
+  const patients       = useCareStore((s) => s.patients);
   const hydrated       = useCareStore((s) => s.hydrated);
 
   const marketerMap = useMemo(() => {
@@ -71,12 +72,24 @@ export function useLookups() {
     return map;
   }, [physicians]);
 
+  const patientMap = useMemo(() => {
+    const map = {};
+    Object.values(patients).forEach((p) => {
+      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+      if (!name) return;
+      if (p.id)  map[p.id]  = name;
+      if (p._id) map[p._id] = name;
+    });
+    return map;
+  }, [patients]);
+
   const resolveMarketer  = useMemo(() => (id) => (id && marketerMap[id])  || '—', [marketerMap]);
   const resolveUser      = useMemo(() => (id) => (id && userMap[id])      || '—', [userMap]);
   const resolveSource    = useMemo(() => (id) => (id && sourceMap[id])    || '—', [sourceMap]);
   const resolveRole      = useMemo(() => (id) => (id && roleMap[id])     || '—', [roleMap]);
   const resolveFacility  = useMemo(() => (id) => (id && facilityMap[id]) || '—', [facilityMap]);
   const resolvePhysician = useMemo(() => (id) => (id && physicianMap[id])|| '—', [physicianMap]);
+  const resolvePatient   = useMemo(() => (id) => (id && patientMap[id])  || id || '—', [patientMap]);
 
   return {
     resolveMarketer,
@@ -85,6 +98,7 @@ export function useLookups() {
     resolveRole,
     resolveFacility,
     resolvePhysician,
+    resolvePatient,
     roleMap,
     loading: !hydrated,
   };

@@ -38,7 +38,7 @@ function timeAgo(dateStr) {
 }
 
 export default function UserProfileDrawer({ user, onClose }) {
-  const { resolveRole, resolveSource } = useLookups();
+  const { resolveRole, resolveSource, resolvePatient } = useLookups();
   const [referrals, setReferrals] = useState([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
 
@@ -164,9 +164,11 @@ export default function UserProfileDrawer({ user, onClose }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {active.slice(0, 12).map((ref) => (
                   <div key={ref._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.03) }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                       <DivisionBadge division={ref.division} size="small" />
-                      <span style={{ fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{ref.patient_id}</span>
+                      <span style={{ fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ref.patient_id}>
+                        {resolvePatient(ref.patient_id)}
+                      </span>
                     </div>
                     <StageBadge stage={ref.current_stage} size="small" />
                   </div>

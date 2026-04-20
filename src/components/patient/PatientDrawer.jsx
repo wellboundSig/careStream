@@ -128,8 +128,12 @@ export default function PatientDrawer() {
     const r = referral;
     const result = {};
 
-    // Demographics: core fields filled
-    const demoFields = [p.first_name, p.last_name, p.phone_primary, p.dob, p.address_street, p.address_city, p.address_state, p.address_zip];
+    // Demographics: core fields + emergency contact (name and phone)
+    const demoFields = [
+      p.first_name, p.last_name, p.phone_primary, p.dob,
+      p.address_street, p.address_city, p.address_state, p.address_zip,
+      p.emergency_contact_name, p.emergency_contact_phone,
+    ];
     result.demographics = demoFields.every((f) => f && String(f).trim());
 
     // Overview: has owner + marketer + source

@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-03-30T17:45:28.182Z",
+  "fetchedAt": "2026-04-20T15:27:24.469Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -492,6 +492,83 @@
           "id": "fld7JPhbQ9qusFCxh",
           "name": "department_id",
           "type": "singleLineText"
+        },
+        {
+          "id": "fldrYylNOpxIIXzlA",
+          "name": "EligibilityVerifications",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblkwkBM1rEIPd7uN",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldtxo97XyHN8zFAG"
+          }
+        },
+        {
+          "id": "fldphF4m69xqeczx2",
+          "name": "DisenrollmentAssistanceFlags (follow_up_owner_user_id)",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblQYWbEWIpSzQPZS",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldAQYK1cniw6K4Ap"
+          }
+        },
+        {
+          "id": "fldbEAVGfWBF1HSfX",
+          "name": "DisenrollmentAssistanceFlags (created_by_user_id)",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblQYWbEWIpSzQPZS",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fld0deqnpA5ytpGSq"
+          }
+        },
+        {
+          "id": "fld1sKFohW170mf27",
+          "name": "DisenrollmentAssistanceFlags (resolved_by_user_id)",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblQYWbEWIpSzQPZS",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldVi9TCZNeJ07CNv"
+          }
+        },
+        {
+          "id": "fldoE08ikBsxYFqLS",
+          "name": "Conflicts",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblgrafsORmZYVY2b",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fld3uh1Hau2xjAEHf"
+          }
+        },
+        {
+          "id": "fldTw8CyoPkbzmxHC",
+          "name": "Authorizations (follow_up_owner_user_id)",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg4gqVfGIy5Bfar",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldJ1Fin36yxyvIq8"
+          }
+        },
+        {
+          "id": "fldWqB8gi4PWDMaD0",
+          "name": "Authorizations (decided_by_user_id)",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg4gqVfGIy5Bfar",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldoyLSJcLlGmTX25"
+          }
         }
       ]
     },
@@ -1209,6 +1286,61 @@
           "id": "fldLGBDzK0MEU8uFp",
           "name": "insurance_plan_details",
           "type": "multilineText"
+        },
+        {
+          "id": "fldIbhCBlNWzVBqwF",
+          "name": "PatientInsurances",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg7s0UuWsN99367",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldGR6fbgzVPI2gOC"
+          }
+        },
+        {
+          "id": "fldOEm7BJAyzxZHg9",
+          "name": "EligibilityVerifications",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblkwkBM1rEIPd7uN",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldTcsb7WQ9jdvhmw"
+          }
+        },
+        {
+          "id": "fldVh355gZD4eGL4a",
+          "name": "DisenrollmentAssistanceFlags",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblQYWbEWIpSzQPZS",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldf1gJtHmiRTVBWa"
+          }
+        },
+        {
+          "id": "fldhu62jTK2qOVHKT",
+          "name": "Conflicts",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblgrafsORmZYVY2b",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fld9fnis9TbEqJl5N"
+          }
+        },
+        {
+          "id": "fldl17FlsWS0QyCEx",
+          "name": "Authorizations",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg4gqVfGIy5Bfar",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldnSDFTsdHGo8qf1"
+          }
         }
       ]
     },
@@ -1293,91 +1425,7 @@
         {
           "id": "fldtk8VkUunLj2YVR",
           "name": "current_stage",
-          "type": "singleSelect",
-          "options": {
-            "choices": [
-              {
-                "id": "selqNlLRmxcspEuvL",
-                "name": "Lead Entry",
-                "color": "blueLight2"
-              },
-              {
-                "id": "selT0qi6KEISreWeD",
-                "name": "Intake",
-                "color": "cyanLight2"
-              },
-              {
-                "id": "selDaSDonC9a2aT7U",
-                "name": "Eligibility Verification",
-                "color": "tealLight2"
-              },
-              {
-                "id": "selem0jacBFHFJKQv",
-                "name": "Disenrollment Required",
-                "color": "greenLight2"
-              },
-              {
-                "id": "selgP5d5fAg4Cu0nI",
-                "name": "F2F/MD Orders Pending",
-                "color": "yellowLight2"
-              },
-              {
-                "id": "selDlbnTROPcNKY0g",
-                "name": "Clinical Intake RN Review",
-                "color": "orangeLight2"
-              },
-              {
-                "id": "selb36FTTiKeLu7eO",
-                "name": "Authorization Pending",
-                "color": "redLight2"
-              },
-              {
-                "id": "selguc1WITx10d2fz",
-                "name": "Conflict",
-                "color": "pinkLight2"
-              },
-              {
-                "id": "selbzLQBiorAtyqD5",
-                "name": "Staffing Feasibility",
-                "color": "purpleLight2"
-              },
-              {
-                "id": "selYRUacVANxIZoFG",
-                "name": "Admin Confirmation",
-                "color": "grayLight2"
-              },
-              {
-                "id": "selt9BRoaI3hrwB8i",
-                "name": "Pre-SOC",
-                "color": "blueLight1"
-              },
-              {
-                "id": "selQOO0qGzp0Q92GI",
-                "name": "SOC Scheduled",
-                "color": "cyanLight1"
-              },
-              {
-                "id": "selsQ6EgkvVhcaJ5J",
-                "name": "SOC Completed",
-                "color": "tealLight1"
-              },
-              {
-                "id": "selVX3U0Xow34apla",
-                "name": "Hold",
-                "color": "greenLight1"
-              },
-              {
-                "id": "sel1PMvF687pPF04z",
-                "name": "NTUC",
-                "color": "yellowLight1"
-              },
-              {
-                "id": "selxz2u2TqC5fZWxq",
-                "name": "OPWDD Pending",
-                "color": "orangeLight1"
-              }
-            ]
-          }
+          "type": "multilineText"
         },
         {
           "id": "fldIOkMWoYrraE0gO",
@@ -1722,6 +1770,17 @@
           "id": "fldcFLteHoKH6nig9",
           "name": "clinical_review_at",
           "type": "multilineText"
+        },
+        {
+          "id": "fld6SFbhB2lZzmbME",
+          "name": "DisenrollmentAssistanceFlags",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblQYWbEWIpSzQPZS",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldKYzc0hk89ry7gd"
+          }
         }
       ]
     },
@@ -2214,6 +2273,11 @@
             },
             "timeZone": "client"
           }
+        },
+        {
+          "id": "fldNW8zsFhWph03QB",
+          "name": "f2f_visit_date",
+          "type": "singleLineText"
         }
       ]
     },
@@ -2506,6 +2570,181 @@
             },
             "timeZone": "client"
           }
+        },
+        {
+          "id": "fldm3xwE2JaITZu0z",
+          "name": "source_module",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "seln0dGAY6wDXRNWa",
+                "name": "eligibility",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selMpxnsPya6Ayhaj",
+                "name": "authorization",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "seluuZSRobvcSgxzB",
+                "name": "clinical",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selMRYEEjUBvtKsl4",
+                "name": "intake",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selSbvOjtBkihplZf",
+                "name": "other",
+                "color": "yellowLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldhL1GHNnBjxpL9H",
+          "name": "conflict_reasons",
+          "type": "multipleSelects",
+          "options": {
+            "choices": [
+              {
+                "id": "selxedFnDUp2DUfdy",
+                "name": "open_hh_episode",
+                "color": "blueLight2"
+              },
+              {
+                "id": "seljmSpyfZH04F6WM",
+                "name": "hospice_overlap",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "sel2rqJTgeCScikYn",
+                "name": "snf_present",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selTHxF0xoHW7k75R",
+                "name": "cdpap_active",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selGdDThXAqB9ZFvO",
+                "name": "auth_required",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selHJ87V2fsWUqOKe",
+                "name": "disenrollment_needed",
+                "color": "orangeLight2"
+              },
+              {
+                "id": "selonu4MxAHhdvvhy",
+                "name": "auth_denied",
+                "color": "redLight2"
+              },
+              {
+                "id": "selkGBwZfM7TxME3w",
+                "name": "payer_not_billable",
+                "color": "pinkLight2"
+              },
+              {
+                "id": "selQsPt9YgBEVktkf",
+                "name": "coverage_not_active",
+                "color": "purpleLight2"
+              },
+              {
+                "id": "seleX05tZ4frHRg4P",
+                "name": "order_unclear",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selmB3sQEqMwgKUdg",
+                "name": "service_not_allowed",
+                "color": "blueLight1"
+              },
+              {
+                "id": "selK1DVyTUcvikvEv",
+                "name": "other",
+                "color": "cyanLight1"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldr57HFqAjhtl50F",
+          "name": "details",
+          "type": "multilineText"
+        },
+        {
+          "id": "fld6jTSIMmFayGyht",
+          "name": "resolution_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selLP53I81MIHBcnj",
+                "name": "open",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selgYRYy60oKCY3XO",
+                "name": "in_progress",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selHtfL9LAsQ6iafl",
+                "name": "resolved",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selh76rk24cp40iM6",
+                "name": "waived",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld2tFgux3f6sW4Wq",
+          "name": "updated_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "us",
+              "format": "M/D/YYYY"
+            },
+            "timeFormat": {
+              "name": "12hour",
+              "format": "h:mma"
+            },
+            "timeZone": "utc"
+          }
+        },
+        {
+          "id": "fld9fnis9TbEqJl5N",
+          "name": "patient_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl2KBf9T24PMwvVj",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldhu62jTK2qOVHKT"
+          }
+        },
+        {
+          "id": "fld3uh1Hau2xjAEHf",
+          "name": "created_by_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldoE08ikBsxYFqLS"
+          }
         }
       ]
     },
@@ -2706,6 +2945,202 @@
               "format": "HH:mm"
             },
             "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldaWEfcxwKIZH87j",
+          "name": "auth_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selU9wzuyEoBDomJH",
+                "name": "nar",
+                "color": "blueLight2"
+              },
+              {
+                "id": "seloDLqtCVlJujxY0",
+                "name": "pending",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selAoUQoTTEQkmbJa",
+                "name": "approved",
+                "color": "tealLight2"
+              },
+              {
+                "id": "sel9u89fLPoV1QxCd",
+                "name": "denied",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selm8W2ppgg8ZJ2bu",
+                "name": "follow_up_needed",
+                "color": "yellowLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld7gunZfxaQR7jEa",
+          "name": "auth_start_date",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            }
+          }
+        },
+        {
+          "id": "fldXPz5tVmnWqZlXE",
+          "name": "auth_end_date",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            }
+          }
+        },
+        {
+          "id": "fldnP81gnhx2foFzZ",
+          "name": "auth_visit_limit",
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        },
+        {
+          "id": "fld1HCckW75WyftSM",
+          "name": "auth_unit_type",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selyhKXVoNbVsXZ5d",
+                "name": "visit",
+                "color": "blueLight2"
+              },
+              {
+                "id": "sel70Eu9zEFfq4ExW",
+                "name": "hour",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "sel0oZbtnTnasHZLe",
+                "name": "day",
+                "color": "tealLight2"
+              },
+              {
+                "id": "sel29XoaGab86qsvI",
+                "name": "episode",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldhvhtLcf7VQgSzO",
+          "name": "follow_up_date",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "local",
+              "format": "l"
+            }
+          }
+        },
+        {
+          "id": "fld8YoqQSAcRWiWAu",
+          "name": "sca_requested",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldZF2trinxKB5FNy",
+          "name": "sca_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selK8PZMckEkHRjHU",
+                "name": "none",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selirnXnq8gLWOd1m",
+                "name": "requested",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selWmKOKgI4Cmbt6h",
+                "name": "under_review",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selvHz9CqnzqZ3ULw",
+                "name": "granted",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selFn2cXfKt7Ndfp4",
+                "name": "declined",
+                "color": "yellowLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldaLWQJpm90F3876",
+          "name": "documented_exception",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldnSDFTsdHGo8qf1",
+          "name": "patient_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl2KBf9T24PMwvVj",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldl17FlsWS0QyCEx"
+          }
+        },
+        {
+          "id": "fldqG8SQajWEYpa5t",
+          "name": "payer_insurance_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg7s0UuWsN99367",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldGIBCuvp4kFmvZQ"
+          }
+        },
+        {
+          "id": "fldJ1Fin36yxyvIq8",
+          "name": "follow_up_owner_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldTw8CyoPkbzmxHC"
+          }
+        },
+        {
+          "id": "fldoyLSJcLlGmTX25",
+          "name": "decided_by_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldWqB8gi4PWDMaD0"
           }
         }
       ]
@@ -3187,11 +3622,7 @@
         {
           "id": "fld9yGA59yhWQOkuO",
           "name": "has_pets",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldPR5lC9Xo1iElmV",
@@ -3201,11 +3632,7 @@
         {
           "id": "fldjqBqhRT2NZm5jr",
           "name": "has_homecare_services",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldAl5CUU9WTC38KB",
@@ -3225,11 +3652,7 @@
         {
           "id": "flduw7otJ8nER3pC9",
           "name": "has_community_hab",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldCZ6Vj3exsGkFPm",
@@ -3268,11 +3691,7 @@
         {
           "id": "fldXHw0VkTpmc506b",
           "name": "is_diabetic",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldK9M9jLM9a8AdBk",
@@ -3402,11 +3821,7 @@
         {
           "id": "fld16jJxS33HA0pj1",
           "name": "has_pets",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldyiOJIWcrcInVqc",
@@ -3416,11 +3831,7 @@
         {
           "id": "fld0P5W3wPkcjvxxb",
           "name": "has_homecare_services",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldlMU5yoA68HiW6Q",
@@ -3445,11 +3856,7 @@
         {
           "id": "flduoEKNDvOzaZGaD",
           "name": "has_community_hab",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fld3tY7BzObq5D7PS",
@@ -3498,11 +3905,7 @@
         {
           "id": "fldEGx90wrByebEda",
           "name": "is_diabetic",
-          "type": "checkbox",
-          "options": {
-            "icon": "check",
-            "color": "greenBright"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldbf3aTM6cuxPzrD",
@@ -3521,7 +3924,7 @@
         },
         {
           "id": "fldYaTWH7Fn3AWvHs",
-          "name": "recent_hospitalization",
+          "name": "hospitalization_note",
           "type": "multilineText"
         },
         {
@@ -3622,6 +4025,16 @@
             },
             "timeZone": "client"
           }
+        },
+        {
+          "id": "fldiwPQU8oyA15T3L",
+          "name": "has_recent_hospitalization",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld5IBhTWxme6kcP1",
+          "name": "has_boe_services",
+          "type": "singleLineText"
         }
       ]
     },
@@ -3790,76 +4203,7 @@
         {
           "id": "flddInwuf5Sin9RLZ",
           "name": "action",
-          "type": "singleSelect",
-          "options": {
-            "choices": [
-              {
-                "id": "selL9mfdDLYj3sixC",
-                "name": "Referral Created",
-                "color": "blueLight2"
-              },
-              {
-                "id": "selED1UUBnmdZfFGz",
-                "name": "Stage Change",
-                "color": "cyanLight2"
-              },
-              {
-                "id": "selof9MDltyWO4V34",
-                "name": "Note Added",
-                "color": "tealLight2"
-              },
-              {
-                "id": "selGHeq0cfbSekc7v",
-                "name": "Task Created",
-                "color": "greenLight2"
-              },
-              {
-                "id": "sel09R468EK2kawrR",
-                "name": "Patient Created",
-                "color": "yellowLight2"
-              },
-              {
-                "id": "selthBeUMy0v6rp7r",
-                "name": "File Uploaded",
-                "color": "orangeLight2"
-              },
-              {
-                "id": "selvm4hqtm5cwbPaw",
-                "name": "Insurance Check",
-                "color": "redLight2"
-              },
-              {
-                "id": "sel7IfrVOb6LXsNUP",
-                "name": "Conflict Flagged",
-                "color": "pinkLight2"
-              },
-              {
-                "id": "sel8GMyOSVxU04eUR",
-                "name": "Triage Submitted",
-                "color": "purpleLight2"
-              },
-              {
-                "id": "sel8TusrSakfpdrMK",
-                "name": "Conflict Resolved",
-                "color": "grayLight2"
-              },
-              {
-                "id": "selL9QXBl8SPFqHga",
-                "name": "Task Completed",
-                "color": "blueLight1"
-              },
-              {
-                "id": "seliWJD2cQO8FJCWa",
-                "name": "Hold Placed",
-                "color": "cyanLight1"
-              },
-              {
-                "id": "selJjbnHqx9RdZsKx",
-                "name": "NTUC Recorded",
-                "color": "tealLight1"
-              }
-            ]
-          }
+          "type": "multilineText"
         },
         {
           "id": "fldkgPfhilLp4BTV0",
@@ -4655,6 +4999,788 @@
           "id": "fld6MGoyAq9pZgtUG",
           "name": "zipcode",
           "type": "singleLineText"
+        }
+      ]
+    },
+    {
+      "id": "tblBGbuHgt54oaDbS",
+      "name": "PatientInsurancePlans",
+      "primaryFieldId": "fldCAOkXumyAX7wx4",
+      "fields": [
+        {
+          "id": "fldCAOkXumyAX7wx4",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldGiwlSAaRhgDiqw",
+          "name": "patient_id",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldKkIKXBb2TWvCYh",
+          "name": "plan_name",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldGDZWZKRwWEhuxK",
+          "name": "plan_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldRgvOw3NBmq80W0",
+          "name": "plan_type",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld7yaDYF2GD13yHW",
+          "name": "is_primary",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldS1f0WbqHrJr9Fe",
+          "name": "effective_start",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldeIIxve4Z6EGXlK",
+          "name": "effective_end",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldVwyaz8HGCnqpV7",
+          "name": "EligibilityVerifications",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblkwkBM1rEIPd7uN",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldxvlcPA7GTV4yoc"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tblg7s0UuWsN99367",
+      "name": "PatientInsurances",
+      "primaryFieldId": "fldbuP8VtAwTf3Mvn",
+      "fields": [
+        {
+          "id": "fldbuP8VtAwTf3Mvn",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldGR6fbgzVPI2gOC",
+          "name": "patient_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl2KBf9T24PMwvVj",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldIbhCBlNWzVBqwF"
+          }
+        },
+        {
+          "id": "fldvKthWsM2QpSpBG",
+          "name": "payer_display_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld2CkRWkXE6WqypA",
+          "name": "insurance_category",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selgnwXpleNcmk0SB",
+                "name": "medicare",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selDb5ZTf2cVxQcRq",
+                "name": "medicare_managed",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "sel7lEzyRifWTQjb0",
+                "name": "medicaid",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selK5HPcZKBiFc41V",
+                "name": "medicaid_managed",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selgN7nJoGV897xry",
+                "name": "commercial",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selJJywFAQqUaqvZm",
+                "name": "third_party",
+                "color": "orangeLight2"
+              },
+              {
+                "id": "selA3phIIFUMwFQsB",
+                "name": "unknown",
+                "color": "redLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldw5ojS1XqqS3lAL",
+          "name": "plan_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld5sVRwhKzTYZcpp",
+          "name": "commercial_plan_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldNMVyLSw8dE8pyj",
+          "name": "third_party_descriptor",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld47YN63NiOxf2w5",
+          "name": "member_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldddw9JsihEBAzDL",
+          "name": "group_number",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldSnwYO0fRn6hME5",
+          "name": "subscriber_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld4oYR3wRYcfInUZ",
+          "name": "subscriber_relationship",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldxA6rV0ZKBL2qqe",
+          "name": "effective_date",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldRXw6Em7PteRGQk",
+          "name": "termination_date",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldQHngI9mncc86zc",
+          "name": "order_rank",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selYWoNTvgZBleFJZ",
+                "name": "primary",
+                "color": "blueLight2"
+              },
+              {
+                "id": "sel43y7V0nP9QK7OP",
+                "name": "secondary",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selifK0JmnnuUsADI",
+                "name": "tertiary",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selkQg1RxPBpiYle6",
+                "name": "unknown",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldRfW40yFYW0IUS6",
+          "name": "entered_from",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selKUw2vDwVNh3OgE",
+                "name": "demographics",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selbjSMkq2OWutAdi",
+                "name": "manual",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "seljKl6qztiqZfNO5",
+                "name": "import",
+                "color": "tealLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldBWisd2loqXVnXH",
+          "name": "is_active_raw",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldTzLZI5gDPScVNC",
+          "name": "created_at",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldynNZ8Q2kzsrHMk",
+          "name": "updated_at",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldGIBCuvp4kFmvZQ",
+          "name": "Authorizations",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg4gqVfGIy5Bfar",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldqG8SQajWEYpa5t"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tblkwkBM1rEIPd7uN",
+      "name": "EligibilityVerifications",
+      "primaryFieldId": "fldZJyGRPLKMc2unA",
+      "fields": [
+        {
+          "id": "fldZJyGRPLKMc2unA",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldTcsb7WQ9jdvhmw",
+          "name": "patient_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl2KBf9T24PMwvVj",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldOEm7BJAyzxZHg9"
+          }
+        },
+        {
+          "id": "fldxvlcPA7GTV4yoc",
+          "name": "insurance_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblBGbuHgt54oaDbS",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldVwyaz8HGCnqpV7"
+          }
+        },
+        {
+          "id": "fldO5itvQehfZ3rFK",
+          "name": "verification_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "sel9KdDA3R1Ne14Vo",
+                "name": "unreviewed",
+                "color": "blueLight2"
+              },
+              {
+                "id": "seltEX0ud63J1Jfzu",
+                "name": "confirmed_active",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selGieXb1XRHzGxv1",
+                "name": "confirmed_inactive",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selmVvDNdtKiRd3Ks",
+                "name": "denied_not_found",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selMaHZYwM3c2LhOn",
+                "name": "partial",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selGBkceiQy3HsFjx",
+                "name": "unable_to_verify",
+                "color": "orangeLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldDabkhIbkLhKhjX",
+          "name": "staff_confirmed_payer_type",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selR3NZgLkF8tMio6",
+                "name": "medicare",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selTpXneYdqrKJik0",
+                "name": "medicare_managed",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selnwOr1hTvwV5A47",
+                "name": "medicaid",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selP1scKZ8uXpfp0C",
+                "name": "medicaid_managed",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selAYcupVRSUjAb7q",
+                "name": "commercial",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selrK3DehfJQgwlzI",
+                "name": "third_party",
+                "color": "orangeLight2"
+              },
+              {
+                "id": "seluElmdxw3bIjtS9",
+                "name": "unknown",
+                "color": "redLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld4NPlaO1SMRXAD5",
+          "name": "staff_confirmed_order_rank",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selvS1zWudzxUiPOh",
+                "name": "primary",
+                "color": "blueLight2"
+              },
+              {
+                "id": "seluSmRaHpCSkvMJz",
+                "name": "secondary",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selJAX0iweDvA0Q0l",
+                "name": "tertiary",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selA7FP1fYW0s2Pi4",
+                "name": "unknown",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldSit32vfi3viLmq",
+          "name": "suggested_payer_type",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldS3iqMrxqNgiJ10",
+          "name": "suggested_billing_model",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldXJ9JHiItRmIOEY",
+          "name": "staff_confirmed_billing_model",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldEvlRYKSVTfydN4",
+          "name": "verification_sources",
+          "type": "multipleSelects",
+          "options": {
+            "choices": [
+              {
+                "id": "selUVb8TSmdRAQDZN",
+                "name": "waystar",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selulxawv0jxP5QWW",
+                "name": "availity",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selU35LiSsUOz85cC",
+                "name": "epaces",
+                "color": "tealLight2"
+              },
+              {
+                "id": "sel5tBzERPhr2oZUz",
+                "name": "emedny",
+                "color": "greenLight2"
+              },
+              {
+                "id": "sellUdXfLSwwdtBFo",
+                "name": "optum",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selOw0SLOsWvI7ms2",
+                "name": "commercial_portal",
+                "color": "orangeLight2"
+              },
+              {
+                "id": "selEEjwoqWjEILDq5",
+                "name": "phone",
+                "color": "redLight2"
+              },
+              {
+                "id": "selA01fGYYsouJ4zs",
+                "name": "fax",
+                "color": "pinkLight2"
+              },
+              {
+                "id": "selMt8i9ttDQxevhg",
+                "name": "other",
+                "color": "purpleLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldCkuUEd8G8NtcZI",
+          "name": "verification_date_time",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
+        },
+        {
+          "id": "fldtxo97XyHN8zFAG",
+          "name": "verified_by_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldrYylNOpxIIXzlA"
+          }
+        },
+        {
+          "id": "fld8HBx8Sbu2KsA3Z",
+          "name": "note_category",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "sel3hrv2nfLgBxX36",
+                "name": "general",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selUFL1844eEZUcok",
+                "name": "coverage_detail",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selr5VYKSy4BF5aFf",
+                "name": "managed_care_plan",
+                "color": "tealLight2"
+              },
+              {
+                "id": "seljcPv6QSWyhC93t",
+                "name": "disenrollment",
+                "color": "greenLight2"
+              },
+              {
+                "id": "selGgnIvYnj9LaqFt",
+                "name": "open_episode",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "selucT1QFtORRDpOL",
+                "name": "hospice",
+                "color": "orangeLight2"
+              },
+              {
+                "id": "selMLJGeIbE31H9x1",
+                "name": "cdpap",
+                "color": "redLight2"
+              },
+              {
+                "id": "selB4pQ9f5iAKWbvt",
+                "name": "coordination_of_care",
+                "color": "pinkLight2"
+              },
+              {
+                "id": "selq0k5vCtG0toTK2",
+                "name": "audit_clarification",
+                "color": "purpleLight2"
+              },
+              {
+                "id": "selgklRvTS9701Kcp",
+                "name": "other",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldtxhV7ESLkegAX4",
+          "name": "note_text",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldA36n8nTIhC1azq",
+          "name": "potential_conflict_detected",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldSeRP6bZacS9vHk",
+          "name": "requires_human_review",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldEyVqz2xYGFGfB1",
+          "name": "synced_from_demographics_snapshot",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldOzdzWJTnWaDfIN",
+          "name": "created_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
+        },
+        {
+          "id": "fldPVvsTJvse8Ckq7",
+          "name": "updated_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tblQYWbEWIpSzQPZS",
+      "name": "DisenrollmentAssistanceFlags",
+      "primaryFieldId": "fldvrGUADbxMl2mRS",
+      "fields": [
+        {
+          "id": "fldvrGUADbxMl2mRS",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldf1gJtHmiRTVBWa",
+          "name": "patient_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl2KBf9T24PMwvVj",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldVh355gZD4eGL4a"
+          }
+        },
+        {
+          "id": "fldKYzc0hk89ry7gd",
+          "name": "referral_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbloxB8jeC1LQThDe",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fld6SFbhB2lZzmbME"
+          }
+        },
+        {
+          "id": "fldZJ3cmPzDTUOYGL",
+          "name": "flag_type",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "sel0qr66pDN5dBdJn",
+                "name": "expert_medicaid_assist",
+                "color": "blueLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld50gLqBnTCOgIaB",
+          "name": "note",
+          "type": "multilineText"
+        },
+        {
+          "id": "fld4bUiA3cBtN18SF",
+          "name": "follow_up_date",
+          "type": "date",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            }
+          }
+        },
+        {
+          "id": "fldAQYK1cniw6K4Ap",
+          "name": "follow_up_owner_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldphF4m69xqeczx2"
+          }
+        },
+        {
+          "id": "fldvrqfoXiTlm8vZr",
+          "name": "status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selEddpgPULmlT7Ux",
+                "name": "open",
+                "color": "blueLight2"
+              },
+              {
+                "id": "sel0nEx2x4U3NcbW4",
+                "name": "in_review",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selS66dzLSdBbfDiZ",
+                "name": "completed",
+                "color": "tealLight2"
+              },
+              {
+                "id": "selcg2qrbpVwDQM3K",
+                "name": "cancelled",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld0deqnpA5ytpGSq",
+          "name": "created_by_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldbEAVGfWBF1HSfX"
+          }
+        },
+        {
+          "id": "fldVi9TCZNeJ07CNv",
+          "name": "resolved_by_user_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fld1sKFohW170mf27"
+          }
+        },
+        {
+          "id": "fldk0GHF4Cdkqmwqd",
+          "name": "resolution_note",
+          "type": "multilineText"
+        },
+        {
+          "id": "fld1aoZgqCVpPHpjw",
+          "name": "created_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
+        },
+        {
+          "id": "fldDn984VId2qVC6B",
+          "name": "updated_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "utc"
+          }
         }
       ]
     }

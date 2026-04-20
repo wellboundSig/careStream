@@ -332,19 +332,19 @@ export default function ModulePage({ stage }) {
             {resolveSource(referral.referral_source_id) || '—'}
           </td>
         );
+      case 'stage': {
+        const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
+        return (
+          <td key="stage" style={{ padding: '11px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <StageBadge stage={referral.current_stage} size="small" />
+              {isOnTrackRow && <img src="/feasibility-badge.png" alt="On Track" title="On Track" style={{ width: 16, height: 16 }} />}
+              {referral.current_stage === 'Conflict' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: hexToRgba(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>!</span>}
+            </div>
+          </td>
+        );
+      }
       case 'triage':
-        if (meta.consolidatedStages && meta.consolidatedStages.length > 2) {
-          const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
-          return (
-            <td key="triage" style={{ padding: '11px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <StageBadge stage={referral.current_stage} size="small" />
-                {isOnTrackRow && <img src="/feasibility-badge.png" alt="On Track" title="On Track" style={{ width: 16, height: 16 }} />}
-                {referral.current_stage === 'Conflict' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: hexToRgba(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>!</span>}
-              </div>
-            </td>
-          );
-        }
         return (
           <td key="triage" style={{ padding: '11px 14px' }}>
             {isSN ? (

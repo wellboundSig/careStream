@@ -35,6 +35,11 @@ export const PERMISSION_KEYS = {
   // Authorization
   AUTH_SUBMIT: 'auth.submit',
   AUTH_DECIDE: 'auth.decide',
+  AUTH_REQUEST_SCA: 'auth.request_sca',
+
+  // Routing
+  ROUTING_OPWDD: 'routing.opwdd',
+  ROUTING_DISENROLLMENT_ASSIST: 'routing.disenrollment_assist',
 
   // Tasks
   TASK_VIEW: 'task.view',
@@ -167,6 +172,9 @@ export const PERMISSION_CATALOG = [
   // Authorization
   { key: K.AUTH_SUBMIT, label: 'Submit prior authorizations',      category: 'Authorization', description: 'Create authorization records for managed care', sort: 40 },
   { key: K.AUTH_DECIDE, label: 'Record auth approval or denial',   category: 'Authorization', description: 'Mark authorizations as approved or denied', sort: 41 },
+  { key: K.AUTH_REQUEST_SCA, label: 'Request Single Case Agreement', category: 'Authorization', description: 'Open an SCA tracking record after an SPN denial', sort: 42 },
+  { key: K.ROUTING_OPWDD, label: 'Route cases to OPWDD flow',      category: 'Authorization', description: 'Trigger an explicit OPWDD routing action from Eligibility', sort: 43 },
+  { key: K.ROUTING_DISENROLLMENT_ASSIST, label: 'Flag for Expert Disenrollment Assist', category: 'Authorization', description: 'Flag a case for expert Medicaid disenrollment assistance (replaces legacy checklist)', sort: 44 },
 
   // Tasks
   { key: K.TASK_VIEW,     label: 'View tasks',                  category: 'Tasks', description: 'See task lists and details', sort: 50 },
@@ -336,7 +344,8 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_VIEW,
       K.PATIENT_VIEW,
       K.CLINICAL_ELIGIBILITY,
-      K.AUTH_SUBMIT, K.AUTH_DECIDE,
+      K.AUTH_SUBMIT, K.AUTH_DECIDE, K.AUTH_REQUEST_SCA,
+      K.ROUTING_OPWDD, K.ROUTING_DISENROLLMENT_ASSIST,
       K.TASK_VIEW, K.TASK_CREATE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
       K.REPORT_VIEW, K.REPORT_EXPORT,

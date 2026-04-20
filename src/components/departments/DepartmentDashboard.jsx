@@ -107,7 +107,8 @@ export default function DepartmentDashboard({ department, scope }) {
       case 'patient': return <td key="patient" style={{ padding: '11px 14px' }}><p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p></td>;
       case 'division': return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>;
       case 'source': return <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>;
-      case 'triage': return <td key="triage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
+      case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
+      case 'triage': return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
       case 'days': return <td key="days" style={{ padding: '11px 14px' }}><span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>{days === 0 ? 'Today' : `${days}d`}</span></td>;
       case 'f2f': return <td key="f2f" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{ref.f2f_expiration ? `${Math.ceil((new Date(ref.f2f_expiration) - now) / 86400000)}d` : '—'}</td>;
       case 'owner': return <td key="owner" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveUser(ref.intake_owner_id) || '—'}</td>;

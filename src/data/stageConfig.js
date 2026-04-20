@@ -18,7 +18,6 @@ export const DISCARD_REASONS = [
 // ── Stage slug mapping ────────────────────────────────────────────────────────
 export const STAGE_SLUGS = {
   'Lead Entry':                'lead-entry',
-  'Discarded Leads':           'discarded-leads',
   'Intake':                    'intake',
   'Eligibility Verification':  'eligibility',
   'OPWDD Enrollment':          'opwdd-enrollment',
@@ -34,6 +33,7 @@ export const STAGE_SLUGS = {
   'SOC Completed':             'soc-completed',
   'Hold':                      'hold',
   'NTUC':                      'ntuc',
+  'Discarded Leads':           'discarded-leads',
 };
 
 export const SLUG_TO_STAGE = Object.fromEntries(

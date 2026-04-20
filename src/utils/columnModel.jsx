@@ -23,6 +23,7 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'division',  label: 'Division',   defaultOn: true, filterable: true },
   { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
+  { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: false, tooltip: 'Current pipeline stage' },
   { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: false },
   { key: 'days',      label: 'Days',       defaultOn: true, filterable: false, tooltip: 'Days in current stage' },
   { key: 'f2f',       label: 'F2F',        defaultOn: true, filterable: false, tooltip: 'F2F authorization countdown' },

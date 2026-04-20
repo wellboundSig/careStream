@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { updatePatient } from '../../../api/patients.js';
+import { syncPatientInsurances } from '../../../api/syncPatientInsurances.js';
+import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { updateEntity } from '../../../store/careStore.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
@@ -656,6 +658,12 @@ function InsuranceEditor({ patient, patientId, onSave }) {
       updateEntity('patients', patientId, fields);
       setSaving(true);
       try { await updatePatient(patientId, fields); } catch {} finally { setSaving(false); }
+      // Dual-write: reconcile PatientInsurances rows with the plan set so the
+      // canonical insurance table stays in sync with Demographics edits.
+      // See INSURANCE_CONSOLIDATION_PLAN.md.
+      syncPatientInsurances({ patientId, plans: nextPlans, details: nextDetails })
+        .then(() => triggerDataRefresh())
+        .catch((err) => console.warn('PatientInsurances sync failed (JSON save still succeeded)', err));
     }
   }
 
