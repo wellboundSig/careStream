@@ -18,6 +18,7 @@ import { DISCARD_REASONS } from '../../data/stageConfig.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
+import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
 
@@ -703,13 +704,20 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
   const [receivedDate, setReceivedDate]     = useState('');
   const [saving, setSaving]                 = useState(false);
   const [saveError, setSaveError]           = useState(null);
-  const [reviewChecked, setReviewChecked]   = useState({});
+
+  // Cursory review is persisted to the CursoryReview Airtable table via
+  // this shared hook so the drawer and this panel stay in lockstep.
+  const {
+    checked: reviewChecked,
+    toggle: toggleReview,
+    saving: reviewSaving,
+    saveError: reviewSaveError,
+  } = useCursoryReview(selectedReferral?._id);
 
   useEffect(() => {
     setShowDatePicker(false);
     setReceivedDate('');
     setSaveError(null);
-    setReviewChecked({});
   }, [selectedReferral?._id]);
 
   const reviewComplete = isF2FChecklistComplete(reviewChecked);
@@ -896,19 +904,24 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
             <ActionBtn label="Upload F2F Document" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
           </PanelSection>
 
-          {/* Document review checklist — gates push to Clinical RN */}
+          {/* Document review checklist — persisted via CursoryReview table */}
           <PanelSection title="Document Review">
             <div style={{ marginBottom: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
+                  Cursory Review{reviewSaving ? ' · saving…' : ''}
+                </span>
                 <span style={{ fontSize: 11, fontWeight: 650, color: reviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4) }}>{completedReq}/{totalReq}</span>
               </div>
               <div style={{ height: 3, borderRadius: 2, background: hexToRgba(palette.backgroundDark.hex, 0.08), overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
               </div>
+              {reviewSaveError && (
+                <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{reviewSaveError}</p>
+              )}
               {F2F_REVIEW_CHECKLIST.map((item) => (
                 <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => setReviewChecked((p) => ({ ...p, [item.key]: !p[item.key] }))} style={{ accentColor: palette.accentGreen.hex, width: 13, height: 13, flexShrink: 0, cursor: 'pointer' }} />
+                  <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 13, height: 13, flexShrink: 0, cursor: 'pointer' }} />
                   <span style={{ fontSize: 12, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
                     {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
                   </span>

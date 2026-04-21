@@ -26,6 +26,7 @@ import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { createAuthorization } from '../../../api/authorizations.js';
 import { createConflict } from '../../../api/conflicts.js';
 import { recordActivity } from '../../../api/activityLog.js';
+import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import palette from '../../../utils/colors.js';
 import {
   AUTH_STATUS,
@@ -79,7 +80,9 @@ export default function AuthorizationWorkspace({
 }) {
   const t = tokens(variant);
   const { can } = usePermissions();
-  const { appUserId } = useCurrentAppUser();
+  const { appUser, appUserId } = useCurrentAppUser();
+  const patientRecordId = patient?._id || null;
+  const verifierRecordId = appUser?._id || null;
 
   const division = referral?.division === DIVISION.ALF ? DIVISION.ALF : DIVISION.SPECIAL_NEEDS;
   const { allowed: AUTH_SERVICES, blocked: BLOCKED_SERVICES } = determineAllowedServicesByDivision({ division });
@@ -137,9 +140,25 @@ export default function AuthorizationWorkspace({
   }
 
   async function saveAuth(payload) {
+    if (!patientRecordId) { setError('Patient Airtable record id missing.'); return null; }
+
+    const selectedId = payload.payer_insurance_id || payerInsuranceId || null;
+    // If the user picked a virtual insurance entry, materialize it before
+    // we can write payer_insurance_id (a multipleRecordLinks field).
+    const selectedIns = insurances.find((ins) => ins._id === selectedId);
+    let realPayerInsuranceId = null;
+    if (selectedIns) {
+      try {
+        realPayerInsuranceId = await ensureRealInsurance(selectedIns, { patientRecordId });
+      } catch (err) {
+        setError(`Could not resolve insurance link: ${err.message}`);
+        return null;
+      }
+    }
+
     const check = validateAuthorizationRecord({
-      patientId: patient?.id,
-      payerInsuranceId: payload.payer_insurance_id || payerInsuranceId || 'unknown',
+      patientId: patientRecordId,
+      payerInsuranceId: realPayerInsuranceId || 'unknown',
       authStatus: payload.auth_status,
       authNumber: payload.auth_number,
       authStartDate: payload.effective_start,
@@ -156,15 +175,17 @@ export default function AuthorizationWorkspace({
     }
     setSaving(true); setError(null);
     try {
-      const payerName = insurances.find((ins) => ins._id === (payload.payer_insurance_id || payerInsuranceId))?.payer_display_name
-                      || referral?.patient?.insurance_plan || '';
+      const payerName = selectedIns?.payer_display_name || referral?.patient?.insurance_plan || '';
       const created = await createAuthorization({
         referral_id: referral.id,
-        patient_id: patient?.id,
+        patient_id: patientRecordId,
         plan_name: payerName,
-        payer_insurance_id: payload.payer_insurance_id || payerInsuranceId || null,
+        payer_insurance_id: realPayerInsuranceId || undefined,
         status: STATUS_DISPLAY[payload.auth_status] || 'Pending',
         ...payload,
+        // Force-override the scalar ids payload may have passed:
+        ...(realPayerInsuranceId ? { payer_insurance_id: realPayerInsuranceId } : {}),
+        decided_by_user_id: verifierRecordId || undefined,
       });
       await recordActivity({
         actorUserId: appUserId,
@@ -172,7 +193,7 @@ export default function AuthorizationWorkspace({
         patientId: patient?.id,
         referralId: referral?.id,
         detail: `Authorization ${payload.auth_status} recorded for ${payerName || 'insurance'}.`,
-        metadata: { authStatus: payload.auth_status, payerInsuranceId: payload.payer_insurance_id || payerInsuranceId || null },
+        metadata: { authStatus: payload.auth_status, payerInsuranceId: realPayerInsuranceId || null },
       });
       reset();
       triggerDataRefresh();
@@ -226,15 +247,15 @@ export default function AuthorizationWorkspace({
     if (denialNextAction === ROUTING_ACTION.SEND_TO_CONFLICT || denialNextAction === ROUTING_ACTION.REQUEST_SCA) {
       try {
         const { record, audit } = buildConflictRecord({
-          patientId: patient?.id,
+          patientId: patientRecordId,        // link field — rec id
           referralId: referral?.id,
           sourceModule: CONFLICT_SOURCE_MODULE.AUTHORIZATION,
           reasons: [CONFLICT_REASON.AUTH_DENIED],
-          createdByUserId: appUserId,
+          createdByUserId: verifierRecordId, // link field — rec id
           details: `Auth denied. Reason: ${denialReason.trim()}${denialNextAction === ROUTING_ACTION.REQUEST_SCA ? '. SCA requested.' : ''}`,
         });
         await createConflict(record);
-        await recordActivity(audit);
+        await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient?.id });
       } catch (err) {
         console.error('Conflict create after denial failed:', err);
       }

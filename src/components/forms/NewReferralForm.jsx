@@ -6,6 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { createPatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
+import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
 import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
@@ -402,9 +403,10 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     gender: '',
     phone_secondary: '',
     email: '',
-    medicaid_number: '',
-    medicare_number: '',
-    insurance_id: '',
+    // Per-plan member IDs are captured inside `insurance_plan_details`
+    // (one entry per selected insurance). The legacy Patients columns
+    // `medicaid_number`, `medicare_number`, and `insurance_id` are no
+    // longer written on new referrals — see INSURANCE_CONSOLIDATION_PLAN.md.
     address_street: '',
     address_city: '',
     address_state: 'NY',
@@ -589,9 +591,10 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ...(form.gender && { gender: form.gender }),
         ...(form.phone_secondary && { phone_secondary: form.phone_secondary }),
         ...(form.email && { email: form.email }),
-        ...(form.medicaid_number && { medicaid_number: form.medicaid_number }),
-        ...(form.medicare_number && { medicare_number: form.medicare_number }),
-        ...(form.insurance_id && { insurance_id: form.insurance_id }),
+        // DEPRECATED: Patients.medicaid_number / medicare_number / insurance_id
+        // are no longer written at referral time. Per-plan member IDs are
+        // stored in `insurance_plan_details` and (post-migration) in the
+        // PatientInsurances table. See INSURANCE_CONSOLIDATION_PLAN.md.
         ...(form.address_street && { address_street: form.address_street }),
         ...(form.address_city && { address_city: form.address_city }),
         ...(form.address_state && { address_state: form.address_state }),
@@ -602,6 +605,18 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
       const patientRecord = await createPatient(patientFields);
       const createdPatientId = patientRecord.fields?.id || patientCustomId;
+
+      // Populate the canonical PatientInsurances table for this new patient
+      // so every downstream consumer sees structured rows from day one.
+      // Failure is non-fatal: the legacy JSON fields still saved above, and
+      // the migration/sync script can backfill later if this call fails.
+      if (form.insurance_plans.length > 0) {
+        syncPatientInsurances({
+          patientId: patientRecord.id,      // Airtable record id (rec...)
+          plans:   form.insurance_plans,
+          details: form.insurance_plan_details,
+        }).catch((err) => console.warn('New referral: PatientInsurances sync failed', err));
+      }
 
       const resolvedMarketer = form.marketer_id === 'other'
         ? form.marketer_other.trim()
@@ -941,9 +956,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                 <Input value={form.email} onChange={(v) => setField('email', v)} placeholder="patient@email.com" type="email" hasError={!!errors.email} />
                 {errors.email && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.email}</p>}
               </FieldBox>
-              <FieldBox label="Medicaid #"><Input value={form.medicaid_number} onChange={(v) => setField('medicaid_number', v)} placeholder="Medicaid number" /></FieldBox>
-              <FieldBox label="Medicare #"><Input value={form.medicare_number} onChange={(v) => setField('medicare_number', v)} placeholder="Medicare number" /></FieldBox>
-              <FieldBox label="Insurance Member ID"><Input value={form.insurance_id} onChange={(v) => setField('insurance_id', v)} placeholder="Member ID" /></FieldBox>
+              {/* Per-plan member IDs are captured inside the insurance selector
+                  above (one input per chosen plan). We no longer capture
+                  standalone Medicaid #, Medicare #, or generic Insurance
+                  Member ID here — that was a legacy assumption (single-plan
+                  patients only) and caused duplicate entry. */}
               <FieldBox label="Address"><Input value={form.address_street} onChange={(v) => setField('address_street', v)} placeholder="Street address" /></FieldBox>
               <FieldBox label="City"><Input value={form.address_city} onChange={(v) => setField('address_city', v)} placeholder="City" /></FieldBox>
               <FieldBox label="Zip">

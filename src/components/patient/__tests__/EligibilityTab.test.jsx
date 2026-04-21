@@ -3,7 +3,20 @@ import { render, screen, fireEvent, act, within } from '@testing-library/react';
 
 vi.mock('../../../api/insuranceChecks.js', () => ({ getChecksByPatient: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../../api/authorizations.js', () => ({ getAuthorizationsByReferral: vi.fn().mockResolvedValue([]) }));
-vi.mock('../../../api/patientInsurances.js', () => ({ getInsurancesByPatient: vi.fn() }));
+vi.mock('../../../api/patientInsurances.js', () => ({
+  getInsurancesByPatient: vi.fn(),
+  createPatientInsurance: vi.fn().mockResolvedValue({ id: 'rec_ins_new', fields: {} }),
+  updatePatientInsurance: vi.fn().mockResolvedValue({ id: 'rec_ins_new', fields: {} }),
+  deletePatientInsurance: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('../../../api/patients.js', () => ({
+  getPatient: vi.fn().mockResolvedValue(null),
+  updatePatient: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('../../../api/disenrollmentFlags.js', () => ({
+  getDisenrollmentFlagsByPatient: vi.fn().mockResolvedValue([]),
+  createDisenrollmentFlag: vi.fn().mockResolvedValue({ id: 'rec_dis', fields: {} }),
+}));
 vi.mock('../../../api/eligibilityVerifications.js', () => ({
   getVerificationsByPatient: vi.fn().mockResolvedValue([]),
   createEligibilityVerification: vi.fn(),
@@ -11,7 +24,11 @@ vi.mock('../../../api/eligibilityVerifications.js', () => ({
 vi.mock('../../../api/conflicts.js', () => ({ createConflict: vi.fn() }));
 vi.mock('../../../api/activityLog.js', () => ({ recordActivity: vi.fn() }));
 vi.mock('../../../hooks/useCurrentAppUser.js', () => ({
-  useCurrentAppUser: () => ({ appUserId: 'u_test', appUserName: 'Test User' }),
+  useCurrentAppUser: () => ({
+    appUser: { id: 'u_test', _id: 'rec_u_test', first_name: 'Test', last_name: 'User' },
+    appUserId: 'u_test',
+    appUserName: 'Test User',
+  }),
 }));
 vi.mock('../../../hooks/useLookups.js', () => ({
   useLookups: () => ({ resolveUser: (id) => id || '—' }),
@@ -25,8 +42,8 @@ import { getInsurancesByPatient } from '../../../api/patientInsurances.js';
 import { getVerificationsByPatient, createEligibilityVerification } from '../../../api/eligibilityVerifications.js';
 import { createConflict } from '../../../api/conflicts.js';
 
-const patient = { id: 'p_1', dob: '1950-01-01' };
-const referral = { id: 'ref_1', division: 'Special Needs', patient_id: 'p_1' };
+const patient = { id: 'p_1', _id: 'rec_p_1', dob: '1950-01-01' };
+const referral = { id: 'ref_1', _id: 'rec_ref_1', division: 'Special Needs', patient_id: 'p_1' };
 
 function insRec(id, fields) {
   return { id, fields };

@@ -25,6 +25,10 @@ function normaliseFields(fields) {
       else out[f] = v;
     }
   }
+  // Strip null/undefined — Airtable rejects nulls on single-line text fields.
+  for (const k of Object.keys(out)) {
+    if (out[k] === null || out[k] === undefined) delete out[k];
+  }
   return out;
 }
 

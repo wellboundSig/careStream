@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-04-20T15:27:24.469Z",
+  "fetchedAt": "2026-04-21T13:40:02.035Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -1780,6 +1780,17 @@
             "isReversed": false,
             "prefersSingleRecordLink": false,
             "inverseLinkFieldId": "fldKYzc0hk89ry7gd"
+          }
+        },
+        {
+          "id": "fldZDVAwip5DLuNPX",
+          "name": "CursoryReview",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblXpHhF6VS71YHtR",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldnyZHygWT8SJwoz"
           }
         }
       ]
@@ -5780,6 +5791,106 @@
               "format": "HH:mm"
             },
             "timeZone": "utc"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tblXpHhF6VS71YHtR",
+      "name": "CursoryReview",
+      "primaryFieldId": "fldQclMrpIgMuD3mb",
+      "fields": [
+        {
+          "id": "fldQclMrpIgMuD3mb",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld618KYSmncOz5Gk",
+          "name": "reviewed_by",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldnyZHygWT8SJwoz",
+          "name": "referral_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbloxB8jeC1LQThDe",
+            "isReversed": false,
+            "prefersSingleRecordLink": true,
+            "inverseLinkFieldId": "fldZDVAwip5DLuNPX"
+          }
+        },
+        {
+          "id": "fld4vRQrOhjq7hM2g",
+          "name": "face_to_face_document_present",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldfhNuXGgwbubZD8",
+          "name": "physician_certification_present",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldp5Hnts4Ji7mLmw",
+          "name": "patient_name_matches_referral",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldnbcbqj9mwfvVq8",
+          "name": "dates_valid_within_90_days",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldbJvLq96NlnjbE1",
+          "name": "physician_signature_present",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldjXO0xbg7iDrthm",
+          "name": "diagnosis_icd_codes_listed",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldNqlCsNz1XySFky",
+          "name": "homebound_status_documented",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fld44a7LWSUgvrQRk",
+          "name": "services_disciplines_specified",
+          "type": "checkbox",
+          "options": {
+            "icon": "thumbsUp",
+            "color": "greenBright"
           }
         }
       ]

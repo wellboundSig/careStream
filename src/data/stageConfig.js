@@ -122,6 +122,9 @@ export const STAGE_META = {
     isGlobal: false,
     isTerminal: false,
     color: palette.accentOrange.hex,
+    // F2F is handled inside the Intake module now (consolidatedStages on Intake).
+    // Hide the standalone module link from the sidebar to avoid duplicate nav.
+    hiddenFromNav: true,
   },
   'Clinical Intake RN Review': {
     description: 'Skilled need + safety review by clinical RN',

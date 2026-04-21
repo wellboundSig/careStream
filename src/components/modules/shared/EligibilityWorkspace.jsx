@@ -20,6 +20,7 @@ import { createEligibilityVerification } from '../../../api/eligibilityVerificat
 import { createConflict }      from '../../../api/conflicts.js';
 import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
+import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import palette                 from '../../../utils/colors.js';
 
 import {
@@ -69,7 +70,8 @@ export default function EligibilityWorkspace({
   onInitiateTransition,
 }) {
   const t = tokens(variant);
-  const { appUserId, appUserName } = useCurrentAppUser();
+  const { appUser, appUserId, appUserName } = useCurrentAppUser();
+  const verifierRecordId = appUser?._id || null; // Users link fields need Airtable rec id
   const { resolveUser } = useLookups();
   const { can } = usePermissions();
 
@@ -174,14 +176,16 @@ export default function EligibilityWorkspace({
             onCancel={() => setEditingInsuranceId(null)}
             onSaved={() => { setEditingInsuranceId(null); triggerDataRefresh(); }}
             onSendToConflict={() => setConflictModal({
-              insuranceId: ins._id,
+              insurance: ins,
               selectedReasons: [],
               details: '',
               denialStatus: VERIFICATION_STATUS.DENIED_NOT_FOUND,
             })}
             appUserId={appUserId}
             appUserName={appUserName}
-            patientId={patient.id}
+            patientRecordId={patient._id}
+            patientBusinessId={patient.id}
+            verifierRecordId={appUserId}
             referralId={referral?.id}
           />
         ))}
@@ -192,14 +196,27 @@ export default function EligibilityWorkspace({
         <div style={{ marginBottom: t.sectionGap }}>
           <p style={sectionHeading(t)}>Actions</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <ActionRow t={t} label="Send to Conflict" color={palette.primaryMagenta.hex}
-              onClick={() => setConflictModal({ insuranceId: null, selectedReasons: [], details: '', denialStatus: null })}
-              testId="action-send-to-conflict" />
-            <ActionRow t={t} label="Flag Expert Disenrollment Assist" color={palette.accentOrange.hex}
-              onClick={() => setDisenrollModal({ note: '', followUpDate: '', followUpOwnerUserId: '' })}
-              testId="action-disenrollment-assist" />
+            {/* Forward — main CTA when at least one insurance is active */}
+            {activeInsurances.length > 0 ? (
+              <WsBtn variant="forward" label="Continue to Authorization Pending →"
+                onClick={() => {
+                  onAdvanceToAuthorization?.();
+                  onInitiateTransition?.(referral, 'Authorization Pending');
+                }}
+                testId="action-advance-auth" />
+            ) : (
+              <WsBtn variant="forward" label="Continue to Clinical Intake RN Review →"
+                onClick={() => onInitiateTransition?.(referral, 'Clinical Intake RN Review')}
+                testId="action-clinical-review" />
+            )}
+
+            {/* Secondary forwards */}
+            <WsBtn variant="success" label="Back to Intake"
+              onClick={() => onInitiateTransition?.(referral, 'Intake')}
+              testId="action-back-intake" />
+
             {opwddSuggestion.suggest && can(PERMISSION_KEYS.ROUTING_OPWDD) && (
-              <ActionRow t={t} label="Route to OPWDD Flow" color={palette.accentBlue.hex}
+              <WsBtn variant="success" label="Route to OPWDD Enrollment"
                 onClick={async () => {
                   await recordActivity({
                     actorUserId: appUserId,
@@ -209,19 +226,19 @@ export default function EligibilityWorkspace({
                     detail: 'Eligibility routed case to OPWDD flow.',
                     metadata: { reasons: opwddSuggestion.reasons, priorStage: referral?.current_stage || null },
                   });
-                  onInitiateTransition?.(referral, 'OPWDD Pending');
+                  onInitiateTransition?.(referral, 'OPWDD Enrollment');
                   triggerDataRefresh();
                 }}
                 testId="action-opwdd-route" />
             )}
-            {activeInsurances.length > 0 && (
-              <ActionRow t={t} label="Advance to Authorization" color={palette.accentGreen.hex} filled
-                onClick={() => {
-                  onAdvanceToAuthorization?.();
-                  onInitiateTransition?.(referral, 'Authorization Pending');
-                }}
-                testId="action-advance-auth" />
-            )}
+
+            <WsBtn variant="warning" label="Flag Disenrollment Assist"
+              onClick={() => setDisenrollModal({ note: '', followUpDate: '', followUpOwnerUserId: '' })}
+              testId="action-disenrollment-assist" />
+
+            <WsBtn variant="danger" label="Send to Conflict"
+              onClick={() => setConflictModal({ insurance: null, selectedReasons: [], details: '', denialStatus: null })}
+              testId="action-send-to-conflict" />
           </div>
         </div>
       )}
@@ -264,23 +281,25 @@ export default function EligibilityWorkspace({
           onChange={setConflictModal}
           onCancel={() => setConflictModal(null)}
           onConfirm={async ({ reasons, details, denialStatus }) => {
+            const patientRecordId = patient._id;
             const { record, audit } = buildConflictRecord({
-              patientId: patient.id,
+              patientId: patientRecordId,          // link field — Airtable rec id
               referralId: referral?.id,
               sourceModule: CONFLICT_SOURCE_MODULE.ELIGIBILITY,
               reasons,
-              createdByUserId: appUserId,
+              createdByUserId: verifierRecordId,   // link field — Airtable rec id
               details,
             });
             try {
               await createConflict(record);
-              await recordActivity(audit);
-              if (conflictModal.insuranceId) {
+              await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient.id });
+              if (conflictModal.insurance) {
+                const realInsId = await ensureRealInsurance(conflictModal.insurance, { patientRecordId });
                 await createEligibilityVerification({
-                  patient_id: patient.id,
-                  insurance_id: conflictModal.insuranceId,
+                  patient_id: patientRecordId,
+                  insurance_id: realInsId,
                   verification_status: denialStatus || VERIFICATION_STATUS.DENIED_NOT_FOUND,
-                  verified_by_user_id: appUserId,
+                  verified_by_user_id: verifierRecordId || undefined,
                   verification_date_time: new Date().toISOString(),
                 });
               }
@@ -290,7 +309,7 @@ export default function EligibilityWorkspace({
                 patientId: patient.id,
                 referralId: referral?.id,
                 detail: `Eligibility to Conflict: ${reasons.join(', ')}`,
-                metadata: { reasons, insuranceId: conflictModal.insuranceId, details: details || null },
+                metadata: { reasons, details: details || null },
               });
               setConflictModal(null);
               onInitiateTransition?.(referral, 'Conflict');
@@ -311,14 +330,18 @@ export default function EligibilityWorkspace({
           onConfirm={async ({ note, followUpDate, followUpOwnerUserId }) => {
             try {
               await createDisenrollmentFlag({
-                patient_id: patient.id,
-                referral_id: referral?.id || null,
+                patient_id: patient._id,
+                // referral_id is a multipleRecordLinks field — pass the Airtable rec id
+                referral_id: referral?._id || undefined,
                 flag_type: DISENROLLMENT_FLAG_TYPE.EXPERT_MEDICAID_ASSIST,
                 note,
                 follow_up_date: followUpDate,
+                // owner & creator are Users link fields — expect Airtable rec ids.
+                // If the caller typed a business id we pass it through and rely on
+                // Airtable's forgiving behaviour (fails validation if missing).
                 follow_up_owner_user_id: followUpOwnerUserId,
                 status: DISENROLLMENT_FLAG_STATUS.OPEN,
-                created_by_user_id: appUserId,
+                created_by_user_id: verifierRecordId || undefined,
               });
               await recordActivity({
                 actorUserId: appUserId,
@@ -356,22 +379,39 @@ function InlineTag({ t, label, color }) {
   );
 }
 
-function ActionRow({ t, label, color, onClick, filled, testId }) {
+// Matches the module-page ActionBtn styling in StagePanel.jsx so routing
+// buttons look identical across module panels + drawer.
+function WsBtn({ variant = 'default', label, onClick, disabled, testId }) {
+  const styles = {
+    forward: { bg: palette.accentGreen.hex,      color: palette.backgroundLight.hex,    pad: '11px 14px', size: 13.5, weight: 700 },
+    success: { bg: palette.backgroundLight.hex,  color: '#15803d',                       pad: '8px 12px',  size: 12.5, weight: 650, border: '1px solid #15803d' },
+    warning: { bg: palette.highlightYellow.hex,  color: palette.backgroundDark.hex,     pad: '8px 12px',  size: 12.5, weight: 650 },
+    danger:  { bg: palette.accentOrange.hex,     color: palette.backgroundLight.hex,    pad: '8px 12px',  size: 12.5, weight: 650 },
+    default: { bg: '#F0F0F0',                    color: '#555',                         pad: '7px 12px',  size: 12,   weight: 600 },
+  };
+  const s = styles[variant] || styles.default;
   return (
     <button
       data-testid={testId}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       style={{
+        width: '100%',
+        padding: s.pad,
+        borderRadius: 8,
+        fontSize: s.size,
+        fontWeight: s.weight,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        background: s.bg,
+        color: s.color,
+        border: s.border || 'none',
         textAlign: 'left',
-        padding: `${t.inputPadY + 1}px ${t.inputPadX + 2}px`,
-        borderRadius: 6,
-        border: `1px solid ${filled ? color : 'var(--color-border)'}`,
-        background: filled ? color : palette.backgroundLight.hex,
-        color: filled ? palette.backgroundLight.hex : palette.backgroundDark.hex,
-        fontSize: t.fontBase,
-        fontWeight: 650,
-        cursor: 'pointer',
+        opacity: disabled ? 0.45 : 1,
+        letterSpacing: variant === 'forward' ? '-0.01em' : 'normal',
+        transition: 'filter 0.12s',
       }}
+      onMouseEnter={(e) => !disabled && (e.currentTarget.style.filter = 'brightness(1.06)')}
+      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
     >
       {label}
     </button>
@@ -382,7 +422,7 @@ function ActionRow({ t, label, color, onClick, filled, testId }) {
 function InsuranceCard({
   t, insurance, verification, isEditing, readOnly, resolveUser,
   onEdit, onCancel, onSaved, onSendToConflict,
-  appUserId, appUserName, patientId, referralId,
+  appUserId, appUserName, patientRecordId, patientBusinessId, verifierRecordId, referralId,
 }) {
   const suggestion = normalizeInsuranceCategory({ rawLabel: insurance.payer_display_name });
 
@@ -409,17 +449,25 @@ function InsuranceCard({
 
   async function save() {
     if (readOnly) return;
+    if (!patientRecordId) {
+      setError('Patient Airtable record id missing; cannot persist link.');
+      return;
+    }
     setSaving(true); setError(null);
     try {
+      // Virtual insurance rows (demo:pat:plan) must be promoted to real
+      // PatientInsurances records before we can write a link-field value.
+      const realInsuranceId = await ensureRealInsurance(insurance, { patientRecordId });
+
       await createEligibilityVerification({
-        patient_id: patientId,
-        insurance_id: insurance._id,
+        patient_id: patientRecordId,
+        insurance_id: realInsuranceId,
         verification_status: status,
         staff_confirmed_payer_type: payerType,
         staff_confirmed_order_rank: order,
         verification_sources: sources,
         verification_date_time: new Date().toISOString(),
-        verified_by_user_id: appUserId,
+        verified_by_user_id: verifierRecordId || undefined,
         note_category: noteCat,
         note_text: noteText,
         suggested_payer_type: suggestion.category,
@@ -434,10 +482,10 @@ function InsuranceCard({
       await recordActivity({
         actorUserId: appUserId,
         action: AUDIT_ACTION.ELIGIBILITY_CHECKED,
-        patientId,
+        patientId: patientBusinessId,
         referralId,
         detail: `Eligibility ${status} for ${insurance.payer_display_name}`,
-        metadata: { insuranceId: insurance._id, sources, order, payerType },
+        metadata: { insuranceId: realInsuranceId, sources, order, payerType },
       });
       onSaved?.();
     } catch (err) {
@@ -577,7 +625,8 @@ function InsuranceCard({
 
 // ── Conflict modal ─────────────────────────────────────────────────────────
 function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
-  const { selectedReasons, details, denialStatus, insuranceId } = state;
+  const { selectedReasons, details, denialStatus, insurance } = state;
+  const insuranceId = insurance?._id || null;
   function toggle(r) {
     onChange({ ...state, selectedReasons: selectedReasons.includes(r) ? selectedReasons.filter((x) => x !== r) : [...selectedReasons, r] });
   }

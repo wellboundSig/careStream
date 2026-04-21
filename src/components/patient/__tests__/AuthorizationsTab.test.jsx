@@ -8,6 +8,13 @@ vi.mock('../../../api/authorizations.js', () => ({
 }));
 vi.mock('../../../api/patientInsurances.js', () => ({
   getInsurancesByPatient: vi.fn().mockResolvedValue([]),
+  createPatientInsurance: vi.fn().mockResolvedValue({ id: 'rec_ins_new', fields: {} }),
+  updatePatientInsurance: vi.fn().mockResolvedValue({ id: 'rec_ins_new', fields: {} }),
+  deletePatientInsurance: vi.fn().mockResolvedValue({}),
+}));
+vi.mock('../../../api/patients.js', () => ({
+  getPatient: vi.fn().mockResolvedValue(null),
+  updatePatient: vi.fn().mockResolvedValue({}),
 }));
 vi.mock('../../../api/eligibilityVerifications.js', () => ({
   getVerificationsByPatient: vi.fn().mockResolvedValue([]),
@@ -16,7 +23,11 @@ vi.mock('../../../api/eligibilityVerifications.js', () => ({
 vi.mock('../../../api/conflicts.js', () => ({ createConflict: vi.fn() }));
 vi.mock('../../../api/activityLog.js', () => ({ recordActivity: vi.fn() }));
 vi.mock('../../../hooks/useCurrentAppUser.js', () => ({
-  useCurrentAppUser: () => ({ appUserId: 'u_test', appUserName: 'Test User' }),
+  useCurrentAppUser: () => ({
+    appUser: { id: 'u_test', _id: 'rec_u_test', first_name: 'Test', last_name: 'User' },
+    appUserId: 'u_test',
+    appUserName: 'Test User',
+  }),
 }));
 vi.mock('../../../hooks/usePermissions.js', () => ({
   usePermissions: () => ({ can: () => true }),
@@ -26,7 +37,12 @@ import AuthorizationsTab from '../tabs/AuthorizationsTab.jsx';
 import { createAuthorization } from '../../../api/authorizations.js';
 
 function makeReferral(division) {
-  return { id: 'ref_1', division, patient_id: 'p_1', patient: { id: 'p_1', primary_insurance_id: 'ins_1' } };
+  return {
+    id: 'ref_1', _id: 'rec_ref_1',
+    division,
+    patient_id: 'p_1',
+    patient: { id: 'p_1', _id: 'rec_p_1', primary_insurance_id: 'ins_1' },
+  };
 }
 
 beforeEach(() => {
@@ -117,11 +133,18 @@ describe('AuthorizationsTab — follow-up requires date and owner', () => {
 });
 
 describe('AuthorizationsTab — NAR mode can save without auth number', () => {
-  it('saves a NAR record when user confirms', async () => {
+  it('saves a NAR record when user confirms (after picking an insurance)', async () => {
+    // Real-world flow: payer selector must be populated and picked before save.
+    const { getInsurancesByPatient } = await import('../../../api/patientInsurances.js');
+    getInsurancesByPatient.mockResolvedValue([
+      { id: 'rec_ins_1', fields: { patient_id: ['rec_p_1'], payer_display_name: 'Medicare', insurance_category: 'medicare', order_rank: 'primary' } },
+    ]);
     const referral = makeReferral('Special Needs');
     render(<AuthorizationsTab referral={referral} />);
     await openModePicker();
     await act(async () => { fireEvent.click(screen.getByTestId('auth-mode-nar')); });
+    const select = await screen.findByTestId('payer-insurance-select');
+    await act(async () => { fireEvent.change(select, { target: { value: 'rec_ins_1' } }); });
     await act(async () => { fireEvent.click(screen.getByText('Confirm NAR')); });
     expect(createAuthorization).toHaveBeenCalled();
     const payload = createAuthorization.mock.calls[0][0];

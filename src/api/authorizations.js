@@ -27,6 +27,9 @@ function normaliseFields(fields) {
       else out[f] = v;
     }
   }
+  for (const k of Object.keys(out)) {
+    if (out[k] === null || out[k] === undefined) delete out[k];
+  }
   return out;
 }
 

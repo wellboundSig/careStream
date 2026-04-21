@@ -23,6 +23,7 @@ const TABLES = [
   { key: 'episodes',         table: 'Episodes' },
   { key: 'triageAdult',      table: 'TriageAdult' },
   { key: 'triagePediatric',  table: 'TriagePediatric' },
+  { key: 'cursoryReviews',   table: 'CursoryReview' },
 
   // Lookup / reference tables (small, static-ish)
   { key: 'marketers',          table: 'Marketers' },

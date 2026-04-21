@@ -21,6 +21,7 @@ export const useCareStore = create((set, get) => ({
   episodes: {},
   triageAdult: {},
   triagePediatric: {},
+  cursoryReviews: {},          // CursoryReview rows — one per referral
 
   // ── Lookup / reference tables ────────────────────────────────────────────
   marketers: {},
