@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser } from '@clerk/react';
 import { getFilesByPatient, createFile, deleteFile } from '../../../api/patientFiles.js';
 import { uploadToR2 } from '../../../utils/r2Upload.js';
@@ -11,6 +11,17 @@ import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import {
+  OPWDD_FILE_CATEGORIES,
+  OPWDD_FILE_CATEGORY,
+  OPWDD_CHECKLIST_TEMPLATE,
+  OPWDD_CHECKLIST_BY_KEY,
+  OPWDD_REQUIREMENT_TO_CATEGORY,
+  OPWDD_AUDIT_ACTION,
+} from '../../../data/opwddEnums.js';
+import { getChecklistItemsByReferral } from '../../../api/opwddChecklistItems.js';
+import { markChecklistItemReceived } from '../../../store/opwddOrchestration.js';
+import { recordActivity } from '../../../api/activityLog.js';
 
 const CATEGORY_COLORS = {
   'F2F': { bg: hexToRgba(palette.primaryMagenta.hex, 0.1), text: palette.primaryMagenta.hex },
@@ -21,9 +32,21 @@ const CATEGORY_COLORS = {
   'ID': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
   'Consent': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
   'Other': { bg: hexToRgba(palette.backgroundDark.hex, 0.06), text: hexToRgba(palette.backgroundDark.hex, 0.5) },
+  // OPWDD categories share the deep-plum family since they all belong to the
+  // OPWDD enrollment flow
+  'OPWDD':            { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.08), text: palette.primaryDeepPlum.hex },
+  'OPWDD Evaluation': { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), text: palette.primaryDeepPlum.hex },
+  'OPWDD Identity':   { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.10), text: palette.primaryDeepPlum.hex },
+  'OPWDD Insurance':  { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.10), text: palette.primaryDeepPlum.hex },
+  'OPWDD Notice':     { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), text: palette.primaryDeepPlum.hex },
 };
 
-const FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Discharge', 'ID', 'Consent', 'Other'];
+const STANDARD_FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Discharge', 'ID', 'Consent', 'Other'];
+const FILE_CATEGORIES = [...STANDARD_FILE_CATEGORIES, ...OPWDD_FILE_CATEGORIES];
+
+function isOpwddCategory(cat) {
+  return OPWDD_FILE_CATEGORIES.includes(cat);
+}
 
 function formatBytes(b) {
   if (!b) return '';
@@ -161,8 +184,28 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const [pendingPhysician, setPendingPhysician] = useState(null);
   const [f2fDate, setF2fDate] = useState('');
   const [f2fDatePrefilled, setF2fDatePrefilled] = useState(false);
+  // OPWDD-specific staging (only used when category is an OPWDD_* category)
+  const [pendingDocumentSubtype, setPendingDocumentSubtype] = useState('');
+  const [pendingDocumentDate, setPendingDocumentDate] = useState('');
+  const [pendingDocumentValidThrough, setPendingDocumentValidThrough] = useState('');
+  const [pendingOpwddChecklistItemId, setPendingOpwddChecklistItemId] = useState('');
+  const [opwddChecklistItems, setOpwddChecklistItems] = useState([]);
+  // Filter + grouping state for the file list
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'F2F' | 'MD Orders' | 'OPWDD' (family) | specific cat
+  const [search, setSearch] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState({});
   const inputRef = useRef(null);
   const { can } = usePermissions();
+
+  // Load OPWDD checklist items for this referral so the upload form can
+  // offer a "satisfies requirement" picker that writes back
+  // `satisfying_file_id` on the chosen checklist row.
+  useEffect(() => {
+    if (!referral?.id) { setOpwddChecklistItems([]); return; }
+    getChecklistItemsByReferral(referral.id)
+      .then((records) => setOpwddChecklistItems(records.map((r) => ({ _id: r.id, ...r.fields }))))
+      .catch(() => setOpwddChecklistItems([]));
+  }, [referral?.id]);
 
   const r2Configured = !!import.meta.env.VITE_R2_WORKER_URL;
 
@@ -191,6 +234,10 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     setPendingPhysician(null);
     setF2fDate('');
     setF2fDatePrefilled(false);
+    setPendingDocumentSubtype('');
+    setPendingDocumentDate('');
+    setPendingDocumentValidThrough('');
+    setPendingOpwddChecklistItemId('');
     setUploadError(null);
   }
 
@@ -199,6 +246,10 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     setPendingPhysician(null);
     setF2fDate('');
     setF2fDatePrefilled(false);
+    setPendingDocumentSubtype('');
+    setPendingDocumentDate('');
+    setPendingDocumentValidThrough('');
+    setPendingOpwddChecklistItemId('');
     if (inputRef.current) inputRef.current.value = '';
   }
 
@@ -212,6 +263,10 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     try {
       const { r2Key, r2Url } = await uploadToR2(pendingFile, patient.id);
 
+      const linkedChecklistItem = pendingOpwddChecklistItemId
+        ? opwddChecklistItems.find((i) => i._id === pendingOpwddChecklistItemId)
+        : null;
+
       const baseFields = {
         id: `file_${Date.now()}`,
         patient_id: patient.id,
@@ -224,6 +279,20 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         created_at: new Date().toISOString(),
         ...(referral?.id ? { referral_id: referral.id } : {}),
         ...(pendingCategory === 'F2F' && f2fDate ? { f2f_visit_date: f2fDate } : {}),
+        // OPWDD metadata — only written when the category belongs to the
+        // OPWDD family, matching the schema extension on Files
+        ...(isOpwddCategory(pendingCategory) && linkedChecklistItem?.opwdd_case_id
+          ? { opwdd_case_id: linkedChecklistItem.opwdd_case_id }
+          : {}),
+        ...(isOpwddCategory(pendingCategory) && pendingDocumentSubtype
+          ? { document_subtype: pendingDocumentSubtype }
+          : {}),
+        ...(isOpwddCategory(pendingCategory) && pendingDocumentDate
+          ? { document_date: new Date(pendingDocumentDate).toISOString() }
+          : {}),
+        ...(isOpwddCategory(pendingCategory) && pendingDocumentValidThrough
+          ? { document_valid_through: new Date(pendingDocumentValidThrough).toISOString() }
+          : {}),
       };
 
       // Try with physician_id first. If Airtable rejects it (field not yet
@@ -245,6 +314,31 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
 
       setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
 
+      // If the upload satisfies an OPWDD checklist item, link the file and
+      // flip the item to "received" (status + received_at + satisfying_file_id).
+      // Failure is non-fatal — the user can link the file later from the
+      // OPWDD workspace.
+      if (isOpwddCategory(pendingCategory) && linkedChecklistItem) {
+        try {
+          await markChecklistItemReceived({
+            item: linkedChecklistItem,
+            receivedByUserId: appUserId,
+            satisfyingFileId: created.fields?.id || created.id,
+            actorUserId: appUserId,
+          });
+          await recordActivity({
+            actorUserId: appUserId,
+            action: OPWDD_AUDIT_ACTION.FILE_LINKED,
+            patientId:  patient.id,
+            referralId: referral?.id,
+            detail: `File linked to OPWDD checklist item: ${linkedChecklistItem.requirement_label || linkedChecklistItem.requirement_key}.`,
+            metadata: { fileId: created.fields?.id || created.id, requirementKey: linkedChecklistItem.requirement_key, caseId: linkedChecklistItem.opwdd_case_id },
+          }).catch(() => {});
+        } catch (err) {
+          console.warn('OPWDD checklist link failed', err);
+        }
+      }
+
       // If category is F2F, the visit date drives the 90-day expiration clock
       if (pendingCategory === 'F2F' && f2fDate && referral?._id) {
         const visitDate = new Date(f2fDate);
@@ -261,8 +355,13 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
       setPendingPhysician(null);
       setF2fDate('');
       setF2fDatePrefilled(false);
+      setPendingDocumentSubtype('');
+      setPendingDocumentDate('');
+      setPendingDocumentValidThrough('');
+      setPendingOpwddChecklistItemId('');
       setUploadProgress(null);
       if (inputRef.current) inputRef.current.value = '';
+      triggerDataRefresh();
     } catch (err) {
       setUploadError(err.message);
       setUploadProgress(null);
@@ -325,7 +424,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
 
           {/* Category */}
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 8 }}>Category</p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: isOpwddCategory(pendingCategory) ? 12 : 16 }}>
             {FILE_CATEGORIES.map((cat) => (
               <button
                 key={cat}
@@ -343,13 +442,128 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                     setF2fDate('');
                     setF2fDatePrefilled(false);
                   }
+                  // Clear OPWDD staging fields when switching to a non-OPWDD
+                  // category, and pre-pick a subtype suggestion otherwise.
+                  if (!isOpwddCategory(cat)) {
+                    setPendingDocumentSubtype('');
+                    setPendingOpwddChecklistItemId('');
+                  }
                 }}
-                style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid var(--color-border)`, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s', background: pendingCategory === cat ? palette.primaryMagenta.hex : 'none', color: pendingCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, border: `1px solid var(--color-border)`,
+                  fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s',
+                  background: pendingCategory === cat
+                    ? (isOpwddCategory(cat) ? palette.primaryDeepPlum.hex : palette.primaryMagenta.hex)
+                    : 'none',
+                  color: pendingCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                }}
               >
                 {cat}
               </button>
             ))}
           </div>
+
+          {/* OPWDD metadata — only when an OPWDD category is selected */}
+          {isOpwddCategory(pendingCategory) && (
+            <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8, background: hexToRgba(palette.primaryDeepPlum.hex, 0.05), border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.2)}` }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryDeepPlum.hex, marginBottom: 8 }}>
+                OPWDD Document Details
+              </p>
+
+              {/* Satisfies which checklist requirement? (drives linking + subtype) */}
+              {opwddChecklistItems.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 3 }}>
+                    Satisfies checklist item (optional)
+                  </p>
+                  <select
+                    value={pendingOpwddChecklistItemId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setPendingOpwddChecklistItemId(id);
+                      const chosen = opwddChecklistItems.find((i) => i._id === id);
+                      if (chosen) {
+                        setPendingDocumentSubtype(chosen.requirement_key || '');
+                        const suggestedCategory = OPWDD_REQUIREMENT_TO_CATEGORY[chosen.requirement_key];
+                        if (suggestedCategory && !OPWDD_FILE_CATEGORIES.includes(pendingCategory)) {
+                          setPendingCategory(suggestedCategory);
+                        } else if (suggestedCategory) {
+                          setPendingCategory(suggestedCategory);
+                        }
+                        // Auto-compute valid-through for evaluation docs
+                        const tmpl = OPWDD_CHECKLIST_BY_KEY[chosen.requirement_key];
+                        if (tmpl?.validityYears && pendingDocumentDate) {
+                          const d = new Date(pendingDocumentDate);
+                          d.setFullYear(d.getFullYear() + tmpl.validityYears);
+                          setPendingDocumentValidThrough(d.toISOString().slice(0, 10));
+                        }
+                      }
+                    }}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.3)}`, fontSize: 12.5, background: palette.backgroundLight.hex, fontFamily: 'inherit', outline: 'none' }}
+                  >
+                    <option value="">— Don't link to a checklist item —</option>
+                    {opwddChecklistItems.map((i) => (
+                      <option key={i._id} value={i._id}>
+                        {i.requirement_label || i.requirement_key} — {i.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Document subtype (mirrors requirement_key singleSelect) */}
+              <div style={{ marginBottom: 10 }}>
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 3 }}>
+                  Document type
+                </p>
+                <select
+                  value={pendingDocumentSubtype}
+                  onChange={(e) => setPendingDocumentSubtype(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.3)}`, fontSize: 12.5, background: palette.backgroundLight.hex, fontFamily: 'inherit', outline: 'none' }}
+                >
+                  <option value="">— Select —</option>
+                  {OPWDD_CHECKLIST_TEMPLATE.map((tmpl) => (
+                    <option key={tmpl.key} value={tmpl.key}>{tmpl.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Document date + valid-through (side by side) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 3 }}>
+                    Document date
+                  </p>
+                  <input
+                    type="date"
+                    value={pendingDocumentDate}
+                    onChange={(e) => {
+                      setPendingDocumentDate(e.target.value);
+                      // auto-compute valid through if the subtype carries validity
+                      const tmpl = OPWDD_CHECKLIST_BY_KEY[pendingDocumentSubtype];
+                      if (e.target.value && tmpl?.validityYears) {
+                        const d = new Date(e.target.value);
+                        d.setFullYear(d.getFullYear() + tmpl.validityYears);
+                        setPendingDocumentValidThrough(d.toISOString().slice(0, 10));
+                      }
+                    }}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.3)}`, fontSize: 12.5, background: palette.backgroundLight.hex, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 3 }}>
+                    Valid through
+                  </p>
+                  <input
+                    type="date"
+                    value={pendingDocumentValidThrough}
+                    onChange={(e) => setPendingDocumentValidThrough(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.3)}`, fontSize: 12.5, background: palette.backgroundLight.hex, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Date of Visit — required when F2F category is selected */}
           {pendingCategory === 'F2F' && (
@@ -473,14 +687,214 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           No files uploaded yet.
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {files.map((file) => (
-            <FileRow key={file._id} file={file} onPreview={setPreview} onDelete={readOnly ? undefined : handleDeleteFile} resolveUser={resolveUser} resolvePhysician={resolvePhysician} appUserName={appUserName} />
-          ))}
-        </div>
+        <GroupedFileList
+          files={files}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+          search={search}
+          setSearch={setSearch}
+          collapsedGroups={collapsedGroups}
+          toggleGroup={(id) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))}
+          onPreview={setPreview}
+          onDelete={readOnly ? undefined : handleDeleteFile}
+          resolveUser={resolveUser}
+          resolvePhysician={resolvePhysician}
+          appUserName={appUserName}
+        />
       )}
 
       {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+// ── Grouped file list — category filter pills + collapsible sections ────────
+// Files are bucketed into the following ordered groups:
+//   1. OPWDD (all OPWDD_* categories merged, sub-grouped by subtype)
+//   2. F2F / MD Orders
+//   3. Insurance / ID / Consent
+//   4. Authorization (Auth Letter)
+//   5. Discharge
+//   6. Other / Uncategorized
+// A simple text search narrows within the current filter.
+function GroupedFileList({
+  files, categoryFilter, setCategoryFilter, search, setSearch,
+  collapsedGroups, toggleGroup,
+  onPreview, onDelete, resolveUser, resolvePhysician, appUserName,
+}) {
+  const groupDefs = useMemo(() => ([
+    {
+      id: 'opwdd',
+      label: 'OPWDD Enrollment',
+      match: (file) => isOpwddCategory(file.category),
+      accent: palette.primaryDeepPlum.hex,
+      subGroupBy: (file) => OPWDD_CHECKLIST_BY_KEY[file.document_subtype]?.label
+        || file.document_subtype
+        || 'Other OPWDD',
+    },
+    {
+      id: 'clinical',
+      label: 'F2F / MD Orders',
+      match: (file) => file.category === 'F2F' || file.category === 'MD Orders',
+      accent: palette.primaryMagenta.hex,
+    },
+    {
+      id: 'insurance_id',
+      label: 'Insurance & ID',
+      match: (file) => ['Insurance', 'ID', 'Consent'].includes(file.category),
+      accent: palette.accentBlue.hex,
+    },
+    {
+      id: 'auth',
+      label: 'Authorization',
+      match: (file) => file.category === 'Auth Letter',
+      accent: palette.accentGreen.hex,
+    },
+    {
+      id: 'discharge',
+      label: 'Discharge',
+      match: (file) => file.category === 'Discharge',
+      accent: '#7A5F00',
+    },
+    {
+      id: 'other',
+      label: 'Other / Uncategorized',
+      match: (file) => !file.category || file.category === 'Other',
+      accent: hexToRgba(palette.backgroundDark.hex, 0.5),
+    },
+  ]), []);
+
+  // Filter pills only show for non-empty buckets + always show "All"
+  const filterOptions = useMemo(() => {
+    const opts = [{ id: 'all', label: 'All', count: files.length }];
+    for (const g of groupDefs) {
+      const count = files.filter(g.match).length;
+      if (count > 0) opts.push({ id: g.id, label: g.label, count, accent: g.accent });
+    }
+    return opts;
+  }, [files, groupDefs]);
+
+  // Apply filter + search
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return files.filter((f) => {
+      if (categoryFilter !== 'all') {
+        const g = groupDefs.find((gg) => gg.id === categoryFilter);
+        if (!g || !g.match(f)) return false;
+      }
+      if (q) {
+        const hay = [f.file_name, f.category, f.document_subtype].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [files, categoryFilter, search, groupDefs]);
+
+  // Sort remaining files within each group by newest first
+  const groups = useMemo(() => {
+    return groupDefs
+      .map((g) => ({
+        ...g,
+        items: filtered.filter(g.match).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [groupDefs, filtered]);
+
+  return (
+    <div>
+      {/* Filter pills + search */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        {filterOptions.map((opt) => {
+          const active = categoryFilter === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => setCategoryFilter(opt.id)}
+              style={{
+                padding: '4px 10px', borderRadius: 14, fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                border: `1px solid ${active ? (opt.accent || palette.backgroundDark.hex) : 'var(--color-border)'}`,
+                background: active ? (opt.accent || palette.backgroundDark.hex) : palette.backgroundLight.hex,
+                color: active ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+              }}
+            >
+              {opt.label}
+              <span style={{ fontSize: 10.5, opacity: 0.8 }}>{opt.count}</span>
+            </button>
+          );
+        })}
+        <input
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search files…"
+          style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: `1px solid var(--color-border)`, fontSize: 12, width: 140, outline: 'none', fontFamily: 'inherit' }}
+        />
+      </div>
+
+      {groups.length === 0 && (
+        <p style={{ textAlign: 'center', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '16px 0', fontStyle: 'italic' }}>
+          No files match the current filter.
+        </p>
+      )}
+
+      {groups.map((group) => {
+        const collapsed = !!collapsedGroups[group.id];
+        return (
+          <div key={group.id} style={{ marginBottom: 10 }}>
+            {/* Group header */}
+            <button
+              onClick={() => toggleGroup(group.id)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                background: hexToRgba(group.accent, 0.06),
+                border: `1px solid ${hexToRgba(group.accent, 0.2)}`,
+                borderRadius: 7, fontSize: 11.5, fontWeight: 700, color: group.accent,
+                textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer',
+              }}
+            >
+              <span style={{ fontSize: 11, opacity: 0.7 }}>{collapsed ? '▸' : '▾'}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
+              <span style={{ fontSize: 10.5, opacity: 0.7 }}>{group.items.length}</span>
+            </button>
+
+            {/* Group body */}
+            {!collapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 5 }}>
+                {group.subGroupBy ? (
+                  // OPWDD: further sub-group by document subtype
+                  Object.entries(
+                    group.items.reduce((acc, f) => {
+                      const key = group.subGroupBy(f);
+                      (acc[key] = acc[key] || []).push(f);
+                      return acc;
+                    }, {}),
+                  ).map(([subLabel, subFiles]) => (
+                    <div key={subLabel}>
+                      <p style={{ fontSize: 10.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.5), padding: '2px 4px 2px 14px', marginTop: 4 }}>
+                        {subLabel} <span style={{ opacity: 0.65 }}>· {subFiles.length}</span>
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {subFiles.map((file) => (
+                          <FileRow key={file._id} file={file}
+                            onPreview={onPreview} onDelete={onDelete}
+                            resolveUser={resolveUser} resolvePhysician={resolvePhysician}
+                            appUserName={appUserName} />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  group.items.map((file) => (
+                    <FileRow key={file._id} file={file}
+                      onPreview={onPreview} onDelete={onDelete}
+                      resolveUser={resolveUser} resolvePhysician={resolvePhysician}
+                      appUserName={appUserName} />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -491,12 +905,17 @@ function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, app
   const cleanUrl = file.r2_url?.replace(/[<>\n]/g, '').trim();
   const canPreview = !!cleanUrl;
   const physicianName = file.physician_id ? resolvePhysician?.(file.physician_id) : null;
+  const opwddSubtypeLabel = file.document_subtype
+    ? OPWDD_CHECKLIST_BY_KEY[file.document_subtype]?.label || file.document_subtype
+    : null;
+  const validThrough = file.document_valid_through ? new Date(file.document_valid_through) : null;
+  const isExpired = validThrough && validThrough.getTime() < Date.now();
 
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-        borderRadius: 9, border: `1px solid var(--color-border)`,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+        borderRadius: 7, border: `1px solid var(--color-border)`,
         background: palette.backgroundLight.hex, transition: 'background 0.12s',
       }}
       onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.025))}
@@ -512,6 +931,16 @@ function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, app
           {file.category && (
             <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: catColors.bg, color: catColors.text }}>
               {file.category}
+            </span>
+          )}
+          {opwddSubtypeLabel && (
+            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), color: palette.primaryDeepPlum.hex }}>
+              {opwddSubtypeLabel}
+            </span>
+          )}
+          {validThrough && (
+            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: isExpired ? hexToRgba(palette.primaryMagenta.hex, 0.08) : hexToRgba(palette.accentGreen.hex, 0.12), color: isExpired ? palette.primaryMagenta.hex : '#15803d' }}>
+              {isExpired ? 'Expired ' : 'Valid through '}{validThrough.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           )}
           {physicianName && physicianName !== '—' && (

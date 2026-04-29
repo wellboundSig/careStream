@@ -136,3 +136,39 @@ export function updateConflictOptimistic(recordId, fields) {
 export function updateAuthorizationOptimistic(recordId, fields) {
   return optimisticUpdate('authorizations', 'Authorizations', recordId, fields);
 }
+
+// ── OPWDD cases + checklist ───────────────────────────────────────────────
+
+export function createOpwddCaseOptimistic(fields) {
+  const now = new Date().toISOString();
+  const withTs = {
+    ...fields,
+    created_at: fields.created_at || now,
+    updated_at: fields.updated_at || now,
+  };
+  return optimisticCreate('opwddCases', 'OPWDDEligibilityCases', withTs);
+}
+
+export function updateOpwddCaseOptimistic(recordId, fields) {
+  return optimisticUpdate('opwddCases', 'OPWDDEligibilityCases', recordId, {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export function createOpwddChecklistItemOptimistic(fields) {
+  const now = new Date().toISOString();
+  const withTs = {
+    ...fields,
+    created_at: fields.created_at || now,
+    updated_at: fields.updated_at || now,
+  };
+  return optimisticCreate('opwddChecklistItems', 'OPWDDCaseChecklistItems', withTs);
+}
+
+export function updateOpwddChecklistItemOptimistic(recordId, fields) {
+  return optimisticUpdate('opwddChecklistItems', 'OPWDDCaseChecklistItems', recordId, {
+    ...fields,
+    updated_at: new Date().toISOString(),
+  });
+}

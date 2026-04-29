@@ -20,6 +20,7 @@ import { createEligibilityVerification } from '../../../api/eligibilityVerificat
 import { createConflict }      from '../../../api/conflicts.js';
 import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
+import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
 import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import palette                 from '../../../utils/colors.js';
 
@@ -226,6 +227,18 @@ export default function EligibilityWorkspace({
                     detail: 'Eligibility routed case to OPWDD flow.',
                     metadata: { reasons: opwddSuggestion.reasons, priorStage: referral?.current_stage || null },
                   });
+                  // Auto-open the OPWDD eligibility case so the enrollment
+                  // specialist inherits a fully-seeded checklist. This is
+                  // idempotent — `openCaseForReferral` returns the existing
+                  // case if one is already open for this referral.
+                  if (patient?.id && referral?.id) {
+                    openCaseForReferral({
+                      referral: { id: referral.id, _id: referral._id },
+                      patientId: patient.id,
+                      actorUserId: appUserId,
+                      assignedSpecialistId: appUserId,
+                    }).catch((err) => console.warn('Auto-open OPWDD case from eligibility failed:', err));
+                  }
                   onInitiateTransition?.(referral, 'OPWDD Enrollment');
                   triggerDataRefresh();
                 }}

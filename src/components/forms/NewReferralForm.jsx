@@ -7,6 +7,7 @@ import { createPatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
 import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
+import { openCaseForReferral } from '../../store/opwddOrchestration.js';
 import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
@@ -651,6 +652,20 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
       mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
       mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
+
+      // If this referral is routing straight to OPWDD Enrollment (Special
+      // Needs division + code_95 = no), open the OPWDD eligibility case
+      // immediately so the enrollment specialist picks up a fully-seeded
+      // checklist + case row. Failure is non-fatal — the case can be
+      // opened later from the OPWDD workspace.
+      if (referralFields.current_stage === 'OPWDD Enrollment') {
+        openCaseForReferral({
+          referral: { id: referralCustomId, _id: referralRecord.id },
+          patientId: createdPatientId,
+          actorUserId: appUserId,
+          assignedSpecialistId: appUserId,
+        }).catch((err) => console.warn('Auto-open OPWDD case failed:', err));
+      }
 
       // stage_entered_at not a column in Referrals — skip
 

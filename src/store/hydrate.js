@@ -24,6 +24,8 @@ const TABLES = [
   { key: 'triageAdult',      table: 'TriageAdult' },
   { key: 'triagePediatric',  table: 'TriagePediatric' },
   { key: 'cursoryReviews',   table: 'CursoryReview' },
+  { key: 'opwddCases',          table: 'OPWDDEligibilityCases' },
+  { key: 'opwddChecklistItems', table: 'OPWDDCaseChecklistItems' },
 
   // Lookup / reference tables (small, static-ish)
   { key: 'marketers',          table: 'Marketers' },

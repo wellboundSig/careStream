@@ -41,6 +41,20 @@ export const PERMISSION_KEYS = {
   ROUTING_OPWDD: 'routing.opwdd',
   ROUTING_DISENROLLMENT_ASSIST: 'routing.disenrollment_assist',
 
+  // OPWDD Enrollment
+  OPWDD_CASE_VIEW:            'opwdd.case.view',
+  OPWDD_CASE_CREATE:          'opwdd.case.create',
+  OPWDD_CASE_EDIT:            'opwdd.case.edit',
+  OPWDD_CASE_ASSIGN:          'opwdd.case.assign',
+  OPWDD_CHECKLIST_EDIT:       'opwdd.checklist.edit',
+  OPWDD_FILE_UPLOAD:          'opwdd.file.upload',
+  OPWDD_FILE_VERIFY_CURRENT:  'opwdd.file.verify_current',
+  OPWDD_SUBMIT_PACKET:        'opwdd.submit_packet',
+  OPWDD_RECORD_NOTICE:        'opwdd.record_notice',
+  OPWDD_MARK_CODE95_RECEIVED: 'opwdd.mark_code95_received',
+  OPWDD_CONVERT_TO_INTAKE:    'opwdd.convert_to_intake',
+  OPWDD_CLOSE_CASE:           'opwdd.close_case',
+
   // Tasks
   TASK_VIEW: 'task.view',
   TASK_CREATE: 'task.create',
@@ -123,6 +137,7 @@ export const PERMISSION_CATEGORIES = [
   'Patients',
   'Clinical',
   'Authorization',
+  'OPWDD',
   'Tasks',
   'Documents',
   'Notes',
@@ -175,6 +190,20 @@ export const PERMISSION_CATALOG = [
   { key: K.AUTH_REQUEST_SCA, label: 'Request Single Case Agreement', category: 'Authorization', description: 'Open an SCA tracking record after an SPN denial', sort: 42 },
   { key: K.ROUTING_OPWDD, label: 'Route cases to OPWDD flow',      category: 'Authorization', description: 'Trigger an explicit OPWDD routing action from Eligibility', sort: 43 },
   { key: K.ROUTING_DISENROLLMENT_ASSIST, label: 'Flag for Expert Disenrollment Assist', category: 'Authorization', description: 'Flag a case for expert Medicaid disenrollment assistance (replaces legacy checklist)', sort: 44 },
+
+  // OPWDD Enrollment
+  { key: K.OPWDD_CASE_VIEW,            label: 'View OPWDD cases',                    category: 'OPWDD', description: 'See OPWDD eligibility cases and their progress',                                   sort: 45 },
+  { key: K.OPWDD_CASE_CREATE,          label: 'Open OPWDD cases',                    category: 'OPWDD', description: 'Open a new OPWDD eligibility case from a referral (usually automatic)',             sort: 46 },
+  { key: K.OPWDD_CASE_EDIT,            label: 'Edit OPWDD case fields',              category: 'OPWDD', description: 'Modify OPWDD case status, PCG contact, evaluations, and blockers',                  sort: 47 },
+  { key: K.OPWDD_CASE_ASSIGN,          label: 'Assign OPWDD enrollment specialist',  category: 'OPWDD', description: 'Assign or reassign the enrollment specialist on an OPWDD case',                    sort: 48 },
+  { key: K.OPWDD_CHECKLIST_EDIT,       label: 'Edit OPWDD checklist items',          category: 'OPWDD', description: 'Update OPWDD case checklist item statuses (request / receive / accept / reject)',  sort: 49 },
+  { key: K.OPWDD_FILE_UPLOAD,          label: 'Upload OPWDD documents',              category: 'OPWDD', description: 'Upload documents tagged to an OPWDD case (evaluations, IDs, notices, etc.)',       sort: 50 },
+  { key: K.OPWDD_FILE_VERIFY_CURRENT,  label: 'Verify OPWDD document currency',      category: 'OPWDD', description: 'Verify an OPWDD evaluation document is current / within its validity window',      sort: 51 },
+  { key: K.OPWDD_SUBMIT_PACKET,        label: 'Submit OPWDD packet to CCO',          category: 'OPWDD', description: 'Record submission of the OPWDD packet to Care Design NY or Advance Care Alliance', sort: 52 },
+  { key: K.OPWDD_RECORD_NOTICE,        label: 'Record OPWDD eligibility notice',     category: 'OPWDD', description: 'Record receipt of the OPWDD eligibility / determination notice from the CCO',     sort: 53 },
+  { key: K.OPWDD_MARK_CODE95_RECEIVED, label: 'Mark Code 95 received',               category: 'OPWDD', description: 'Mark an OPWDD case as having received Code 95 and flip the referral flag',         sort: 54 },
+  { key: K.OPWDD_CONVERT_TO_INTAKE,    label: 'Convert OPWDD case to intake',        category: 'OPWDD', description: 'Hand a post-Code-95 OPWDD case back to the standard CHHA intake flow',             sort: 55 },
+  { key: K.OPWDD_CLOSE_CASE,           label: 'Close OPWDD case',                    category: 'OPWDD', description: 'Close an OPWDD eligibility case (PCG declined, ABA-only, duplicate, etc.)',         sort: 56 },
 
   // Tasks
   { key: K.TASK_VIEW,     label: 'View tasks',                  category: 'Tasks', description: 'See task lists and details', sort: 50 },
@@ -268,6 +297,12 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
+      K.ROUTING_OPWDD,
+      K.OPWDD_CASE_VIEW, K.OPWDD_CASE_CREATE, K.OPWDD_CASE_EDIT, K.OPWDD_CASE_ASSIGN,
+      K.OPWDD_CHECKLIST_EDIT,
+      K.OPWDD_FILE_UPLOAD, K.OPWDD_FILE_VERIFY_CURRENT,
+      K.OPWDD_SUBMIT_PACKET, K.OPWDD_RECORD_NOTICE,
+      K.OPWDD_MARK_CODE95_RECEIVED, K.OPWDD_CONVERT_TO_INTAKE, K.OPWDD_CLOSE_CASE,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.FILE_UPLOAD,
       K.NOTE_CREATE, K.NOTE_PIN,

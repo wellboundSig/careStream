@@ -12,6 +12,7 @@ import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import EligibilityWorkspace from './shared/EligibilityWorkspace.jsx';
 import AuthorizationWorkspace from './shared/AuthorizationWorkspace.jsx';
+import OpwddWorkspace from './shared/OpwddWorkspace.jsx';
 import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
 import { DISCARD_REASONS } from '../../data/stageConfig.js';
@@ -2055,36 +2056,33 @@ function NtucPanel({ referrals }) {
 }
 
 // ── OPWDD Enrollment ──────────────────────────────────────────────────────────
-function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransition }) {
+// The OPWDD workflow has far more state than a normal stage (PCG outreach,
+// evaluations, a 15-item checklist, submission, notice, monitoring), so this
+// panel is ~60% wider than the default 280px and renders the workspace at
+// "drawer" density for comfortable typography.
+function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransition, onOpenFiles }) {
+  if (!selectedReferral) {
+    return (
+      <Panel width={440}>
+        <PanelSection title="Enrollment Summary">
+          <InfoRow label="Total in OPWDD" value={referrals.length} />
+        </PanelSection>
+        <EmptyPanelState message="Select a patient to view their OPWDD case." />
+      </Panel>
+    );
+  }
+  const patient = selectedReferral.patient
+    ? { id: selectedReferral.patient.id || selectedReferral.patient_id, ...selectedReferral.patient }
+    : { id: selectedReferral.patient_id };
   return (
-    <Panel>
-      <PanelSection title="Enrollment Summary">
-        <InfoRow label="Total in OPWDD" value={referrals.length} />
-      </PanelSection>
-
-      {selectedReferral ? (
-        <>
-          <PanelSection title="Patient">
-            <InfoRow label="Name" value={selectedReferral.patientName} />
-            <InfoRow label="Division" value={selectedReferral.division} />
-            {selectedReferral.patient?.county && <InfoRow label="County" value={selectedReferral.patient.county} />}
-            <InfoRow label="Code 95" value={selectedReferral.code_95 || '—'} />
-          </PanelSection>
-
-          <PanelSection title="Actions">
-            <ActionBtn label="Push to Intake →" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Intake')} />
-            <ActionBtn label="Push to Discarded Leads" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Discarded Leads')} />
-          </PanelSection>
-
-          <PanelSection title="Notes">
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
-              This patient was routed here because Code 95 = No. A specialist handles OPWDD enrollment. Future: a checklist will be added here.
-            </p>
-          </PanelSection>
-        </>
-      ) : (
-        <EmptyPanelState message="Select a patient to see details and actions." />
-      )}
+    <Panel width={440}>
+      <OpwddWorkspace
+        patient={patient}
+        referral={selectedReferral}
+        variant="drawer"
+        onInitiateTransition={onInitiateTransition}
+        onOpenFiles={onOpenFiles}
+      />
     </Panel>
   );
 }

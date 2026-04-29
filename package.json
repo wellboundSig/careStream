@@ -12,7 +12,9 @@
     "test:run": "vitest run",
     "lint": "eslint src/",
     "format": "prettier --write src/",
-    "schema": "node scripts/airtable-schema.js"
+    "schema": "node scripts/airtable-schema.js",
+    "schema:apply": "node scripts/airtable-apply-schema.js",
+    "schema:apply:dry": "node scripts/airtable-apply-schema.js --dry-run"
   },
   "dependencies": {
     "@clerk/react": "latest",
