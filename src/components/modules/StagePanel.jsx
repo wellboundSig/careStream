@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { updateReferral } from '../../api/referrals.js';
+import { updateReferralOptimistic } from '../../store/mutations.js';
 import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { recordTransition } from '../../utils/recordTransition.js';
@@ -256,41 +257,41 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   );
 }
 
-function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onNewReferral, onInitiateTransition }) {
+function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const [showDiscard, setShowDiscard] = useState(false);
   const [showPromote, setShowPromote] = useState(false);
-  const [duplicates, setDuplicates] = useState([]);
-  const [dupChecked, setDupChecked] = useState(false);
 
   const today = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 86400000).length;
   const thisWeek = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 7 * 86400000).length;
 
-  function checkDuplicates() {
-    const seen = {};
-    referrals.forEach((r) => { const n = (r.patientName || '').toLowerCase().trim(); if (n) seen[n] = (seen[n] || 0) + 1; });
-    setDuplicates(referrals.filter((r) => seen[(r.patientName || '').toLowerCase().trim()] > 1));
-    setDupChecked(true);
-  }
-
   function handleDiscard(reason, explanation) {
     if (!selectedReferral) return;
     const note = `[Discarded] ${reason}\n${explanation}`;
-    updateReferral(selectedReferral._id, { current_stage: 'Discarded Leads', discard_reason: reason, discard_explanation: explanation }).catch(() => {});
+    const ts = new Date().toISOString();
+    updateReferralOptimistic(selectedReferral._id, {
+      current_stage: 'Discarded Leads',
+      discard_reason: reason,
+      discard_explanation: explanation,
+      updated_at: ts,
+    }).catch(() => {});
     recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Discarded Leads', note, authorId: appUserId });
     triggerDataRefresh();
+    onSelectedReferralLeftModule?.();
     setShowDiscard(false);
   }
 
   function handlePromote(ownerId) {
     if (!selectedReferral) return;
-    const fields = { current_stage: 'Intake', intake_owner_id: ownerId };
-    updateReferral(selectedReferral._id, fields)
+    const ts = new Date().toISOString();
+    const fields = { current_stage: 'Intake', intake_owner_id: ownerId, updated_at: ts };
+    updateReferralOptimistic(selectedReferral._id, fields)
       .then(() => { console.log('[LeadEntry] Promoted to Intake successfully'); })
       .catch((err) => { console.error('[LeadEntry] Promote failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
     recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Intake', note: `Promoted to Intake. Owner assigned: ${ownerId}`, authorId: appUserId });
     triggerDataRefresh();
+    onSelectedReferralLeftModule?.();
     setShowPromote(false);
   }
 
@@ -300,11 +301,6 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onNewRefer
         <InfoRow label="Today" value={today} highlight={today > 0 ? palette.primaryMagenta.hex : null} />
         <InfoRow label="This week" value={thisWeek} />
         <InfoRow label="Total in queue" value={referrals.length} />
-      </PanelSection>
-
-      <PanelSection title="Quick Actions">
-        <ActionBtn label="+ New Referral" variant="forward" onClick={onNewReferral} />
-        <ActionBtn label="Check Duplicates" variant="default" onClick={checkDuplicates} />
       </PanelSection>
 
       {selectedReferral && (
@@ -319,21 +315,6 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onNewRefer
           )}
           {canPerm(PERMISSION_KEYS.LEADS_DISCARD) && (
             <ActionBtn label="Discard Lead" variant="warning" onClick={() => setShowDiscard(true)} />
-          )}
-        </PanelSection>
-      )}
-
-      {dupChecked && (
-        <PanelSection title="Duplicate Check">
-          {duplicates.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: palette.accentGreen.hex, fontWeight: 600 }}>No duplicates found.</p>
-          ) : (
-            <>
-              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 650, marginBottom: 8 }}>{duplicates.length} potential duplicate{duplicates.length !== 1 ? 's' : ''} detected:</p>
-              {duplicates.map((r) => (
-                <div key={r._id} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.07), marginBottom: 4, color: palette.backgroundDark.hex }}>{r.patientName || r.patient_id}</div>
-              ))}
-            </>
           )}
         </PanelSection>
       )}
@@ -2088,8 +2069,8 @@ function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransitio
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
-export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition }) {
-  const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition };
+export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition, onSelectedReferralLeftModule }) {
+  const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition, onSelectedReferralLeftModule };
   switch (stage) {
     case 'Lead Entry':                return <LeadEntryPanel {...props} />;
     case 'Discarded Leads':           return <DiscardedLeadsPanel {...props} />;

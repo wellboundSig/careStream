@@ -32,7 +32,7 @@ function initials(f, l) { return `${(f || '?')[0]}${(l || '')[0] || ''}`.toUpper
 
 export default function DepartmentDashboard({ department, scope }) {
   const { data: referrals } = usePipelineData();
-  const { resolveUser, resolveSource, resolveRole, resolveFacility } = useLookups();
+  const { resolveUser, resolveMarketer, resolveSource, resolveRole, resolveFacility } = useLookups();
   const { open: openPatient } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
   const navigate = useNavigate();
@@ -77,10 +77,10 @@ export default function DepartmentDashboard({ department, scope }) {
     if (search.trim()) { const q = search.toLowerCase(); list = list.filter((r) => (r.patientName || '').toLowerCase().includes(q) || (r.patient_id || '').toLowerCase().includes(q)); }
     for (const [key, val] of Object.entries(colFilters)) {
       if (!val.trim()) continue; const q = val.toLowerCase();
-      list = list.filter((r) => { switch (key) { case 'division': return (r.division || '').toLowerCase().includes(q); case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q); case 'owner': return (resolveUser(r.intake_owner_id) || '').toLowerCase().includes(q); case 'insurance': return (r.patient?.insurance_plan || '').toLowerCase().includes(q); case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q); default: return true; } });
+      list = list.filter((r) => { switch (key) { case 'division': return (r.division || '').toLowerCase().includes(q); case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q); case 'marketer': return (resolveMarketer(r.marketer_id) || '').toLowerCase().includes(q); case 'owner': return (resolveUser(r.intake_owner_id) || '').toLowerCase().includes(q); case 'insurance': return (r.patient?.insurance_plan || '').toLowerCase().includes(q); case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q); default: return true; } });
     }
     return [...list].sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0));
-  }, [scopedReferrals, search, colFilters, resolveSource, resolveUser, resolveFacility]);
+  }, [scopedReferrals, search, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
 
   const allActivities = useMemo(() => Object.values(activityLog || {}), [activityLog]);
   function getMemberActs(uid, n) { return allActivities.filter((a) => a.actor_id === uid).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, n); }
@@ -107,6 +107,7 @@ export default function DepartmentDashboard({ department, scope }) {
       case 'patient': return <td key="patient" style={{ padding: '11px 14px' }}><p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p></td>;
       case 'division': return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>;
       case 'source': return <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>;
+      case 'marketer': return <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{ref?.marketer_id ? resolveMarketer(ref.marketer_id) : '—'}</td>;
       case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
       case 'triage': return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
       case 'days': return <td key="days" style={{ padding: '11px 14px' }}><span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>{days === 0 ? 'Today' : `${days}d`}</span></td>;

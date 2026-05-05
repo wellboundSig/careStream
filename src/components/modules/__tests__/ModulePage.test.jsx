@@ -14,18 +14,26 @@ describe('MODULE_COLUMN_DEFS', () => {
     expect(sourceCol.filterable).toBe(true);
   });
 
+  it('includes a "marketer" column with default on and filterable', () => {
+    const m = MODULE_COLUMN_DEFS.find((c) => c.key === 'marketer');
+    expect(m).toBeTruthy();
+    expect(m.label).toBe('Marketer');
+    expect(m.defaultOn).toBe(true);
+    expect(m.filterable).toBe(true);
+  });
+
   it('has "patient" as always-on', () => {
     const patientCol = MODULE_COLUMN_DEFS.find((c) => c.key === 'patient');
     expect(patientCol.alwaysOn).toBe(true);
   });
 
-  it('includes insurance and facility as optional columns', () => {
+  it('includes insurance and facility on by default', () => {
     const insurance = MODULE_COLUMN_DEFS.find((c) => c.key === 'insurance');
     const facility = MODULE_COLUMN_DEFS.find((c) => c.key === 'facility');
     expect(insurance).toBeTruthy();
-    expect(insurance.defaultOn).toBe(false);
+    expect(insurance.defaultOn).toBe(true);
     expect(facility).toBeTruthy();
-    expect(facility.defaultOn).toBe(false);
+    expect(facility.defaultOn).toBe(true);
   });
 
   it('does not include a "priority" column', () => {
@@ -165,10 +173,13 @@ describe('ModulePage — Column system', () => {
     expect(headerTexts).toContain('Patient');
     expect(headerTexts).toContain('Division');
     expect(headerTexts).toContain('Source');
+    expect(headerTexts).toContain('Marketer');
     expect(headerTexts).toContain('Triage');
     expect(headerTexts).toContain('Days');
     expect(headerTexts).toContain('F2F');
     expect(headerTexts).toContain('Owner');
+    expect(headerTexts).toContain('Insurance');
+    expect(headerTexts).toContain('Facility');
     expect(headerTexts).toContain('Last Activity');
   });
 
@@ -178,11 +189,12 @@ describe('ModulePage — Column system', () => {
     expect(screen.getByText('Clinic B')).toBeTruthy();
   });
 
-  it('does not render Insurance column by default (it is off)', () => {
+  it('renders Insurance and Facility columns by default', () => {
     renderModule();
     const headers = screen.getAllByRole('columnheader');
     const headerTexts = headers.map((h) => h.textContent);
-    expect(headerTexts).not.toContain('Insurance');
+    expect(headerTexts).toContain('Insurance');
+    expect(headerTexts).toContain('Facility');
   });
 
   it('shows Columns button that opens the picker', () => {

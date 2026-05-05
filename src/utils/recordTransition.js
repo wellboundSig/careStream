@@ -9,20 +9,22 @@ export async function recordTransition({ referral, fromStage, toStage, note, aut
   const now = new Date().toISOString();
 
   // ── 1. StageHistory record — always written ──────────────────────────────
-  // This is the backbone of time-in-stage metrics and the audit trail.
+  // Airtable StageHistory uses single-select fields for referral_id and changed_by_id
+  // (logical keys like ref_001 / usr_001), not Airtable record ids (recXXX).
+  // Never fall back to referral._id — it triggers 422 Invalid enum value.
   const historyFields = {
-    id:            `sh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    referral_id:   referral.id || referral._id,
-    to_stage:      toStage,
-    changed_by_id: authorId || 'unknown',
-    timestamp:     now,
+    id:        `sh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    to_stage:  toStage,
+    timestamp: now,
   };
+  if (referral?.id) historyFields.referral_id = referral.id;
+  if (authorId) historyFields.changed_by_id = authorId;
   if (fromStage) historyFields.from_stage = fromStage;
   if (note?.trim()) historyFields.reason = note.trim();
 
-  createStageHistory(historyFields).catch(() => {
-    // StageHistory write is best-effort — a failure here must not block
-    // or roll back the stage transition itself.
+  createStageHistory(historyFields).catch((err) => {
+    console.warn('[recordTransition] StageHistory create failed (audit row skipped):', err?.message || err);
+    // Best-effort — must not block the referral stage update.
   });
 
   // ── 2. Note record — only when a note was provided ───────────────────────
@@ -34,7 +36,7 @@ export async function recordTransition({ referral, fromStage, toStage, note, aut
     id:          `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     patient_id:  referral.patient_id,
     referral_id: referral.id || null,
-    author_id:   authorId || 'unknown',
+    ...(authorId ? { author_id: authorId } : {}),
     content,
     is_pinned:   false,
     created_at:  now,

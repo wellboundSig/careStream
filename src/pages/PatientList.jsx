@@ -33,9 +33,9 @@ const COLUMN_DEFS = [
   { key: 'marketer',        label: 'Marketer',          defaultOn: true,  filterable: true  },
   { key: 'insurance',       label: 'Insurance',         defaultOn: true,  sortField: 'insurance_plan', filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',     defaultOn: true,  filterable: true  },
-  { key: 'referral_source', label: 'Referral Source',   defaultOn: false, filterable: true  },
-  { key: 'facility',        label: 'Facility',          defaultOn: false, filterable: true  },
-  { key: 'physician',       label: 'Physician',         defaultOn: false, filterable: true  },
+  { key: 'referral_source', label: 'Referral Source',   defaultOn: true, filterable: true  },
+  { key: 'facility',        label: 'Facility',          defaultOn: true, filterable: true  },
+  { key: 'physician',       label: 'Physician',         defaultOn: true, filterable: true  },
 ];
 
 const DEFAULT_COL_FILTERS = Object.fromEntries(

@@ -12,9 +12,9 @@ export const PATIENT_COLUMN_DEFS = [
   { key: 'marketer',        label: 'Marketer',         defaultOn: true,  filterable: true  },
   { key: 'insurance',       label: 'Insurance',        defaultOn: true,  sortField: 'insurance_plan',  filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',    defaultOn: true,  filterable: true  },
-  { key: 'referral_source', label: 'Referral Source',  defaultOn: false, filterable: true  },
-  { key: 'facility',        label: 'Facility',         defaultOn: false, filterable: true  },
-  { key: 'physician',       label: 'Physician',        defaultOn: false, filterable: true  },
+  { key: 'referral_source', label: 'Referral Source',  defaultOn: true, filterable: true  },
+  { key: 'facility',        label: 'Facility',         defaultOn: true, filterable: true  },
+  { key: 'physician',       label: 'Physician',        defaultOn: true, filterable: true  },
 ];
 
 // ── Module page column definitions ──────────────────────────────────────────
@@ -23,13 +23,14 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'division',  label: 'Division',   defaultOn: true, filterable: true },
   { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
+  { key: 'marketer',  label: 'Marketer',   defaultOn: true, filterable: true },
   { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: false, tooltip: 'Current pipeline stage' },
   { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: false },
   { key: 'days',      label: 'Days',       defaultOn: true, filterable: false, tooltip: 'Days in current stage' },
   { key: 'f2f',       label: 'F2F',        defaultOn: true, filterable: false, tooltip: 'F2F authorization countdown' },
   { key: 'owner',     label: 'Owner',      defaultOn: true, filterable: true },
-  { key: 'insurance', label: 'Insurance',  defaultOn: false, filterable: true },
-  { key: 'facility',  label: 'Facility',   defaultOn: false, filterable: true },
+  { key: 'insurance', label: 'Insurance',  defaultOn: true, filterable: true },
+  { key: 'facility',  label: 'Facility',   defaultOn: true, filterable: true },
   { key: 'activity',  label: 'Last Activity', defaultOn: true, filterable: false },
 ];
 

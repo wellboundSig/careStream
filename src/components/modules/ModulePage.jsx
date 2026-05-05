@@ -128,6 +128,7 @@ export default function ModulePage({ stage }) {
           case 'division': cellVal = r.division || ''; break;
           case 'licence': cellVal = r.services_under_licence || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
+          case 'marketer': cellVal = resolveMarketer(r.marketer_id) || ''; break;
           case 'owner': cellVal = resolveUser(r.intake_owner_id) || ''; break;
           case 'insurance': cellVal = r.patient?.insurance_plan || ''; break;
           case 'facility': cellVal = resolveFacility(r.facility_id) || ''; break;
@@ -154,7 +155,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [allReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveUser, resolveFacility]);
+  }, [allReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
 
   // Distinct values per filterable column for datalist suggestions
   const colOptions = useMemo(() => {
@@ -168,6 +169,7 @@ export default function ModulePage({ stage }) {
           case 'division': if (r.division) vals.add(r.division); break;
           case 'licence': if (r.services_under_licence) vals.add(r.services_under_licence); break;
           case 'source': { const v = resolveSource(r.referral_source_id); if (v && v !== '—') vals.add(v); break; }
+          case 'marketer': { const v = resolveMarketer(r.marketer_id); if (v && v !== '—' && v !== r.marketer_id) vals.add(v); break; }
           case 'owner': { const v = resolveUser(r.intake_owner_id); if (v && v !== r.intake_owner_id && v !== '—') vals.add(v); break; }
           case 'insurance': { const v = r.patient?.insurance_plan; if (v) vals.add(v); break; }
           case 'facility': { const v = resolveFacility(r.facility_id); if (v && v !== '—') vals.add(v); break; }
@@ -176,7 +178,7 @@ export default function ModulePage({ stage }) {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [allReferrals, stage, resolveSource, resolveUser, resolveFacility]);
+  }, [allReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
 
   // Triage completion status
   const triageAdultStore = useCareStore((s) => s.triageAdult);
@@ -332,6 +334,12 @@ export default function ModulePage({ stage }) {
             {resolveSource(referral.referral_source_id) || '—'}
           </td>
         );
+      case 'marketer':
+        return (
+          <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+            {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
+          </td>
+        );
       case 'stage': {
         const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
         return (
@@ -443,7 +451,7 @@ export default function ModulePage({ stage }) {
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
             </div>
-            <StageActions stage={stage} onNewReferral={() => setShowNewReferral(true)} />
+            <StageActions stage={stage} />
           </div>
 
           {/* Toolbar */}
@@ -465,7 +473,22 @@ export default function ModulePage({ stage }) {
 
             <div style={{ flex: 1 }} />
 
-            <DuplicateChecker stageReferrals={stageReferrals} allReferrals={allReferrals} stage={stage} />
+            {stage === 'Lead Entry' && canPerm(PERMISSION_KEYS.REFERRAL_CREATE) && (
+              <button
+                type="button"
+                onClick={() => setShowNewReferral(true)}
+                title="Create a new referral"
+                style={{
+                  height: 32, padding: '0 14px', borderRadius: 7, border: 'none', flexShrink: 0,
+                  background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
+                  fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
+                }}
+              >
+                + New Referral
+              </button>
+            )}
+
+            <DuplicateChecker selectedReferral={selectedReferral} allReferrals={allReferrals} />
 
             {/* Filter toggle */}
             <button
@@ -493,12 +516,22 @@ export default function ModulePage({ stage }) {
 
             {/* Send to Conflict */}
             {stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC' && (() => {
-              const canSend = selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
+              const isLeadsModule = stage === 'Lead Entry';
+              const canTransition = selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
+              const canSend = canTransition && !isLeadsModule;
+              const conflictTitle = isLeadsModule
+                ? 'Conflict workflow applies after Intake — leads are not active referrals yet'
+                : !selectedReferral
+                  ? 'Select a patient to send to Conflict'
+                  : !canTransition
+                    ? 'This patient cannot move to Conflict from their current stage'
+                    : `Send ${selectedReferral?.patientName || 'patient'} to Conflict`;
               return (
                 <button
+                  type="button"
                   onClick={canSend ? () => initiateTransition(selectedReferral, 'Conflict') : undefined}
                   disabled={!canSend}
-                  title={canSend ? `Send ${selectedReferral?.patientName || 'patient'} to Conflict` : 'Select a patient to send to Conflict'}
+                  title={conflictTitle}
                   style={{
                     height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
                     borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: canSend ? 'pointer' : 'default', flexShrink: 0,
@@ -588,6 +621,7 @@ export default function ModulePage({ stage }) {
             onOpenFiles={(ref) => openPatient(buildPatient(ref), ref, 'files')}
             onOpenEligibility={(ref) => openPatient(buildPatient(ref), ref, 'eligibility')}
             onInitiateTransition={(ref, toStage) => initiateTransition(ref, toStage)}
+            onSelectedReferralLeftModule={() => setSelectedReferral(null)}
           />
         </div>
       </div>
@@ -668,31 +702,6 @@ const DupIcon = () => (
   </svg>
 );
 
-const ModuleScanIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-    <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-    <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-    <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-    <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-  </svg>
-);
-
-const PipelineScanIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.6" />
-    <circle cx="12" cy="12" r="1" fill="currentColor" />
-  </svg>
-);
-
-const EmrScanIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-    <path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    <circle cx="19" cy="18" r="3" stroke="currentColor" strokeWidth="1.6" />
-    <path d="M21.5 20.5L23 22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-  </svg>
-);
-
 function buildIdentityKeys(r) {
   const keys = [];
   const name = (r.patientName || '').trim().toLowerCase();
@@ -727,134 +736,102 @@ function findDuplicatePatients(referrals) {
   return [...matched.values()];
 }
 
-function DuplicateChecker({ stageReferrals, allReferrals, stage }) {
+/** Duplicate groups in the pipeline that include the selected patient's record(s). */
+function findDuplicateGroupsForPatient(selectedReferral, allReferrals) {
+  if (!selectedReferral?.patient_id) return [];
+  const groups = findDuplicatePatients(allReferrals);
+  return groups.filter((g) => g.some((r) => r.patient_id === selectedReferral.patient_id));
+}
+
+function DuplicateChecker({ selectedReferral, allReferrals }) {
   const [open, setOpen] = useState(false);
-  const [results, setResults] = useState(null); // { type, groups }
   const ref = useRef(null);
+  const disabled = !selectedReferral;
+  const groups = useMemo(
+    () => (selectedReferral ? findDuplicateGroupsForPatient(selectedReferral, allReferrals) : []),
+    [selectedReferral, allReferrals]
+  );
+  const dupCount = groups.length;
 
   useEffect(() => {
     if (!open) return;
-    function dismiss(e) { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setResults(null); } }
+    function dismiss(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener('mousedown', dismiss);
     return () => document.removeEventListener('mousedown', dismiss);
   }, [open]);
 
-  useEffect(() => { setResults(null); }, [stage]);
-
-  function runModuleScan() {
-    const groups = findDuplicatePatients(stageReferrals);
-    setResults({ type: 'module', groups });
-  }
-
-  function runPipelineScan() {
-    const groups = findDuplicatePatients(allReferrals);
-    setResults({ type: 'pipeline', groups });
-  }
-
-  const hasResults = results && results.groups;
-  const dupCount = hasResults ? results.groups.length : 0;
+  useEffect(() => {
+    if (!selectedReferral) setOpen(false);
+  }, [selectedReferral]);
 
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
       <button
-        onClick={() => { setOpen((v) => !v); if (open) setResults(null); }}
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        title={disabled ? 'Select a patient in the list to check for duplicate records' : `Duplicate matches for ${selectedReferral?.patientName || 'patient'}`}
         style={{
           height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
-          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          background: open ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-          color: open ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: disabled ? hexToRgba(palette.backgroundDark.hex, 0.06) : open ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+          color: disabled ? hexToRgba(palette.backgroundDark.hex, 0.28) : open ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
           transition: 'all 0.12s',
         }}
       >
         <DupIcon /> Duplicates
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
-          width: hasResults ? 380 : 240,
+          width: 380,
           background: palette.backgroundLight.hex,
           borderRadius: 12, overflow: 'hidden',
           boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}, 0 2px 8px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
-          transition: 'width 0.2s ease',
         }}>
-          {/* Action buttons */}
-          <div style={{ padding: '6px' }}>
-            {[
-              { key: 'module', label: 'This Module', icon: <ModuleScanIcon />, action: runModuleScan, active: results?.type === 'module' },
-              { key: 'pipeline', label: 'All Pipeline', icon: <PipelineScanIcon />, action: runPipelineScan, active: results?.type === 'pipeline' },
-              { key: 'emr', label: 'EMR Records', icon: <EmrScanIcon />, action: null, active: false },
-            ].map(({ key, label, icon, action, active }) => (
-              <button
-                key={key}
-                onClick={action || undefined}
-                style={{
-                  width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-                  background: active ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'none',
-                  border: 'none', borderRadius: 8, cursor: action ? 'pointer' : 'default',
-                  fontSize: 13, fontWeight: active ? 650 : 500, textAlign: 'left',
-                  color: !action ? hexToRgba(palette.backgroundDark.hex, 0.25) : active ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
-                  transition: 'all 0.1s',
-                }}
-                onMouseEnter={(e) => { if (action && !active) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04); }}
-                onMouseLeave={(e) => { if (action && !active) e.currentTarget.style.background = 'none'; }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: active ? hexToRgba(palette.primaryMagenta.hex, 0.12) : hexToRgba(palette.backgroundDark.hex, 0.05), color: !action ? hexToRgba(palette.backgroundDark.hex, 0.2) : active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.45), flexShrink: 0, transition: 'all 0.1s' }}>
-                  {icon}
-                </span>
-                {label}
-                {active && (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: dupCount > 0 ? palette.primaryMagenta.hex : palette.accentGreen.hex, color: palette.backgroundLight.hex }}>
-                    {dupCount}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div style={{ padding: '10px 12px 6px', borderBottom: `1px solid var(--color-border)` }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Selected patient</p>
+            <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginTop: 2 }}>{selectedReferral.patientName || selectedReferral.patient_id}</p>
+            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.42), marginTop: 6, lineHeight: 1.45 }}>
+              Matches other pipeline records by name + DOB or Medicaid ID. A pipeline-wide duplicate report will be added separately.
+            </p>
           </div>
-
-          {/* Results */}
-          {hasResults && (
-            <div style={{ maxHeight: 280, overflowY: 'auto', padding: '0 6px 6px' }}>
-              {dupCount === 0 ? (
-                <div style={{ padding: '16px 12px', textAlign: 'center' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 6px', display: 'block', opacity: 0.4 }}>
-                    <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <p style={{ fontSize: 12.5, fontWeight: 600, color: palette.accentGreen.hex }}>No duplicates found</p>
+          <div style={{ maxHeight: 280, overflowY: 'auto', padding: '8px 10px 10px' }}>
+            {dupCount === 0 ? (
+              <div style={{ padding: '12px 8px', textAlign: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 6px', display: 'block', opacity: 0.4 }}>
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: palette.accentGreen.hex }}>No duplicate patient records found</p>
+              </div>
+            ) : (
+              groups.map((group, gi) => (
+                <div key={gi} style={{ background: hexToRgba(palette.primaryMagenta.hex, 0.04), borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}>
+                  {group.map((r, ri) => (
+                    <div key={r._id || ri} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ri === 0 ? palette.primaryMagenta.hex : hexToRgba(palette.primaryMagenta.hex, 0.35), flexShrink: 0 }} />
+                      <span style={{ fontSize: 12.5, fontWeight: ri === 0 ? 650 : 450, color: palette.backgroundDark.hex, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.patientName || r.patient_id}
+                      </span>
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0 }}>
+                        {r.current_stage}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                results.groups.map((group, gi) => (
-                  <div key={gi} style={{ background: hexToRgba(palette.primaryMagenta.hex, 0.04), borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}>
-                    {group.map((r, ri) => (
-                      <div key={r._id || ri} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: ri === 0 ? palette.primaryMagenta.hex : hexToRgba(palette.primaryMagenta.hex, 0.35), flexShrink: 0 }} />
-                        <span style={{ fontSize: 12.5, fontWeight: ri === 0 ? 650 : 450, color: palette.backgroundDark.hex, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {r.patientName || r.patient_id}
-                        </span>
-                        <span style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0 }}>
-                          {r.current_stage}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function StageActions({ stage, onNewReferral }) {
-  if (stage === 'Lead Entry') {
-    return (
-      <button onClick={onNewReferral} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
-        + New Referral
-      </button>
-    );
-  }
+function StageActions({ stage }) {
+  if (stage === 'Lead Entry') return null;
   const secondaryActions = {
     'Eligibility Verification': 'Batch Recheck',
     'Hold': 'Export Hold Report',
