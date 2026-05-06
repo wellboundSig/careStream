@@ -9,22 +9,12 @@
  */
 
 import airtable from './airtable.js';
-import { toLinks } from './_linkHelpers.js';
 
 const TABLE = 'Conflicts';
-
-const LINK_FIELDS = ['patient_id', 'created_by_id', 'resolved_by_id'];
 
 function normaliseFields(fields) {
   if (!fields) return fields;
   const out = { ...fields };
-  for (const f of LINK_FIELDS) {
-    if (f in out) {
-      const v = toLinks(out[f]);
-      if (v === undefined) delete out[f];
-      else out[f] = v;
-    }
-  }
   // Strip null/undefined — Airtable rejects nulls on single-line text fields.
   for (const k of Object.keys(out)) {
     if (out[k] === null || out[k] === undefined) delete out[k];

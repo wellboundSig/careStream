@@ -11,6 +11,7 @@ export const useCareStore = create((set, get) => ({
   // ── Entity tables (normalized: keyed by Airtable record ID) ──────────────
   patients: {},
   referrals: {},
+  entities: {},
   notes: {},
   tasks: {},
   stageHistory: {},
@@ -91,6 +92,7 @@ const SYNC_KEYS = [
   'patients', 'referrals', 'notes', 'tasks', 'stageHistory', 'files',
   'insuranceChecks', 'conflicts', 'authorizations', 'episodes',
   'triageAdult', 'triagePediatric', 'opwddCases', 'opwddChecklistItems',
+  'entities',
   'marketers', 'users', 'referralSources',
   'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',
   'campaignMarketers', 'permissions', 'permissionPresets', 'userPermissions',

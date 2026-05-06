@@ -9,6 +9,7 @@ import { createNote } from '../../api/notes.js';
 import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
 import { openCaseForReferral } from '../../store/opwddOrchestration.js';
 import { useCareStore, mergeEntities } from '../../store/careStore.js';
+import { useLookups } from '../../hooks/useLookups.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -53,6 +54,40 @@ export function getLicenceForCounty(county) {
   if (inWB) return 'WB';
   if (inWBII) return 'WBII';
   return null;
+}
+
+function normalizeEntityCode(code) {
+  return (code || '').toString().trim().toUpperCase();
+}
+
+function inferEntityCode(entityRecord) {
+  if (!entityRecord) return '';
+  return normalizeEntityCode(
+    entityRecord.code ??
+    entityRecord.entity_code ??
+    entityRecord.short_code ??
+    entityRecord.abbrev ??
+    entityRecord.slug ??
+    entityRecord.id
+  );
+}
+
+function findEntityIdByCode(entities, code) {
+  const target = normalizeEntityCode(code);
+  if (!target) return '';
+  const list = Array.isArray(entities) ? entities : Object.values(entities || {});
+
+  const direct = list.find((e) => inferEntityCode(e) === target);
+  if (direct?.id) return direct.id;
+
+  const byName = list.find((e) => {
+    const name = (e?.name || e?.entity_name || e?.display_name || '').toString().toUpperCase();
+    if (!name) return false;
+    if (target === 'WBII') return name.includes('WELLBOUND II') || name.includes('WBII');
+    if (target === 'WB') return (name.includes('WELLBOUND') || name.includes('WB')) && !name.includes('WELLBOUND II') && !name.includes('WBII');
+    return name.includes(target);
+  });
+  return byName?.id || '';
 }
 
 export function getServicesForDivision(division) {
@@ -335,6 +370,7 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
 export default function NewReferralForm({ onClose, onSuccess }) {
   const { appUser, appUserId } = useCurrentAppUser();
   const { can } = usePermissions();
+  const { resolveEntity } = useLookups();
   const isMobile = useIsMobile();
 
   if (!can(PERMISSION_KEYS.REFERRAL_CREATE)) {
@@ -354,6 +390,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const storeRoles          = useCareStore((s) => s.roles);
   const storeFacilities     = useCareStore((s) => s.facilities);
   const storeMarketerFacs   = useCareStore((s) => s.marketerFacilities);
+  const storeEntities       = useCareStore((s) => s.entities);
   const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
   const sources   = useMemo(() => Object.values(storeSources),   [storeSources]);
 
@@ -424,7 +461,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     // Special Needs specifics
     sn_age_group: '',
     county: '',
-    services_under_licence: '',
+    entity_id: '',
     code_95: '',
   });
 
@@ -436,20 +473,22 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         if (value !== 'Special Needs') {
           next.sn_age_group = '';
           next.county = '';
-          next.services_under_licence = '';
           next.code_95 = '';
         }
+        // Reset entity_id whenever division changes — both ALF and SPN
+        // re-derive it from a different signal (facility vs. county).
+        next.entity_id = '';
         next.services_requested = [];
         if (value !== 'ALF') next.marketer_id = '';
       }
       if (key === 'county') {
         const lic = getLicenceForCounty(value);
         if (lic === 'WB' || lic === 'WBII') {
-          next.services_under_licence = lic;
+          next.entity_id = findEntityIdByCode(storeEntities, lic) || lic;
         } else if (lic === 'both') {
-          next.services_under_licence = '';
+          next.entity_id = '';
         } else {
-          next.services_under_licence = '';
+          next.entity_id = '';
         }
       }
       if (key === 'facility_id' && value) {
@@ -466,9 +505,33 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         } else if (links.length === 0) {
           next.marketer_id = prev.marketer_id;
         }
+
+        // Auto-derive entity_id from the selected facility. NetworkFacilities
+        // has an `entity_id` column linking to Entities — use it directly so
+        // ALF referrals carry the same entity badge as Special Needs ones.
+        const fac = Object.values(storeNetFacs || {}).find((f) => f.id === value);
+        if (fac) {
+          const eid = fac.entity_id || fac.entity;
+          if (eid) {
+            next.entity_id = eid;
+          } else if (fac.entity_name || fac.entity_display_name) {
+            // Fallback: facility names the entity but doesn't carry the id.
+            // Resolve by name lookup against the Entities table in store.
+            next.entity_id =
+              findEntityIdByCode(storeEntities, fac.entity_name || fac.entity_display_name) ||
+              fac.entity_name ||
+              fac.entity_display_name ||
+              '';
+          } else {
+            next.entity_id = '';
+          }
+        }
       }
       if (key === 'facility_id' && !value) {
         next.marketer_id = '';
+        // Clear the derived entity when facility is unset (ALF flow only —
+        // SPN entity is driven by county which has its own setter).
+        if (prev.division === 'ALF') next.entity_id = '';
       }
       return next;
     });
@@ -505,7 +568,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   }, [onClose]);
 
   const countyLicence = getLicenceForCounty(form.county);
-  const needsLicenceChoice = countyLicence === 'both' && !form.services_under_licence;
+  const needsLicenceChoice = countyLicence === 'both' && !form.entity_id;
 
   function validate() {
     const errs = {};
@@ -534,7 +597,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     if (form.division === 'Special Needs') {
       if (!form.sn_age_group) errs.sn_age_group = 'Required for Special Needs';
       if (!form.county) errs.county = 'Required for Special Needs';
-      if (countyLicence === 'both' && !form.services_under_licence) errs.services_under_licence = 'Choose WB or WBII for this county';
+      if (countyLicence === 'both' && !form.entity_id) errs.entity_id = 'Choose an entity for this county';
     }
     return errs;
   }
@@ -644,7 +707,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ...(appUserId && { intake_owner_id: appUserId }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
         ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
-        ...(form.services_under_licence && { services_under_licence: form.services_under_licence }),
+        ...(form.entity_id && { entity_id: form.entity_id }),
         ...(form.code_95 && { code_95: form.code_95 }),
       };
 
@@ -807,6 +870,18 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                   hasError={!!errors.facility_id}
                 />
                 {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
+
+                {form.facility_id && (() => {
+                  const fac = availableFacilities.find((f) => f.id === form.facility_id);
+                  const eid = fac?.entity_id || fac?.entity;
+                  const label = resolveEntity(eid);
+                  if (!eid || !label || label === '—') return null;
+                  return (
+                    <p style={{ fontSize: 12, fontWeight: 600, color: palette.primaryMagenta.hex, marginTop: 8 }}>
+                      Entity: <strong>{label}</strong>
+                    </p>
+                  );
+                })()}
               </div>
             )}
 
@@ -837,7 +912,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
                 {form.county && countyLicence && countyLicence !== 'both' && (
                   <p style={{ fontSize: 12, fontWeight: 600, color: palette.primaryMagenta.hex, marginTop: 8 }}>
-                    Entity: <strong>{form.services_under_licence}</strong> (auto-assigned for {form.county})
+                    Entity: <strong>{resolveEntity(form.entity_id)}</strong> (auto-assigned for {form.county})
                   </p>
                 )}
 
@@ -845,13 +920,16 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                   <div style={{ marginTop: 8 }}>
                     <Label required>Entity</Label>
                     <Select
-                      value={form.services_under_licence}
-                      onChange={(v) => setField('services_under_licence', v)}
-                      options={[{ value: 'WB', label: 'Wellbound (WB)' }, { value: 'WBII', label: 'Wellbound II (WBII)' }]}
+                      value={form.entity_id}
+                      onChange={(v) => setField('entity_id', v)}
+                      options={[
+                        { value: findEntityIdByCode(storeEntities, 'WB') || 'WB', label: resolveEntity(findEntityIdByCode(storeEntities, 'WB') || 'WB') },
+                        { value: findEntityIdByCode(storeEntities, 'WBII') || 'WBII', label: resolveEntity(findEntityIdByCode(storeEntities, 'WBII') || 'WBII') },
+                      ]}
                       placeholder="Select entity..."
-                      hasError={!!errors.services_under_licence}
+                      hasError={!!errors.entity_id}
                     />
-                    {errors.services_under_licence && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.services_under_licence}</p>}
+                    {errors.entity_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.entity_id}</p>}
                   </div>
                 )}
 
@@ -877,6 +955,32 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               <FieldBox label="Lead Source" required>
                 <Select value={form.referral_source_id} onChange={(v) => setField('referral_source_id', v)} options={sourceOptions} placeholder="Select lead source…" hasError={!!errors.referral_source_id} />
                 {errors.referral_source_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_id}</p>}
+                {form.referral_source_id && form.referral_source_id !== 'other' && (() => {
+                  const src = sources.find((s) => s.id === form.referral_source_id);
+                  if (!src) return null;
+                  const hasType = !!src.type;
+                  const hasEntity = !!(src.source_entity && src.source_entity.trim());
+                  if (!hasType && !hasEntity) return null;
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      {hasType && (
+                        <span style={{
+                          fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: hexToRgba(palette.primaryDeepPlum.hex, 0.1),
+                          color: palette.primaryDeepPlum.hex,
+                          letterSpacing: '0.04em',
+                        }}>
+                          {src.type}
+                        </span>
+                      )}
+                      {hasEntity && (
+                        <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+                          · <strong style={{ color: hexToRgba(palette.backgroundDark.hex, 0.75), fontWeight: 600 }}>{src.source_entity}</strong>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {form.referral_source_id === 'other' && (
                   <div style={{ marginTop: 8 }}>
                     <Input value={form.referral_source_other} onChange={(v) => setField('referral_source_other', v)} placeholder="Describe the lead source…" hasError={!!errors.referral_source_other} />

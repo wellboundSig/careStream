@@ -64,7 +64,7 @@ Table Referrals {
   hchb_entered              checkbox
   created_at                dateTime
   updated_at                dateTime
-  services_under_licence    string    [note: 'WB or WBII based on county']
+  entity_id                 string    [ref: > Entities.id, note: 'Entity used across tables (replaces services_under_licence)']
   sn_age_group              string    [note: 'Adult or Pediatric']
   discard_reason            string
   discard_explanation       string
@@ -75,6 +75,14 @@ Table Referrals {
   clinical_review_decision  string    [note: 'accept, conditional, decline']
   clinical_review_by        string    [ref: > Users.id]
   clinical_review_at        string
+}
+
+Table Entities {
+  id           string  [pk]
+  name         string  [not null]
+  code         string  [note: 'WB / WBII (optional)']
+  created_at   dateTime
+  updated_at   dateTime
 }
 
 Table StageHistory {

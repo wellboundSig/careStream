@@ -48,6 +48,7 @@ import {
 } from '../../../data/policies/authorizationPolicies.js';
 import { determineAllowedServicesByDivision } from '../../../data/policies/serviceAvailabilityPolicies.js';
 import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
+import { generateConflictId } from '../../../utils/conflictFlagging.js';
 import { useAuthorizationData } from './useAuthorizationData.js';
 import { tokens, inputStyle, primaryBtn, secondaryBtn, chipBtn, sectionHeading, cardStyle } from './workspaceStyles.js';
 
@@ -254,7 +255,19 @@ export default function AuthorizationWorkspace({
           createdByUserId: verifierRecordId, // link field — rec id
           details: `Auth denied. Reason: ${denialReason.trim()}${denialNextAction === ROUTING_ACTION.REQUEST_SCA ? '. SCA requested.' : ''}`,
         });
-        await createConflict(record);
+        await createConflict({
+          ...record,
+          id: generateConflictId(),
+          type: CONFLICT_REASON.AUTH_DENIED,
+          severity: 'High',
+          description: record.details || '',
+          status: 'Unaddressed',
+          flagged_by_id: appUserId || 'unknown',
+          // Live schema: these are text fields on Conflicts
+          patient_id: patient?.id,
+          created_by_id: appUserId || 'unknown',
+          conflict_reasons: CONFLICT_REASON.AUTH_DENIED,
+        });
         await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient?.id });
       } catch (err) {
         console.error('Conflict create after denial failed:', err);

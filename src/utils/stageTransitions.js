@@ -14,6 +14,7 @@ export function needsModal(fromStage, toStage) {
   return !!(
     fromRule?.requiresNote ||
     fromRule?.protectedExit ||
+    toStage === 'Conflict' ||
     toStage === 'Hold' ||
     toStage === 'NTUC' ||
     toRule?.destinationPrompt

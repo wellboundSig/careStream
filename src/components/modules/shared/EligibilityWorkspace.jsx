@@ -49,6 +49,7 @@ import {
 } from '../../../data/policies/eligibilityPolicies.js';
 import { suggestNar } from '../../../data/policies/authorizationPolicies.js';
 import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
+import { generateConflictId } from '../../../utils/conflictFlagging.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
 import { tokens, inputStyle, primaryBtn, secondaryBtn, smallActionBtn, sectionHeading, cardStyle, STATUS_PILL_MAP } from './workspaceStyles.js';
@@ -293,7 +294,7 @@ export default function EligibilityWorkspace({
           state={conflictModal}
           onChange={setConflictModal}
           onCancel={() => setConflictModal(null)}
-          onConfirm={async ({ reasons, details, denialStatus }) => {
+          onConfirm={async ({ reasons, details, denialStatus, severity }) => {
             const patientRecordId = patient._id;
             const { record, audit } = buildConflictRecord({
               patientId: patientRecordId,          // link field — Airtable rec id
@@ -304,7 +305,19 @@ export default function EligibilityWorkspace({
               details,
             });
             try {
-              await createConflict(record);
+              await createConflict({
+                ...record,
+                id: generateConflictId(),
+                type: reasons?.[0] || 'other',
+                severity: severity || 'Medium',
+                description: details || '',
+                status: 'Unaddressed',
+                flagged_by_id: appUserId || 'unknown',
+                // Live schema: these are text fields on Conflicts
+                patient_id: patient?.id,
+                created_by_id: appUserId || 'unknown',
+                conflict_reasons: reasons?.join(', ') || '',
+              });
               await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient.id });
               if (conflictModal.insurance) {
                 const realInsId = await ensureRealInsurance(conflictModal.insurance, { patientRecordId });
@@ -322,7 +335,7 @@ export default function EligibilityWorkspace({
                 patientId: patient.id,
                 referralId: referral?.id,
                 detail: `Eligibility to Conflict: ${reasons.join(', ')}`,
-                metadata: { reasons, details: details || null },
+                metadata: { reasons, severity: severity || null, details: details || null },
               });
               setConflictModal(null);
               onInitiateTransition?.(referral, 'Conflict');
@@ -643,7 +656,8 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
   function toggle(r) {
     onChange({ ...state, selectedReasons: selectedReasons.includes(r) ? selectedReasons.filter((x) => x !== r) : [...selectedReasons, r] });
   }
-  const disabled = selectedReasons.length === 0;
+  const [severity, setSeverity] = useState('');
+  const disabled = selectedReasons.length === 0 || !severity || !details?.trim();
   return (
     <div role="dialog" data-testid="conflict-modal" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
@@ -652,7 +666,7 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
       <div style={{ width: 460, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto', borderRadius: 8, background: palette.backgroundLight.hex, padding: 20, border: '1px solid var(--color-border)' }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>Send to Conflict</h3>
         <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-          Select at least one reason.
+          Select at least one reason, choose severity, and add an explanation.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
           {CONFLICT_REASON_OPTIONS.map((r) => (
@@ -672,13 +686,23 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
           </Field>
         )}
         <Field t={t} label="Details (optional)">
-          <textarea value={details} onChange={(e) => onChange({ ...state, details: e.target.value })} rows={3} style={{ ...inputStyle(t), resize: 'vertical' }} placeholder="Context for the team working this conflict." />
+          <textarea value={details} onChange={(e) => onChange({ ...state, details: e.target.value })} rows={3} style={{ ...inputStyle(t), resize: 'vertical' }} placeholder="Required: what’s blocking progress and what the next person should do." />
+        </Field>
+
+        <Field t={t} label="Severity *">
+          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={inputStyle(t)} data-testid="conflict-severity">
+            <option value="" disabled>Select severity…</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
+          </select>
         </Field>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <button onClick={onCancel} style={secondaryBtn(t)}>Cancel</button>
           <button
             data-testid="conflict-confirm"
-            onClick={() => onConfirm({ reasons: selectedReasons, details, denialStatus })}
+            onClick={() => onConfirm({ reasons: selectedReasons, details, denialStatus, severity })}
             disabled={disabled}
             style={primaryBtn(t, { disabled, color: palette.primaryMagenta.hex })}
           >

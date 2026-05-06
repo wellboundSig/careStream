@@ -11,9 +11,11 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function daysInStage(updatedAt) {
-  if (!updatedAt) return 0;
-  return Math.max(0, Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000));
+// Read the metric pre-computed by usePipelineData (single source of truth —
+// see src/utils/referralMetrics.js).
+function daysInStage(referral) {
+  const v = referral?._days_in_stage;
+  return Number.isFinite(v) ? v : 0;
 }
 
 const DATA_COLUMNS = [
@@ -127,7 +129,7 @@ export default function MarketerDataToolsTab({ referrals }) {
             </thead>
             <tbody>
               {filtered.map((ref) => {
-                const days = daysInStage(ref.updated_at);
+                const days = daysInStage(ref);
                 const services = Array.isArray(ref.services_requested) ? ref.services_requested.join(', ') : (ref.services_requested || '—');
                 return (
                   <tr key={ref._id} onDoubleClick={() => openPatient({ id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}`, cursor: 'pointer' }}

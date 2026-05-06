@@ -9,6 +9,7 @@ import { updateReferral } from '../api/referrals.js';
 import { recordTransition } from '../utils/recordTransition.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import QuickNoteModal from '../components/patients/QuickNoteModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
@@ -26,10 +27,11 @@ const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disen
 const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
-  { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'WB or WBII — Wellbound entity based on county' },
+  { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
-  { key: 'days', label: 'Days', tooltip: 'Days the patient has been in their current stage. Turns orange at >14 days to flag overdue referrals.', defaultOn: true, filterable: false },
+  { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter by a number (≥ N).' },
+  { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter by a number (≥ N).' },
   { key: 'marketer',        label: 'Marketer',          defaultOn: true,  filterable: true  },
   { key: 'insurance',       label: 'Insurance',         defaultOn: true,  sortField: 'insurance_plan', filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',     defaultOn: true,  filterable: true  },
@@ -46,9 +48,16 @@ function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function daysInStage(updatedAt) {
-  if (!updatedAt) return null;
-  return Math.max(0, Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86400000));
+// Read pre-computed metrics set by usePipelineData (single source of truth —
+// see src/utils/referralMetrics.js). Returns `null` when the referral hasn't
+// been enriched yet so the cell falls back to em-dash.
+function daysInStage(referral) {
+  const v = referral?._days_in_stage;
+  return Number.isFinite(v) ? v : null;
+}
+function daysInPipeline(referral) {
+  const v = referral?._days_in_pipeline;
+  return Number.isFinite(v) ? v : null;
 }
 
 // ── F2F Countdown cell ─────────────────────────────────────────────────────────
@@ -185,9 +194,15 @@ export default function PatientList() {
   const { division } = useOutletContext();
   const { data: patients, loading: pLoading } = usePatients();
   const { data: enriched, loading: eLoading } = usePipelineData();
-  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician } = useLookups();
+  const {
+    resolveMarketer,
+    resolveSource,
+    resolveFacility,
+    resolvePhysician,
+    resolveEntity = (id) => id || '—',
+  } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
-  const { appUserId } = useCurrentAppUser();
+  const { appUser, appUserId } = useCurrentAppUser();
   const location = useLocation();
   const { can } = usePermissions();
 
@@ -212,7 +227,10 @@ export default function PatientList() {
 
   const colPickerRef = useRef(null);
 
-  const resolvers = useMemo(() => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician }), [resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
+  const resolvers = useMemo(
+    () => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity }),
+    [resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]
+  );
 
   const activeColumns = useMemo(() => COLUMN_DEFS.filter((c) => visibleCols.has(c.key)), [visibleCols]);
 
@@ -251,7 +269,10 @@ export default function PatientList() {
             if (p.division) vals.add(p.division);
             break;
           case 'licence':
-            if (ref?.services_under_licence) vals.add(ref.services_under_licence);
+            if (ref?.entity_id) {
+              const v = resolveEntity(ref.entity_id);
+              if (v && v !== '—') vals.add(v);
+            }
             break;
           case 'stage':
             if (ref?.current_stage) vals.add(ref.current_stage);
@@ -287,7 +308,7 @@ export default function PatientList() {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
+  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]);
 
   const filtered = useMemo(() => {
     let list = patients.filter((p) => {
@@ -306,11 +327,21 @@ export default function PatientList() {
       // Per-column filters
       for (const [key, val] of Object.entries(colFilters)) {
         if (!val.trim()) continue;
+
+        // Numeric "days in …" filters: typing a number means "≥ N days".
+        if (key === 'days_in_stage' || key === 'days_in_pipeline') {
+          const n = parseInt(val.trim(), 10);
+          if (!Number.isFinite(n)) continue;
+          const d = key === 'days_in_stage' ? daysInStage(ref) : daysInPipeline(ref);
+          if (!Number.isFinite(d) || d < n) return false;
+          continue;
+        }
+
         const q = val.toLowerCase();
         let cellVal = '';
         switch (key) {
           case 'division':       cellVal = (p.division || '').toLowerCase(); break;
-          case 'licence':        cellVal = (ref?.services_under_licence || '').toLowerCase(); break;
+          case 'licence':        cellVal = resolveEntity(ref?.entity_id).toLowerCase(); break;
           case 'stage':          cellVal = (ref?.current_stage || '').toLowerCase(); break;
           case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id).toLowerCase(); break;
           case 'insurance':      cellVal = (p.insurance_plan || '').toLowerCase(); break;
@@ -325,6 +356,14 @@ export default function PatientList() {
     });
 
     return [...list].sort((a, b) => {
+      // Numeric sort for the days columns.
+      if (sortField === 'days_in_stage' || sortField === 'days_in_pipeline') {
+        const refA = refByPatientId[a.id];
+        const refB = refByPatientId[b.id];
+        const va = sortField === 'days_in_stage' ? (daysInStage(refA) ?? -1) : (daysInPipeline(refA) ?? -1);
+        const vb = sortField === 'days_in_stage' ? (daysInStage(refB) ?? -1) : (daysInPipeline(refB) ?? -1);
+        return sortDir === 'asc' ? va - vb : vb - va;
+      }
       let va = (a[sortField] || '').toString().toLowerCase();
       let vb = (b[sortField] || '').toString().toLowerCase();
       if (sortField === 'stage') {
@@ -333,7 +372,7 @@ export default function PatientList() {
       }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician]);
+  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]);
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -356,7 +395,7 @@ export default function PatientList() {
     }
   }
 
-  async function executeTransition(referral, patient, toStage, note) {
+  async function executeTransition(referral, patient, toStage, noteOrPayload) {
     if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
     const fromStage = referral.current_stage;
     const enteredAt = new Date().toISOString();
@@ -370,7 +409,40 @@ export default function PatientList() {
       userId: appUserId,
     });
 
+    if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
+      const patientRecordId = patient?._id || referral?.patient?._id;
+      const patientCustomId = patient?.id || referral?.patient_id;
+      const referralCustomId = referral?.id;
+      const createdByUserRecordId = appUser?._id;
+      if (!patientRecordId || !referralCustomId || !createdByUserRecordId) {
+        showToast('Failed to create Conflict record — not moved', 'error');
+        setTransitioning(false);
+        return;
+      }
+      try {
+        await flagConflict({
+          referral,
+          patientRecordId,
+          patientCustomId,
+          referralCustomId,
+          createdByUserRecordId,
+          actorUserId: appUserId,
+          sourceModule: inferConflictSourceModuleFromStage(fromStage),
+          category: noteOrPayload.category,
+          severity: noteOrPayload.severity,
+          description: noteOrPayload.description,
+          origin: 'patient_list',
+        });
+      } catch (err) {
+        console.error('Conflict create failed:', err);
+        showToast('Failed to create Conflict record — not moved', 'error');
+        setTransitioning(false);
+        return;
+      }
+    }
+
     const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
+    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
     if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
     if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     if (wasIntercepted && note) updateFields.ntuc_reason = note;
@@ -532,13 +604,15 @@ export default function PatientList() {
                 ) : (
                   filtered.map((patient) => {
                     const ref = refByPatientId[patient.id];
-                    const days = ref ? daysInStage(ref.updated_at) : null;
+                    const days = ref ? daysInStage(ref) : null;
+                    const totalDays = ref ? daysInPipeline(ref) : null;
                     return (
                       <PatientRow
                         key={patient._id}
                         patient={patient}
                         referral={ref}
                         days={days}
+                        totalDays={totalDays}
                         resolvers={resolvers}
                         activeColumns={activeColumns}
                         onDoubleClick={() => openDrawer(buildPatient(patient), ref || null)}
@@ -624,9 +698,9 @@ export default function PatientList() {
 }
 
 // ── Patient row ────────────────────────────────────────────────────────────────
-function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
+function PatientRow({ patient, referral, days, totalDays, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
-  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician } = resolvers;
+  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity } = resolvers;
 
   const renderCell = (col) => {
     switch (col.key) {
@@ -639,9 +713,9 @@ function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubl
       case 'division':
         return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
       case 'licence': {
-        const lic = referral?.services_under_licence;
-        if (!lic) return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
-        const isWBII = lic === 'WBII';
+        const label = resolveEntity(referral?.entity_id);
+        if (!referral?.entity_id || !label || label === '—') return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        const isWBII = /WBII|WELLBOUND II/i.test(label);
         return (
           <td key="licence" style={{ padding: '11px 14px' }}>
             <span style={{
@@ -650,7 +724,7 @@ function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubl
               background: isWBII ? hexToRgba(palette.accentBlue.hex, 0.14) : hexToRgba(palette.accentGreen.hex, 0.14),
               color: isWBII ? palette.accentBlue.hex : palette.accentGreen.hex,
             }}>
-              {lic}
+              {label}
             </span>
           </td>
         );
@@ -663,16 +737,46 @@ function PatientRow({ patient, referral, days, resolvers, activeColumns, onDoubl
         );
       case 'f2f':
         return <td key="f2f" style={{ padding: '11px 14px' }}><F2FCell referral={referral} /></td>;
-      case 'days':
+      case 'days_in_stage': {
+        if (days === null || days === undefined) {
+          return <td key="days_in_stage" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        }
+        const stageName = referral?.current_stage || 'stage';
+        const color = days > 14 ? palette.primaryMagenta.hex
+          : days > 7 ? palette.accentOrange.hex
+          : hexToRgba(palette.backgroundDark.hex, 0.7);
         return (
-          <td key="days" style={{ padding: '11px 14px' }}>
-            {days !== null ? (
-              <span style={{ fontSize: 12.5, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>
-                {days === 0 ? 'Today' : `${days}d`}
+          <td key="days_in_stage" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+            <span
+              title={`${days} day${days === 1 ? '' : 's'} in ${stageName} stage — resets on every stage change`}
+              style={{ fontSize: 12, color, fontWeight: days > 7 ? 650 : 500 }}
+            >
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{days}</span>
+              <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 400, marginLeft: 4 }}>
+                day{days === 1 ? '' : 's'} in {stageName}
               </span>
-            ) : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>}
+            </span>
           </td>
         );
+      }
+      case 'days_in_pipeline': {
+        if (totalDays === null || totalDays === undefined) {
+          return <td key="days_in_pipeline" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        }
+        return (
+          <td key="days_in_pipeline" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+            <span
+              title={`${totalDays} day${totalDays === 1 ? '' : 's'} in pipeline — since referral was created`}
+              style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), fontWeight: 500 }}
+            >
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{totalDays}</span>
+              <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 400, marginLeft: 4 }}>
+                day{totalDays === 1 ? '' : 's'} in pipeline
+              </span>
+            </span>
+          </td>
+        );
+      }
       case 'marketer':
         return (
           <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>

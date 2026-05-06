@@ -145,6 +145,12 @@ describe('EligibilityTab — conflict modal', () => {
     const confirm = within(modal).getByTestId('conflict-confirm');
     expect(confirm.disabled).toBe(true);
     await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-reason-coverage_not_active')); });
+    // Still disabled until severity + explanation are provided
+    expect(confirm.disabled).toBe(true);
+    await act(async () => {
+      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'Low' } });
+      fireEvent.change(within(modal).getByPlaceholderText(/what’s blocking progress/i), { target: { value: 'Coverage inactive — needs update.' } });
+    });
     expect(confirm.disabled).toBe(false);
   });
 
@@ -157,6 +163,10 @@ describe('EligibilityTab — conflict modal', () => {
     await act(async () => { fireEvent.click(within(card).getByTestId('send-conflict-btn')); });
     const modal = await screen.findByTestId('conflict-modal');
     await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-reason-coverage_not_active')); });
+    await act(async () => {
+      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'Medium' } });
+      fireEvent.change(within(modal).getByPlaceholderText(/what’s blocking progress/i), { target: { value: 'Coverage inactive per portal.' } });
+    });
     await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-confirm')); });
     expect(createConflict).toHaveBeenCalled();
     const payload = createConflict.mock.calls[0][0];

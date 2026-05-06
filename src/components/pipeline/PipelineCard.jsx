@@ -25,27 +25,24 @@ const PRIORITY_COLORS = {
   Low:      hexToRgba(palette.backgroundDark.hex, 0.25),
 };
 
-function daysSince(ts) {
-  if (!ts) return null;
-  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
-}
-
 function fmtDays(n) {
   if (n === null || n === undefined) return '—';
-  return `${Math.max(1, n)}d`;
+  if (n <= 0) return 'Today';
+  return `${n}d`;
 }
 
 export default function PipelineCard({ referral, isDragging, onDragStart, onDragEnd, onContextMenu }) {
   const { open } = usePatientDrawer();
   const [hovered, setHovered] = useState(false);
 
-  // Days since the referral was first submitted (Lead Entry clock — never resets)
-  const daysEntry = daysSince(referral.referral_date);
+  // Days since the referral was first submitted — pipeline clock, NEVER resets.
+  // Pre-computed by usePipelineData so all surfaces share one definition.
+  const daysEntry = referral._days_in_pipeline ?? null;
 
   // Days in the CURRENT stage — resets on every stage change.
-  // stage_entered_at is set by all transition code paths.
-  // Falls back to updated_at for records that predate this field.
-  const daysStage = daysSince(referral.stage_entered_at || referral.updated_at);
+  // Derived from StageHistory (most recent transition into the current stage)
+  // by usePipelineData. Falls back to referral_date when no history exists.
+  const daysStage = referral._days_in_stage ?? null;
 
   const f2fColor  = F2F_URGENCY[referral.f2f_urgency] || null;
   const stageOverdue = daysStage !== null && daysStage > 14;

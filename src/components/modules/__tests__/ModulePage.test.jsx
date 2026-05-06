@@ -175,7 +175,10 @@ describe('ModulePage — Column system', () => {
     expect(headerTexts).toContain('Source');
     expect(headerTexts).toContain('Marketer');
     expect(headerTexts).toContain('Triage');
-    expect(headerTexts).toContain('Days');
+    // The single "Days" column was split into two for independent
+    // sorting + filtering. See utils/columnModel.jsx.
+    expect(headerTexts).toContain('Days in Stage');
+    expect(headerTexts).toContain('Days in Pipeline');
     expect(headerTexts).toContain('F2F');
     expect(headerTexts).toContain('Owner');
     expect(headerTexts).toContain('Insurance');

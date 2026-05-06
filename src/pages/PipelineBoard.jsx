@@ -7,6 +7,7 @@ import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordTransition } from '../utils/recordTransition.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
 import { STAGE_META } from '../data/stageConfig.js';
 
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
@@ -55,7 +56,7 @@ const STATUS_GROUP = {
 export default function PipelineBoard() {
   const { division } = useOutletContext();
   const { data: enriched, loading } = usePipelineData();
-  const { appUserId } = useCurrentAppUser();
+  const { appUser, appUserId } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
   const { can } = usePermissions();
 
@@ -93,7 +94,7 @@ export default function PipelineBoard() {
     }
   }, []);
 
-  function executeTransition(referral, toStage, note) {
+  async function executeTransition(referral, toStage, noteOrPayload) {
     if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
     const fromStage = referral.current_stage;
     setPendingTransition(null);
@@ -105,7 +106,37 @@ export default function PipelineBoard() {
       userId: appUserId,
     });
 
+    if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
+      const patientRecordId = referral?.patient?._id;
+      const patientCustomId = referral?.patient?.id || referral?.patient_id;
+      const referralCustomId = referral?.id;
+      const createdByUserRecordId = appUser?._id;
+      if (!patientRecordId || !referralCustomId || !createdByUserRecordId) {
+        return;
+      }
+      try {
+        await flagConflict({
+          referral,
+          patientRecordId,
+          patientCustomId,
+          referralCustomId,
+          createdByUserRecordId,
+          actorUserId: appUserId,
+          sourceModule: inferConflictSourceModuleFromStage(fromStage),
+          category: noteOrPayload.category,
+          severity: noteOrPayload.severity,
+          description: noteOrPayload.description,
+          origin: 'pipeline_board',
+        });
+      } catch (err) {
+        console.error('Conflict create failed:', err);
+        showToast('Failed to create Conflict record — not moved', 'error');
+        return;
+      }
+    }
+
     const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
+    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
     if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
     if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     if (wasIntercepted && note) updateFields.ntuc_reason = note;

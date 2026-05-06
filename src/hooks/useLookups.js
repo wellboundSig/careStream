@@ -7,14 +7,36 @@ export function prefetchLookups() { /* no-op — store hydration handles this */
 
 // ── Hook ────────────────────────────────────────────────────────────────────
 export function useLookups() {
-  const marketers      = useCareStore((s) => s.marketers);
-  const users          = useCareStore((s) => s.users);
-  const referralSources = useCareStore((s) => s.referralSources);
-  const roles          = useCareStore((s) => s.roles);
-  const facilities     = useCareStore((s) => s.facilities);
-  const physicians     = useCareStore((s) => s.physicians);
-  const patients       = useCareStore((s) => s.patients);
+  const entities       = useCareStore((s) => s.entities) || {};
+  const marketers      = useCareStore((s) => s.marketers) || {};
+  const users          = useCareStore((s) => s.users) || {};
+  const referralSources = useCareStore((s) => s.referralSources) || {};
+  const roles          = useCareStore((s) => s.roles) || {};
+  const facilities     = useCareStore((s) => s.facilities) || {};
+  // NetworkFacilities is a SECOND facilities table used by the ALF lead
+  // picker. Referrals.facility_id can point to either table, so the
+  // resolver must consult both. (Without this, ALF referrals show "—" in
+  // the module page Facility column even though they were associated.)
+  const networkFacilities = useCareStore((s) => s.networkFacilities) || {};
+  const physicians     = useCareStore((s) => s.physicians) || {};
+  const patients       = useCareStore((s) => s.patients) || {};
   const hydrated       = useCareStore((s) => s.hydrated);
+
+  const entityMap = useMemo(() => {
+    const map = {};
+    Object.values(entities).forEach((e) => {
+      const name =
+        e?.name ||
+        e?.entity_name ||
+        e?.display_name ||
+        e?.id ||
+        e?._id;
+      if (!name) return;
+      if (e.id)  map[e.id]  = name;
+      if (e._id) map[e._id] = name;
+    });
+    return map;
+  }, [entities]);
 
   const marketerMap = useMemo(() => {
     const map = {};
@@ -54,13 +76,20 @@ export function useLookups() {
 
   const facilityMap = useMemo(() => {
     const map = {};
+    // Order matters: load Facilities first, then NetworkFacilities. Either
+    // table's ids may appear on a referral, and the resolver must hit both.
     Object.values(facilities).forEach((f) => {
       const name = f.name || f.id;
       if (f.id)  map[f.id]  = name;
       if (f._id) map[f._id] = name;
     });
+    Object.values(networkFacilities).forEach((f) => {
+      const name = f.name || f.id;
+      if (f.id)  map[f.id]  = name;
+      if (f._id) map[f._id] = name;
+    });
     return map;
-  }, [facilities]);
+  }, [facilities, networkFacilities]);
 
   const physicianMap = useMemo(() => {
     const map = {};
@@ -84,6 +113,7 @@ export function useLookups() {
   }, [patients]);
 
   const resolveMarketer  = useMemo(() => (id) => (id && marketerMap[id])  || '—', [marketerMap]);
+  const resolveEntity    = useMemo(() => (id) => (id && entityMap[id])    || '—', [entityMap]);
   const resolveUser      = useMemo(() => (id) => (id && userMap[id])      || '—', [userMap]);
   const resolveSource    = useMemo(() => (id) => (id && sourceMap[id])    || '—', [sourceMap]);
   const resolveRole      = useMemo(() => (id) => (id && roleMap[id])     || '—', [roleMap]);
@@ -92,6 +122,7 @@ export function useLookups() {
   const resolvePatient   = useMemo(() => (id) => (id && patientMap[id])  || id || '—', [patientMap]);
 
   return {
+    resolveEntity,
     resolveMarketer,
     resolveUser,
     resolveSource,

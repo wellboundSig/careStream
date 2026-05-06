@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-04-23T14:27:23.150Z",
+  "fetchedAt": "2026-05-06T19:27:23.784Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -545,13 +545,7 @@
         {
           "id": "fldoE08ikBsxYFqLS",
           "name": "Conflicts",
-          "type": "multipleRecordLinks",
-          "options": {
-            "linkedTableId": "tblgrafsORmZYVY2b",
-            "isReversed": false,
-            "prefersSingleRecordLink": false,
-            "inverseLinkFieldId": "fld3uh1Hau2xjAEHf"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldTw8CyoPkbzmxHC",
@@ -741,6 +735,11 @@
         {
           "id": "fldnZwRpsICa6SgjE",
           "name": "marketer_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldPeDX3jOgZR0h5R",
+          "name": "source_entity",
           "type": "singleLineText"
         }
       ]
@@ -1328,13 +1327,7 @@
         {
           "id": "fldhu62jTK2qOVHKT",
           "name": "Conflicts",
-          "type": "multipleRecordLinks",
-          "options": {
-            "linkedTableId": "tblgrafsORmZYVY2b",
-            "isReversed": false,
-            "prefersSingleRecordLink": false,
-            "inverseLinkFieldId": "fld9fnis9TbEqJl5N"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldl17FlsWS0QyCEx",
@@ -1723,7 +1716,7 @@
         },
         {
           "id": "fld2Os61bSXVY5zrc",
-          "name": "services_under_licence",
+          "name": "entity_id",
           "type": "singleLineText"
         },
         {
@@ -2763,6 +2756,11 @@
                 "id": "selzvrfvNBsqLiOry",
                 "name": "Resolved",
                 "color": "cyanLight2"
+              },
+              {
+                "id": "selsvf9j0UDzVqqaG",
+                "name": "Unaddressed",
+                "color": "tealLight2"
               }
             ]
           }
@@ -2770,21 +2768,7 @@
         {
           "id": "fldU62vWKZLzSeyw6",
           "name": "flagged_by_id",
-          "type": "singleSelect",
-          "options": {
-            "choices": [
-              {
-                "id": "selOHrGaMhJp3LYKq",
-                "name": "usr_002",
-                "color": "blueLight2"
-              },
-              {
-                "id": "sellupDQb4fu2JxmX",
-                "name": "usr_009",
-                "color": "cyanLight2"
-              }
-            ]
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fldxXEMUWFwokXLsh",
@@ -2865,71 +2849,7 @@
         {
           "id": "fldhL1GHNnBjxpL9H",
           "name": "conflict_reasons",
-          "type": "multipleSelects",
-          "options": {
-            "choices": [
-              {
-                "id": "selxedFnDUp2DUfdy",
-                "name": "open_hh_episode",
-                "color": "blueLight2"
-              },
-              {
-                "id": "seljmSpyfZH04F6WM",
-                "name": "hospice_overlap",
-                "color": "cyanLight2"
-              },
-              {
-                "id": "sel2rqJTgeCScikYn",
-                "name": "snf_present",
-                "color": "tealLight2"
-              },
-              {
-                "id": "selTHxF0xoHW7k75R",
-                "name": "cdpap_active",
-                "color": "greenLight2"
-              },
-              {
-                "id": "selGdDThXAqB9ZFvO",
-                "name": "auth_required",
-                "color": "yellowLight2"
-              },
-              {
-                "id": "selHJ87V2fsWUqOKe",
-                "name": "disenrollment_needed",
-                "color": "orangeLight2"
-              },
-              {
-                "id": "selonu4MxAHhdvvhy",
-                "name": "auth_denied",
-                "color": "redLight2"
-              },
-              {
-                "id": "selkGBwZfM7TxME3w",
-                "name": "payer_not_billable",
-                "color": "pinkLight2"
-              },
-              {
-                "id": "selQsPt9YgBEVktkf",
-                "name": "coverage_not_active",
-                "color": "purpleLight2"
-              },
-              {
-                "id": "seleX05tZ4frHRg4P",
-                "name": "order_unclear",
-                "color": "grayLight2"
-              },
-              {
-                "id": "selmB3sQEqMwgKUdg",
-                "name": "service_not_allowed",
-                "color": "blueLight1"
-              },
-              {
-                "id": "selK1DVyTUcvikvEv",
-                "name": "other",
-                "color": "cyanLight1"
-              }
-            ]
-          }
+          "type": "multilineText"
         },
         {
           "id": "fldr57HFqAjhtl50F",
@@ -2984,24 +2904,12 @@
         {
           "id": "fld9fnis9TbEqJl5N",
           "name": "patient_id",
-          "type": "multipleRecordLinks",
-          "options": {
-            "linkedTableId": "tbl2KBf9T24PMwvVj",
-            "isReversed": false,
-            "prefersSingleRecordLink": true,
-            "inverseLinkFieldId": "fldhu62jTK2qOVHKT"
-          }
+          "type": "singleLineText"
         },
         {
           "id": "fld3uh1Hau2xjAEHf",
           "name": "created_by_id",
-          "type": "multipleRecordLinks",
-          "options": {
-            "linkedTableId": "tblsIufqA7e9asJkV",
-            "isReversed": false,
-            "prefersSingleRecordLink": true,
-            "inverseLinkFieldId": "fldoE08ikBsxYFqLS"
-          }
+          "type": "singleLineText"
         }
       ]
     },
@@ -5296,6 +5204,11 @@
           "id": "fld6MGoyAq9pZgtUG",
           "name": "zipcode",
           "type": "singleLineText"
+        },
+        {
+          "id": "fldNMmYpMqx9RkPEs",
+          "name": "entity_id",
+          "type": "singleLineText"
         }
       ]
     },
@@ -7330,6 +7243,23 @@
             },
             "timeZone": "client"
           }
+        }
+      ]
+    },
+    {
+      "id": "tblv7QEAjMgyW0KlQ",
+      "name": "Entities",
+      "primaryFieldId": "fldRQMiIWMiN7b0pX",
+      "fields": [
+        {
+          "id": "fldRQMiIWMiN7b0pX",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldFMtRPqcw7Aotfl",
+          "name": "entity_name",
+          "type": "multilineText"
         }
       ]
     }

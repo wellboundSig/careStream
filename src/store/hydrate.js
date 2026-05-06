@@ -28,6 +28,7 @@ const TABLES = [
   { key: 'opwddChecklistItems', table: 'OPWDDCaseChecklistItems' },
 
   // Lookup / reference tables (small, static-ish)
+  { key: 'entities',           table: 'Entities' },
   { key: 'marketers',          table: 'Marketers' },
   { key: 'users',              table: 'Users' },
   { key: 'referralSources',    table: 'ReferralSources' },

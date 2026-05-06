@@ -74,7 +74,21 @@ async function create(tableName, fields) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || 'Create failed');
+    const msg = err?.error?.message || 'Create failed';
+    try {
+      // eslint-disable-next-line no-console
+      console.error('[airtable.create] failed', {
+        table: tableName,
+        status: res.status,
+        airtableError: err?.error || err,
+        fields,
+      });
+    } catch {}
+    const error = new Error(`[${tableName}] ${msg}`);
+    error.airtable = err?.error || err;
+    error.table = tableName;
+    error.fields = fields;
+    throw error;
   }
   return res.json();
 }
@@ -90,7 +104,23 @@ async function update(tableName, recordId, fields) {
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || 'Update failed');
+    const msg = err?.error?.message || 'Update failed';
+    try {
+      // eslint-disable-next-line no-console
+      console.error('[airtable.update] failed', {
+        table: tableName,
+        recordId,
+        status: res.status,
+        airtableError: err?.error || err,
+        fields,
+      });
+    } catch {}
+    const error = new Error(`[${tableName}] ${msg}`);
+    error.airtable = err?.error || err;
+    error.table = tableName;
+    error.recordId = recordId;
+    error.fields = fields;
+    throw error;
   }
   return res.json();
 }

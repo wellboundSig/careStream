@@ -287,9 +287,19 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
     const ts = new Date().toISOString();
     const fields = { current_stage: 'Intake', intake_owner_id: ownerId, updated_at: ts };
     updateReferralOptimistic(selectedReferral._id, fields)
-      .then(() => { console.log('[LeadEntry] Promoted to Intake successfully'); })
-      .catch((err) => { console.error('[LeadEntry] Promote failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
-    recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Intake', note: `Promoted to Intake. Owner assigned: ${ownerId}`, authorId: appUserId });
+      .then(() => { console.log('[LeadEntry] Moved to Intake successfully'); })
+      .catch((err) => { console.error('[LeadEntry] Move failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
+    // Resolve the staff member's display name so the timeline note never
+    // surfaces a raw `usr_###` id to a clinical/business reader.
+    const ownerUser = Object.values(useCareStore.getState().users || {}).find((u) => u.id === ownerId);
+    const ownerName = ownerUser ? `${ownerUser.first_name || ''} ${ownerUser.last_name || ''}`.trim() : ownerId;
+    recordTransition({
+      referral: selectedReferral,
+      fromStage: 'Lead Entry',
+      toStage: 'Intake',
+      note: `Owner assigned: ${ownerName}`,
+      authorId: appUserId,
+    });
     triggerDataRefresh();
     onSelectedReferralLeftModule?.();
     setShowPromote(false);

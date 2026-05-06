@@ -68,7 +68,7 @@ function makeReferral(overrides = {}) {
     referral_date: '2026-03-15T00:00:00.000Z',
     created_at: '2026-03-15T00:00:00.000Z',
     updated_at: '2026-03-15T00:00:00.000Z',
-    services_under_licence: 'WB',
+    entity_id: 'WB',
     ...overrides,
   };
 }
@@ -78,6 +78,10 @@ function seedStore(patientOvr = {}, referralOvr = {}) {
   const referral = makeReferral(referralOvr);
   setStore({
     hydrated: true,
+    entities: {
+      rec_ent_wb:   { _id: 'rec_ent_wb',   id: 'WB',   name: 'Wellbound (WB)' },
+      rec_ent_wbii: { _id: 'rec_ent_wbii', id: 'WBII', name: 'Wellbound II (WBII)' },
+    },
     patients: { [patient._id]: patient },
     referrals: { [referral._id]: referral },
     notes: {}, tasks: {}, stageHistory: {},
@@ -108,7 +112,7 @@ describe('FLOW 1: ALF happy path — Lead Entry to SOC Completed', () => {
     // Verify starting state
     expect(getRefStage()).toBe('Lead Entry');
     expect(getPatient().first_name).toBe('Maria');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
 
     // Step 1: Promote to Intake — assign owner
     await move('Intake', { intake_owner_id: 'usr_intake_01' });
@@ -181,12 +185,12 @@ describe('FLOW 2: Special Needs with OPWDD enrollment', () => {
     vi.clearAllMocks();
     seedStore(
       { division: 'Special Needs', county: 'Bronx' },
-      { division: 'Special Needs', current_stage: 'Lead Entry', code_95: 'no', services_under_licence: 'WBII' },
+      { division: 'Special Needs', current_stage: 'Lead Entry', code_95: 'no', entity_id: 'WBII' },
     );
   });
 
   it('routes through OPWDD, then back to Intake and through full pipeline', async () => {
-    expect(getRef().services_under_licence).toBe('WBII');
+    expect(getRef().entity_id).toBe('WBII');
     expect(getRef().code_95).toBe('no');
 
     // Lead Entry → OPWDD Enrollment (Code 95 = No)
@@ -481,18 +485,18 @@ describe('FLOW 8: Data integrity across transitions', () => {
     expect(getRef().intake_owner_id).toBe('usr_intake_01');
   });
 
-  it('services_under_licence (WB/WBII) persists through all transitions', async () => {
-    expect(getRef().services_under_licence).toBe('WB');
+  it('entity_id (WB/WBII) persists through all transitions', async () => {
+    expect(getRef().entity_id).toBe('WB');
     await move('Intake');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
     await move('Eligibility Verification');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
     await move('F2F/MD Orders Pending');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
     await move('Clinical Intake RN Review');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
     await move('Staffing Feasibility');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
   });
 });
 
@@ -855,14 +859,14 @@ describe('FLOW 15: Config and navigation consistency', () => {
     expect(ALL_STAGES.sort()).toEqual(Object.keys(STAGE_SLUGS).sort());
   });
 
-  it('services_under_licence field is on the referral fixture', () => {
+  it('entity_id field is on the referral fixture', () => {
     seedStore();
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
   });
 
-  it('WB and WBII both work as licence values', () => {
-    seedStore({}, { services_under_licence: 'WBII' });
-    expect(getRef().services_under_licence).toBe('WBII');
+  it('WB and WBII both work as entity_id values', () => {
+    seedStore({}, { entity_id: 'WBII' });
+    expect(getRef().entity_id).toBe('WBII');
   });
 });
 
@@ -876,8 +880,8 @@ describe('FLOW 16: Division-based data segmentation', () => {
     vi.clearAllMocks();
     const pat1 = makePatient({ _id: 'rec_p1', id: 'pat_alf', division: 'ALF' });
     const pat2 = makePatient({ _id: 'rec_p2', id: 'pat_spn', division: 'Special Needs', first_name: 'James' });
-    const ref1 = makeReferral({ _id: 'rec_r1', id: 'ref_alf', patient_id: 'pat_alf', division: 'ALF', services_under_licence: 'WB' });
-    const ref2 = makeReferral({ _id: 'rec_r2', id: 'ref_spn', patient_id: 'pat_spn', division: 'Special Needs', services_under_licence: 'WBII' });
+    const ref1 = makeReferral({ _id: 'rec_r1', id: 'ref_alf', patient_id: 'pat_alf', division: 'ALF', entity_id: 'WB' });
+    const ref2 = makeReferral({ _id: 'rec_r2', id: 'ref_spn', patient_id: 'pat_spn', division: 'Special Needs', entity_id: 'WBII' });
     setStore({
       hydrated: true,
       patients: { [pat1._id]: pat1, [pat2._id]: pat2 },
@@ -894,7 +898,7 @@ describe('FLOW 16: Division-based data segmentation', () => {
     const alfRefs = refs.filter((r) => r.division === 'ALF');
     expect(alfRefs.length).toBe(1);
     expect(alfRefs[0].id).toBe('ref_alf');
-    expect(alfRefs[0].services_under_licence).toBe('WB');
+    expect(alfRefs[0].entity_id).toBe('WB');
   });
 
   it('Special Needs filter returns only SPN referrals', () => {
@@ -902,7 +906,7 @@ describe('FLOW 16: Division-based data segmentation', () => {
     const spnRefs = refs.filter((r) => r.division === 'Special Needs');
     expect(spnRefs.length).toBe(1);
     expect(spnRefs[0].id).toBe('ref_spn');
-    expect(spnRefs[0].services_under_licence).toBe('WBII');
+    expect(spnRefs[0].entity_id).toBe('WBII');
   });
 
   it('All division returns both', () => {
@@ -1020,11 +1024,11 @@ describe('FLOW 19: StageHistory records are created', () => {
 // Verifies the licence field can be set and persists
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('FLOW 20: WB/WBII licence field handling', () => {
+describe('FLOW 20: WB/WBII entity_id field handling', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('WB licence persists through complete ALF pipeline', async () => {
-    seedStore({}, { services_under_licence: 'WB' });
+  it('WB entity_id persists through complete ALF pipeline', async () => {
+    seedStore({}, { entity_id: 'WB' });
     await move('Intake');
     await move('Eligibility Verification');
     await move('F2F/MD Orders Pending');
@@ -1034,13 +1038,13 @@ describe('FLOW 20: WB/WBII licence field handling', () => {
     await move('Pre-SOC');
     await move('SOC Scheduled');
     await move('SOC Completed');
-    expect(getRef().services_under_licence).toBe('WB');
+    expect(getRef().entity_id).toBe('WB');
   });
 
-  it('WBII licence persists through complete SPN pipeline', async () => {
+  it('WBII entity_id persists through complete SPN pipeline', async () => {
     seedStore(
       { division: 'Special Needs' },
-      { division: 'Special Needs', services_under_licence: 'WBII' },
+      { division: 'Special Needs', entity_id: 'WBII' },
     );
     await move('Intake');
     await move('Eligibility Verification');
@@ -1051,23 +1055,23 @@ describe('FLOW 20: WB/WBII licence field handling', () => {
     await move('Pre-SOC');
     await move('SOC Scheduled');
     await move('SOC Completed');
-    expect(getRef().services_under_licence).toBe('WBII');
+    expect(getRef().entity_id).toBe('WBII');
   });
 
-  it('licence can be updated mid-pipeline if county changes', async () => {
-    seedStore({}, { services_under_licence: 'WB' });
+  it('entity_id can be updated mid-pipeline if county changes', async () => {
+    seedStore({}, { entity_id: 'WB' });
     await move('Intake');
-    await updateReferralOptimistic('rec_ref1', { services_under_licence: 'WBII' });
-    expect(getRef().services_under_licence).toBe('WBII');
+    await updateReferralOptimistic('rec_ref1', { entity_id: 'WBII' });
+    expect(getRef().entity_id).toBe('WBII');
     await move('Eligibility Verification');
-    expect(getRef().services_under_licence).toBe('WBII');
+    expect(getRef().entity_id).toBe('WBII');
   });
 
-  it('referral without licence field still works', async () => {
-    seedStore({}, { services_under_licence: undefined });
+  it('referral without entity_id field still works', async () => {
+    seedStore({}, { entity_id: undefined });
     await move('Intake');
     expect(getRefStage()).toBe('Intake');
-    expect(getRef().services_under_licence).toBeUndefined();
+    expect(getRef().entity_id).toBeUndefined();
   });
 });
 

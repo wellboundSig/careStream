@@ -383,13 +383,13 @@ describe('NewReferralForm — Services conditional on division', () => {
   });
 });
 
-describe('NewReferralForm — services_under_licence in submission', () => {
+describe('NewReferralForm — entity_id in submission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCan.mockReturnValue(true);
   });
 
-  it('sends services_under_licence=WB for Kings county', async () => {
+  it('sends entity_id=WB for Kings county', async () => {
     renderForm();
     selectDivision('Special Needs');
     selectAgeGroup('Adult');
@@ -420,7 +420,7 @@ describe('NewReferralForm — services_under_licence in submission', () => {
     });
 
     const payload = createReferral.mock.calls[0][0];
-    expect(payload.services_under_licence).toBe('WB');
+    expect(payload.entity_id).toBe('WB');
     expect(payload.sn_age_group).toBe('Adult');
   });
 
@@ -458,7 +458,7 @@ describe('NewReferralForm — services_under_licence in submission', () => {
     });
 
     const payload = createReferral.mock.calls[0][0];
-    expect(payload.services_under_licence).toBe('WBII');
+    expect(payload.entity_id).toBe('WBII');
     expect(payload.sn_age_group).toBe('Pediatric');
   });
 });

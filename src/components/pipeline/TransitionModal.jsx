@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { CONFLICT_REASON_OPTIONS } from '../../data/eligibilityEnums.js';
+import { CONFLICT_SEVERITY_OPTIONS } from '../../utils/conflictFlagging.js';
 
 export default function TransitionModal({ referral, toStage, onConfirm, onCancel, loading }) {
   const [note, setNote] = useState('');
+  const [conflictCategory, setConflictCategory] = useState('');
+  const [conflictSeverity, setConflictSeverity] = useState('');
+  const [conflictDescription, setConflictDescription] = useState('');
   const textareaRef = useRef(null);
 
   const fromStage = referral.current_stage;
@@ -14,12 +19,16 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
 
   const noteRequired =
     fromRule?.requiresNote ||
+    toStage === 'Conflict' ||
     toStage === 'Hold' ||
     toStage === 'NTUC' ||
     !!destinationPrompt;
 
   const isProtected = fromRule?.protectedExit || fromRule?.requiresPermission;
-  const canConfirm = !noteRequired || note.trim().length > 0;
+  const canConfirm =
+    toStage === 'Conflict'
+      ? !!(conflictCategory && conflictSeverity && conflictDescription.trim())
+      : !noteRequired || note.trim().length > 0;
 
   useEffect(() => {
     if (textareaRef.current) textareaRef.current.focus();
@@ -34,6 +43,7 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
   }, [onCancel]);
 
   const labelFor =
+    toStage === 'Conflict' ? 'Explanation' :
     toStage === 'Hold' ? 'Hold reason' :
     toStage === 'NTUC' ? 'NTUC reason' :
     destinationPrompt  ? 'Required note' :
@@ -138,57 +148,142 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
             </div>
           )}
 
-          <label
-            style={{
-              display: 'block',
-              fontSize: 12,
-              fontWeight: 650,
-              color: hexToRgba(palette.backgroundDark.hex, 0.6),
-              marginBottom: 6,
-              letterSpacing: '0.02em',
-            }}
-          >
-            {labelFor}
-            {noteRequired && (
-              <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>
-            )}
-          </label>
+          {toStage === 'Conflict' ? (
+            <>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 6, letterSpacing: '0.02em' }}>
+                Category <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>
+              </label>
+              <select
+                value={conflictCategory}
+                onChange={(e) => setConflictCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 10px',
+                  borderRadius: 8,
+                  border: `1px solid var(--color-border)`,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.02),
+                  fontSize: 13,
+                  color: palette.backgroundDark.hex,
+                  outline: 'none',
+                  marginBottom: 10,
+                }}
+              >
+                <option value="" disabled>Select a category…</option>
+                {CONFLICT_REASON_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
 
-          <textarea
-            ref={textareaRef}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={
-              toStage === 'Hold'
-                ? 'Describe why this patient is being placed on hold and the expected resolution...'
-                : toStage === 'NTUC'
-                ? 'Provide the structured NTUC reason (e.g. No staffing, Insurance denied, Patient declined)...'
-                : destinationPrompt
-                ? destinationPrompt
-                : 'Describe the reason for this transition...'
-            }
-            rows={destinationPrompt ? 7 : 4}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: `1px solid var(--color-border)`,
-              background: hexToRgba(palette.backgroundDark.hex, 0.03),
-              fontSize: 13,
-              color: palette.backgroundDark.hex,
-              resize: 'vertical',
-              outline: 'none',
-              lineHeight: 1.5,
-              transition: 'border-color 0.15s',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-            onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
-          />
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 6, letterSpacing: '0.02em' }}>
+                Severity <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>
+              </label>
+              <select
+                value={conflictSeverity}
+                onChange={(e) => setConflictSeverity(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 10px',
+                  borderRadius: 8,
+                  border: `1px solid var(--color-border)`,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.02),
+                  fontSize: 13,
+                  color: palette.backgroundDark.hex,
+                  outline: 'none',
+                  marginBottom: 10,
+                }}
+              >
+                <option value="" disabled>Select severity…</option>
+                {CONFLICT_SEVERITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
 
-          {noteRequired && note.trim().length === 0 && (
-            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5 }}>
-              A note is required for this transition.
-            </p>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 6, letterSpacing: '0.02em' }}>
+                {labelFor} <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>
+              </label>
+              <textarea
+                ref={textareaRef}
+                value={conflictDescription}
+                onChange={(e) => setConflictDescription(e.target.value)}
+                placeholder="Briefly explain what’s blocking progress and what the next person should do."
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid var(--color-border)`,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.03),
+                  fontSize: 13,
+                  color: palette.backgroundDark.hex,
+                  resize: 'vertical',
+                  outline: 'none',
+                  lineHeight: 1.5,
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
+              />
+              {(!conflictCategory || !conflictSeverity || !conflictDescription.trim()) && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5 }}>
+                  Category, severity, and explanation are required to send to Conflict.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  fontWeight: 650,
+                  color: hexToRgba(palette.backgroundDark.hex, 0.6),
+                  marginBottom: 6,
+                  letterSpacing: '0.02em',
+                }}
+              >
+                {labelFor}
+                {noteRequired && (
+                  <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>
+                )}
+              </label>
+
+              <textarea
+                ref={textareaRef}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={
+                  toStage === 'Hold'
+                    ? 'Describe why this patient is being placed on hold and the expected resolution...'
+                    : toStage === 'NTUC'
+                    ? 'Provide the structured NTUC reason (e.g. No staffing, Insurance denied, Patient declined)...'
+                    : destinationPrompt
+                    ? destinationPrompt
+                    : 'Describe the reason for this transition...'
+                }
+                rows={destinationPrompt ? 7 : 4}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid var(--color-border)`,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.03),
+                  fontSize: 13,
+                  color: palette.backgroundDark.hex,
+                  resize: 'vertical',
+                  outline: 'none',
+                  lineHeight: 1.5,
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+                onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
+              />
+
+              {noteRequired && note.trim().length === 0 && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5 }}>
+                  A note is required for this transition.
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -216,7 +311,18 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
             Cancel
           </button>
           <button
-            onClick={() => canConfirm && onConfirm(note.trim())}
+            onClick={() => {
+              if (!canConfirm) return;
+              if (toStage === 'Conflict') {
+                onConfirm({
+                  category: conflictCategory,
+                  severity: conflictSeverity,
+                  description: conflictDescription.trim(),
+                });
+              } else {
+                onConfirm(note.trim());
+              }
+            }}
             disabled={!canConfirm || loading}
             style={{
               padding: '9px 22px',
@@ -235,7 +341,7 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
               transition: 'background 0.15s, opacity 0.15s',
             }}
           >
-            {loading ? 'Moving...' : `Move to ${toStage}`}
+            {loading ? 'Working...' : (toStage === 'Conflict' ? 'Send to Conflict' : `Move to ${toStage}`)}
           </button>
         </div>
       </div>

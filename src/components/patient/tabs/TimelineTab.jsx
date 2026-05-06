@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getStageHistory } from '../../../api/stageHistory.js';
 import { getNotesByPatient } from '../../../api/notes.js';
+import { getConflictsByReferral } from '../../../api/conflicts.js';
 import { getTriageAdult, getTriagePediatric } from '../../../api/triage.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
+import { conflictCategoryLabel } from '../../../utils/conflictFlagging.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -22,11 +24,24 @@ function calcAge(dob) {
   return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 
+// Replace bare `usr_###` tokens in free text with the resolved user name.
+// Historical notes (e.g. "Owner assigned: usr_006") were written before
+// the codebase started resolving names at write time. Sanitizing at
+// render time keeps human-facing text human, with no data migration.
+function humanizeUserIds(text, resolveUser) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/\busr_[A-Za-z0-9_-]+\b/g, (id) => {
+    const name = resolveUser?.(id);
+    return name && name !== '—' ? name : id;
+  });
+}
+
 export default function TimelineTab({ patient, referral }) {
   const { resolveUser, resolveMarketer } = useLookups();
   const { appUserId } = useCurrentAppUser();
   const [history, setHistory]   = useState([]);
   const [notes, setNotes]       = useState([]);
+  const [conflicts, setConflicts] = useState([]);
   const [triage, setTriage]     = useState(null);
   const [loading, setLoading]   = useState(true);
 
@@ -48,6 +63,12 @@ export default function TimelineTab({ patient, referral }) {
       .then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields })))
       .catch(() => []);
 
+    const conflictFetch = referral?.id
+      ? getConflictsByReferral(referral.id)
+          .then((recs) => recs.map((r) => ({ _id: r.id, ...r.fields })))
+          .catch(() => [])
+      : Promise.resolve([]);
+
     // Fetch triage record for Special Needs patients so we can mark completion
     const triageFetch = (isSpecialNeeds && referral?.id)
       ? (isPediatric ? getTriagePediatric : getTriageAdult)(referral.id)
@@ -55,10 +76,77 @@ export default function TimelineTab({ patient, referral }) {
           .catch(() => null)
       : Promise.resolve(null);
 
-    Promise.all([histFetch, noteFetch, triageFetch])
-      .then(([hist, nts, tri]) => { setHistory(hist); setNotes(nts); setTriage(tri); })
+    Promise.all([histFetch, noteFetch, conflictFetch, triageFetch])
+      .then(([hist, nts, cflicts, tri]) => {
+        setHistory(hist);
+        setNotes(nts);
+        setConflicts(cflicts);
+        setTriage(tri);
+      })
       .finally(() => setLoading(false));
   }, [patient?.id, referral?.id, isSpecialNeeds, isPediatric]);
+
+  // ── Stage-transition notes ───────────────────────────────────────────────
+  // `recordTransition` writes BOTH a StageHistory row AND a Note formatted
+  // like `[Lead Entry → Intake]\n<reason>`. To avoid showing two entries
+  // for one transition (and to drop the misleading "Note added" header),
+  // we parse stage-transition notes and merge them into the corresponding
+  // StageHistory entry. Plain (non-transition) notes still render normally.
+  function parseStageTransitionNote(content) {
+    if (!content) return null;
+    const m = content.match(/^\[([^\]]+?)\s*(?:→|->)\s*([^\]]+?)\]\s*\n?([\s\S]*)$/);
+    if (!m) return null;
+    return { fromStage: m[1].trim(), toStage: m[2].trim(), body: (m[3] || '').trim() };
+  }
+
+  const stageNotes = [];
+  const plainNotes = [];
+  for (const n of notes) {
+    const parsed = parseStageTransitionNote(n.content);
+    if (parsed) stageNotes.push({ note: n, ...parsed });
+    else plainNotes.push(n);
+  }
+
+  const matchedNoteIds = new Set();
+  const stageEntries = history.map((h) => {
+    const histTime = new Date(h.timestamp || 0).getTime();
+    const match = stageNotes.find(
+      (sn) =>
+        !matchedNoteIds.has(sn.note._id) &&
+        sn.toStage === h.to_stage &&
+        Math.abs(new Date(sn.note.created_at || 0).getTime() - histTime) < 60_000,
+    );
+    if (match) matchedNoteIds.add(match.note._id);
+    return {
+      _id: h._id,
+      type: 'stage',
+      timestamp: h.timestamp,
+      title: h.to_stage
+        ? `Stage change: ${h.from_stage || '—'} → ${h.to_stage}`
+        : 'Stage updated',
+      // Render any reason text as expandable body (same look as a note)
+      noteContent: match?.body || h.reason || null,
+      actor: match?.note.author_id || h.changed_by_id || null,
+      fromStage: h.from_stage || null,
+      toStage: h.to_stage || null,
+    };
+  });
+
+  // Stage-transition notes that didn't pair with a StageHistory row
+  // (e.g. history failed to write, or ordering is off). Show them anyway
+  // so the user never loses the audit trail.
+  const orphanStageNotes = stageNotes
+    .filter((sn) => !matchedNoteIds.has(sn.note._id))
+    .map((sn) => ({
+      _id: sn.note._id,
+      type: 'stage',
+      timestamp: sn.note.created_at,
+      title: `Stage change: ${sn.fromStage} → ${sn.toStage}`,
+      noteContent: sn.body || null,
+      actor: sn.note.author_id || null,
+      fromStage: sn.fromStage,
+      toStage: sn.toStage,
+    }));
 
   const entries = [
     // Referral created — actor is a marketer, resolve with resolveMarketer
@@ -72,18 +160,12 @@ export default function TimelineTab({ patient, referral }) {
       actorResolved: referral.marketer_id ? resolveMarketer(referral.marketer_id) : null,
     }] : []),
 
-    // Stage transitions
-    ...history.map((h) => ({
-      _id: h._id,
-      type: 'stage',
-      timestamp: h.timestamp,
-      title: h.to_stage ? `→ ${h.to_stage}` : 'Stage updated',
-      detail: h.reason || null,
-      actor: h.changed_by_id || null,
-    })),
+    // Stage transitions (StageHistory + paired notes)
+    ...stageEntries,
+    ...orphanStageNotes,
 
-    // Notes
-    ...notes.map((n) => ({
+    // Plain notes (not stage-transition notes)
+    ...plainNotes.map((n) => ({
       _id: n._id,
       type: 'note',
       timestamp: n.created_at,
@@ -91,6 +173,36 @@ export default function TimelineTab({ patient, referral }) {
       noteContent: n.content,
       actor: n.author_id,
     })),
+
+    // Conflicts (flagged + resolved)
+    ...conflicts.flatMap((c) => {
+      const categoryLabel = conflictCategoryLabel(c.type);
+      const description   = c.description || c.details || '';
+      const out = [{
+        _id: `conflict-flagged-${c._id}`,
+        type: 'conflict',
+        timestamp: c.created_at,
+        title: `${categoryLabel} conflict`,
+        detail: c.severity ? `Severity: ${c.severity}` : null,
+        noteContent: description || null,
+        actor: c.flagged_by_id || c.created_by_id || null,
+        severity: c.severity || null,
+        status: c.status || 'Unaddressed',
+      }];
+      if (c.resolved_at && (c.status === 'Resolved' || c.status === 'Waived')) {
+        out.push({
+          _id: `conflict-resolved-${c._id}`,
+          type: 'conflict-resolved',
+          timestamp: c.resolved_at,
+          title: `${categoryLabel} conflict ${c.status === 'Waived' ? 'waived' : 'resolved'}`,
+          // Render the resolution note as expandable body content (same look
+          // as a Note entry) so the full text is visible on the timeline.
+          noteContent: c.resolution_note || null,
+          actor: c.resolved_by_id || null,
+        });
+      }
+      return out;
+    }),
 
     // Triage milestone — only for Special Needs patients that have a completed form
     ...(triage?.created_at ? [{
@@ -141,32 +253,55 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
   const actorName = entry.actorResolved || (entry.actor ? resolveUser(entry.actor) : null);
   const isMe = entry.actor === appUserId;
 
-  const isMilestone = entry.type === 'milestone';
-  const isNote      = entry.type === 'note';
+  const isMilestone       = entry.type === 'milestone';
+  const isNote            = entry.type === 'note';
+  const isStage           = entry.type === 'stage';
+  const isConflict        = entry.type === 'conflict';
+  const isConflictResolved = entry.type === 'conflict-resolved';
 
   const dotColor =
-    isMilestone      ? palette.accentGreen.hex :
-    isNote           ? palette.accentBlue.hex :
+    isConflict         ? palette.primaryMagenta.hex :
+    isConflictResolved ? palette.accentGreen.hex :
+    isMilestone        ? palette.accentGreen.hex :
+    isNote             ? palette.accentBlue.hex :
+    isStage            ? palette.primaryDeepPlum.hex :
     entry.type === 'referral' ? palette.accentGreen.hex :
     palette.primaryMagenta.hex;
 
-  const hasLongContent = isNote && (entry.noteContent || '').length > 120;
+  const hasLongContent = (isNote || isStage || isConflict || isConflictResolved) && (entry.noteContent || '').length > 120;
+
+  const isFilledDot = isMilestone || isConflict || isConflictResolved || isStage;
 
   return (
     <div style={{ display: 'flex', gap: 14, paddingBottom: isLast ? 0 : 22, position: 'relative' }}>
       {/* Dot */}
       <div style={{
-        width: isMilestone ? 32 : 28,
-        height: isMilestone ? 32 : 28,
+        width: isFilledDot ? 32 : 28,
+        height: isFilledDot ? 32 : 28,
         borderRadius: '50%', flexShrink: 0,
-        background: isMilestone ? dotColor : palette.backgroundLight.hex,
-        border: `2px solid ${isMilestone ? dotColor : hexToRgba(dotColor, 0.4)}`,
+        background: isFilledDot ? dotColor : palette.backgroundLight.hex,
+        border: `2px solid ${isFilledDot ? dotColor : hexToRgba(dotColor, 0.4)}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1, marginTop: 1,
-        marginLeft: isMilestone ? -2 : 0,
-        boxShadow: isMilestone ? `0 0 0 3px ${hexToRgba(dotColor, 0.18)}` : 'none',
+        marginLeft: isFilledDot ? -2 : 0,
+        boxShadow: isFilledDot ? `0 0 0 3px ${hexToRgba(dotColor, 0.18)}` : 'none',
       }}>
-        {isMilestone ? (
+        {isConflict ? (
+          // Triangle-with-bang icon for active conflict
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3l10 18H2L12 3z" stroke="#fff" strokeWidth="2.2" strokeLinejoin="round"/>
+            <path d="M12 10v5M12 18.5v.01" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+        ) : isConflictResolved ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ) : isStage ? (
+          // Right-arrow icon for a stage change
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M13 5l7 7-7 7" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ) : isMilestone ? (
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
             <path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -187,24 +322,51 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, paddingTop: isMilestone ? 5 : 3 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: isNote ? 6 : 2 }}>
-          <p style={{
-            fontSize: isMilestone ? 13.5 : 13,
-            fontWeight: isMilestone ? 700 : 650,
-            color: isMilestone ? dotColor : palette.backgroundDark.hex,
-            lineHeight: 1.3,
-          }}>
-            {entry.title}
-          </p>
+      <div style={{ flex: 1, paddingTop: isFilledDot ? 5 : 3 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: isNote || isStage || isConflict ? 6 : 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <p style={{
+              fontSize: isFilledDot ? 13.5 : 13,
+              fontWeight: isFilledDot ? 700 : 650,
+              color: isFilledDot ? dotColor : palette.backgroundDark.hex,
+              lineHeight: 1.3,
+            }}>
+              {entry.title}
+            </p>
+            {isConflict && entry.severity && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+                color: palette.primaryMagenta.hex,
+                letterSpacing: '0.04em',
+              }}>
+                {entry.severity}
+              </span>
+            )}
+            {isConflict && entry.status && entry.status !== 'Unaddressed' && entry.status !== 'Open' && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
+                background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                letterSpacing: '0.04em',
+              }}>
+                {entry.status}
+              </span>
+            )}
+          </div>
           <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.38), whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtFull(entry.timestamp)}</p>
         </div>
 
-        {/* Note content */}
-        {isNote && entry.noteContent && (
+        {/* Note / stage / conflict / resolution description content */}
+        {(isNote || isStage || isConflict || isConflictResolved) && entry.noteContent && (
           <div style={{ marginBottom: 5 }}>
+            {isConflictResolved && (
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>
+                Resolution note
+              </p>
+            )}
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', display: expanded ? 'block' : '-webkit-box', WebkitLineClamp: expanded ? undefined : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {entry.noteContent}
+              {humanizeUserIds(entry.noteContent, resolveUser)}
             </p>
             {hasLongContent && (
               <button onClick={() => setExpanded((e) => !e)} style={{ fontSize: 11.5, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}>
@@ -214,8 +376,8 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
           </div>
         )}
 
-        {/* Stage / milestone detail */}
-        {!isNote && entry.detail && (
+        {/* Milestone / referral detail (non-note, non-conflict, non-stage types) */}
+        {!isNote && !isStage && !isConflict && !isConflictResolved && entry.detail && (
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.4, marginBottom: 4, fontStyle: 'italic' }}>{entry.detail}</p>
         )}
 
