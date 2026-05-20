@@ -6,7 +6,9 @@ import { getEsperClinicians, getDeviceLocations } from '../api/esper.js';
 // Cache is considered valid for the rest of the calendar day it was fetched.
 // At midnight (new calendar date) the next fetch will hit the API.
 
-const CACHE_KEY = 'cs_clinicians_v1';
+// Bumped to v2 when the shape was enriched with hardware/software/network info.
+// Older v1 entries are silently ignored.
+const CACHE_KEY = 'cs_clinicians_v2';
 
 function isCacheValid(stored) {
   if (!stored?.data?.length || !stored?.cachedAt) return false;
@@ -91,6 +93,8 @@ export function refreshClinicians() {
   _cachedAt = null;
   _error    = null;
   localStorage.removeItem(CACHE_KEY);
+  // Best-effort cleanup of any older cache versions.
+  try { localStorage.removeItem('cs_clinicians_v1'); } catch {}
   return doFetch();
 }
 
