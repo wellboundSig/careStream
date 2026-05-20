@@ -7,9 +7,11 @@ import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import { inferAgeGroupFromDob } from '../../../utils/validation.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
+const SN_AGE_GROUPS = ['Adult', 'Pediatric'];
 
 const fl = () => ({ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 3, letterSpacing: '0.02em' });
 const ds = () => ({ fontSize: 13, color: palette.backgroundDark.hex, padding: '4px 6px', borderRadius: 6, cursor: 'text', border: '1px solid transparent', transition: 'border-color 0.12s, background 0.12s', wordBreak: 'break-word' });
@@ -130,6 +132,71 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   );
 }
 
+// ── SN Age Group (Adult/Pediatric) ──────────────────────────────────────────
+// Surfaced on the Referral tab so users can correct an intake mistake.
+// When a Pediatric referral is logged in error, the Demographics DOB
+// picker stays locked to under-18 dates and the correct adult DOB can't
+// be entered until the age group is fixed here — exposing this field
+// is the unlock path.
+
+function SnAgeGroupField({ referral, patient, onSave, readOnly: forceReadOnly = false }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { can } = usePermissions();
+
+  const value = referral.sn_age_group || '';
+  const dobInferred = patient?.dob ? inferAgeGroupFromDob(patient.dob) : null;
+  const conflictsWithDob = value && dobInferred && value !== dobInferred;
+
+  async function handleChange(e) {
+    if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
+    const v = e.target.value;
+    if (v === value) { setEditing(false); return; }
+    onSave('sn_age_group', v);
+    setEditing(false);
+    if (referral._id) updateEntity('referrals', referral._id, { sn_age_group: v });
+    setSaving(true);
+    try { await updateReferral(referral._id, { sn_age_group: v }); }
+    catch { onSave('sn_age_group', value); if (referral._id) updateEntity('referrals', referral._id, { sn_age_group: value }); }
+    finally { setSaving(false); }
+  }
+
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+  const conflictWarning = conflictsWithDob ? (
+    <p style={{ fontSize: 10.5, color: palette.primaryMagenta.hex, marginTop: 3, fontWeight: 600 }}>
+      Conflicts with DOB on file ({dobInferred}). Update one to match.
+    </p>
+  ) : null;
+
+  return (
+    <div>
+      <p style={fl()}>Age Group (SN)</p>
+      {editing && !forceReadOnly ? (
+        <select autoFocus value={value} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
+          <option value="" disabled>Select…</option>
+          {SN_AGE_GROUPS.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : forceReadOnly ? (
+        <>
+          <p style={{ fontSize: 13, color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: value ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : (value || empty)}
+          </p>
+          {conflictWarning}
+        </>
+      ) : (
+        <>
+          <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
+            {saving ? 'Saving…' : (value || empty)}
+          </p>
+          {conflictWarning}
+        </>
+      )}
+    </div>
+  );
+}
+
 function EditableReferralPhysician({ referral, onSave, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -196,6 +263,9 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
         {referral.facility_id && <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />}
 
         <EditableReferralSelect label="Division" fieldKey="division" value={referral.division} referralId={referral._id} onSave={handleReferralSave} options={DIVISIONS} readOnly={readOnly} />
+        {referral.division === 'Special Needs' && (
+          <SnAgeGroupField referral={referral} patient={patient} onSave={handleReferralSave} readOnly={readOnly} />
+        )}
         <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} fullWidth readOnly={readOnly} />
         <EditableReferralPhysician referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
 

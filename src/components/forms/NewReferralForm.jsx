@@ -13,7 +13,14 @@ import { useLookups } from '../../hooks/useLookups.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
-import { normalizePhone, validateEmail, lookupZip } from '../../utils/validation.js';
+import {
+  normalizePhone,
+  validateEmail,
+  lookupZip,
+  getDobBoundsForAgeGroup,
+  validateDobForAgeGroup,
+  inferAgeGroupFromDob,
+} from '../../utils/validation.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -118,13 +125,15 @@ const inputBase = {
   boxSizing: 'border-box',
 };
 
-function Input({ value, onChange, placeholder, type = 'text', hasError }) {
+function Input({ value, onChange, placeholder, type = 'text', hasError, min, max }) {
   return (
     <input
       type={type}
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      min={min || undefined}
+      max={max || undefined}
       style={{ ...inputBase, boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none' }}
       onFocus={(e) => (e.target.style.boxShadow = `0 0 0 1.5px ${palette.primaryMagenta.hex}`)}
       onBlur={(e) => (e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none')}
@@ -481,6 +490,21 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         next.services_requested = [];
         if (value !== 'ALF') next.marketer_id = '';
       }
+      // SPN age group ↔ DOB are mutually-locking. When the user changes the
+      // age group, drop any DOB that no longer matches so the date picker
+      // re-opens cleanly with the new bounds (rather than holding a stale
+      // conflicting value the user can't see in the now-locked range).
+      if (key === 'sn_age_group' && prev.dob) {
+        const dobCheck = validateDobForAgeGroup(prev.dob, value);
+        if (!dobCheck.valid) next.dob = '';
+      }
+      // The reverse: on SPN referrals, picking a DOB before age group is set
+      // auto-fills the group from the DOB so the rest of the form (and
+      // downstream triage routing) lines up without a second pick.
+      if (key === 'dob' && value && prev.division === 'Special Needs' && !prev.sn_age_group) {
+        const inferred = inferAgeGroupFromDob(value);
+        if (inferred) next.sn_age_group = inferred;
+      }
       if (key === 'county') {
         const lic = getLicenceForCounty(value);
         if (lic === 'WB' || lic === 'WBII') {
@@ -598,6 +622,10 @@ export default function NewReferralForm({ onClose, onSuccess }) {
       if (!form.sn_age_group) errs.sn_age_group = 'Required for Special Needs';
       if (!form.county) errs.county = 'Required for Special Needs';
       if (countyLicence === 'both' && !form.entity_id) errs.entity_id = 'Choose an entity for this county';
+      if (form.sn_age_group && form.dob) {
+        const dobCheck = validateDobForAgeGroup(form.dob, form.sn_age_group);
+        if (!dobCheck.valid) errs.dob = dobCheck.error;
+      }
     }
     return errs;
   }
@@ -1066,9 +1094,32 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
           {/* ── 5. Optional patient details ── */}
           <SectionDivider title="Additional Patient Info" expanded={showPatientDetails} onToggle={() => setShowPatientDetails((v) => !v)} />
-          {showPatientDetails && (
+          {showPatientDetails && (() => {
+            // Pediatric/Adult ↔ DOB are mutually-locking on SN referrals: the
+            // date picker advertises the valid range via min/max so the
+            // browser blocks out-of-range picks, and a hint explains why.
+            const dobBounds = form.division === 'Special Needs' && form.sn_age_group
+              ? getDobBoundsForAgeGroup(form.sn_age_group)
+              : { min: null, max: null };
+            const dobLocked = form.division === 'Special Needs' && !!form.sn_age_group;
+            return (
             <FieldGroup cols={2}>
-              <FieldBox label="Date of Birth"><Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" /></FieldBox>
+              <FieldBox label="Date of Birth">
+                <Input
+                  value={form.dob}
+                  onChange={(v) => setField('dob', v)}
+                  type="date"
+                  min={dobBounds.min}
+                  max={dobBounds.max}
+                  hasError={!!errors.dob}
+                />
+                {dobLocked && !errors.dob && (
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4, fontStyle: 'italic' }}>
+                    Locked to {form.sn_age_group} range (age {form.sn_age_group === 'Pediatric' ? 'under 18' : '18+'}).
+                  </p>
+                )}
+                {errors.dob && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.dob}</p>}
+              </FieldBox>
               <FieldBox label="Gender"><Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" /></FieldBox>
               <FieldBox label="Secondary Phone"><Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
               <FieldBox label="Email">
@@ -1099,7 +1150,8 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               <FieldBox label="Emergency Contact Name"><Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" /></FieldBox>
               <FieldBox label="Emergency Contact Phone"><Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
             </FieldGroup>
-          )}
+            );
+          })()}
 
           {/* ── 6. Optional referral details (services conditional on division) ── */}
           <SectionDivider title="Referral Details" expanded={showReferralDetails} onToggle={() => setShowReferralDetails((v) => !v)} />

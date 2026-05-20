@@ -8,7 +8,14 @@ import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-import { normalizePhone, formatPhone, validateEmail, lookupZip } from '../../../utils/validation.js';
+import {
+  normalizePhone,
+  formatPhone,
+  validateEmail,
+  lookupZip,
+  getDobBoundsForAgeGroup,
+  validateDobForAgeGroup,
+} from '../../../utils/validation.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
@@ -95,6 +102,89 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
         )
       ) : (
         <p onClick={startEdit} title={forceReadOnly ? undefined : 'Click to edit'}
+          style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
+          onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          {saving ? 'Saving…' : (value || empty)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── DOB field (locked to the referral's Pediatric/Adult age group) ───────────
+// SPN referrals carry `sn_age_group` ("Adult" | "Pediatric"). The date
+// picker advertises the corresponding range so the browser blocks
+// out-of-range picks and a hint explains the lock — matches the lead
+// referral form's behavior. To switch ranges the user changes the age
+// group in the Referral tab (correcting an intake mistake).
+
+function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnly = false }) {
+  const value = patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : '';
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
+  const { can } = usePermissions();
+
+  const ageGroup = referral?.division === 'Special Needs' ? referral?.sn_age_group : null;
+  const bounds = getDobBoundsForAgeGroup(ageGroup);
+  const locked = !!ageGroup;
+
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setError(''); setEditing(true); }
+
+  async function save() {
+    if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
+    if (draft === (value || '')) { setEditing(false); setError(''); return; }
+    if (draft) {
+      const check = validateDobForAgeGroup(draft, ageGroup);
+      if (!check.valid) { setError(check.error); return; }
+    }
+    setError('');
+    onSave('dob', draft);
+    setEditing(false);
+    if (patientId) updateEntity('patients', patientId, { dob: draft });
+    setSaving(true);
+    try {
+      await updatePatient(patientId, { dob: draft });
+    } catch {
+      onSave('dob', value || '');
+      if (patientId) updateEntity('patients', patientId, { dob: value || '' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') { setEditing(false); setError(''); }
+  }
+
+  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+
+  return (
+    <div>
+      <p style={fl()}>Date of Birth</p>
+      {editing && !forceReadOnly ? (
+        <>
+          <input
+            autoFocus type="date" value={draft}
+            min={bounds.min || undefined}
+            max={bounds.max || undefined}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={save} onKeyDown={onKeyDown}
+            style={error ? { ...ei(), borderColor: '#c62828' } : ei()}
+          />
+          {locked && !error && (
+            <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3, fontStyle: 'italic' }}>
+              Locked to {ageGroup} range — change in the Referral tab to unlock.
+            </p>
+          )}
+          {error && <p style={ve()}>{error}</p>}
+        </>
+      ) : (
+        <p onClick={startEdit} title={forceReadOnly ? undefined : (locked ? `Locked to ${ageGroup} DOB range` : 'Click to edit')}
           style={{ ...ds(), opacity: saving ? 0.6 : 1, cursor: forceReadOnly ? 'default' : 'text' }}
           onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
@@ -843,7 +933,7 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
       <Section title="Patient Information">
         <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <EditableField label="Date of Birth"     fieldKey="dob"              value={patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : ''} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} type="date" readOnly={readOnly} />
+        <DobField patient={patient} patientId={patientId} onSave={handlePatientSave} referral={referral} readOnly={readOnly} />
         <EditablePatientSelect label="Gender"    fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} options={GENDER_OPTIONS} readOnly={readOnly} />
         <PhoneField label="Primary Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />

@@ -14,13 +14,23 @@
  *   The worker receives the path as-is and prepends the Esper base URL + /api:
  *     GET /v1/enterprise/{EID}/report/location/  →  https://ricct-api.esper.cloud/api/v1/enterprise/{EID}/report/location/
  *     GET /enterprise/{EID}/device/              →  https://ricct-api.esper.cloud/api/enterprise/{EID}/device/
+ *
+ *   POST requests are also supported — body and Content-Type are forwarded.
+ *     POST /v0/enterprise/{EID}/command/         →  https://ricct-api.esper.cloud/api/v0/enterprise/{EID}/command/
+ *
+ * Consumers (origins) currently allowed:
+ *   - https://wellboundcarestream.com               (CareStream CRM)
+ *   - https://www.wellboundcarestream.com           (CareStream CRM www)
+ *   - https://agency-agreement.wellboundcarestream.com  (Agency Agreement app)
+ *   - http://localhost:5173                         (local Vite dev)
  */
 
-const ESPER_API_BASE  = 'https://ricct-api.esper.cloud/api';
+const ESPER_API_BASE = 'https://ricct-api.esper.cloud/api';
 
 const ALLOWED_ORIGINS = [
   'https://wellboundcarestream.com',
   'https://www.wellboundcarestream.com',
+  'https://agency-agreement.wellboundcarestream.com',
   'http://localhost:5173',
 ];
 
@@ -28,9 +38,10 @@ function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
 
@@ -45,13 +56,19 @@ export default {
     const url       = new URL(request.url);
     const targetUrl = ESPER_API_BASE + url.pathname + url.search;
 
-    const res = await fetch(targetUrl, {
+    const init = {
       method: request.method,
       headers: {
         Authorization: `Bearer ${env.ESPER_API_KEY}`,
         'Content-Type': 'application/json',
       },
-    });
+    };
+
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      init.body = await request.text();
+    }
+
+    const res = await fetch(targetUrl, init);
 
     const text = await res.text();
     return new Response(text, {

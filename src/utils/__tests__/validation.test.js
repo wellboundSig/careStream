@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePhone, formatPhone, validateEmail, lookupZip } from '../validation.js';
+import {
+  normalizePhone,
+  formatPhone,
+  validateEmail,
+  lookupZip,
+  getDobBoundsForAgeGroup,
+  getAdultCutoffDate,
+  getPediatricMinDate,
+  validateDobForAgeGroup,
+  inferAgeGroupFromDob,
+} from '../validation.js';
 
 describe('normalizePhone', () => {
   it('accepts a valid 10-digit number', () => {
@@ -181,5 +191,89 @@ describe('lookupZip', () => {
   it('handles zip with spaces', () => {
     const r = lookupZip(' 10001 ');
     expect(r.valid).toBe(true);
+  });
+});
+
+// Use a fixed "today" so the tests don't drift with the calendar — the
+// boundary math is what matters here, not the wall clock.
+const FROZEN_TODAY = new Date(2026, 4, 11); // 2026-05-11 (May = month 4)
+
+describe('getAdultCutoffDate / getPediatricMinDate', () => {
+  it('adult cutoff is exactly 18 years before today', () => {
+    expect(getAdultCutoffDate(FROZEN_TODAY)).toBe('2008-05-11');
+  });
+
+  it('pediatric min is the day after the adult cutoff', () => {
+    expect(getPediatricMinDate(FROZEN_TODAY)).toBe('2008-05-12');
+  });
+});
+
+describe('getDobBoundsForAgeGroup', () => {
+  it('Pediatric range covers under-18 DOBs only', () => {
+    const b = getDobBoundsForAgeGroup('Pediatric', FROZEN_TODAY);
+    expect(b.min).toBe('2008-05-12');
+    expect(b.max).toBe('2026-05-11');
+  });
+
+  it('Adult range caps DOB at the 18-year cutoff', () => {
+    const b = getDobBoundsForAgeGroup('Adult', FROZEN_TODAY);
+    expect(b.min).toBeNull();
+    expect(b.max).toBe('2008-05-11');
+  });
+
+  it('falls back to today-only ceiling when age group is missing', () => {
+    const b = getDobBoundsForAgeGroup(null, FROZEN_TODAY);
+    expect(b.min).toBeNull();
+    expect(b.max).toBe('2026-05-11');
+  });
+});
+
+describe('inferAgeGroupFromDob', () => {
+  it('marks the 18th-birthday DOB as Adult', () => {
+    expect(inferAgeGroupFromDob('2008-05-11', FROZEN_TODAY)).toBe('Adult');
+  });
+
+  it('marks the day after the cutoff as Pediatric', () => {
+    expect(inferAgeGroupFromDob('2008-05-12', FROZEN_TODAY)).toBe('Pediatric');
+  });
+
+  it('returns null for empty / invalid input', () => {
+    expect(inferAgeGroupFromDob('', FROZEN_TODAY)).toBeNull();
+    expect(inferAgeGroupFromDob(null, FROZEN_TODAY)).toBeNull();
+    expect(inferAgeGroupFromDob('not-a-date', FROZEN_TODAY)).toBeNull();
+  });
+});
+
+describe('validateDobForAgeGroup', () => {
+  it('passes when DOB matches Adult age group', () => {
+    const r = validateDobForAgeGroup('1990-01-01', 'Adult', FROZEN_TODAY);
+    expect(r.valid).toBe(true);
+  });
+
+  it('passes when DOB matches Pediatric age group', () => {
+    const r = validateDobForAgeGroup('2015-06-01', 'Pediatric', FROZEN_TODAY);
+    expect(r.valid).toBe(true);
+  });
+
+  it('fails Pediatric when DOB implies Adult', () => {
+    const r = validateDobForAgeGroup('1990-01-01', 'Pediatric', FROZEN_TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/Pediatric/);
+  });
+
+  it('fails Adult when DOB implies Pediatric', () => {
+    const r = validateDobForAgeGroup('2020-01-01', 'Adult', FROZEN_TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/Adult/);
+  });
+
+  it('treats empty DOB as valid (requiredness is handled separately)', () => {
+    expect(validateDobForAgeGroup('', 'Adult', FROZEN_TODAY).valid).toBe(true);
+    expect(validateDobForAgeGroup(null, 'Pediatric', FROZEN_TODAY).valid).toBe(true);
+  });
+
+  it('treats empty age group as valid (skip check)', () => {
+    expect(validateDobForAgeGroup('1990-01-01', '', FROZEN_TODAY).valid).toBe(true);
+    expect(validateDobForAgeGroup('1990-01-01', null, FROZEN_TODAY).valid).toBe(true);
   });
 });
