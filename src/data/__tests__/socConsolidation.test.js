@@ -28,11 +28,15 @@ describe('SOC consolidation — DB stage values preserved', () => {
     expect(ALL_STAGES).toContain('SOC Completed');
   });
 
-  it('StageRules transition paths are intact (Pre-SOC → SOC Scheduled allowed)', () => {
-    expect(StageRules.stages['Pre-SOC'].canMoveTo).toContain('SOC Scheduled');
+  it('Pre-SOC moves directly to SOC Completed (SOC Scheduled removed from forward path 2026-05-20)', () => {
+    // Per the workflow overhaul, the forward path is Pre-SOC → SOC Completed.
+    // SOC Scheduled is retained as a legacy stage for historical records but
+    // is no longer a forward destination.
+    expect(StageRules.stages['Pre-SOC'].canMoveTo).toContain('SOC Completed');
+    expect(StageRules.stages['Pre-SOC'].canMoveTo).not.toContain('SOC Scheduled');
   });
 
-  it('StageRules transition paths are intact (SOC Scheduled → SOC Completed allowed)', () => {
+  it('StageRules transition paths are intact (SOC Scheduled → SOC Completed allowed for legacy records)', () => {
     expect(StageRules.stages['SOC Scheduled'].canMoveTo).toContain('SOC Completed');
   });
 });

@@ -20,6 +20,7 @@ export const PERMISSION_KEYS = {
   REFERRAL_HOLD: 'referral.hold',
   REFERRAL_NTUC: 'referral.ntuc',
   REFERRAL_NTUC_DIRECT: 'referral.ntuc_direct',
+  REFERRAL_FLAG_URGENT_CARE: 'referral.flag_urgent_care',
 
   // Patients
   PATIENT_VIEW: 'patient.view',
@@ -172,6 +173,7 @@ export const PERMISSION_CATALOG = [
   { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',           category: 'Referrals', description: 'Move any active referral to Hold stage', sort: 14 },
   { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',            category: 'Referrals', description: 'Move referrals to Unable to Convert (terminal)', sort: 15 },
   { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Referrals', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Without this, NTUC requests go through Admin Confirmation first.', sort: 16 },
+  { key: K.REFERRAL_FLAG_URGENT_CARE, label: 'Flag urgent care / pre-assessment', category: 'Referrals', description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface and is visible via the row context menu and the Patient Snapshot.', sort: 17 },
 
   // Patients
   { key: K.PATIENT_VIEW, label: 'View patient records',      category: 'Patients', description: 'See patient list, drawer, and details', sort: 20 },
@@ -295,6 +297,7 @@ export const DEFAULT_PRESETS = [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
       K.ROUTING_OPWDD,
@@ -322,6 +325,7 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.REFERRAL_VIEW, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW, K.CLINICAL_F2F, K.CLINICAL_ELIGIBILITY,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
@@ -359,10 +363,12 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.REFERRAL_VIEW, K.REFERRAL_TRANSITION,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.SCHEDULING_STAFFING, K.SCHEDULING_ADMIN_CONFIRM, K.SCHEDULING_SOC_SCHEDULE, K.SCHEDULING_SOC_COMPLETE,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_ASSIGN, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
+      K.CONFLICT_FLAG,
       K.REPORT_VIEW,
       K.DIRECTORY_VIEW,
       K.MODULE_SCHEDULING, K.MODULE_ADMIN,
@@ -377,12 +383,14 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.REFERRAL_VIEW,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_ELIGIBILITY,
       K.AUTH_SUBMIT, K.AUTH_DECIDE, K.AUTH_REQUEST_SCA,
       K.ROUTING_OPWDD, K.ROUTING_DISENROLLMENT_ASSIST,
       K.TASK_VIEW, K.TASK_CREATE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
+      K.CONFLICT_FLAG,
       K.REPORT_VIEW, K.REPORT_EXPORT,
       K.DIRECTORY_VIEW,
       K.MODULE_INTAKE, K.MODULE_AUTHORIZATION,
@@ -397,9 +405,11 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.REFERRAL_VIEW,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE,
       K.NOTE_CREATE,
+      K.CONFLICT_FLAG,
       K.FILE_UPLOAD,
       K.DIRECTORY_VIEW,
       K.SNAPSHOT_EDIT_TRIAGE, K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,

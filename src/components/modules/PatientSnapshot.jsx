@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
+import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
+import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 
 const DEMOGRAPHICS_FIELDS = [
   'first_name', 'last_name', 'dob', 'gender', 'phone_primary',
@@ -48,12 +52,15 @@ export function computeSnapshotFlags(patient, referral, triageData, insuranceChe
   return { demographics, triage, f2f, insurance, pecos };
 }
 
+// Each flag row knows which patient-drawer tab to jump to when clicked. The
+// snapshot doubles as a quick navigation surface — clicking a row opens the
+// corresponding tab in the patient drawer.
 const FLAGS_META = [
-  { key: 'demographics', label: 'Demographics' },
-  { key: 'triage',       label: 'Triage' },
-  { key: 'f2f',          label: 'F2F Received' },
-  { key: 'insurance',    label: 'Insurance Verified' },
-  { key: 'pecos',        label: 'PECOS / OPRA' },
+  { key: 'demographics', label: 'Demographics',     tab: 'demographics' },
+  { key: 'triage',       label: 'Triage',           tab: 'triage'       },
+  { key: 'f2f',          label: 'F2F Received',     tab: 'f2f'          },
+  { key: 'insurance',    label: 'Insurance Details', tab: 'eligibility' },
+  { key: 'pecos',        label: 'PECOS / OPRA',     tab: 'f2f'          },
 ];
 
 function StatusDot({ complete }) {
@@ -77,34 +84,112 @@ function StatusDot({ complete }) {
   );
 }
 
-export default function PatientSnapshot({ patient, referral, triageData, insuranceChecks }) {
+export default function PatientSnapshot({ patient, referral, triageData, insuranceChecks, onOpenTab }) {
   const flags = computeSnapshotFlags(patient, referral, triageData, insuranceChecks);
+  const { appUserId } = useCurrentAppUser();
+  const urgent = isUrgentCare(referral);
+  const [busy, setBusy] = useState(false);
+
+  // We intentionally do NOT gate the toggle on a permission check at the UI
+  // layer. The user explicitly asked for the urgent care control to always be
+  // available; the underlying write goes through `setUrgentCare`, which
+  // optimistically updates the store and reverts on rejection. Permission
+  // enforcement happens server-side (or via Worker policies) — this UI is the
+  // surface, not the guard.
+  async function toggleUrgent() {
+    if (!referral?._id || busy) return;
+    setBusy(true);
+    try {
+      await setUrgentCare({ referral, next: !urgent, actorUserId: appUserId });
+    } catch {
+      // Optimistic mutation reverts on failure; nothing more to do.
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {FLAGS_META.map(({ key, label }) => (
-        <div
-          key={key}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <StatusDot complete={flags[key]} />
-          <span
+      {/* Urgent care toggle — always rendered, always clickable. */}
+      <button
+        type="button"
+        onClick={toggleUrgent}
+        disabled={busy || !referral?._id}
+        title={urgent ? 'Click to clear the urgent care flag' : 'Click to flag this patient for urgent care'}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '5px 8px',
+          marginBottom: 2,
+          borderRadius: 7,
+          border: 'none',
+          textAlign: 'left',
+          cursor: busy ? 'wait' : 'pointer',
+          background: urgent ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent',
+          color: urgent ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
+          fontFamily: 'inherit',
+          fontWeight: urgent ? 650 : 550,
+          fontSize: 11.5,
+          transition: 'background 0.12s',
+          opacity: busy ? 0.6 : 1,
+        }}
+        onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = urgent ? hexToRgba(palette.primaryMagenta.hex, 0.16) : hexToRgba(palette.backgroundDark.hex, 0.05); }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = urgent ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent'; }}
+      >
+        <UrgentCareIcon size={13} muted={!urgent} />
+        <span>{urgent ? 'Urgent care required' : 'Mark urgent care'}</span>
+      </button>
+
+      {/* Snapshot flag rows — each is a button that opens the matching tab
+          in the patient drawer (when an onOpenTab callback is wired). */}
+      {FLAGS_META.map(({ key, label, tab }) => {
+        const clickable = !!onOpenTab && !!tab;
+        const complete = !!flags[key];
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={clickable ? () => onOpenTab(tab) : undefined}
+            disabled={!clickable}
+            title={clickable ? `Open ${label}` : undefined}
             style={{
-              fontSize: 11.5,
-              fontWeight: 500,
-              color: flags[key]
-                ? hexToRgba(palette.backgroundDark.hex, 0.75)
-                : hexToRgba(palette.backgroundDark.hex, 0.4),
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 6px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'transparent',
+              textAlign: 'left',
+              cursor: clickable ? 'pointer' : 'default',
+              fontFamily: 'inherit',
+              transition: 'background 0.12s',
             }}
+            onMouseEnter={(e) => { if (clickable) e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.04); }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            {label}
-          </span>
-        </div>
-      ))}
+            <StatusDot complete={complete} />
+            <span
+              style={{
+                fontSize: 11.5,
+                fontWeight: 500,
+                color: complete
+                  ? hexToRgba(palette.backgroundDark.hex, 0.75)
+                  : hexToRgba(palette.backgroundDark.hex, 0.45),
+                flex: 1,
+              }}
+            >
+              {label}
+            </span>
+            {clickable && (
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
+                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -191,10 +191,17 @@ export async function flagConflict({
     patient_id: patientCustomId,
     referral_id: referralCustomId,
     source_module: normalizedSourceModule,
+    // source_stage captures the EXACT stage the patient was on at the moment
+    // the conflict was created so "Resolve and Return to Source" can ship
+    // them back. Added 2026-05-20 alongside Conflicts.source_stage column.
+    ...(referral?.current_stage ? { source_stage: referral.current_stage } : {}),
     type: category,
     severity,
     description,
-    status: 'Unaddressed',
+    // New writes default to "Open" (added to Conflicts.status enum 2026-05-20).
+    // Legacy rows may show "Unaddressed" or "In Progress" — UI treats all of
+    // those as actionable. See ConflictPanel for the rendering logic.
+    status: 'Open',
     flagged_by_id: actorUserId || 'unknown',
     // Live Airtable schema: conflict_reasons is multilineText (store comma-separated or single)
     conflict_reasons: category,

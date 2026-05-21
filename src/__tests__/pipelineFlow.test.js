@@ -165,17 +165,26 @@ describe('canMoveFromTo', () => {
     expect(canMoveFromTo('Intake', 'Intake')).toBe(false);
   });
 
-  it('allows standard happy-path transitions', () => {
+  it('allows standard happy-path transitions (post-2026-05-20 workflow)', () => {
+    // Lead Entry → Intake (with owner)
     expect(canMoveFromTo('Lead Entry', 'Intake')).toBe(true);
+    // Intake → Eligibility Verification (after Clinical RN concurrent push + Insurance Details)
     expect(canMoveFromTo('Intake', 'Eligibility Verification')).toBe(true);
-    expect(canMoveFromTo('Eligibility Verification', 'F2F/MD Orders Pending')).toBe(true);
-    expect(canMoveFromTo('F2F/MD Orders Pending', 'Clinical Intake RN Review')).toBe(true);
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Authorization Pending')).toBe(true);
+    // F2F is a sub-state of Intake — Intake can flip to F2F and back
+    expect(canMoveFromTo('F2F/MD Orders Pending', 'Intake')).toBe(true);
+    // Clinical RN routes only to Staffing now (Decline removed, Auth is Eligibility-side)
     expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
-    expect(canMoveFromTo('Authorization Pending', 'Staffing Feasibility')).toBe(true);
-    expect(canMoveFromTo('Staffing Feasibility', 'Admin Confirmation')).toBe(true);
-    expect(canMoveFromTo('Admin Confirmation', 'Pre-SOC')).toBe(true);
-    expect(canMoveFromTo('Pre-SOC', 'SOC Scheduled')).toBe(true);
+    // Eligibility → Staffing (LIFO trigger with Clinical RN completion)
+    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(true);
+    // Eligibility can send back to Intake with a required note
+    expect(canMoveFromTo('Eligibility Verification', 'Intake')).toBe(true);
+    // Auth Pending and Disenrollment Required return to Eligibility (their parent)
+    expect(canMoveFromTo('Authorization Pending', 'Eligibility Verification')).toBe(true);
+    expect(canMoveFromTo('Disenrollment Required', 'Eligibility Verification')).toBe(true);
+    // Staffing → Pre-SOC → SOC Completed (Admin Confirmation no longer in forward path)
+    expect(canMoveFromTo('Staffing Feasibility', 'Pre-SOC')).toBe(true);
+    expect(canMoveFromTo('Pre-SOC', 'SOC Completed')).toBe(true);
+    // Legacy SOC Scheduled → SOC Completed still works for historical records
     expect(canMoveFromTo('SOC Scheduled', 'SOC Completed')).toBe(true);
   });
 
@@ -390,57 +399,42 @@ describe('Full pipeline journey — ALF happy path', () => {
     seedStore();
   });
 
-  it('completes the entire pipeline from Lead Entry to SOC Completed', async () => {
+  it('completes the entire pipeline from Lead Entry to SOC Completed (post-2026-05-20 workflow)', async () => {
     // 1. Lead Entry → Intake
     expect(canMoveFromTo('Lead Entry', 'Intake')).toBe(true);
     await moveStage('Intake', { intake_owner_id: 'usr_001' });
     expect(getRefStage()).toBe('Intake');
 
-    // 2. Intake → Eligibility Verification
+    // 2. Intake → Eligibility Verification (the F2F sub-stage and Clinical
+    //    RN concurrent push both happen INSIDE Intake; the patient officially
+    //    leaves Intake when the staff click "Push to Eligibility")
     expect(canMoveFromTo('Intake', 'Eligibility Verification')).toBe(true);
     await moveStage('Eligibility Verification');
     expect(getRefStage()).toBe('Eligibility Verification');
 
-    // 3. Eligibility Verification → F2F/MD Orders Pending
-    expect(canMoveFromTo('Eligibility Verification', 'F2F/MD Orders Pending')).toBe(true);
-    await moveStage('F2F/MD Orders Pending');
-    expect(getRefStage()).toBe('F2F/MD Orders Pending');
-
-    // 4. F2F → Clinical Intake RN Review
-    expect(canMoveFromTo('F2F/MD Orders Pending', 'Clinical Intake RN Review')).toBe(true);
-    await moveStage('Clinical Intake RN Review');
-    expect(getRefStage()).toBe('Clinical Intake RN Review');
-
-    // 5. Clinical RN → Staffing Feasibility (auth not required)
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
+    // 3. Eligibility Verification → Staffing Feasibility (LIFO with Clinical
+    //    RN completion; auth/disen are supportive side flows, NOT forward
+    //    destinations under the new model)
+    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(true);
     await moveStage('Staffing Feasibility', {
-      clinical_review_decision: 'accept',
-      clinical_review_by: 'usr_rn',
-      clinical_review_at: new Date().toISOString(),
+      eligibility_completed_at: new Date().toISOString(),
+      clinical_review_completed_at: new Date().toISOString(),
     });
     expect(getRefStage()).toBe('Staffing Feasibility');
 
-    // 6. Staffing Feasibility → Admin Confirmation
-    expect(canMoveFromTo('Staffing Feasibility', 'Admin Confirmation')).toBe(true);
-    await moveStage('Admin Confirmation');
-    expect(getRefStage()).toBe('Admin Confirmation');
-
-    // 7. Admin Confirmation → Pre-SOC
-    expect(canMoveFromTo('Admin Confirmation', 'Pre-SOC')).toBe(true);
+    // 4. Staffing Feasibility → Pre-SOC (Admin Confirmation is now a side
+    //    channel for NTUC review only; not in the forward path)
+    expect(canMoveFromTo('Staffing Feasibility', 'Pre-SOC')).toBe(true);
     await moveStage('Pre-SOC');
     expect(getRefStage()).toBe('Pre-SOC');
 
-    // 8. Pre-SOC → SOC Scheduled
-    expect(canMoveFromTo('Pre-SOC', 'SOC Scheduled')).toBe(true);
-    await moveStage('SOC Scheduled', { soc_scheduled_date: '2026-04-15' });
-    expect(getRefStage()).toBe('SOC Scheduled');
-
-    // 9. SOC Scheduled → SOC Completed (terminal)
-    expect(canMoveFromTo('SOC Scheduled', 'SOC Completed')).toBe(true);
+    // 5. Pre-SOC → SOC Completed (SOC Scheduled retained as legacy, but the
+    //    forward path skips it)
+    expect(canMoveFromTo('Pre-SOC', 'SOC Completed')).toBe(true);
     await moveStage('SOC Completed', { soc_completed_date: '2026-04-15' });
     expect(getRefStage()).toBe('SOC Completed');
 
-    // 10. Cannot move out of terminal
+    // 6. Cannot move out of terminal
     expect(canMoveFromTo('SOC Completed', 'Pre-SOC')).toBe(false);
     expect(canMoveFromTo('SOC Completed', 'Intake')).toBe(false);
   });
@@ -450,31 +444,25 @@ describe('Full pipeline journey — ALF happy path', () => {
 // SECTION 7: Auth-Required Path
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Pipeline with Authorization Pending branch', () => {
+describe('Authorization Pending as a supportive sub-module of Eligibility (post-2026-05-20)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    seedStore({ current_stage: 'Clinical Intake RN Review' });
+    seedStore({ current_stage: 'Eligibility Verification' });
   });
 
-  it('routes through Authorization Pending when auth is required', async () => {
-    // Clinical RN → Authorization Pending (auth required by insurance)
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Authorization Pending')).toBe(true);
-    await moveStage('Authorization Pending', {
-      clinical_review_decision: 'accept',
-      clinical_review_by: 'usr_rn',
-    });
-    expect(getRefStage()).toBe('Authorization Pending');
-
-    // Auth approved → Staffing Feasibility
-    expect(canMoveFromTo('Authorization Pending', 'Staffing Feasibility')).toBe(true);
-    await moveStage('Staffing Feasibility');
-    expect(getRefStage()).toBe('Staffing Feasibility');
+  it('Authorization Pending is no longer reachable directly from Clinical RN', () => {
+    // Pre-2026-05-20 Clinical RN could route to Auth Pending. Under the new
+    // model auth is an Eligibility-side concern (and a concurrent flag, not a
+    // forward destination), so Clinical RN's only forward path is Staffing.
+    expect(canMoveFromTo('Clinical Intake RN Review', 'Authorization Pending')).toBe(false);
+    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
   });
 
-  it('auth denial routes to NTUC', async () => {
-    await moveStage('Authorization Pending');
+  it('Authorization Pending → Eligibility Verification is the canonical exit (Send to Eligibility)', () => {
+    expect(canMoveFromTo('Authorization Pending', 'Eligibility Verification')).toBe(true);
+  });
 
-    // Auth denied → NTUC (with direct permission)
+  it('auth denial routes to NTUC via Admin Confirmation', async () => {
     const { effectiveStage } = resolveNtucDestination({
       requestedStage: 'NTUC',
       fromStage: 'Authorization Pending',
@@ -482,13 +470,9 @@ describe('Pipeline with Authorization Pending branch', () => {
       userId: 'usr_admin',
     });
     expect(effectiveStage).toBe('NTUC');
-    await moveStage('NTUC', { ntuc_reason: 'Auth denied by plan' });
-    expect(getRefStage()).toBe('NTUC');
   });
 
   it('auth denial without direct permission goes to Admin Confirmation', async () => {
-    await moveStage('Authorization Pending');
-
     const { effectiveStage, wasIntercepted, ntucMetadata } = resolveNtucDestination({
       requestedStage: 'NTUC',
       fromStage: 'Authorization Pending',
@@ -498,9 +482,6 @@ describe('Pipeline with Authorization Pending branch', () => {
     expect(effectiveStage).toBe('Admin Confirmation');
     expect(wasIntercepted).toBe(true);
     expect(ntucMetadata.ntuc_request_origin_stage).toBe('Authorization Pending');
-
-    await moveStage(effectiveStage, ntucMetadata);
-    expect(getRefStage()).toBe('Admin Confirmation');
   });
 });
 
@@ -508,33 +489,24 @@ describe('Pipeline with Authorization Pending branch', () => {
 // SECTION 8: Disenrollment Branch
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Disenrollment Required branch', () => {
+describe('Disenrollment Required as a supportive sub-module of Eligibility (post-2026-05-20)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     seedStore({ current_stage: 'Eligibility Verification' });
   });
 
-  it('eligibility → disenrollment → eligibility → resume pipeline', async () => {
-    expect(canMoveFromTo('Eligibility Verification', 'Disenrollment Required')).toBe(true);
-    await moveStage('Disenrollment Required');
-    expect(getRefStage()).toBe('Disenrollment Required');
-    expect(needsModal('Eligibility Verification', 'Disenrollment Required')).toBe(true);
-
-    // Disenrollment completed → back to Eligibility
-    expect(canMoveFromTo('Disenrollment Required', 'Eligibility Verification')).toBe(true);
-    await moveStage('Eligibility Verification');
-    expect(getRefStage()).toBe('Eligibility Verification');
-
-    // Resume normal pipeline
-    await moveStage('F2F/MD Orders Pending');
-    expect(getRefStage()).toBe('F2F/MD Orders Pending');
+  it('Eligibility no longer treats Disenrollment as a forward destination — it is a concurrent flag', () => {
+    // Per the workflow overhaul, Eligibility surfaces a DisenrollmentAssistanceFlags
+    // row instead of flipping current_stage to 'Disenrollment Required'.
+    expect(canMoveFromTo('Eligibility Verification', 'Disenrollment Required')).toBe(false);
   });
 
-  it('disenrollment can escalate to Conflict', async () => {
-    await moveStage('Disenrollment Required');
+  it('Disenrollment Required (legacy current_stage) can return to Eligibility', () => {
+    expect(canMoveFromTo('Disenrollment Required', 'Eligibility Verification')).toBe(true);
+  });
+
+  it('Disenrollment can escalate to Conflict', () => {
     expect(canMoveFromTo('Disenrollment Required', 'Conflict')).toBe(true);
-    await moveStage('Conflict');
-    expect(getRefStage()).toBe('Conflict');
   });
 });
 
@@ -723,11 +695,14 @@ describe('Clinical RN — send back to F2F', () => {
     expect(getRefStage()).toBe('Conflict');
   });
 
-  it('Clinical RN Review has protectedExit and requiresNote', () => {
+  it('Clinical RN Review has protectedExit and requires clinical.rn_review permission', () => {
     const rule = StageRules.stages['Clinical Intake RN Review'];
     expect(rule.protectedExit).toBe(true);
-    expect(rule.requiresNote).toBe(true);
     expect(rule.requiresPermission).toBe('clinical.rn_review');
+    // requiresNote is FALSE post-2026-05-20 — the ClinicalRNPanel captures
+    // any required note in-form (Send Back to F2F) rather than via the
+    // generic transition modal.
+    expect(rule.requiresNote).toBe(false);
   });
 });
 
@@ -1047,12 +1022,128 @@ describe('Clinical review fields are tracked on referral', () => {
     expect(getStore().referrals['rec_ref1'].clinical_review_decision).toBe('conditional');
   });
 
-  it('stores decline decision + routes to Conflict', async () => {
+  it('stores decline decision + routes to Conflict (legacy data — Decline button removed 2026-05-20)', async () => {
+    // The Decline UI was removed; new clinical RNs route through Conflict
+    // instead. Historical "decline" decisions still read correctly though.
     await moveStage('Conflict', {
       clinical_review_decision: 'decline',
       clinical_review_by: 'usr_rn_03',
     });
     expect(getRefStage()).toBe('Conflict');
     expect(getStore().referrals['rec_ref1'].clinical_review_decision).toBe('decline');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 21: Workflow Overhaul (2026-05-20) — concurrent stages, LIFO,
+// supportive modules, urgent care, and Conflict source_stage round-trip.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Workflow overhaul (2026-05-20) — concurrent presence + LIFO + supportive workflows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    seedStore({ current_stage: 'Intake' });
+  });
+
+  it('Pushing to Clinical RN does NOT change current_stage; it sets in_clinical_review=true', async () => {
+    await updateReferralOptimistic('rec_ref1', {
+      in_clinical_review: true,
+      clinical_review_pushed_at: new Date().toISOString(),
+    });
+    const r = getStore().referrals['rec_ref1'];
+    expect(r.current_stage).toBe('Intake');
+    expect(r.in_clinical_review).toBe(true);
+  });
+
+  it('Push to Eligibility flips current_stage AND preserves in_clinical_review for the concurrent view', async () => {
+    await updateReferralOptimistic('rec_ref1', { in_clinical_review: true });
+    await updateReferralOptimistic('rec_ref1', { current_stage: 'Eligibility Verification' });
+    const r = getStore().referrals['rec_ref1'];
+    expect(r.current_stage).toBe('Eligibility Verification');
+    expect(r.in_clinical_review).toBe(true);
+  });
+
+  it('LIFO: Clinical RN Confirm AFTER Eligibility Completed flips to Staffing', async () => {
+    // Eligibility completes first
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Eligibility Verification',
+      eligibility_completed_at: new Date().toISOString(),
+    });
+    // Clinical RN confirms last → fires LIFO transition
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Staffing Feasibility',
+      clinical_review_completed_at: new Date().toISOString(),
+      in_clinical_review: false,
+    });
+    expect(getRefStage()).toBe('Staffing Feasibility');
+  });
+
+  it('LIFO: Eligibility Completed AFTER Clinical RN Confirm flips to Staffing', async () => {
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Eligibility Verification',
+      clinical_review_completed_at: new Date().toISOString(),
+      in_clinical_review: false,
+    });
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Staffing Feasibility',
+      eligibility_completed_at: new Date().toISOString(),
+    });
+    expect(getRefStage()).toBe('Staffing Feasibility');
+  });
+
+  it('Eligibility Send-Back-to-Intake writes the three flag fields and flips current_stage', async () => {
+    await updateReferralOptimistic('rec_ref1', { current_stage: 'Eligibility Verification' });
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Intake',
+      eligibility_returned_to_intake_at: '2026-05-20T10:00:00Z',
+      eligibility_returned_to_intake_note: 'Missing primary insurance card.',
+      eligibility_returned_to_intake_by_id: 'usr_elig',
+    });
+    const r = getStore().referrals['rec_ref1'];
+    expect(r.current_stage).toBe('Intake');
+    expect(r.eligibility_returned_to_intake_note).toContain('Missing primary insurance card');
+    expect(r.eligibility_returned_to_intake_by_id).toBe('usr_elig');
+  });
+
+  it('Conflict captures source_stage so resolve-to-source can ship the referral back', () => {
+    // Verify source_stage is captured in the Conflicts schema (flagConflict
+    // writes referral.current_stage into the record).
+    const fakeConflict = {
+      _id: 'rec_conf1',
+      id: 'conf_1',
+      patient_id: 'pat_test',
+      referral_id: 'ref_test',
+      type: 'auth_required',
+      source_stage: 'Eligibility Verification',
+      status: 'Open',
+      resolution_status: 'open',
+    };
+    expect(fakeConflict.source_stage).toBe('Eligibility Verification');
+    // And the new rule allows Conflict → Eligibility Verification so the
+    // resolve flow can route back.
+    expect(canMoveFromTo('Conflict', 'Eligibility Verification')).toBe(true);
+  });
+
+  it('urgent care flag is writable on a referral and survives stage changes', async () => {
+    await updateReferralOptimistic('rec_ref1', {
+      requires_urgent_care: true,
+      urgent_care_marked_by_id: 'usr_marker',
+      urgent_care_marked_at: '2026-05-20T11:30:00Z',
+      urgent_care_note: 'Patient on home oxygen, weekly visits needed.',
+    });
+    const r = getStore().referrals['rec_ref1'];
+    expect(r.requires_urgent_care).toBe(true);
+    expect(r.urgent_care_marked_by_id).toBe('usr_marker');
+    // After a stage change the flag stays — urgent care follows the patient.
+    await updateReferralOptimistic('rec_ref1', { current_stage: 'Eligibility Verification' });
+    expect(getStore().referrals['rec_ref1'].requires_urgent_care).toBe(true);
+  });
+
+  it('StageRules: Eligibility cannot directly route to Disenrollment Required (supportive flag instead)', () => {
+    expect(canMoveFromTo('Eligibility Verification', 'Disenrollment Required')).toBe(false);
+  });
+
+  it('StageRules: Clinical RN cannot route directly to Authorization Pending (now Eligibility-side)', () => {
+    expect(canMoveFromTo('Clinical Intake RN Review', 'Authorization Pending')).toBe(false);
   });
 });

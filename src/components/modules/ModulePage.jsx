@@ -25,9 +25,11 @@ import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
+import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
+import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -119,10 +121,48 @@ export default function ModulePage({ stage }) {
   }, [stage]);
 
   // ── Stage referrals with column filters ───────────────────────────────────
+  // Decorate each referral with concurrent-presence flags so the per-stage
+  // matchReferral predicate (see STAGE_META) can read them without having to
+  // import the auth/disen stores itself. Auth rows use the custom referral_id
+  // (text "ref_xxx"); disenrollment flag rows use multipleRecordLinks
+  // (array of Airtable record IDs), so we match on both shapes.
+  const authStore = useCareStore((s) => s.authorizations) || {};
+  const disenStore = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
+  const decoratedReferrals = useMemo(() => {
+    if (!allReferrals?.length) return allReferrals || [];
+    const ACTIVE_AUTH = new Set(['nar', 'pending', 'follow_up_needed']);
+    const OPEN_DISEN = new Set(['open', 'in_review']);
+    const refIdsWithAuth = new Set();
+    Object.values(authStore).forEach((a) => {
+      if (!a?.referral_id) return;
+      const status = (a.auth_status || a.status || '').toString().toLowerCase();
+      if (ACTIVE_AUTH.has(status)) refIdsWithAuth.add(a.referral_id);
+    });
+    const refRecIdsWithDisen = new Set();
+    const refCustomIdsWithDisen = new Set();
+    Object.values(disenStore).forEach((d) => {
+      if (!d?.referral_id) return;
+      if (!OPEN_DISEN.has(d.status)) return;
+      const link = d.referral_id;
+      if (Array.isArray(link)) link.forEach((id) => refRecIdsWithDisen.add(id));
+      else refCustomIdsWithDisen.add(link);
+    });
+    return allReferrals.map((r) => ({
+      ...r,
+      _hasActiveAuthorization: refIdsWithAuth.has(r.id),
+      _hasOpenDisenrollmentFlag: refRecIdsWithDisen.has(r._id) || refCustomIdsWithDisen.has(r.id),
+    }));
+  }, [allReferrals, authStore, disenStore]);
 
   const stageReferrals = useMemo(() => {
-    const matchStages = meta.consolidatedStages || [stage];
-    let list = allReferrals.filter((r) => matchStages.includes(r.current_stage));
+    // Prefer the modern predicate when present; fall back to the legacy
+    // consolidatedStages array, then to a plain stage-equality check.
+    const predicate = typeof meta.matchReferral === 'function'
+      ? meta.matchReferral
+      : meta.consolidatedStages
+        ? (r) => meta.consolidatedStages.includes(r.current_stage)
+        : (r) => r.current_stage === stage;
+    let list = decoratedReferrals.filter(predicate);
     if (division !== 'All') list = list.filter((r) => r.division === division);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -151,6 +191,16 @@ export default function ModulePage({ stage }) {
       }
 
       list = list.filter((r) => {
+        // Boolean-style filter for the urgent care indicator. "yes" / "y" /
+        // "true" → urgent only; "no" / "n" / "false" → not-urgent only.
+        if (key === 'urgent') {
+          const v = q.trim();
+          const wantsUrgent = v === 'yes' || v === 'y' || v === 'true';
+          const wantsNonUrgent = v === 'no' || v === 'n' || v === 'false';
+          if (wantsUrgent) return isUrgentCare(r);
+          if (wantsNonUrgent) return !isUrgentCare(r);
+          return true; // partial typing — don't filter yet
+        }
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
@@ -188,17 +238,22 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [allReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta]);
 
   // Distinct values per filterable column for datalist suggestions
   const colOptions = useMemo(() => {
-    const cStages = meta.consolidatedStages || [stage];
-    const base = allReferrals.filter((r) => cStages.includes(r.current_stage));
+    const predicate = typeof meta.matchReferral === 'function'
+      ? meta.matchReferral
+      : meta.consolidatedStages
+        ? (r) => meta.consolidatedStages.includes(r.current_stage)
+        : (r) => r.current_stage === stage;
+    const base = decoratedReferrals.filter(predicate);
     const opts = {};
     MODULE_COLUMN_DEFS.filter((c) => c.filterable).forEach((col) => {
       const vals = new Set();
       base.forEach((r) => {
         switch (col.key) {
+          case 'urgent': vals.add('yes'); vals.add('no'); break;
           case 'division': if (r.division) vals.add(r.division); break;
           case 'licence': {
             const v = resolveEntity(r.entity_id);
@@ -215,7 +270,7 @@ export default function ModulePage({ stage }) {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [allReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity]);
+  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta]);
 
   // Triage completion status
   const triageAdultStore = useCareStore((s) => s.triageAdult);
@@ -277,16 +332,24 @@ export default function ModulePage({ stage }) {
     setTimeout(() => setToast(null), 3000);
   }
 
-  const initiateTransition = useCallback((referral, toStage) => {
+  const initiateTransition = useCallback((referral, toStage, prefilledNote) => {
     setContextMenu(null);
     if (!referral || !canMoveFromTo(referral.current_stage, toStage)) {
       showToast(`Cannot move from ${referral?.current_stage} to ${toStage}`, 'error');
       return;
     }
+    // Conflict resolution flows pass a note already gathered in the panel —
+    // skip the modal entirely so the user isn't re-prompted. NTUC and Hold
+    // still need a modal because those require structured second-step data
+    // beyond just a free-text note.
+    if (prefilledNote && referral.current_stage === 'Conflict' && toStage !== 'NTUC' && toStage !== 'Hold' && toStage !== 'Conflict') {
+      executeTransition(referral, toStage, prefilledNote);
+      return;
+    }
     if (needsModal(referral.current_stage, toStage)) {
-      setPendingTransition({ referral, toStage });
+      setPendingTransition({ referral, toStage, prefilledNote });
     } else {
-      executeTransition(referral, toStage, '');
+      executeTransition(referral, toStage, prefilledNote || '');
     }
   }, []);
 
@@ -363,11 +426,19 @@ export default function ModulePage({ stage }) {
     const days       = daysInStage(referral);
     const totalDays  = daysInPipeline(referral);
     const isSN = referral.division === 'Special Needs';
+    const urgent = isUrgentCare(referral);
     switch (col.key) {
+      case 'urgent':
+        return (
+          <td key="urgent" style={{ padding: '11px 10px', textAlign: 'center', width: 40 }}>
+            {urgent ? <UrgentCareIcon size={14} title="Urgent care required" /> : <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.2), fontSize: 11 }}>—</span>}
+          </td>
+        );
       case 'patient':
         return (
           <td key="patient" style={{ padding: '11px 14px' }}>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
               {referral.patientName || referral.patient_id || '—'}
             </p>
             {fileUploadFlags.has(referral.patient_id) && (
@@ -513,6 +584,17 @@ export default function ModulePage({ stage }) {
           x={contextMenu.x} y={contextMenu.y} referral={contextMenu.referral}
           onOpen={() => { handleRowOpen(contextMenu.referral); setContextMenu(null); }}
           onOpenTriage={() => { openPatient(buildPatient(contextMenu.referral), contextMenu.referral, 'triage'); setContextMenu(null); }}
+          onToggleUrgent={async () => {
+            const ref = contextMenu.referral;
+            setContextMenu(null);
+            try {
+              const next = !isUrgentCare(ref);
+              await setUrgentCare({ referral: ref, next, actorUserId: appUserId });
+              showToast(`${ref.patientName || ref.patient_id} ${next ? 'flagged urgent care' : 'urgent care cleared'}`);
+            } catch (err) {
+              showToast(`Urgent care toggle failed: ${err.message}`, 'error');
+            }
+          }}
           onDismiss={() => setContextMenu(null)}
         />
       )}
@@ -520,7 +602,11 @@ export default function ModulePage({ stage }) {
         <NewReferralForm onClose={() => setShowNewReferral(false)} onSuccess={({ patient, referral }) => { refetch?.(); openPatient(patient, referral); }} />
       )}
       {pendingTransition && (
-        <TransitionModal referral={pendingTransition.referral} toStage={pendingTransition.toStage} loading={false}
+        <TransitionModal
+          referral={pendingTransition.referral}
+          toStage={pendingTransition.toStage}
+          initialNote={pendingTransition.prefilledNote}
+          loading={false}
           onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.toStage, note)}
           onCancel={() => setPendingTransition(null)}
         />
@@ -715,6 +801,7 @@ export default function ModulePage({ stage }) {
             onOpenTriage={(ref) => openPatient(buildPatient(ref), ref, 'triage')}
             onOpenFiles={(ref) => openPatient(buildPatient(ref), ref, 'files')}
             onOpenEligibility={(ref) => openPatient(buildPatient(ref), ref, 'eligibility')}
+            onOpenTab={(ref, tab) => openPatient(buildPatient(ref), ref, tab)}
             onInitiateTransition={(ref, toStage) => initiateTransition(ref, toStage)}
             onSelectedReferralLeftModule={() => setSelectedReferral(null)}
           />
@@ -743,9 +830,10 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   );
 }
 
-function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onDismiss }) {
+function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onToggleUrgent, onDismiss }) {
   const ref = useRef(null);
   const isSN = referral.division === 'Special Needs';
+  const urgent = isUrgentCare(referral);
   useEffect(() => {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
@@ -765,13 +853,24 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onDismiss }) {
   return (
     <>
       <div onClick={onDismiss} style={{ position: 'fixed', inset: 0, zIndex: 9990 }} />
-      <div ref={ref} style={{ position: 'fixed', top: y, left: x, zIndex: 9991, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 10, overflow: 'hidden', minWidth: 200, boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.13)}` }}>
+      <div ref={ref} style={{ position: 'fixed', top: y, left: x, zIndex: 9991, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 10, overflow: 'hidden', minWidth: 220, boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.13)}` }}>
         <div style={{ padding: '8px 14px 6px', borderBottom: `1px solid var(--color-border)` }}>
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>{referral.patientName || referral.patient_id}</p>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            {urgent && <UrgentCareIcon size={11} />} {referral.patientName || referral.patient_id}
+          </p>
         </div>
         <div style={{ padding: '4px 0' }}>
           <MenuItem label="Open" onClick={onOpen} icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>} />
           {isSN && <MenuItem label="Open Triage Form" onClick={onOpenTriage} accent={palette.primaryMagenta.hex} icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><rect x="9" y="3" width="6" height="4" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>} />}
+          {/* Urgent care toggle is ALWAYS present in the context menu — the
+              user explicitly requested it never be hidden behind a permission
+              gate at the UI layer. */}
+          <MenuItem
+            label={urgent ? 'Clear urgent care / pre-assessment' : 'Mark urgent care / pre-assessment'}
+            onClick={onToggleUrgent}
+            accent={palette.primaryMagenta.hex}
+            icon={<UrgentCareIcon size={14} muted={!urgent} title={urgent ? 'Clear urgent care' : 'Mark urgent care'} />}
+          />
         </div>
       </div>
     </>

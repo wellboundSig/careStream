@@ -293,6 +293,31 @@ const DESIRED_NEW_FIELDS = {
     t.text('opwdd_route_started_by_id'),
     t.check('opwdd_conversion_ready'),
     t.single('opwdd_handoff_status', OPWDD_HANDOFF_STATUS),
+
+    // ── Stage workflow overhaul (2026-05-20) ────────────────────────────────
+    // Concurrent presence in Clinical Intake RN Review while still in Intake.
+    t.check('in_clinical_review'),
+    t.dateTime('clinical_review_pushed_at'),
+    t.dateTime('clinical_review_completed_at'),
+    t.text('clinical_review_completed_by_id'),
+    // Concurrent presence: Eligibility completion timestamp; participates in
+    // the LIFO trigger that flips current_stage to Staffing Feasibility when
+    // BOTH clinical and eligibility have completed.
+    t.dateTime('eligibility_completed_at'),
+    t.text('eligibility_completed_by_id'),
+    // Eligibility → Intake send-back (with required note flag).
+    t.dateTime('eligibility_returned_to_intake_at'),
+    t.longText('eligibility_returned_to_intake_note'),
+    t.text('eligibility_returned_to_intake_by_id'),
+    // Urgent care / pre-assessment indicator.
+    t.check('requires_urgent_care'),
+    t.dateTime('urgent_care_marked_at'),
+    t.text('urgent_care_marked_by_id'),
+    t.longText('urgent_care_note'),
+  ],
+  Conflicts: [
+    // Captured at creation so resolve actions know which module to return to.
+    t.longText('source_stage'),
   ],
   Files: [
     t.text('opwdd_case_id'),
@@ -301,6 +326,8 @@ const DESIRED_NEW_FIELDS = {
     t.dateTime('document_valid_through'),
     t.text('verified_current_by_id'),
     t.dateTime('verified_current_at'),
+    // Link an uploaded auth letter to a specific Authorizations row.
+    t.text('authorization_id'),
   ],
   Tasks: [
     t.text('opwdd_case_id'),
@@ -323,6 +350,9 @@ const DESIRED_CHOICE_EXTENSIONS = {
     type: OPWDD_TASK_TYPES,
     route_to_role: ['Enrollment'],
   },
+  // New writes default Conflicts.status to "Open"; legacy "Unaddressed" rows
+  // are treated as Open in the UI mapping (see conflictFlagging.js).
+  Conflicts: { status: ['Open'] },
 };
 
 const DESIRED_PERMISSIONS = [
@@ -338,6 +368,9 @@ const DESIRED_PERMISSIONS = [
   { id: 'perm_opwdd_mark_code95',        key: 'opwdd.mark_code95_received',label: 'Mark Code 95 Received',          category: 'OPWDD', sort_order: 10, description: 'Mark the OPWDD case as having received code 95.' },
   { id: 'perm_opwdd_convert_to_intake',  key: 'opwdd.convert_to_intake',   label: 'Convert OPWDD to Intake',        category: 'OPWDD', sort_order: 11, description: 'Hand an OPWDD case back to intake after code 95.' },
   { id: 'perm_opwdd_close_case',         key: 'opwdd.close_case',          label: 'Close OPWDD Case',               category: 'OPWDD', sort_order: 12, description: 'Close an OPWDD eligibility case.' },
+
+  // Urgent care / pre-assessment indicator (2026-05-20).
+  { id: 'perm_referral_flag_urgent',     key: 'referral.flag_urgent_care', label: 'Flag urgent care / pre-assessment', category: 'Referrals', sort_order: 17, description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface.' },
 ];
 
 // ---------- Operations ----------

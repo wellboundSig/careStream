@@ -4,8 +4,8 @@ import palette, { hexToRgba } from '../../utils/colors.js';
 import { CONFLICT_REASON_OPTIONS } from '../../data/eligibilityEnums.js';
 import { CONFLICT_SEVERITY_OPTIONS } from '../../utils/conflictFlagging.js';
 
-export default function TransitionModal({ referral, toStage, onConfirm, onCancel, loading }) {
-  const [note, setNote] = useState('');
+export default function TransitionModal({ referral, toStage, onConfirm, onCancel, loading, initialNote }) {
+  const [note, setNote] = useState(initialNote || '');
   const [conflictCategory, setConflictCategory] = useState('');
   const [conflictSeverity, setConflictSeverity] = useState('');
   const [conflictDescription, setConflictDescription] = useState('');

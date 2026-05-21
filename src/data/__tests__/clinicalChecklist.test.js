@@ -64,15 +64,15 @@ describe('isChecklistComplete', () => {
 });
 
 describe('Clinical decisions', () => {
-  it('has 3 decision options', () => {
-    expect(CLINICAL_DECISIONS.length).toBe(3);
+  it('has 2 decision options (Decline removed in 2026-05-20 workflow overhaul — RNs escalate to Conflict instead)', () => {
+    expect(CLINICAL_DECISIONS.length).toBe(2);
   });
 
-  it('includes accept, conditional, decline', () => {
+  it('includes accept and conditional but NOT decline', () => {
     const keys = CLINICAL_DECISIONS.map((d) => d.key);
     expect(keys).toContain('accept');
     expect(keys).toContain('conditional');
-    expect(keys).toContain('decline');
+    expect(keys).not.toContain('decline');
   });
 });
 

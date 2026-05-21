@@ -5,6 +5,7 @@ import {
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { openCaseForReferral } from '../../../store/opwddOrchestration.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { mergeEntities } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
@@ -420,6 +421,21 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
 
   async function save() {
     if (!can(PERMISSION_KEYS.CLINICAL_TRIAGE)) return;
+
+    // OPWDD = "No" confirmation step. Even when the rest of triage is
+    // incomplete, answering "No" should route the patient to the OPWDD
+    // module — but we surface a confirmation popup first so this big
+    // routing decision isn't a one-click accident. (2026-05-20 spec.)
+    if (draft.code_95 === 'no' && referral?.code_95 !== 'no') {
+      const ok = window.confirm(
+        'Patient does NOT have OPWDD Code 95.\n\n' +
+        'Confirming will route them to the OPWDD Enrollment module and open an OPWDD eligibility case. ' +
+        'They will return to Intake when the OPWDD case is closed or converted.\n\n' +
+        'Continue?'
+      );
+      if (!ok) return;
+    }
+
     const { missing } = isTriageComplete(draft, triageType);
     setValidationWarnings(missing);
 
@@ -565,9 +581,20 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
       if (pcp_physician_id && pcp_physician_id !== triageData.pcp_physician_id && referral?._id) {
         await updateReferral(referral._id, { physician_id: pcp_physician_id }).catch(() => {});
       }
-      // If Code 95 = no, route patient to OPWDD Enrollment
+      // If Code 95 = no, route patient to OPWDD Enrollment AND open the
+      // OPWDDEligibilityCases row so the enrollment specialist has a
+      // seeded checklist to work from. openCaseForReferral is idempotent
+      // — calling it for a referral that already has an open case is a
+      // no-op.
       if (draft.code_95 === 'no' && referral?._id) {
         await updateReferral(referral._id, { current_stage: 'OPWDD Enrollment', code_95: 'no' }).catch(() => {});
+        await openCaseForReferral({
+          referral: { id: referral.id, _id: referral._id },
+          patientId: patient?.id,
+          actorUserId: appUserId,
+          assignedSpecialistId: appUserId,
+          reason: 'triage_no',
+        }).catch((err) => console.warn('Open OPWDD case after Code 95=No failed:', err));
         triggerDataRefresh();
       } else if (draft.code_95 === 'yes' && referral?._id) {
         await updateReferral(referral._id, { code_95: 'yes' }).catch(() => {});

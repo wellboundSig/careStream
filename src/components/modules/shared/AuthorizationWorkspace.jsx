@@ -18,15 +18,17 @@
  *   but the workspace surfaces a suggestion banner when the policy says so.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { createAuthorization } from '../../../api/authorizations.js';
+import { createFile } from '../../../api/patientFiles.js';
 import { createConflict } from '../../../api/conflicts.js';
 import { recordActivity } from '../../../api/activityLog.js';
 import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
+import { uploadToR2 } from '../../../utils/r2Upload.js';
 import palette from '../../../utils/colors.js';
 import {
   AUTH_STATUS,
@@ -124,6 +126,8 @@ export default function AuthorizationWorkspace({
   const [followUpOwnerId, setFollowUpOwnerId] = useState('');
   const [narNote, setNarNote] = useState('');
   const [notes, setNotes] = useState('');
+  const [authFile, setAuthFile] = useState(null); // optional auth letter PDF/img
+  const fileInputRef = useRef(null);
 
   function reset() {
     setMode(null); setError(null); setSaving(false);
@@ -132,6 +136,8 @@ export default function AuthorizationWorkspace({
     setUnitType(AUTH_UNIT_TYPE.VISIT); setServicesAuth([]);
     setDenialReason(''); setDenialNextAction(ROUTING_ACTION.SEND_TO_CONFLICT);
     setFollowUpDate(''); setFollowUpOwnerId(''); setNarNote(''); setNotes('');
+    setAuthFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   function openPicker() { reset(); setMode('pick'); }
@@ -188,13 +194,41 @@ export default function AuthorizationWorkspace({
         ...(realPayerInsuranceId ? { payer_insurance_id: realPayerInsuranceId } : {}),
         decided_by_user_id: verifierRecordId || undefined,
       });
+
+      // Optional: upload an auth-letter attachment and link it to the row.
+      // Failures are non-fatal — the Authorization row is already created.
+      if (authFile && patient?.id) {
+        try {
+          const r2 = await uploadToR2(authFile, patient.id);
+          await createFile({
+            id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            patient_id: patient.id,
+            ...(referral?.id ? { referral_id: referral.id } : {}),
+            uploaded_by_id: appUserId || 'unknown',
+            file_name: authFile.name,
+            file_type: authFile.type || 'application/octet-stream',
+            file_size: authFile.size,
+            r2_key: r2.r2Key,
+            r2_url: r2.r2Url,
+            category: 'Auth Letter',
+            // Link the file row to the specific Authorizations row via the
+            // new authorization_id text column (schema overhaul 2026-05-20).
+            ...(created?.fields?.id ? { authorization_id: created.fields.id } : {}),
+            created_at: new Date().toISOString(),
+          });
+        } catch (err) {
+          // Surface the upload error in the form but keep the auth row intact.
+          setError(`Auth saved, but file upload failed: ${err.message}`);
+        }
+      }
+
       await recordActivity({
         actorUserId: appUserId,
         action: auditActionFor(payload.auth_status),
         patientId: patient?.id,
         referralId: referral?.id,
         detail: `Authorization ${payload.auth_status} recorded for ${payerName || 'insurance'}.`,
-        metadata: { authStatus: payload.auth_status, payerInsuranceId: realPayerInsuranceId || null },
+        metadata: { authStatus: payload.auth_status, payerInsuranceId: realPayerInsuranceId || null, hadFile: !!authFile },
       });
       reset();
       triggerDataRefresh();
@@ -204,6 +238,26 @@ export default function AuthorizationWorkspace({
       setSaving(false);
       return null;
     }
+  }
+
+  // ── Send to Eligibility — closes the auth workflow ────────────────────────
+  // When current_stage is still the legacy 'Authorization Pending', we flip
+  // it back to 'Eligibility Verification' (the parent module per the 2026-05-20
+  // workflow overhaul). Otherwise this is a no-op acknowledgment because the
+  // patient never left Eligibility in the first place.
+  async function handleSendToEligibility() {
+    if (!referral) return;
+    if (referral.current_stage === 'Authorization Pending') {
+      onInitiateTransition?.(referral, 'Eligibility Verification');
+    }
+    await recordActivity({
+      actorUserId: appUserId,
+      action: 'Authorization Returned to Eligibility',
+      patientId: patient?.id,
+      referralId: referral?.id,
+      detail: 'Authorization workflow handed back to Eligibility.',
+    });
+    triggerDataRefresh();
   }
 
   async function handleApproval() {
@@ -342,19 +396,37 @@ export default function AuthorizationWorkspace({
         </p>
       )}
 
-      {/* Latest auth summary + add */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.gap }}>
+      {/* Latest auth summary + add + Send to Eligibility */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.gap, gap: 6, flexWrap: 'wrap' }}>
         <p style={sectionHeading(t)}>Authorizations ({authorizations.length})</p>
-        {canDecide && mode === null && (
-          <button
-            onClick={openPicker}
-            data-testid="auth-add-btn"
-            style={{
-              padding: `${t.btnPadY - 2}px ${t.inputPadX + 4}px`, borderRadius: t.radius - 1, border: 'none',
-              background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
-              fontSize: t.fontMuted, fontWeight: 700, cursor: 'pointer',
-            }}
-          >+ Record Auth</button>
+        {mode === null && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {authorizations.length > 0 && (
+              <button
+                onClick={handleSendToEligibility}
+                data-testid="auth-send-to-eligibility"
+                title="Hand this case back to Eligibility — the auth status remains attached to the patient."
+                style={{
+                  padding: `${t.btnPadY - 2}px ${t.inputPadX + 4}px`, borderRadius: t.radius - 1, border: '1px solid var(--color-border)',
+                  background: palette.backgroundLight.hex, color: palette.accentBlue.hex,
+                  fontSize: t.fontMuted, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                → Send to Eligibility
+              </button>
+            )}
+            {canDecide && (
+              <button
+                onClick={openPicker}
+                data-testid="auth-add-btn"
+                style={{
+                  padding: `${t.btnPadY - 2}px ${t.inputPadX + 4}px`, borderRadius: t.radius - 1, border: 'none',
+                  background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
+                  fontSize: t.fontMuted, fontWeight: 700, cursor: 'pointer',
+                }}
+              >+ Record Auth</button>
+            )}
+          </div>
         )}
       </div>
 
@@ -441,6 +513,7 @@ export default function AuthorizationWorkspace({
           <Field t={t} label="Notes">
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle(t), resize: 'vertical' }} />
           </Field>
+          <AuthFileField t={t} authFile={authFile} setAuthFile={setAuthFile} inputRef={fileInputRef} />
           {error && <ErrBanner t={t}>{error}</ErrBanner>}
           <Confirm t={t} onCancel={reset} onConfirm={handleApproval} disabled={!approvedDate || saving} confirmLabel={saving ? 'Saving…' : 'Confirm Approval'} accent={palette.accentGreen.hex} />
         </FormBox>
@@ -505,6 +578,7 @@ export default function AuthorizationWorkspace({
           <Field t={t} label="Notes">
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle(t), resize: 'vertical' }} />
           </Field>
+          <AuthFileField t={t} authFile={authFile} setAuthFile={setAuthFile} inputRef={fileInputRef} />
           {error && <ErrBanner t={t}>{error}</ErrBanner>}
           <Confirm t={t} onCancel={reset} onConfirm={handlePending} disabled={saving} confirmLabel={saving ? 'Saving…' : 'Record Pending'} accent={palette.highlightYellow.hex} />
         </FormBox>
@@ -591,6 +665,48 @@ function Field({ t, label, children }) {
       <label style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#555', display: 'block', marginBottom: 4 }}>{label}</label>
       {children}
     </div>
+  );
+}
+
+function AuthFileField({ t, authFile, setAuthFile, inputRef }) {
+  return (
+    <Field t={t} label="Authorization letter (optional)">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.tiff,.heic,application/pdf,image/*"
+          onChange={(e) => setAuthFile(e.target.files?.[0] || null)}
+          style={{ display: 'none' }}
+          data-testid="auth-file-input"
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          style={{
+            padding: '6px 11px', borderRadius: 6,
+            border: `1px dashed ${authFile ? palette.accentGreen.hex : '#bbb'}`,
+            background: authFile ? '#f0fdf4' : palette.backgroundLight.hex,
+            color: authFile ? palette.accentGreen.hex : '#555',
+            fontSize: t.fontMuted, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          {authFile ? `${authFile.name}` : '+ Attach auth letter'}
+        </button>
+        {authFile && (
+          <button
+            type="button"
+            onClick={() => { setAuthFile(null); if (inputRef.current) inputRef.current.value = ''; }}
+            style={{ background: 'none', border: 'none', color: '#888', fontSize: 11, cursor: 'pointer' }}
+          >
+            Remove
+          </button>
+        )}
+        <span style={{ fontSize: t.fontMuted - 1, color: '#888', flex: 1, minWidth: 0 }}>
+          Saves to Files with category Auth Letter and links to this authorization row.
+        </span>
+      </div>
+    </Field>
   );
 }
 function FormBox({ t, title, accent, onCancel, children, testId }) {

@@ -921,9 +921,11 @@ describe('FLOW 16: Division-based data segmentation', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FLOW 17: Send to Conflict from every active non-terminal stage', () => {
-  // Conflict → Conflict is a same-stage move (blocked by design).
-  // OPWDD only allows → Intake or Discarded Leads (restricted stage).
-  const excluded = new Set(['Conflict', 'OPWDD Enrollment']);
+  // Per the 2026-05-20 workflow overhaul: "Patients can be sent to Conflict
+  // from any stage except 'Completed' or 'Leads.'" Lead Entry is now also
+  // excluded — leads aren't yet active referrals, so conflict isn't an option
+  // until after promotion to Intake.
+  const excluded = new Set(['Conflict', 'OPWDD Enrollment', 'Lead Entry']);
   const activeNonTerminal = Object.entries(StageRules.stages)
     .filter(([name, rule]) => !rule.terminal && !excluded.has(name))
     .map(([name]) => name);
@@ -933,6 +935,10 @@ describe('FLOW 17: Send to Conflict from every active non-terminal stage', () =>
       expect(canMoveFromTo(stage, 'Conflict')).toBe(true);
     });
   }
+
+  it('Lead Entry cannot send to Conflict (Leads excluded by spec 2026-05-20)', () => {
+    expect(canMoveFromTo('Lead Entry', 'Conflict')).toBe(false);
+  });
 
   it('OPWDD Enrollment cannot send to Conflict (restricted transitions)', () => {
     expect(canMoveFromTo('OPWDD Enrollment', 'Conflict')).toBe(false);

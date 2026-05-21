@@ -20,6 +20,7 @@ const TABLES = [
   { key: 'insuranceChecks',  table: 'InsuranceChecks' },
   { key: 'conflicts',        table: 'Conflicts' },
   { key: 'authorizations',   table: 'Authorizations' },
+  { key: 'disenrollmentAssistanceFlags', table: 'DisenrollmentAssistanceFlags' },
   { key: 'episodes',         table: 'Episodes' },
   { key: 'triageAdult',      table: 'TriageAdult' },
   { key: 'triagePediatric',  table: 'TriagePediatric' },

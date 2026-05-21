@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { updateReferral } from '../../api/referrals.js';
+import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
 import { updateReferralOptimistic } from '../../store/mutations.js';
+import { isUrgentCare } from '../../utils/urgentCare.js';
 import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { recordTransition } from '../../utils/recordTransition.js';
@@ -160,6 +162,35 @@ function ReturnedFromClinicalFlag({ note }) {
       >
         <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
           ↩ Returned from Clinical RN Review
+        </span>
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {expanded && note && (
+        <div style={{ padding: '0 12px 10px' }}>
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>Reason:</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mirror of ReturnedFromClinicalFlag — surfaces when eligibility staff
+// send a patient back to Intake with a required note. Sits at the top of
+// the IntakePanel so the front-line intake user sees it immediately.
+function ReturnedFromEligibilityFlag({ note, at }) {
+  const [expanded, setExpanded] = useState(true);
+  const ts = at ? new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+  return (
+    <div data-testid="returned-from-eligibility-flag" style={{ borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 12, overflow: 'hidden' }}>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
+          ↩ Returned from Eligibility{ts ? ` · ${ts}` : ''}
         </span>
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
           <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -395,8 +426,9 @@ const INTAKE_DEMO_FIELDS = [
   { key: 'medicaid_number', label: 'Medicaid number' },
 ];
 
-function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
+function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
   const p = selectedReferral?.patient;
   const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [key, !!(p?.[key])]));
   const isSN = selectedReferral?.division === 'Special Needs';
@@ -475,7 +507,13 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
             referral={selectedReferral}
             triageData={triageData}
             insuranceChecks={patientInsuranceChecks}
+            onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
           />
+
+          {/* Returned from Eligibility — required note becomes a flag here */}
+          {selectedReferral.eligibility_returned_to_intake_note && (
+            <ReturnedFromEligibilityFlag note={selectedReferral.eligibility_returned_to_intake_note} at={selectedReferral.eligibility_returned_to_intake_at} />
+          )}
 
           {/* F2F section — shown for F2F-stage referrals */}
           {isF2F && (
@@ -531,26 +569,121 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                     </span>
                   </label>
                 ))}
+
+                {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
+                    checkboxes per spec — it's only clickable once every
+                    required item is checked off. Once fired it flips the
+                    `in_clinical_review` flag but does NOT change current_stage
+                    (the patient remains in Intake until Insurance Details are
+                    collected and the user pushes to Eligibility). */}
+                <PushToClinicalRNButton
+                  referral={selectedReferral}
+                  cursoryReviewComplete={reviewComplete}
+                  actorUserId={appUserId}
+                />
               </PanelSection>
             </>
           )}
 
-          <PanelSection title="Actions">
-            {isF2F ? (
-              <ActionBtn
-                label={reviewComplete ? 'Confirm → Clinical Intake RN Review' : 'Complete review to send to Clinical RN'}
-                variant={reviewComplete ? 'forward' : 'default'}
-                disabled={!reviewComplete}
-                onClick={() => reviewComplete && onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
-              />
-            ) : (
-              <ActionBtn label="Continue to Eligibility Verification →" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')} />
-            )}
-            {isSN && <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />}
-          </PanelSection>
+          {/* Final forward button — Push to Eligibility. Only relevant once
+              Clinical RN has been pushed AND Insurance Details are collected. */}
+          <PushToEligibilityAction
+            referral={selectedReferral}
+            insuranceComplete={patientInsuranceChecks?.length > 0}
+            onOpenTriage={() => onOpenTriage?.(selectedReferral)}
+            onInitiateTransition={onInitiateTransition}
+            isSN={isSN}
+          />
         </>
       )}
     </Panel>
+  );
+}
+
+// ── Push to Clinical RN — lives under the cursory review checkboxes ──────────
+// Gating: ONLY enabled when every required item in the cursory review is
+// checked. Other readiness gates (demographics / triage) are surfaced as
+// status dots in the PatientSnapshot above; this button intentionally only
+// cares about the cursory review per the 2026-05-20 UX spec.
+function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId }) {
+  const inClinical = referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
+
+  async function handlePushClinical() {
+    if (!referral?._id) return;
+    try {
+      await updateReferralOptimistic(referral._id, {
+        in_clinical_review: true,
+        clinical_review_pushed_at: new Date().toISOString(),
+      });
+      recordTransition({
+        referral,
+        fromStage: referral.current_stage,
+        toStage: 'Clinical Intake RN Review',
+        note: '[Pushed concurrently — current stage unchanged]',
+        authorId: actorUserId,
+      });
+    } catch {}
+  }
+
+  if (inClinical) {
+    return (
+      <div style={{ padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`, marginTop: 10 }}>
+        <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex }}>
+          ✓ Pushed to Clinical Intake RN Review
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={cursoryReviewComplete ? handlePushClinical : undefined}
+      disabled={!cursoryReviewComplete}
+      style={{
+        width: '100%',
+        marginTop: 10,
+        padding: '10px 12px',
+        borderRadius: 8,
+        border: 'none',
+        background: cursoryReviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+        color: cursoryReviewComplete ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+        fontSize: 12.5,
+        fontWeight: 700,
+        cursor: cursoryReviewComplete ? 'pointer' : 'not-allowed',
+        textAlign: 'left',
+        transition: 'filter 0.12s',
+      }}
+      onMouseEnter={(e) => cursoryReviewComplete && (e.currentTarget.style.filter = 'brightness(1.08)')}
+      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+    >
+      {cursoryReviewComplete ? 'Push to Intake Clinical RN Review →' : 'Check off the cursory review to push'}
+    </button>
+  );
+}
+
+// ── Push to Eligibility — final Intake exit ──────────────────────────────────
+// Surfaces in the Actions section. Disabled until the patient has been
+// pushed to Clinical RN AND Insurance Details are collected.
+function PushToEligibilityAction({ referral, insuranceComplete, onOpenTriage, onInitiateTransition, isSN }) {
+  const inClinical = referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
+  const ready = inClinical && insuranceComplete;
+
+  let label = 'Push to Eligibility Verification →';
+  if (!inClinical && !insuranceComplete) label = 'Complete cursory review and Insurance Details';
+  else if (!inClinical) label = 'Push to Clinical RN first';
+  else if (!insuranceComplete) label = 'Collect Insurance Details to send to Eligibility';
+
+  return (
+    <PanelSection title="Actions">
+      <ActionBtn
+        label={label}
+        variant={ready ? 'forward' : 'default'}
+        disabled={!ready}
+        onClick={ready ? () => onInitiateTransition?.(referral, 'Eligibility Verification') : undefined}
+      />
+      {isSN && <ActionBtn label="Open Triage Form" variant="default" onClick={onOpenTriage} />}
+    </PanelSection>
   );
 }
 
@@ -632,57 +765,122 @@ function EligibilityPanel({ referrals, selectedReferral, onInitiateTransition })
   );
 }
 
-// ── 4. Disenrollment ─────────────────────────────────────────────────────────
-const DISEN_CHECKLIST = [
-  { key: 'contacted_agency',    label: 'Contacted current agency' },
-  { key: 'discharge_confirmed', label: 'Discharge date confirmed' },
-  { key: 'medicaid_updated',    label: 'Medicaid notified / updated' },
-  { key: 'eligibility_clear',   label: 'Eligibility clear post-discharge' },
-];
-
+// ── 4. Disenrollment Required (supportive sub-module of Eligibility) ─────────
+//
+// Spec overhaul (2026-05-20): the patient stays in Eligibility throughout.
+// This panel surfaces the OPEN DisenrollmentAssistanceFlags rows for the
+// selected patient (read directly from the in-memory store) and lets the
+// disenrollment specialist mark them resolved or send the case back to
+// Eligibility (visual close — patient was never moved).
 function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
-  const [checks, setChecks] = useState({});
+  const { appUserId } = useCurrentAppUser();
+  const flagsById = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
 
-  useEffect(() => {
-    if (!selectedReferral?._id) { setChecks({}); return; }
-    const saved = localStorage.getItem(`disen_${selectedReferral._id}`);
-    setChecks(saved ? JSON.parse(saved) : {});
-  }, [selectedReferral?._id]);
-
-  function toggle(k) {
-    setChecks((prev) => {
-      const next = { ...prev, [k]: !prev[k] };
-      if (selectedReferral?._id) {
-        localStorage.setItem(`disen_${selectedReferral._id}`, JSON.stringify(next));
-      }
-      return next;
+  const flagsForPatient = useMemo(() => {
+    if (!selectedReferral?._id && !selectedReferral?.id) return [];
+    const ourRec = selectedReferral?._id;
+    const ourCustom = selectedReferral?.patient_id;
+    return Object.values(flagsById).filter((f) => {
+      if (!f) return false;
+      // patient_id is multipleRecordLinks → array of rec ids; we also accept
+      // a single text id for resilience.
+      const pid = f.patient_id;
+      const matchPatient = Array.isArray(pid)
+        ? pid.includes(selectedReferral.patient?._id) || pid.includes(ourCustom)
+        : pid === ourCustom || pid === selectedReferral.patient?._id;
+      if (matchPatient) return true;
+      const rid = f.referral_id;
+      if (Array.isArray(rid)) return rid.includes(ourRec);
+      return rid === selectedReferral?.id || rid === ourRec;
     });
+  }, [flagsById, selectedReferral]);
+
+  const openFlags = flagsForPatient.filter((f) => f.status === 'open' || f.status === 'in_review');
+  const resolvedFlags = flagsForPatient.filter((f) => f.status === 'completed' || f.status === 'cancelled');
+
+  async function markResolved(flag) {
+    if (!flag?._id) return;
+    const note = window.prompt('Resolution note (required):', '');
+    if (!note?.trim()) return;
+    try {
+      await updateDisenrollmentFlag(flag._id, {
+        status: 'completed',
+        resolution_note: note.trim(),
+        resolved_by_user_id: appUserId || undefined,
+        updated_at: new Date().toISOString(),
+      });
+      triggerDataRefresh();
+    } catch (err) {
+      console.error('Disen resolve failed', err);
+    }
   }
 
   return (
     <Panel>
-      {!selectedReferral ? <EmptyPanelState /> : (
+      {!selectedReferral ? <EmptyPanelState message="Select a patient to work disenrollment assistance." /> : (
         <>
-          <PanelSection title="Discharge Steps">
-            <CollapsibleChecklist
-              title="Disenrollment checklist"
-              items={DISEN_CHECKLIST}
-              doneMap={checks}
-              onToggle={toggle}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.highlightYellow.hex, 0.22), color: '#7A5F00', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Disenrollment (supportive)
+            </span>
+            {selectedReferral.current_stage && selectedReferral.current_stage !== 'Disenrollment Required' && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                also in {selectedReferral.current_stage}
+              </span>
+            )}
+          </div>
+
+          <PanelSection title={`Open Flags (${openFlags.length})`}>
+            {openFlags.length === 0 ? (
+              <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>
+                No open disenrollment flags for this patient.
+              </p>
+            ) : openFlags.map((f) => (
+              <div key={f._id} style={{ padding: '9px 11px', borderRadius: 7, background: hexToRgba(palette.highlightYellow.hex, 0.12), border: `1px solid ${hexToRgba(palette.highlightYellow.hex, 0.32)}`, marginBottom: 8 }}>
+                <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 4 }}>Expert Medicaid Assist</p>
+                {f.note && <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.5, marginBottom: 6 }}>{f.note}</p>}
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
+                  Follow-up {f.follow_up_date ? new Date(f.follow_up_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
+                </p>
+                <button
+                  onClick={() => markResolved(f)}
+                  style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: palette.accentGreen.hex, color: '#fff', fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}
+                >
+                  Mark Resolved
+                </button>
+              </div>
+            ))}
           </PanelSection>
+
           <PanelSection title="Actions">
             <ActionBtn
-              label="Discharge Confirmed → Eligibility Verification"
+              label="Send to Eligibility"
               variant="forward"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Eligibility Verification')}
+              onClick={() => {
+                // Concurrent model: the patient stays in Eligibility, so the
+                // only stage-flip happens if they were ever moved to the
+                // standalone 'Disenrollment Required' stage. Otherwise this
+                // is just an audit acknowledgment.
+                if (selectedReferral.current_stage === 'Disenrollment Required') {
+                  onInitiateTransition?.(selectedReferral, 'Eligibility Verification');
+                }
+              }}
             />
-            <ActionBtn
-              label="Escalate to Conflict"
-              variant="warning"
-              onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')}
-            />
+            {/* Conflict escalation lives in the module toolbar at the top of
+                the page — no duplicate button here. */}
           </PanelSection>
+
+          {resolvedFlags.length > 0 && (
+            <PanelSection title={`Resolved (${resolvedFlags.length})`}>
+              {resolvedFlags.slice(0, 5).map((f) => (
+                <div key={f._id} style={{ padding: '6px 9px', borderRadius: 6, background: hexToRgba(palette.backgroundDark.hex, 0.03), marginBottom: 5 }}>
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+                    {f.resolution_note || 'Resolved'}
+                  </p>
+                </div>
+              ))}
+            </PanelSection>
+          )}
         </>
       )}
     </Panel>
@@ -995,19 +1193,25 @@ function ApproveButton({ enabled, onSelect }) {
 }
 
 // ── 6. Clinical Intake RN Review ──────────────────────────────────────────────
+// Spec changes (2026-05-20):
+//   • Decline is GONE — RNs use Conflict instead.
+//   • Auth-required toggle is GONE — auth is now an Eligibility-side concern.
+//   • Confirm flips the patient to Staffing using the LIFO rule:
+//       - if eligibility_completed_at is already set, current_stage becomes
+//         'Staffing Feasibility'.
+//       - otherwise we just clear in_clinical_review and record the timestamp;
+//         the Eligibility "Completed" action will flip the stage later.
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const [checked, setChecked] = useState({});
   const [decision, setDecision] = useState(null);
-  const [authRequired, setAuthRequired] = useState(false);
   const [sendBackNote, setSendBackNote] = useState('');
   const [showSendBack, setShowSendBack] = useState(false);
 
   useEffect(() => {
     setChecked({});
     setDecision(null);
-    setAuthRequired(false);
     setSendBackNote('');
     setShowSendBack(false);
   }, [selectedReferral?._id]);
@@ -1019,21 +1223,48 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   const checklistComplete = isChecklistComplete(checked);
   const canConfirm = checklistComplete && (decision === 'accept' || decision === 'conditional');
 
-  function handleConfirm() {
+  const eligibilityDone = !!selectedReferral?.eligibility_completed_at;
+
+  async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
-    const dest = authRequired ? 'Authorization Pending' : 'Staffing Feasibility';
-    updateReferral(selectedReferral._id, {
+    const now = new Date().toISOString();
+    const baseFields = {
       clinical_review_decision: decision,
       clinical_review_by: appUserId || 'unknown',
-      clinical_review_at: new Date().toISOString(),
-    }).catch(() => {});
-    onInitiateTransition?.(selectedReferral, dest);
+      clinical_review_at: now,
+      clinical_review_completed_at: now,
+      clinical_review_completed_by_id: appUserId || 'unknown',
+      in_clinical_review: false,
+    };
+    if (eligibilityDone) {
+      // LIFO trigger — Eligibility already completed, so the patient officially
+      // enters Staffing Feasibility now.
+      onInitiateTransition?.(selectedReferral, 'Staffing Feasibility');
+      // Apply the extra audit fields alongside the stage flip. The optimistic
+      // update path in ModulePage owns current_stage; we just add the extras.
+      updateReferral(selectedReferral._id, baseFields).catch(() => {});
+    } else {
+      // Eligibility still in flight — leave current_stage alone, just clear
+      // the concurrent presence and stamp completion.
+      try {
+        await updateReferralOptimistic(selectedReferral._id, baseFields);
+      } catch {}
+      // Audit row for the clinical exit (not a stage change).
+      recordTransition({
+        referral: selectedReferral,
+        fromStage: 'Clinical Intake RN Review',
+        toStage: selectedReferral.current_stage,
+        note: '[Clinical RN confirmed — awaiting Eligibility completion]',
+        authorId: appUserId,
+      });
+    }
   }
 
   function handleSendBack() {
     if (!sendBackNote.trim() || !selectedReferral) return;
     updateReferral(selectedReferral._id, {
       current_stage: 'F2F/MD Orders Pending',
+      in_clinical_review: false,
       returned_from_clinical: 'true',
       returned_from_clinical_note: sendBackNote.trim(),
       returned_from_clinical_at: new Date().toISOString(),
@@ -1051,27 +1282,35 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     setSendBackNote('');
   }
 
-  function handleDecline() {
-    if (!selectedReferral) return;
-    updateReferral(selectedReferral._id, {
-      clinical_review_decision: 'decline',
-      clinical_review_by: appUserId || 'unknown',
-      clinical_review_at: new Date().toISOString(),
-    }).catch(() => {});
-    onInitiateTransition?.(selectedReferral, 'Conflict');
-  }
-
   return (
     <Panel width={320}>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
+          {/* Concurrent presence indicator — reminds clinical staff that the
+              patient may still be in Intake / Eligibility. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Clinical RN
+            </span>
+            {selectedReferral.current_stage && selectedReferral.current_stage !== 'Clinical Intake RN Review' && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                also in {selectedReferral.current_stage}
+              </span>
+            )}
+            {eligibilityDone && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                eligibility ✓
+              </span>
+            )}
+          </div>
+
           <ClinicalChecklistUI
             checked={checked}
             onToggle={toggleItem}
             decision={decision}
             onDecisionChange={setDecision}
-            authRequired={authRequired}
-            onAuthRequiredChange={setAuthRequired}
+            authRequired={false}
+            onAuthRequiredChange={() => {}}
             compact
           />
 
@@ -1102,7 +1341,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             )}
           </PanelSection>
 
-          {/* Confirm + clinical decision actions — gated by permission */}
+          {/* Confirm + clinical decision actions — gated by permission.
+              Decline is gone; issues route through the toolbar Conflict
+              button at the top of the module page. */}
           {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
           <PanelSection title="Clinical Validation">
             <button
@@ -1119,16 +1360,8 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
-              {canConfirm
-                ? `Confirm → ${authRequired ? 'Auth Pending' : 'Staffing Feasibility'}`
-                : 'Complete checklist to confirm'}
+              {canConfirm ? 'Confirm → Staffing Feasibility' : 'Complete checklist + Accept to confirm'}
             </button>
-
-            {decision === 'decline' && (
-              <ActionBtn label="Decline → Conflict" variant="warning" onClick={handleDecline} />
-            )}
-
-            <ActionBtn label="Escalate to Conflict" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Conflict')} />
           </PanelSection>
           )}
 
@@ -1182,16 +1415,23 @@ const SEVERITY_PILL = {
   Critical: { bg: hexToRgba(palette.primaryMagenta.hex, 0.18), text: palette.primaryMagenta.hex },
 };
 
-const CONFLICT_RESOLVE_DESTINATIONS = [
-  { stage: 'Eligibility Verification', sub: 'Insurance conflict resolved — recheck' },
-  { stage: 'Clinical Intake RN Review', sub: 'Compliance cleared — return to clinical' },
-  { stage: 'Disenrollment Required', sub: 'Overlap found — discharge needed' },
+// All active stages — used by "Resolve and Send to..." for free-form routing.
+// We keep Conflict and the strictly-terminal stages out of this list because
+// you can't resolve into the same lane and you can't pick NTUC / Completed.
+const CONFLICT_ANY_STAGE_DESTINATIONS = [
+  'Lead Entry', 'Intake', 'F2F/MD Orders Pending', 'Clinical Intake RN Review',
+  'Eligibility Verification', 'Authorization Pending', 'Disenrollment Required',
+  'Staffing Feasibility', 'Pre-SOC', 'OPWDD Enrollment', 'Hold',
 ];
 
 function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onInitiateTransition }) {
   const [conflicts, setConflicts] = useState([]);
   const [loadingConflicts, setLoadingConflicts] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
+  // Both resolve actions require a free-text note that becomes a Note on the
+  // patient. We capture it once and reuse the same buffer for whichever flow
+  // the user picks (return-to-source / pick-any-stage / request-NTUC).
+  const [resolutionNote, setResolutionNote] = useState('');
 
   useEffect(() => {
     if (!selectedReferral?.id) { setConflicts([]); return; }
@@ -1202,8 +1442,33 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
       .finally(() => setLoadingConflicts(false));
   }, [selectedReferral?.id]);
 
-  const openConflicts = conflicts.filter((c) => c.status === 'Open' || c.status === 'In Progress');
+  useEffect(() => { setResolutionNote(''); setResolveOpen(false); }, [selectedReferral?._id]);
+
+  // Treat both new "Open" and legacy "Unaddressed"/"In Progress" as actionable.
+  const openConflicts = conflicts.filter((c) => c.status === 'Open' || c.status === 'Unaddressed' || c.status === 'In Progress');
   const resolvedConflicts = conflicts.filter((c) => c.status === 'Resolved' || c.status === 'Waived');
+
+  // Pull source_stage off the most recent open conflict (fall back to oldest).
+  const sourceStage = openConflicts.length > 0
+    ? (openConflicts[0].source_stage || openConflicts[openConflicts.length - 1].source_stage)
+    : null;
+
+  function pickDestinations() {
+    const list = CONFLICT_ANY_STAGE_DESTINATIONS.filter((s) => s !== 'Conflict');
+    if (sourceStage && !list.includes(sourceStage)) list.unshift(sourceStage);
+    return list;
+  }
+
+  function doResolveTo(stage) {
+    if (!resolutionNote.trim()) return;
+    setResolveOpen(false);
+    // The note rides along as the 3rd arg of initiateTransition. ModulePage
+    // skips the modal for Conflict resolutions (note already captured) and
+    // writes the note into Notes via recordTransition.
+    onInitiateTransition?.(selectedReferral, stage, resolutionNote.trim());
+  }
+
+  const canResolve = resolutionNote.trim().length > 0;
 
   return (
     <Panel>
@@ -1227,7 +1492,14 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
                     {c.description && (
                       <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), lineHeight: 1.5 }}>{c.description}</p>
                     )}
-                    <span style={{ fontSize: 11, fontWeight: 600, color: palette.primaryMagenta.hex }}>{c.status}</span>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: palette.primaryMagenta.hex }}>{c.status || 'Open'}</span>
+                      {c.source_stage && (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                          from {c.source_stage}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1239,42 +1511,86 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
             </PanelSection>
           )}
 
-          {/* Resolution — dropdown button */}
+          {/* Resolution requires a note — captured once, reused by every
+              resolve action below. The note becomes a patient Note via
+              recordTransition. */}
+          <PanelSection title="Resolution Note">
+            <textarea
+              value={resolutionNote}
+              onChange={(e) => setResolutionNote(e.target.value)}
+              rows={3}
+              placeholder="Describe what was resolved and any next steps. Required for every resolution action below."
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '8px 10px',
+                borderRadius: 7, border: `1px solid ${canResolve ? hexToRgba(palette.accentGreen.hex, 0.35) : 'var(--color-border)'}`,
+                fontSize: 12, fontFamily: 'inherit', resize: 'vertical',
+                background: hexToRgba(palette.backgroundDark.hex, 0.025),
+                color: palette.backgroundDark.hex, outline: 'none',
+              }}
+            />
+          </PanelSection>
+
           <PanelSection title="Actions">
+            {/* 1. Resolve and return to source (uses source_stage). */}
+            {sourceStage && (
+              <ActionBtn
+                label={canResolve ? `↩ Resolve and Return to ${sourceStage}` : 'Add a note to resolve'}
+                variant={canResolve ? 'forward' : 'default'}
+                disabled={!canResolve}
+                onClick={canResolve ? () => doResolveTo(sourceStage) : undefined}
+              />
+            )}
+
+            {/* 2. Resolve and send to a specific module (dropdown). */}
             <div style={{ position: 'relative', marginBottom: 6 }}>
               <button
-                onClick={() => setResolveOpen((o) => !o)}
+                onClick={() => canResolve && setResolveOpen((o) => !o)}
+                disabled={!canResolve}
                 style={{
                   width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
-                  background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
-                  fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                  background: canResolve ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                  color: canResolve ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                  fontSize: 13, fontWeight: 700, cursor: canResolve ? 'pointer' : 'not-allowed',
                   textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  transition: 'filter 0.12s', letterSpacing: '-0.01em',
+                  transition: 'filter 0.12s',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
               >
-                Resolve Conflict — send to…
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ transform: resolveOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
-                  <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                {canResolve ? 'Resolve and send to…' : 'Add a note to enable routing'}
+                {canResolve && (
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ transform: resolveOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+                    <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </button>
-              {resolveOpen && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 9, overflow: 'hidden', boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
-                  {CONFLICT_RESOLVE_DESTINATIONS.map((d) => (
-                    <button key={d.stage} onMouseDown={(e) => { e.preventDefault(); setResolveOpen(false); onInitiateTransition?.(selectedReferral, d.stage); }}
+              {resolveOpen && canResolve && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 9, overflow: 'hidden', maxHeight: 280, overflowY: 'auto', boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+                  {pickDestinations().map((stageName) => (
+                    <button
+                      key={stageName}
+                      onMouseDown={(e) => { e.preventDefault(); doResolveTo(stageName); }}
                       style={{ width: '100%', padding: '9px 13px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', transition: 'background 0.1s' }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentGreen.hex, 0.06))}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}>
-                      <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 1 }}>{d.stage}</p>
-                      <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{d.sub}</p>
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                    >
+                      <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{stageName}</p>
+                      {sourceStage === stageName && (
+                        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>Original source</p>
+                      )}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <ActionBtn label="Escalate to Disenrollment" variant="warning"  onClick={() => onInitiateTransition?.(selectedReferral, 'Disenrollment Required')} />
-            <ActionBtn label="Mark NTUC"                  variant="danger"   onClick={() => onInitiateTransition?.(selectedReferral, 'NTUC')} />
+
+            {/* 3. Request NTUC — routed through Admin Confirmation unless the
+                user holds REFERRAL_NTUC_DIRECT. Handled by resolveNtucDestination
+                inside ModulePage's executeTransition. */}
+            <ActionBtn
+              label={canResolve ? 'Request NTUC' : 'Add a note to request NTUC'}
+              variant={canResolve ? 'danger' : 'default'}
+              disabled={!canResolve}
+              onClick={canResolve ? () => doResolveTo('NTUC') : undefined}
+            />
           </PanelSection>
         </>
       )}
@@ -1300,7 +1616,7 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
   );
 }
 
-function StaffingPanel({ referrals, selectedReferral, allReferrals, onInitiateTransition }) {
+function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const [clinicianMatched, setClinicianMatched] = useState(false);
 
@@ -1357,6 +1673,7 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onInitiateTr
             referral={selectedReferral}
             triageData={staffingTriageData}
             insuranceChecks={staffingInsuranceChecks}
+            onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <div>
@@ -2079,8 +2396,8 @@ function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransitio
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
-export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition, onSelectedReferralLeftModule }) {
-  const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onInitiateTransition, onSelectedReferralLeftModule };
+export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
+  const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule };
   switch (stage) {
     case 'Lead Entry':                return <LeadEntryPanel {...props} />;
     case 'Discarded Leads':           return <DiscardedLeadsPanel {...props} />;

@@ -66,8 +66,14 @@ describe('resolveNtucDestination', () => {
 });
 
 describe('canMoveFromTo (existing behavior preserved)', () => {
-  it('allows Lead Entry to NTUC', () => {
-    expect(canMoveFromTo('Lead Entry', 'NTUC')).toBe(true);
+  it('blocks Lead Entry → NTUC under the tightened rules (Leads only go to Intake/Discarded/OPWDD)', () => {
+    // Per the 2026-05-20 workflow overhaul, leads can ONLY go to Intake,
+    // Discarded Leads, or OPWDD Enrollment. NTUC is no longer a direct
+    // destination — those decisions happen after Intake review.
+    expect(canMoveFromTo('Lead Entry', 'NTUC')).toBe(false);
+    expect(canMoveFromTo('Lead Entry', 'Intake')).toBe(true);
+    expect(canMoveFromTo('Lead Entry', 'Discarded Leads')).toBe(true);
+    expect(canMoveFromTo('Lead Entry', 'OPWDD Enrollment')).toBe(true);
   });
 
   it('blocks NTUC from moving anywhere (terminal)', () => {

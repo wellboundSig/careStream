@@ -71,8 +71,13 @@ export function isChecklistComplete(checked) {
   return REQUIRED_ITEMS.every((item) => checked[item.key]);
 }
 
+// Decline was removed 2026-05-20. Per the workflow overhaul, RNs who find
+// an issue should create a Conflict instead of declining — the Conflict
+// workflow captures the reason structurally and is reversible. Keeping the
+// `decline` key absent from this catalog ensures the option never reappears
+// in the UI; the historical `decline` value on Referrals.clinical_review_decision
+// is still readable for legacy records.
 export const CLINICAL_DECISIONS = [
   { key: 'accept', label: 'Accept', color: 'green' },
   { key: 'conditional', label: 'Conditional Accept', color: 'yellow' },
-  { key: 'decline', label: 'Decline', color: 'red' },
 ];

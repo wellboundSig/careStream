@@ -1,8 +1,8 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "meta": {
-    "description": "CareStream pipeline stage transition rules. Edit this file to adjust allowed transitions, permission requirements, and flow logic. Changes take effect on next app load.",
-    "lastUpdated": "2026-03-10",
+    "description": "CareStream pipeline stage transition rules. Concurrent-stages model — see plan/stage-rules-overhaul. Patient `current_stage` is the primary location; companion flags on Referrals (in_clinical_review, eligibility_completed_at, etc.) express concurrent presence in supportive modules (Clinical RN, Authorization Pending, Disenrollment Required) without changing current_stage.",
+    "lastUpdated": "2026-05-20",
     "maintainer": "Developer"
   },
 
@@ -19,31 +19,13 @@
       "displayName": "Leads",
       "gridRow": 0,
       "gridCol": 0,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Discarded Leads",
-        "OPWDD Enrollment",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Intake", "Discarded Leads", "OPWDD Enrollment"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Raw referral captured. Minimal information. Not yet validated."
+      "description": "Raw referral captured. Owner must be assigned on promotion to Intake."
     },
 
     "Discarded Leads": {
@@ -64,28 +46,18 @@
       "gridRow": 0,
       "gridCol": 1,
       "canMoveTo": [
-        "Lead Entry",
-        "Intake",
         "Eligibility Verification",
-        "Disenrollment Required",
         "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
+        "OPWDD Enrollment",
         "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
+        "Hold"
       ],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Full demographics collection and referral validation."
+      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Patient is pushed concurrently to Clinical RN once the first four are done; leaves Intake when pushed to Eligibility Verification."
     },
 
     "Eligibility Verification": {
@@ -93,87 +65,45 @@
       "gridRow": 0,
       "gridCol": 2,
       "canMoveTo": [
-        "Lead Entry",
         "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
         "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
+        "OPWDD Enrollment",
+        "Conflict",
+        "Hold"
       ],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Insurance and episode eligibility check via Waystar, ePACES, or Availity."
+      "description": "Parent module for insurance / eligibility. Authorization Pending and Disenrollment Required are supportive side workflows — the patient stays here while those are in flight."
     },
 
     "Disenrollment Required": {
       "displayName": "Disenrollment Required",
       "gridRow": 0,
       "gridCol": 3,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Eligibility Verification", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": true,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Pending disenrollment",
-      "destinationPrompt": "Describe why disenrollment is required. Specify:\n\n• Which agency is currently providing services\n• What services the patient is receiving\n• Who you spoke with and when (agency staff, patient, caregiver, etc.)\n• Any relevant details or confirmation provided"
+      "description": "Supportive sub-module of Eligibility. Patient remains in Eligibility throughout; this module is the work queue for disenrollment specialists.",
+      "destinationPrompt": "Describe what disenrollment assistance is needed (which agency, services, contact made, expected timing)."
     },
 
     "F2F/MD Orders Pending": {
       "displayName": "F2F/MD Orders Pending",
       "gridRow": 0,
       "gridCol": 4,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Intake", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Awaiting valid face-to-face documentation and physician orders. PECOS/OPRA verification required."
+      "description": "Sub-state of Intake. Awaiting valid face-to-face documentation and physician orders."
     },
 
     "Clinical Intake RN Review": {
@@ -181,58 +111,31 @@
       "gridRow": 1,
       "gridCol": 0,
       "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
         "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
         "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
+        "Conflict",
+        "Hold"
       ],
       "terminal": false,
       "isGlobal": false,
-      "requiresNote": true,
+      "requiresNote": false,
       "requiresPermission": "clinical.rn_review",
       "protectedExit": true,
-      "protectedExitMessage": "Only clinical intake RN can move a patient out of Clinical RN Review",
-      "description": "Skilled need, safety, ICD-10, and environment review by clinical intake RN."
+      "protectedExitMessage": "Only the clinical intake RN can move a patient out of Clinical RN Review. Issues should be escalated to Conflict — there is no Decline action.",
+      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to Staffing Feasibility (LIFO with Eligibility). Send Back to F2F is also available; Decline does not exist — escalate to Conflict instead."
     },
 
     "Authorization Pending": {
       "displayName": "Authorization Pending",
       "gridRow": 1,
       "gridCol": 1,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Eligibility Verification", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Prior authorization request submitted. Awaiting managed care approval."
+      "description": "Supportive sub-module of Eligibility. Patient remains in Eligibility throughout; this module is the work queue for prior-auth specialists."
     },
 
     "Conflict": {
@@ -247,12 +150,9 @@
         "F2F/MD Orders Pending",
         "Clinical Intake RN Review",
         "Authorization Pending",
-        "Conflict",
         "Staffing Feasibility",
         "Admin Confirmation",
         "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
         "Hold",
         "NTUC"
       ],
@@ -261,30 +161,14 @@
       "requiresNote": true,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Regulatory or service overlap conflict flagged. Requires resolution before advancement."
+      "description": "Escalation lane. On creation, source_stage is captured so 'Resolve & Return to Source' knows where to send the patient back. Resolution always requires a note."
     },
 
     "Staffing Feasibility": {
       "displayName": "Staffing Feasibility",
       "gridRow": 1,
       "gridCol": 3,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Pre-SOC", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
@@ -292,7 +176,7 @@
       "protectedExit": false,
       "patientContactRequired": true,
       "patientContactNote": "Patient or parent must be contacted before moving forward from Staffing Feasibility.",
-      "description": "Operational availability check. Discipline, region, and schedule compatibility confirmed."
+      "description": "Operational availability check. Patient lands here once both Clinical RN Confirm and Eligibility Completed are recorded."
     },
 
     "Admin Confirmation": {
@@ -302,19 +186,16 @@
       "canMoveTo": [
         "Lead Entry",
         "Intake",
+        "F2F/MD Orders Pending",
         "Eligibility Verification",
         "Disenrollment Required",
-        "F2F/MD Orders Pending",
         "Clinical Intake RN Review",
         "Authorization Pending",
-        "Conflict",
         "Staffing Feasibility",
-        "Admin Confirmation",
         "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
+        "NTUC",
+        "Conflict",
+        "Hold"
       ],
       "terminal": false,
       "isGlobal": false,
@@ -322,65 +203,33 @@
       "requiresPermission": "scheduling.admin_confirm",
       "protectedExit": true,
       "protectedExitMessage": "Admin Confirmation accept/decline is a protected action requiring Admin scope.",
-      "description": "Admin review — confirm or deny NTUC. Accept moves to Pre-SOC, decline triggers NTUC."
+      "description": "Side-channel NTUC review gate. Reached only via NTUC requests from non-direct users. Admin can deny the NTUC request and bounce the referral back to its origin stage."
     },
 
     "Pre-SOC": {
       "displayName": "Pre-SOC",
       "gridRow": 2,
       "gridCol": 0,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["SOC Completed", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Case formally accepted. Clinician assigned. Documentation confirmed. Coordinating with ALF or parent."
+      "description": "Case formally accepted. Clinician assigned, documentation confirmed. SOC scheduling and completion happen here."
     },
 
     "SOC Scheduled": {
       "displayName": "SOC Scheduled",
       "gridRow": 2,
       "gridCol": 1,
-      "canMoveTo": [
-        "Lead Entry",
-        "Intake",
-        "Eligibility Verification",
-        "Disenrollment Required",
-        "F2F/MD Orders Pending",
-        "Clinical Intake RN Review",
-        "Authorization Pending",
-        "Conflict",
-        "Staffing Feasibility",
-        "Admin Confirmation",
-        "Pre-SOC",
-        "SOC Scheduled",
-        "SOC Completed",
-        "Hold",
-        "NTUC"
-      ],
+      "canMoveTo": ["Pre-SOC", "SOC Completed", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Start of care visit officially scheduled with clinician and patient."
+      "description": "Legacy stage — kept for historical records. The new forward path is Pre-SOC → SOC Completed; SOC Scheduled is no longer a primary destination."
     },
 
     "SOC Completed": {
@@ -414,7 +263,6 @@
         "Pre-SOC",
         "SOC Scheduled",
         "SOC Completed",
-        "Hold",
         "NTUC"
       ],
       "terminal": false,
@@ -449,7 +297,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Special Needs referral routed for OPWDD enrollment when Code 95 = No. Specialist handles enrollment before patient re-enters pipeline."
+      "description": "Special Needs referral routed for OPWDD enrollment when Code 95 = No. Specialist handles enrollment; patient re-enters via Intake when the case closes."
     }
   }
 }

@@ -16,6 +16,9 @@ export const PATIENT_COLUMN_DEFS = [
   { key: 'referral_source', label: 'Referral Source',  defaultOn: true, filterable: true  },
   { key: 'facility',        label: 'Facility',         defaultOn: true, filterable: true  },
   { key: 'physician',       label: 'Physician',        defaultOn: true, filterable: true  },
+  // Urgent care lives at the END so it doesn't crowd the patient label
+  // (the row's name already carries the small red cross when flagged).
+  { key: 'urgent',          label: 'Urgent',           defaultOn: true,  filterable: true, tooltip: 'Patient flagged as requiring urgent / pre-SOC care. Filter accepts yes / no.' },
 ];
 
 // ── Module page column definitions ──────────────────────────────────────────
@@ -34,6 +37,9 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'insurance', label: 'Insurance',  defaultOn: true, filterable: true },
   { key: 'facility',  label: 'Facility',   defaultOn: true, filterable: true },
   { key: 'activity',  label: 'Last Activity', defaultOn: true, filterable: false },
+  // Urgent care lives at the END so it doesn't crowd the patient label
+  // (the row's name already carries the small red cross when flagged).
+  { key: 'urgent',    label: 'Urgent',     defaultOn: true, filterable: true, tooltip: 'Patient flagged as requiring urgent / pre-SOC care. Filter accepts yes / no.' },
 ];
 
 // ── Hooks ───────────────────────────────────────────────────────────────────

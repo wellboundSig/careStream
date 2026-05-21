@@ -18,9 +18,12 @@ import { PERMISSION_KEYS }     from '../../../data/permissionKeys.js';
 import { triggerDataRefresh }  from '../../../hooks/useRefreshTrigger.js';
 import { createEligibilityVerification } from '../../../api/eligibilityVerifications.js';
 import { createConflict }      from '../../../api/conflicts.js';
+import { createAuthorization } from '../../../api/authorizations.js';
 import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
 import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
+import { updateReferralOptimistic } from '../../../store/mutations.js';
+import { useCareStore }         from '../../../store/careStore.js';
 import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import palette                 from '../../../utils/colors.js';
 
@@ -83,14 +86,35 @@ export default function EligibilityWorkspace({
     latestVerByInsurance,
     activeInsurances,
     legacyChecks,
+    authorizations,
     disenrollFlags,
   } = useEligibilityData({ patient, patientId: patient?.id, referralId: referral?.id });
 
   const [conflictModal,  setConflictModal]  = useState(null);
   const [disenrollModal, setDisenrollModal] = useState(null);
   const [editingInsuranceId, setEditingInsuranceId] = useState(null);
+  const [sendBackModal,  setSendBackModal]  = useState(null);
 
   const canEdit = !readOnly && can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY);
+
+  // Status snapshots for the supportive workflows. Used to decide which
+  // action buttons to show and which inline checkmarks to render.
+  const hasOpenAuth = useMemo(
+    () => authorizations.some((a) => {
+      const s = (a.auth_status || a.status || '').toString().toLowerCase();
+      return s === 'nar' || s === 'pending' || s === 'follow_up_needed';
+    }),
+    [authorizations],
+  );
+  const hasApprovedAuth = useMemo(
+    () => authorizations.some((a) => {
+      const s = (a.auth_status || a.status || '').toString().toLowerCase();
+      return s === 'approved';
+    }),
+    [authorizations],
+  );
+  const clinicalReviewDone = !!referral?.clinical_review_completed_at;
+  const eligibilityCompleted = !!referral?.eligibility_completed_at;
 
   // ── Policy helpers (pure) ────────────────────────────────────────────────
   const warnings = useMemo(() => determineEligibilityWarnings(
@@ -193,32 +217,115 @@ export default function EligibilityWorkspace({
         ))}
       </div>
 
-      {/* Actions */}
+      {/* Actions — Eligibility is the parent module. Authorization Pending and
+          Disenrollment Required are SUPPORTIVE side workflows: triggering them
+          does not move current_stage. Eligibility Completed is the only
+          forward action; it relies on the LIFO rule with Clinical RN Review. */}
       {canEdit && insurances.length > 0 && (
         <div style={{ marginBottom: t.sectionGap }}>
           <p style={sectionHeading(t)}>Actions</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {/* Forward — main CTA when at least one insurance is active */}
-            {activeInsurances.length > 0 ? (
-              <WsBtn variant="forward" label="Continue to Authorization Pending →"
-                onClick={() => {
-                  onAdvanceToAuthorization?.();
-                  onInitiateTransition?.(referral, 'Authorization Pending');
-                }}
-                testId="action-advance-auth" />
-            ) : (
-              <WsBtn variant="forward" label="Continue to Clinical Intake RN Review →"
-                onClick={() => onInitiateTransition?.(referral, 'Clinical Intake RN Review')}
-                testId="action-clinical-review" />
-            )}
 
-            {/* Secondary forwards */}
-            <WsBtn variant="success" label="Back to Intake"
-              onClick={() => onInitiateTransition?.(referral, 'Intake')}
+          {/* Inline supportive-workflow status pills */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {hasApprovedAuth && (
+              <InlineTag t={t} color={palette.accentGreen.hex} label="✓ Authorization recorded" />
+            )}
+            {!hasApprovedAuth && hasOpenAuth && (
+              <InlineTag t={t} color={palette.accentOrange.hex} label="Authorization in flight" />
+            )}
+            {openDisenrollFlags.length > 0 && (
+              <InlineTag t={t} color={palette.highlightYellow.hex} label="Disenrollment assist open" />
+            )}
+            {clinicalReviewDone && (
+              <InlineTag t={t} color={palette.accentGreen.hex} label="✓ Clinical RN cleared" />
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Primary forward — Eligibility Complete. Sets the completion
+                timestamp; if Clinical RN already finished, the LIFO trigger
+                flips the patient to Staffing Feasibility automatically. */}
+            <WsBtn
+              variant="forward"
+              label={eligibilityCompleted ? '✓ Eligibility complete' : 'Eligibility Complete'}
+              disabled={eligibilityCompleted || activeInsurances.length === 0}
+              onClick={async () => {
+                if (eligibilityCompleted || !referral?._id) return;
+                const now = new Date().toISOString();
+                const fields = {
+                  eligibility_completed_at: now,
+                  eligibility_completed_by_id: appUserId || 'unknown',
+                };
+                try {
+                  if (clinicalReviewDone) {
+                    // LIFO trigger — flip stage to Staffing and apply our
+                    // completion fields alongside.
+                    onInitiateTransition?.(referral, 'Staffing Feasibility');
+                    updateReferralOptimistic(referral._id, fields).catch(() => {});
+                  } else {
+                    await updateReferralOptimistic(referral._id, fields);
+                  }
+                  await recordActivity({
+                    actorUserId: appUserId,
+                    action: 'Eligibility Completed',
+                    patientId: patient.id,
+                    referralId: referral?.id,
+                    detail: clinicalReviewDone
+                      ? 'Eligibility completed — patient flipped to Staffing Feasibility (LIFO trigger).'
+                      : 'Eligibility completed — awaiting Clinical RN completion.',
+                  });
+                  triggerDataRefresh();
+                } catch (err) {
+                  console.error('Eligibility Completed save failed', err);
+                }
+              }}
+              testId="action-eligibility-complete"
+            />
+
+            {/* Supportive: Get Auth — creates a pending Authorizations row.
+                Patient stays in Eligibility; the Authorization Pending module
+                lists them via the matchReferral predicate in stageConfig. */}
+            <WsBtn
+              variant="success"
+              label={hasOpenAuth ? 'Add another auth request' : 'Get Auth'}
+              onClick={async () => {
+                try {
+                  await createAuthorization({
+                    id: `auth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    referral_id: referral?.id || '',
+                    auth_status: 'pending',
+                    status: 'Pending',
+                    created_at: new Date().toISOString(),
+                  });
+                  await recordActivity({
+                    actorUserId: appUserId,
+                    action: 'Authorization Requested',
+                    patientId: patient.id,
+                    referralId: referral?.id,
+                    detail: 'Eligibility opened a pending authorization. Patient remains in Eligibility module.',
+                  });
+                  triggerDataRefresh();
+                } catch (err) {
+                  console.error('Get Auth save failed', err);
+                }
+              }}
+              testId="action-get-auth"
+            />
+
+            {/* Supportive: Disenrollment Assist (existing structured modal) */}
+            <WsBtn variant="warning"
+              label={openDisenrollFlags.length > 0 ? 'Add another disenrollment flag' : 'Flag for Disenrollment Assist'}
+              onClick={() => setDisenrollModal({ note: '', followUpDate: '', followUpOwnerUserId: '' })}
+              testId="action-disenrollment-assist" />
+
+            {/* Send Back to Intake — required note becomes a flag in Intake. */}
+            <WsBtn variant="default" label="Send back to Intake"
+              onClick={() => setSendBackModal({ note: '' })}
               testId="action-back-intake" />
 
+            {/* Route to OPWDD when Code 95 is invalid. */}
             {opwddSuggestion.suggest && can(PERMISSION_KEYS.ROUTING_OPWDD) && (
-              <WsBtn variant="success" label="Route to OPWDD Enrollment"
+              <WsBtn variant="warning" label="Route to OPWDD (Code 95 invalid)"
                 onClick={async () => {
                   await recordActivity({
                     actorUserId: appUserId,
@@ -228,10 +335,6 @@ export default function EligibilityWorkspace({
                     detail: 'Eligibility routed case to OPWDD flow.',
                     metadata: { reasons: opwddSuggestion.reasons, priorStage: referral?.current_stage || null },
                   });
-                  // Auto-open the OPWDD eligibility case so the enrollment
-                  // specialist inherits a fully-seeded checklist. This is
-                  // idempotent — `openCaseForReferral` returns the existing
-                  // case if one is already open for this referral.
                   if (patient?.id && referral?.id) {
                     openCaseForReferral({
                       referral: { id: referral.id, _id: referral._id },
@@ -245,14 +348,9 @@ export default function EligibilityWorkspace({
                 }}
                 testId="action-opwdd-route" />
             )}
-
-            <WsBtn variant="warning" label="Flag Disenrollment Assist"
-              onClick={() => setDisenrollModal({ note: '', followUpDate: '', followUpOwnerUserId: '' })}
-              testId="action-disenrollment-assist" />
-
-            <WsBtn variant="danger" label="Send to Conflict"
-              onClick={() => setConflictModal({ insurance: null, selectedReasons: [], details: '', denialStatus: null })}
-              testId="action-send-to-conflict" />
+            {/* "Send to Conflict" intentionally NOT rendered here — the
+                module toolbar at the top already exposes a Conflict button,
+                so duplicating it in the panel was redundant. */}
           </div>
         </div>
       )}
@@ -342,6 +440,39 @@ export default function EligibilityWorkspace({
               triggerDataRefresh();
             } catch (err) {
               console.error('Conflict save failed', err);
+            }
+          }}
+        />
+      )}
+
+      {sendBackModal && (
+        <SendBackToIntakeModal
+          t={t}
+          state={sendBackModal}
+          onChange={setSendBackModal}
+          onCancel={() => setSendBackModal(null)}
+          onConfirm={async ({ note }) => {
+            if (!note?.trim() || !referral?._id) return;
+            const now = new Date().toISOString();
+            try {
+              await updateReferralOptimistic(referral._id, {
+                current_stage: 'Intake',
+                eligibility_returned_to_intake_at: now,
+                eligibility_returned_to_intake_note: note.trim(),
+                eligibility_returned_to_intake_by_id: appUserId || 'unknown',
+              });
+              await recordActivity({
+                actorUserId: appUserId,
+                action: 'Eligibility Sent Back to Intake',
+                patientId: patient.id,
+                referralId: referral?.id,
+                detail: `Eligibility sent referral back to Intake — ${note.trim()}`,
+                metadata: { note: note.trim() },
+              });
+              setSendBackModal(null);
+              triggerDataRefresh();
+            } catch (err) {
+              console.error('Send back to Intake failed', err);
             }
           }}
         />
@@ -716,28 +847,48 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
 
 function DisenrollmentAssistModal({ t, state, onChange, onCancel, onConfirm }) {
   const { note, followUpDate, followUpOwnerUserId } = state;
+  // Pull active users straight from the store so the owner picker uses real
+  // org-chart names instead of asking the user to type a raw `usr_xxx` id.
+  const usersById = useCareStore((s) => s.users) || {};
+  const userOptions = useMemo(() => Object.values(usersById)
+    .filter((u) => u && u.id && (u.status === 'Active' || !u.status))
+    .map((u) => ({ value: u.id, label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || u.id }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+    [usersById]);
   const disabled = !(note && note.trim() && followUpDate && followUpOwnerUserId);
   return (
     <div role="dialog" data-testid="disenroll-modal" style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
     }}>
-      <div style={{ width: 440, maxWidth: '92vw', borderRadius: 8, background: palette.backgroundLight.hex, padding: 20, border: '1px solid var(--color-border)' }}>
+      <div style={{ width: 460, maxWidth: '92vw', borderRadius: 10, background: palette.backgroundLight.hex, padding: 22, border: '1px solid var(--color-border)' }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>Flag Expert Disenrollment Assist</h3>
-        <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>Note + follow-up date + owner required.</p>
-        <Field t={t} label="Note *">
-          <textarea value={note} onChange={(e) => onChange({ ...state, note: e.target.value })} rows={3}
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 14, lineHeight: 1.5 }}>
+          Patient stays in Eligibility. The Disenrollment Required module will show this case while the flag is open.
+        </p>
+        <Field t={t} label="What needs to happen? *">
+          <textarea value={note} onChange={(e) => onChange({ ...state, note: e.target.value })} rows={4}
             style={{ ...inputStyle(t), resize: 'vertical' }}
-            placeholder="Context for the expert Medicaid partner."
+            placeholder="Which agency is currently providing services, who you spoke with, expected timing…"
             data-testid="disenroll-note" />
         </Field>
-        <Field t={t} label="Follow-up Date *">
+        <Field t={t} label="Follow-up date *">
           <input type="date" value={followUpDate} onChange={(e) => onChange({ ...state, followUpDate: e.target.value })} style={inputStyle(t)} data-testid="disenroll-follow-up-date" />
         </Field>
-        <Field t={t} label="Follow-up Owner (user id) *">
-          <input type="text" value={followUpOwnerUserId} onChange={(e) => onChange({ ...state, followUpOwnerUserId: e.target.value })} style={inputStyle(t)} placeholder="user id" data-testid="disenroll-owner" />
+        <Field t={t} label="Follow-up owner *">
+          <select
+            value={followUpOwnerUserId}
+            onChange={(e) => onChange({ ...state, followUpOwnerUserId: e.target.value })}
+            style={{ ...inputStyle(t), cursor: 'pointer' }}
+            data-testid="disenroll-owner"
+          >
+            <option value="">Select a user…</option>
+            {userOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </Field>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <button onClick={onCancel} style={secondaryBtn(t)}>Cancel</button>
           <button
             data-testid="disenroll-confirm"
@@ -746,6 +897,45 @@ function DisenrollmentAssistModal({ t, state, onChange, onCancel, onConfirm }) {
             style={primaryBtn(t, { disabled, color: palette.accentOrange.hex })}
           >
             Create Flag
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SendBackToIntakeModal({ t, state, onChange, onCancel, onConfirm }) {
+  const { note } = state;
+  const disabled = !(note && note.trim());
+  return (
+    <div role="dialog" data-testid="send-back-intake-modal" style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
+    }}>
+      <div style={{ width: 460, maxWidth: '92vw', borderRadius: 10, background: palette.backgroundLight.hex, padding: 22, border: '1px solid var(--color-border)' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>Send back to Intake</h3>
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 14, lineHeight: 1.5 }}>
+          The patient will return to Intake with this note surfaced as a flag at the top of the Intake panel.
+        </p>
+        <Field t={t} label="Reason for returning to Intake *">
+          <textarea
+            value={note}
+            onChange={(e) => onChange({ ...state, note: e.target.value })}
+            rows={4}
+            style={{ ...inputStyle(t), resize: 'vertical' }}
+            placeholder="What's missing or incorrect? Be specific so the intake team can fix it quickly."
+            data-testid="send-back-intake-note"
+          />
+        </Field>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button onClick={onCancel} style={secondaryBtn(t)}>Cancel</button>
+          <button
+            data-testid="send-back-intake-confirm"
+            onClick={() => onConfirm({ note })}
+            disabled={disabled}
+            style={primaryBtn(t, { disabled, color: palette.accentOrange.hex })}
+          >
+            Send Back
           </button>
         </div>
       </div>
