@@ -1,4 +1,44 @@
-import { useState, useEffect } from 'react';
+/**
+ * TriageTab (v2) — Special Needs Triage form, implements
+ * careStream/triage_forms_spec.md.
+ *
+ * High-level behavior:
+ *
+ *   - Adult vs Pediatric form is chosen automatically from
+ *     `referral.sn_age_group` ('Adult' | 'Pediatric'), with a fallback to
+ *     deriving the age group from `patient.dob` for legacy referrals that
+ *     never had the field set.
+ *
+ *   - Demographics that already live on the patient record (name, dob,
+ *     address, email, medicaid number, insurance plan, emergency contact)
+ *     auto-populate the triage form ONCE — the next time the user opens
+ *     this tab on a fresh triage record. The user can edit them; their
+ *     edits are saved on the triage row and never push back to the
+ *     patient record (the user changes Demographics for that).
+ *
+ *   - Every change auto-saves with a small debounce (~700ms after the last
+ *     keystroke, or immediately on blur). There's no "Edit / Save" toggle:
+ *     the source of truth is whatever's in the inputs at any moment.
+ *
+ *   - The triage is "complete" (drives the green dot in PatientSnapshot and
+ *     the checkmark on the F2F tab, etc.) only when ALL required fields are
+ *     filled and valid, per `isTriageComplete()`. Conditional children are
+ *     only required when their parent gate is in the Yes/No state that the
+ *     spec marks as "shown if…".
+ *
+ *   - Selecting opwdd_status = 'OPWDD Pending' is the new equivalent of the
+ *     old code_95='No' — we surface a confirmation modal before routing the
+ *     patient to OPWDD Enrollment and writing the OPWDD eligibility case.
+ *
+ * Database fields:
+ *   The v2 schema adds new columns in TriageAdult / TriagePediatric (see
+ *   scripts/airtable-apply-schema.js, ~line 290). The old columns
+ *   (caregiver_name, pet_details, is_diabetic, homecare_hours, ...) stay
+ *   in place so historical records remain readable, but the new form no
+ *   longer writes to them.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '@clerk/react';
 import {
   getTriageAdult, createTriageAdult, updateTriageAdult,
@@ -16,7 +56,246 @@ import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { isTriageComplete } from '../../../utils/triageCompleteness.js';
-import { normalizePhone, formatPhone, validateEmail } from '../../../utils/validation.js';
+import { inferAgeGroupFromDob, getDobBoundsForAgeGroup } from '../../../utils/validation.js';
+import {
+  SmartPhoneInput,
+  SmartEmailInput,
+  SmartNpiInput,
+  SmartAddressInput,
+  SmartDateInput,
+  TriStateRadio,
+  SegmentedPicker,
+} from '../../common/SmartFields.jsx';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const OPWDD_OPTIONS = ['OPWDD Eligible', 'OPWDD Pending', 'Non-OPWDD'];
+const CCO_OPTIONS = ['Advance Care Alliance (ACA/NY)', 'Care Design NY', 'Tri-County Care'];
+
+const ADULT_SERVICES   = ['PT', 'OT', 'ST', 'HHA'];
+const PEDIATRIC_SERVICES = ['PT', 'OT', 'ST', 'ABA'];
+
+// Per-form blank skeleton. Used so the completeness checker sees explicit
+// null/empty values for every required field on a fresh record — without
+// this, missing keys would short-circuit the check (see the back-compat
+// guard in triageCompleteness.js).
+const ADULT_BLANK = {
+  opwdd_status: null,
+  insurance_plan_name: '',
+  medicaid_number: '',
+  patient_name: '',
+  dob: '',
+  address: '',
+  email: '',
+  caregiver_name: '',
+  caregiver_phone: '',
+  add_secondary_caregiver: null,
+  secondary_caregiver_name: '',
+  secondary_caregiver_phone: '',
+  has_pets: null,
+  has_smoking: null,
+  has_homecare_services: null,
+  homecare_agency_name: '',
+  homecare_hours_days: '',
+  has_community_hab: null,
+  has_in_home_therapies: null,
+  current_therapy_services: '',
+  services_needed: [],
+  therapy_availability: '',
+  hha_hours_frequency: '',
+  health_conditions: '',
+  pcp_name: '',
+  pcp_last_visit: '',
+  pcp_phone: '',
+  pcp_fax: '',
+  pcp_address: '',
+  pcp_npi_number: '',
+  cco_name: '',
+  cm_name: '',
+  cm_phone: '',
+  cm_fax: '',
+  cm_email: '',
+};
+
+const PED_BLANK = {
+  opwdd_status: null,
+  medicaid_number: '',
+  phone_call_made_to: '',
+  primary_caregiver_name: '',
+  primary_caregiver_phone: '',
+  add_secondary_caregiver: null,
+  secondary_caregiver_name: '',
+  secondary_caregiver_phone: '',
+  emergency_same_as_primary: null,
+  emergency_contact_name: '',
+  emergency_contact_phone: '',
+  email: '',
+  patient_name: '',
+  dob: '',
+  address: '',
+  has_pets: null,
+  has_smoking: null,
+  has_homecare_services: null,
+  homecare_agency_name: '',
+  homecare_hours_days: '',
+  boe_services: '',
+  has_community_hab: null,
+  services_needed: [],
+  therapy_availability: '',
+  health_conditions: '',
+  school_bus_time: '',
+  has_recent_hospitalization: null,
+  pcp_name: '',
+  pcp_last_visit: '',
+  pcp_phone: '',
+  pcp_fax: '',
+  pcp_address: '',
+  cco_name: '',
+  cm_name: '',
+  cm_phone: '',
+  cm_fax: '',
+  cm_email: '',
+};
+
+// ── DB normalization ────────────────────────────────────────────────────────
+//
+// Airtable's `dateTime` columns return ISO strings; our forms work in
+// YYYY-MM-DD. Yes/No three-state booleans are stored as the strings
+// 'Yes'/'No' so the spec's explicit-Yes / explicit-No / null distinction
+// survives the round trip. Phones go in as digits-only; the smart inputs
+// already strip everything else.
+
+const TRI_STATE_FIELDS = new Set([
+  'add_secondary_caregiver',
+  'emergency_same_as_primary',
+  'has_pets',
+  'has_smoking',
+  'has_homecare_services',
+  'has_community_hab',
+  'has_in_home_therapies',
+  'has_recent_hospitalization',
+]);
+
+const DATE_FIELDS = new Set(['dob', 'pcp_last_visit']);
+
+function normalizeIncoming(fields, blank) {
+  const out = { ...blank };
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v === null || v === undefined) continue;
+    if (TRI_STATE_FIELDS.has(k)) {
+      out[k] = boolToTri(v);
+    } else if (DATE_FIELDS.has(k)) {
+      out[k] = typeof v === 'string' ? v.split('T')[0] : v;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function boolToTri(val) {
+  if (val === true || val === 'true' || val === 'TRUE' || val === 'Yes') return 'Yes';
+  if (val === false || val === 'false' || val === 'FALSE' || val === 'No') return 'No';
+  return null;
+}
+
+function buildPayloadForSave(data, allowedKeys) {
+  const fields = {};
+  for (const k of allowedKeys) {
+    const v = data[k];
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'string' && v.trim() === '' && DATE_FIELDS.has(k)) continue;
+    if (typeof v === 'string' && v === '' && !TRI_STATE_FIELDS.has(k)) {
+      // Send an explicit empty string for non-date text so a previously-set
+      // value can be cleared. Airtable treats '' as "clear this field".
+      fields[k] = '';
+      continue;
+    }
+    if (Array.isArray(v) && v.length === 0) {
+      // Same idea — empty arrays clear the multi-select.
+      fields[k] = [];
+      continue;
+    }
+    if (TRI_STATE_FIELDS.has(k)) {
+      if (v === 'Yes' || v === true) fields[k] = 'Yes';
+      else if (v === 'No' || v === false) fields[k] = 'No';
+      // null => skip (preserves "unanswered" state)
+      continue;
+    }
+    if (DATE_FIELDS.has(k) && typeof v === 'string' && v.length === 10) {
+      // Pass the date-only ISO string through unchanged; Airtable accepts it
+      // for `dateTime` columns and treats it as midnight in the configured TZ.
+      fields[k] = v;
+      continue;
+    }
+    fields[k] = v;
+  }
+  return fields;
+}
+
+// Which DB columns each form is allowed to write — also serves as the
+// "stop sending fields you no longer use" whitelist (Airtable rejects the
+// whole record if you send a field name the table doesn't have).
+const ADULT_COLUMNS = new Set([
+  'referral_id', 'filled_by_id',
+  // OPWDD
+  'opwdd_status',
+  // Eligibility
+  'insurance_plan_name', 'medicaid_number',
+  // Patient Info
+  'patient_name', 'dob', 'address', 'email',
+  // Caregiver Info
+  'caregiver_name', 'caregiver_phone',
+  'add_secondary_caregiver', 'secondary_caregiver_name', 'secondary_caregiver_phone',
+  // Home Env
+  'has_pets', 'has_smoking',
+  // Current Services
+  'has_homecare_services', 'homecare_agency_name', 'homecare_hours_days',
+  'has_community_hab',
+  'has_in_home_therapies', 'current_therapy_services',
+  // Requested Services
+  'services_needed', 'therapy_availability', 'hha_hours_frequency',
+  // Clinical
+  'health_conditions',
+  // PCP
+  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address', 'pcp_npi_number',
+  // Care Mgmt
+  'cco_name', 'cm_name', 'cm_phone', 'cm_fax', 'cm_email',
+  // Timestamps
+  'created_at', 'updated_at',
+]);
+
+const PEDIATRIC_COLUMNS = new Set([
+  'referral_id', 'filled_by_id',
+  // OPWDD
+  'opwdd_status',
+  // Eligibility
+  'medicaid_number',
+  // Contact Info
+  'phone_call_made_to', 'primary_caregiver_name', 'primary_caregiver_phone',
+  'add_secondary_caregiver', 'secondary_caregiver_name', 'secondary_caregiver_phone',
+  'emergency_same_as_primary', 'emergency_contact_name', 'emergency_contact_phone',
+  'email',
+  // Patient Info
+  'patient_name', 'dob', 'address',
+  // Home Env
+  'has_pets', 'has_smoking',
+  // Current Services
+  'has_homecare_services', 'homecare_agency_name', 'homecare_hours_days',
+  'boe_services', 'has_community_hab',
+  // Requested Services
+  'services_needed', 'therapy_availability',
+  // Clinical
+  'health_conditions', 'school_bus_time', 'has_recent_hospitalization',
+  // PCP (no NPI for pediatric per spec)
+  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address',
+  // Care Mgmt
+  'cco_name', 'cm_name', 'cm_phone', 'cm_fax', 'cm_email',
+  // Timestamps
+  'created_at', 'updated_at',
+]);
+
+// ── Display helpers ─────────────────────────────────────────────────────────
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -28,13 +307,11 @@ function getInitials(name) {
   return (name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 }
 
-function FilledByRow({ name, date, isCurrentUser, clerkImageUrl, onPrint }) {
+function FilledByRow({ name, date, clerkImageUrl, onPrint, savingStatus }) {
   const initials = getInitials(name);
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, paddingBottom: 16, borderBottom: `1px solid var(--color-border)` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Avatar */}
         {clerkImageUrl ? (
           <img src={clerkImageUrl} alt={name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
@@ -51,28 +328,24 @@ function FilledByRow({ name, date, isCurrentUser, clerkImageUrl, onPrint }) {
           )}
         </div>
       </div>
-
-      {/* Print button */}
-      <button
-        onClick={onPrint}
-        title="Print / Export PDF"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, background: 'none', border: 'none', color: hexToRgba(palette.backgroundDark.hex, 0.4), cursor: 'pointer', transition: 'color 0.12s, background 0.12s' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.06); e.currentTarget.style.color = palette.backgroundDark.hex; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.4); }}
-      >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9V2h12v7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-          <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.7"/>
-        </svg>
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {savingStatus && (
+          <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), fontStyle: 'italic' }}>{savingStatus}</p>
+        )}
+        <button onClick={onPrint} title="Print / Export PDF"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 8, background: 'none', border: 'none', color: hexToRgba(palette.backgroundDark.hex, 0.4), cursor: 'pointer' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.06); e.currentTarget.style.color = palette.backgroundDark.hex; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.4); }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9V2h12v7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect x="6" y="14" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1.7"/>
+          </svg>
+        </button>
+      </div>
     </div>
   );
-}
-
-function calcAge(dob) {
-  if (!dob) return null;
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 
 function FormSection({ title, children }) {
@@ -88,13 +361,16 @@ function FormSection({ title, children }) {
   );
 }
 
-function Field({ label, required, error, children }) {
+function Field({ label, required, error, hint, children }) {
   return (
     <div style={error ? { borderLeft: `2px solid ${palette.primaryMagenta.hex}`, paddingLeft: 8 } : undefined}>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: error ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 5 }}>
         {label} {required && <span style={{ color: palette.primaryMagenta.hex }}>*</span>}
       </label>
       {children}
+      {hint && (
+        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4, fontStyle: 'italic' }}>{hint}</p>
+      )}
     </div>
   );
 }
@@ -104,547 +380,731 @@ const inputStyle = {
   border: `1px solid var(--color-border)`,
   background: hexToRgba(palette.backgroundDark.hex, 0.03),
   fontSize: 13, color: palette.backgroundDark.hex,
-  outline: 'none', fontFamily: 'inherit',
+  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
 };
 
-function TextInput({ value, onChange, placeholder, type = 'text', readOnly }) {
+function TextInput({ value, onChange, placeholder, type = 'text', disabled }) {
   return (
     <input type={type} value={value || ''} onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder} readOnly={readOnly}
-      style={{ ...inputStyle, background: readOnly ? hexToRgba(palette.backgroundDark.hex, 0.04) : inputStyle.background }}
-      onFocus={(e) => !readOnly && (e.target.style.borderColor = palette.primaryMagenta.hex)}
-      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
+      placeholder={placeholder} disabled={disabled}
+      style={{ ...inputStyle, opacity: disabled ? 0.6 : 1 }}
+      onFocus={(e) => !disabled && (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
     />
   );
 }
 
-function TextArea({ value, onChange, placeholder, rows = 3, readOnly }) {
+function TextArea({ value, onChange, placeholder, rows = 3, disabled }) {
   return (
     <textarea value={value || ''} onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder} rows={rows} readOnly={readOnly}
-      style={{ ...inputStyle, resize: 'vertical', background: readOnly ? hexToRgba(palette.backgroundDark.hex, 0.04) : inputStyle.background }}
-      onFocus={(e) => !readOnly && (e.target.style.borderColor = palette.primaryMagenta.hex)}
-      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
+      placeholder={placeholder} rows={rows} disabled={disabled}
+      style={{ ...inputStyle, resize: 'vertical', opacity: disabled ? 0.6 : 1 }}
+      onFocus={(e) => !disabled && (e.target.style.borderColor = palette.primaryMagenta.hex)}
+      onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
     />
   );
 }
 
-function RadioGroup({ value, onChange, readOnly }) {
-  return (
-    <div style={{ display: 'flex', gap: 16 }}>
-      {['Yes', 'No'].map((opt) => (
-        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: readOnly ? 'default' : 'pointer', fontSize: 13 }}>
-          <input type="radio" value={opt} checked={value === opt} onChange={() => !readOnly && onChange(opt)} style={{ accentColor: palette.primaryMagenta.hex }} />
-          {opt}
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function CheckboxGroup({ options, values = [], onChange, readOnly }) {
+function CheckboxGroup({ options, values = [], onChange, disabled }) {
   function toggle(opt) {
-    if (readOnly) return;
+    if (disabled) return;
     const arr = Array.isArray(values) ? values : [];
     const next = arr.includes(opt) ? arr.filter((v) => v !== opt) : [...arr, opt];
     onChange(next);
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
-      {options.map((opt) => (
-        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: readOnly ? 'default' : 'pointer', fontSize: 13 }}>
-          <input type="checkbox" checked={(values || []).includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: palette.primaryMagenta.hex }} />
-          {opt}
-        </label>
-      ))}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map((opt) => {
+        const active = (values || []).includes(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => toggle(opt)}
+            disabled={disabled}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 7,
+              border: `1px solid ${active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+              background: active ? hexToRgba(palette.primaryMagenta.hex, 0.1) : hexToRgba(palette.backgroundDark.hex, 0.03),
+              color: active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+              fontSize: 12.5,
+              fontWeight: active ? 700 : 600,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              transition: 'all 0.12s',
+            }}
+          >
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-// Convert tri-state boolean (true/false/null) to RadioGroup value ('Yes'/'No'/'')
-function boolToRadio(val) {
-  if (val === true || val === 'true' || val === 'TRUE' || val === 'Yes') return 'Yes';
-  if (val === false || val === 'false' || val === 'FALSE' || val === 'No') return 'No';
-  return ''; // unanswered
+// ── Conditional helpers ─────────────────────────────────────────────────────
+
+function isYesLike(v) { return v === 'Yes' || v === true; }
+function isNoLike(v)  { return v === 'No'  || v === false; }
+function hasTherapy(services) {
+  return Array.isArray(services) && services.some((s) => /^(PT|OT|ST)$/.test(String(s)));
 }
 
-// Check if a value is truthy for conditional field display
-function isTruthyVal(val) {
-  return val === true || val === 'true' || val === 'TRUE' || val === 'Yes';
+// When a parent gate flips to a state that hides its children, blank out the
+// children so they don't sit in the DB as orphan answers. Returns a partial
+// patch object the parent can merge.
+function clearChildren(parentField, newParentValue, formType) {
+  // Map: parent → [children to wipe when not-triggered]
+  const ADULT_MAP = {
+    add_secondary_caregiver: ['secondary_caregiver_name', 'secondary_caregiver_phone'],
+    has_homecare_services:   ['homecare_agency_name', 'homecare_hours_days'],
+    has_in_home_therapies:   ['current_therapy_services'],
+  };
+  const PED_MAP = {
+    add_secondary_caregiver:   ['secondary_caregiver_name', 'secondary_caregiver_phone'],
+    emergency_same_as_primary: ['emergency_contact_name', 'emergency_contact_phone'],
+    has_homecare_services:     ['homecare_agency_name', 'homecare_hours_days'],
+  };
+  const map = formType === 'pediatric' ? PED_MAP : ADULT_MAP;
+  const children = map[parentField];
+  if (!children) return {};
+
+  // Emergency same as primary uses inverse trigger: NO shows the children.
+  const trigger = parentField === 'emergency_same_as_primary' ? 'No' : 'Yes';
+  const shown = trigger === 'Yes' ? isYesLike(newParentValue) : isNoLike(newParentValue);
+  if (shown) return {};
+  const patch = {};
+  for (const c of children) patch[c] = '';
+  return patch;
 }
 
-function hasEmailError(val) {
-  if (!val || !val.trim()) return false;
-  if (val.trim().length < 3) return true;
-  return !validateEmail(val).valid;
-}
+// ── Adult form ──────────────────────────────────────────────────────────────
 
-function AdultForm({ data, onChange, readOnly, missingFields }) {
-  const set = (k) => (v) => onChange({ ...data, [k]: v });
-  const phoneSet = (k) => (v) => onChange({ ...data, [k]: v.replace(/\D/g, '').slice(0, 10) });
-
-  function handlePcpSelect(phy) {
-    if (!phy) {
-      onChange({ ...data, pcp_physician_id: null });
-      return;
-    }
+function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceValidate }) {
+  function pickGate(field) {
+    return (v) => set({ ...data, [field]: v, ...clearChildren(field, v, 'adult') });
+  }
+  function setServices(arr) {
+    const next = { ...data, services_needed: arr };
+    if (!hasTherapy(arr)) next.therapy_availability = '';
+    if (!arr.includes('HHA')) next.hha_hours_frequency = '';
+    set(next);
+  }
+  function setPcp(phy) {
+    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '', pcp_npi_number: data.pcp_npi_number }); return; }
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
-    onChange({
+    set({
       ...data,
-      pcp_physician_id: phy.id,
       pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
       pcp_phone: phy.phone || data.pcp_phone || '',
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
+      pcp_npi_number: phy.npi || data.pcp_npi_number || '',
     });
   }
+
   return (
     <>
+      <FormSection title="OPWDD">
+        <Field label="OPWDD Status" required error={missing.has('opwdd_status')}>
+          <SegmentedPicker value={data.opwdd_status || ''} options={OPWDD_OPTIONS} onChange={(v) => set({ ...data, opwdd_status: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Eligibility">
+        <Field label="Insurance Plan Name" required error={missing.has('insurance_plan_name')}>
+          <TextInput value={data.insurance_plan_name} onChange={(v) => set({ ...data, insurance_plan_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Medicaid Number" required error={missing.has('medicaid_number')}>
+          <TextInput value={data.medicaid_number} onChange={(v) => set({ ...data, medicaid_number: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Patient Information">
+        <Field label="Patient First and Last Name" required error={missing.has('patient_name')}>
+          <TextInput value={data.patient_name} onChange={(v) => set({ ...data, patient_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Date of Birth" required error={missing.has('dob')} hint={dobHint}>
+          <SmartDateInput value={data.dob} onChange={(v) => set({ ...data, dob: v })} min={dobBounds.min} max={dobBounds.max} disabled={disabled} />
+        </Field>
+        <Field label="Address" required error={missing.has('address')}>
+          <SmartAddressInput value={data.address} onChange={(v) => set({ ...data, address: v })} disabled={disabled} />
+        </Field>
+        <Field label="Email Address" required error={missing.has('email')}>
+          <SmartEmailInput value={data.email} onChange={(v) => set({ ...data, email: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+      </FormSection>
+
       <FormSection title="Caregiver Information">
-        <Field label="Caregiver Name" required error={missingFields?.has('caregiver_name')}><TextInput value={data.caregiver_name} onChange={set('caregiver_name')} readOnly={readOnly} /></Field>
-        <Field label="Caregiver Phone" required error={missingFields?.has('caregiver_phone')}><TextInput value={readOnly ? formatPhone(data.caregiver_phone) : data.caregiver_phone} onChange={phoneSet('caregiver_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="Caregiver Email" required error={missingFields?.has('caregiver_email') || hasEmailError(data.caregiver_email)}><TextInput value={data.caregiver_email} onChange={set('caregiver_email')} type="email" readOnly={readOnly} /></Field>
-      </FormSection>
-      <FormSection title="Home Environment">
-        <Field label="Are there pets in the home?" required error={missingFields?.has('has_pets')}><RadioGroup value={boolToRadio(data.has_pets)} onChange={(v) => set('has_pets')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_pets) && (
-          <Field label="Pet Details" error={missingFields?.has('pet_details')}><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
-        )}
-      </FormSection>
-      <FormSection title="Existing Services">
-        <Field label="Does the patient have homecare services (LHCSA / CHHA)?" required error={missingFields?.has('has_homecare_services')}><RadioGroup value={boolToRadio(data.has_homecare_services)} onChange={(v) => set('has_homecare_services')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_homecare_services) && (
+        <Field label="Primary Caregiver Name" required error={missing.has('caregiver_name')}>
+          <TextInput value={data.caregiver_name} onChange={(v) => set({ ...data, caregiver_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Primary Caregiver Phone Number" required error={missing.has('caregiver_phone')}>
+          <SmartPhoneInput value={data.caregiver_phone} onChange={(v) => set({ ...data, caregiver_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Add Secondary Parent / Caregiver?" required error={missing.has('add_secondary_caregiver')}>
+          <TriStateRadio name="add_secondary_caregiver" value={data.add_secondary_caregiver} onChange={pickGate('add_secondary_caregiver')} disabled={disabled} />
+        </Field>
+        {isYesLike(data.add_secondary_caregiver) && (
           <>
-            <Field label="Agency Name" error={missingFields?.has('homecare_agency_name')}><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
-            <Field label="Hours of Service" error={missingFields?.has('homecare_hours')}><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
-            <Field label="Days of Service" error={missingFields?.has('homecare_days')}><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
+            <Field label="Secondary Caregiver Name" required error={missing.has('secondary_caregiver_name')}>
+              <TextInput value={data.secondary_caregiver_name} onChange={(v) => set({ ...data, secondary_caregiver_name: v })} disabled={disabled} />
+            </Field>
+            <Field label="Secondary Caregiver Phone Number" required error={missing.has('secondary_caregiver_phone')}>
+              <SmartPhoneInput value={data.secondary_caregiver_phone} onChange={(v) => set({ ...data, secondary_caregiver_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+            </Field>
           </>
         )}
-        <Field label="Community habilitation services?" required error={missingFields?.has('has_community_hab')}><RadioGroup value={boolToRadio(data.has_community_hab)} onChange={(v) => set('has_community_hab')(v)} readOnly={readOnly} /></Field>
       </FormSection>
-      <FormSection title="Services Needed">
-        <Field label="Code 95 (OPWDD)" required error={missingFields?.has('code_95')}>
-          {readOnly ? (
-            <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 === 'yes' ? 'Yes' : data.code_95 === 'no' ? 'No' : '—'}</span>
-          ) : (
-            <select
-              value={data.code_95 || ''}
-              onChange={(e) => set('code_95')(e.target.value)}
-              style={{ ...inputStyle, cursor: 'pointer' }}
-            >
-              <option value="" disabled>Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          )}
+
+      <FormSection title="Home Environment">
+        <Field label="Are there any pets in the home?" required error={missing.has('has_pets')}>
+          <TriStateRadio name="has_pets" value={data.has_pets} onChange={(v) => set({ ...data, has_pets: v })} disabled={disabled} />
         </Field>
-        <Field label="Services Needed" required error={missingFields?.has('services_needed')}><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'HHA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
-        <Field label="Therapy Availability" required error={missingFields?.has('therapy_availability')}><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
+        <Field label="Is there smoking in the home?" required error={missing.has('has_smoking')}>
+          <TriStateRadio name="has_smoking" value={data.has_smoking} onChange={(v) => set({ ...data, has_smoking: v })} disabled={disabled} />
+        </Field>
       </FormSection>
-      <FormSection title="Medical Information">
-        <Field label="Is the patient diabetic?" required error={missingFields?.has('is_diabetic')}><RadioGroup value={boolToRadio(data.is_diabetic)} onChange={(v) => set('is_diabetic')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.is_diabetic) && (
-          <Field label="Who performs monitoring/treatment?" error={missingFields?.has('diabetes_monitor_by')}><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
+
+      <FormSection title="Current Services">
+        <Field label="Does the patient currently receive homecare services (LHCSA / CHHA)?" required error={missing.has('has_homecare_services')}>
+          <TriStateRadio name="has_homecare_services" value={data.has_homecare_services} onChange={pickGate('has_homecare_services')} disabled={disabled} />
+        </Field>
+        {isYesLike(data.has_homecare_services) && (
+          <>
+            <Field label="Current Agency Name" required error={missing.has('homecare_agency_name')}>
+              <TextInput value={data.homecare_agency_name} onChange={(v) => set({ ...data, homecare_agency_name: v })} disabled={disabled} />
+            </Field>
+            <Field label="Current Hours and Days of Service" required error={missing.has('homecare_hours_days')}>
+              <TextArea rows={2} value={data.homecare_hours_days} onChange={(v) => set({ ...data, homecare_hours_days: v })} disabled={disabled} />
+            </Field>
+          </>
+        )}
+        <Field label="Does the patient currently receive community habilitation, respite, or reshab services?" required error={missing.has('has_community_hab')}>
+          <TriStateRadio name="has_community_hab" value={data.has_community_hab} onChange={(v) => set({ ...data, has_community_hab: v })} disabled={disabled} />
+        </Field>
+        <Field label="Does the patient currently receive in-home therapies?" required error={missing.has('has_in_home_therapies')}>
+          <TriStateRadio name="has_in_home_therapies" value={data.has_in_home_therapies} onChange={pickGate('has_in_home_therapies')} disabled={disabled} />
+        </Field>
+        {isYesLike(data.has_in_home_therapies) && (
+          <Field label="Current Therapy Services" required error={missing.has('current_therapy_services')}>
+            <TextArea rows={2} value={data.current_therapy_services} onChange={(v) => set({ ...data, current_therapy_services: v })} disabled={disabled} />
+          </Field>
         )}
       </FormSection>
-      <FormSection title="PCP Information">
-        <Field label="PCP" required error={missingFields?.has('pcp_name')}>
+
+      <FormSection title="Requested Services">
+        <Field label="What services are being requested for the patient?" required error={missing.has('services_needed')}>
+          <CheckboxGroup options={ADULT_SERVICES} values={data.services_needed} onChange={setServices} disabled={disabled} />
+        </Field>
+        {hasTherapy(data.services_needed) && (
+          <Field label="Therapy Availability" required error={missing.has('therapy_availability')}>
+            <TextArea rows={2} value={data.therapy_availability} onChange={(v) => set({ ...data, therapy_availability: v })} disabled={disabled} />
+          </Field>
+        )}
+        {(data.services_needed || []).includes('HHA') && (
+          <Field label="Requested HHA Hours and Frequency" required error={missing.has('hha_hours_frequency')}>
+            <TextArea rows={2} value={data.hha_hours_frequency} onChange={(v) => set({ ...data, hha_hours_frequency: v })} disabled={disabled} />
+          </Field>
+        )}
+      </FormSection>
+
+      <FormSection title="Clinical Information">
+        <Field label="Any health conditions or diagnoses?" required error={missing.has('health_conditions')}>
+          <TextArea rows={3} value={data.health_conditions} onChange={(v) => set({ ...data, health_conditions: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Primary Care Physician Information">
+        <Field label="Primary Care Physician" required error={missing.has('pcp_name')}>
           <PhysicianPicker
-            physicianId={data.pcp_physician_id}
+            physicianId={null}
             physicianName={data.pcp_name}
-            onChange={handlePcpSelect}
-            readOnly={readOnly}
+            onChange={setPcp}
+            readOnly={disabled}
             compact
           />
         </Field>
-        <Field label="Date of Last PCP Visit" required error={missingFields?.has('pcp_last_visit')}><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
-        <Field label="PCP Phone" required error={missingFields?.has('pcp_phone')}><TextInput value={readOnly ? formatPhone(data.pcp_phone) : data.pcp_phone} onChange={phoneSet('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Fax" required error={missingFields?.has('pcp_fax')}><TextInput value={readOnly ? formatPhone(data.pcp_fax) : data.pcp_fax} onChange={phoneSet('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Address" required error={missingFields?.has('pcp_address')}><TextArea value={data.pcp_address} onChange={set('pcp_address')} rows={2} readOnly={readOnly} /></Field>
+        <Field label="Date of Last PCP Visit" required error={missing.has('pcp_last_visit')}>
+          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={new Date().toISOString().split('T')[0]} disabled={disabled} />
+        </Field>
+        <Field label="PCP Phone Number" required error={missing.has('pcp_phone')}>
+          <SmartPhoneInput value={data.pcp_phone} onChange={(v) => set({ ...data, pcp_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="PCP Fax Number" required error={missing.has('pcp_fax')}>
+          <SmartPhoneInput value={data.pcp_fax} onChange={(v) => set({ ...data, pcp_fax: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="PCP Address" required error={missing.has('pcp_address')}>
+          <SmartAddressInput value={data.pcp_address} onChange={(v) => set({ ...data, pcp_address: v })} disabled={disabled} />
+        </Field>
+        <Field label="PCP NPI Number" required error={missing.has('pcp_npi_number')}>
+          <SmartNpiInput value={data.pcp_npi_number} onChange={(v) => set({ ...data, pcp_npi_number: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
       </FormSection>
-      <FormSection title="Case Manager">
-        <Field label="CM Name" required error={missingFields?.has('cm_name')}><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
-        <Field label="Company" required error={missingFields?.has('cm_company')}><TextInput value={data.cm_company} onChange={set('cm_company')} readOnly={readOnly} /></Field>
-        <Field label="CM Phone" required error={missingFields?.has('cm_phone')}><TextInput value={readOnly ? formatPhone(data.cm_phone) : data.cm_phone} onChange={phoneSet('cm_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="CM Fax or Email" required error={missingFields?.has('cm_fax_or_email') || (data.cm_fax_or_email?.includes('@') && hasEmailError(data.cm_fax_or_email))}><TextInput value={data.cm_fax_or_email} onChange={set('cm_fax_or_email')} readOnly={readOnly} /></Field>
+
+      <FormSection title="Care Management">
+        <Field label="CCO Name" required error={missing.has('cco_name')}>
+          <SegmentedPicker value={data.cco_name || ''} options={CCO_OPTIONS} onChange={(v) => set({ ...data, cco_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Care Manager Name" required error={missing.has('cm_name')}>
+          <TextInput value={data.cm_name} onChange={(v) => set({ ...data, cm_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Care Manager Phone Number" required error={missing.has('cm_phone')}>
+          <SmartPhoneInput value={data.cm_phone} onChange={(v) => set({ ...data, cm_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Care Manager Fax Number" required error={missing.has('cm_fax')}>
+          <SmartPhoneInput value={data.cm_fax} onChange={(v) => set({ ...data, cm_fax: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Care Manager Email Address" required error={missing.has('cm_email')}>
+          <SmartEmailInput value={data.cm_email} onChange={(v) => set({ ...data, cm_email: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
       </FormSection>
     </>
   );
 }
 
-function PediatricForm({ data, onChange, readOnly, missingFields }) {
-  const set = (k) => (v) => onChange({ ...data, [k]: v });
-  const phoneSet = (k) => (v) => onChange({ ...data, [k]: v.replace(/\D/g, '').slice(0, 10) });
+// ── Pediatric form ──────────────────────────────────────────────────────────
 
-  function handlePcpSelect(phy) {
-    if (!phy) {
-      onChange({ ...data, pcp_physician_id: null });
-      return;
-    }
+function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, forceValidate }) {
+  function pickGate(field) {
+    return (v) => set({ ...data, [field]: v, ...clearChildren(field, v, 'pediatric') });
+  }
+  function setServices(arr) {
+    const next = { ...data, services_needed: arr };
+    if (!hasTherapy(arr)) next.therapy_availability = '';
+    set(next);
+  }
+  function setPcp(phy) {
+    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '' }); return; }
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
-    onChange({
+    set({
       ...data,
-      pcp_physician_id: phy.id,
       pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
       pcp_phone: phy.phone || data.pcp_phone || '',
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
     });
   }
+
   return (
     <>
-      <FormSection title="Intake Info">
-        <Field label="Phone call made to" required error={missingFields?.has('phone_call_made_to')}><TextInput value={data.phone_call_made_to} onChange={set('phone_call_made_to')} readOnly={readOnly} /></Field>
+      <FormSection title="OPWDD">
+        <Field label="OPWDD Status" required error={missing.has('opwdd_status')}>
+          <SegmentedPicker value={data.opwdd_status || ''} options={OPWDD_OPTIONS} onChange={(v) => set({ ...data, opwdd_status: v })} disabled={disabled} />
+        </Field>
       </FormSection>
-      <FormSection title="Household">
-        <Field label="Who does the patient live with?" required error={missingFields?.has('household_description')}><TextArea value={data.household_description} onChange={set('household_description')} rows={2} readOnly={readOnly} /></Field>
-        <Field label="Pets in the home?" required error={missingFields?.has('has_pets')}><RadioGroup value={boolToRadio(data.has_pets)} onChange={(v) => set('has_pets')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_pets) && (
-          <Field label="Pet Details" error={missingFields?.has('pet_details')}><TextInput value={data.pet_details} onChange={set('pet_details')} readOnly={readOnly} /></Field>
-        )}
+
+      <FormSection title="Eligibility">
+        <Field label="Medicaid Number" required error={missing.has('medicaid_number')}>
+          <TextInput value={data.medicaid_number} onChange={(v) => set({ ...data, medicaid_number: v })} disabled={disabled} />
+        </Field>
       </FormSection>
-      <FormSection title="Existing Services">
-        <Field label="Does the patient have homecare services (LHCSA / CHHA / ABA)?" required error={missingFields?.has('has_homecare_services')}><RadioGroup value={boolToRadio(data.has_homecare_services)} onChange={(v) => set('has_homecare_services')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_homecare_services) && (
+
+      <FormSection title="Contact Information">
+        <Field label="Phone Call Made To" required error={missing.has('phone_call_made_to')}>
+          <TextInput value={data.phone_call_made_to} onChange={(v) => set({ ...data, phone_call_made_to: v })} disabled={disabled} />
+        </Field>
+        <Field label="Primary Caregiver Name" required error={missing.has('primary_caregiver_name')}>
+          <TextInput value={data.primary_caregiver_name} onChange={(v) => set({ ...data, primary_caregiver_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Primary Caregiver Phone Number" required error={missing.has('primary_caregiver_phone')}>
+          <SmartPhoneInput value={data.primary_caregiver_phone} onChange={(v) => set({ ...data, primary_caregiver_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Add Secondary Caregiver?" required error={missing.has('add_secondary_caregiver')}>
+          <TriStateRadio name="add_secondary_caregiver" value={data.add_secondary_caregiver} onChange={pickGate('add_secondary_caregiver')} disabled={disabled} />
+        </Field>
+        {isYesLike(data.add_secondary_caregiver) && (
           <>
-            <Field label="Agency Name" error={missingFields?.has('homecare_agency_name')}><TextInput value={data.homecare_agency_name} onChange={set('homecare_agency_name')} readOnly={readOnly} /></Field>
-            <Field label="Hours of Service" error={missingFields?.has('homecare_hours')}><TextInput value={data.homecare_hours} onChange={set('homecare_hours')} readOnly={readOnly} /></Field>
-            <Field label="Days of Service" error={missingFields?.has('homecare_days')}><TextInput value={data.homecare_days} onChange={set('homecare_days')} readOnly={readOnly} /></Field>
+            <Field label="Secondary Caregiver Name" required error={missing.has('secondary_caregiver_name')}>
+              <TextInput value={data.secondary_caregiver_name} onChange={(v) => set({ ...data, secondary_caregiver_name: v })} disabled={disabled} />
+            </Field>
+            <Field label="Secondary Caregiver Phone Number" required error={missing.has('secondary_caregiver_phone')}>
+              <SmartPhoneInput value={data.secondary_caregiver_phone} onChange={(v) => set({ ...data, secondary_caregiver_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+            </Field>
           </>
         )}
-        <Field label="Does the patient receive BOE services?" required error={missingFields?.has('has_boe_services')}><RadioGroup value={boolToRadio(data.has_boe_services)} onChange={(v) => set('has_boe_services')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_boe_services) && (
-          <Field label="BOE Services Details" error={missingFields?.has('boe_services')}><TextArea value={data.boe_services} onChange={set('boe_services')} rows={2} readOnly={readOnly} /></Field>
-        )}
-        <Field label="Community habilitation?" required error={missingFields?.has('has_community_hab')}><RadioGroup value={boolToRadio(data.has_community_hab)} onChange={(v) => set('has_community_hab')(v)} readOnly={readOnly} /></Field>
-      </FormSection>
-      <FormSection title="Services Needed">
-        <Field label="Code 95 (OPWDD)" required error={missingFields?.has('code_95')}>
-          {readOnly ? (
-            <span style={{ fontSize: 13, color: palette.backgroundDark.hex }}>{data.code_95 === 'yes' ? 'Yes' : data.code_95 === 'no' ? 'No' : '—'}</span>
-          ) : (
-            <select
-              value={data.code_95 || ''}
-              onChange={(e) => set('code_95')(e.target.value)}
-              style={{ ...inputStyle, cursor: 'pointer' }}
-            >
-              <option value="" disabled>Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          )}
+        <Field label="Emergency contact same as Primary Caregiver Contact?" required error={missing.has('emergency_same_as_primary')}>
+          <TriStateRadio name="emergency_same_as_primary" value={data.emergency_same_as_primary} onChange={pickGate('emergency_same_as_primary')} disabled={disabled} />
         </Field>
-        <Field label="Services Needed" required error={missingFields?.has('services_needed')}><CheckboxGroup options={['SN', 'PT', 'OT', 'ST', 'ABA']} values={data.services_needed} onChange={set('services_needed')} readOnly={readOnly} /></Field>
-        <Field label="Therapy Availability" required error={missingFields?.has('therapy_availability')}><TextArea value={data.therapy_availability} onChange={set('therapy_availability')} readOnly={readOnly} /></Field>
-        <Field label="HHA Hours and Frequency" required error={missingFields?.has('hha_hours_frequency')}><TextInput value={data.hha_hours_frequency} onChange={set('hha_hours_frequency')} readOnly={readOnly} /></Field>
-      </FormSection>
-      <FormSection title="Medical">
-        <Field label="Is the patient diabetic?" required error={missingFields?.has('is_diabetic')}><RadioGroup value={boolToRadio(data.is_diabetic)} onChange={(v) => set('is_diabetic')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.is_diabetic) && (
-          <Field label="Who performs monitoring/treatment?" error={missingFields?.has('diabetes_monitor_by')}><TextInput value={data.diabetes_monitor_by} onChange={set('diabetes_monitor_by')} readOnly={readOnly} /></Field>
+        {isNoLike(data.emergency_same_as_primary) && (
+          <>
+            <Field label="Emergency Contact Name" required error={missing.has('emergency_contact_name')}>
+              <TextInput value={data.emergency_contact_name} onChange={(v) => set({ ...data, emergency_contact_name: v })} disabled={disabled} />
+            </Field>
+            <Field label="Emergency Contact Phone Number" required error={missing.has('emergency_contact_phone')}>
+              <SmartPhoneInput value={data.emergency_contact_phone} onChange={(v) => set({ ...data, emergency_contact_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+            </Field>
+          </>
         )}
-        <Field label="Immunizations up to date?" required error={missingFields?.has('immunizations_up_to_date')}><RadioGroup value={boolToRadio(data.immunizations_up_to_date)} onChange={(v) => set('immunizations_up_to_date')(v)} readOnly={readOnly} /></Field>
-        <Field label="What time does the patient get off the school bus?" required error={missingFields?.has('school_bus_time')}><TextInput value={data.school_bus_time} onChange={set('school_bus_time')} type="time" readOnly={readOnly} /></Field>
-        <Field label="Any recent hospitalization?" required error={missingFields?.has('has_recent_hospitalization')}><RadioGroup value={boolToRadio(data.has_recent_hospitalization)} onChange={(v) => set('has_recent_hospitalization')(v)} readOnly={readOnly} /></Field>
-        {isTruthyVal(data.has_recent_hospitalization) && (
-          <Field label="Hospitalization Note" error={missingFields?.has('hospitalization_note')}><TextArea value={data.hospitalization_note} onChange={set('hospitalization_note')} rows={2} readOnly={readOnly} /></Field>
+        <Field label="Email Address" required error={missing.has('email')}>
+          <SmartEmailInput value={data.email} onChange={(v) => set({ ...data, email: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Patient Information">
+        <Field label="Patient First and Last Name" required error={missing.has('patient_name')}>
+          <TextInput value={data.patient_name} onChange={(v) => set({ ...data, patient_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Date of Birth" required error={missing.has('dob')} hint={dobHint}>
+          <SmartDateInput value={data.dob} onChange={(v) => set({ ...data, dob: v })} min={dobBounds.min} max={dobBounds.max} disabled={disabled} />
+        </Field>
+        <Field label="Address" required error={missing.has('address')}>
+          <SmartAddressInput value={data.address} onChange={(v) => set({ ...data, address: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Home Environment">
+        <Field label="Are there any pets in the home?" required error={missing.has('has_pets')}>
+          <TriStateRadio name="has_pets" value={data.has_pets} onChange={(v) => set({ ...data, has_pets: v })} disabled={disabled} />
+        </Field>
+        <Field label="Is there smoking in the home?" required error={missing.has('has_smoking')}>
+          <TriStateRadio name="has_smoking" value={data.has_smoking} onChange={(v) => set({ ...data, has_smoking: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Current Services">
+        <Field label="Does the patient currently receive homecare services (LHCSA / CHHA / ABA)?" required error={missing.has('has_homecare_services')}>
+          <TriStateRadio name="has_homecare_services" value={data.has_homecare_services} onChange={pickGate('has_homecare_services')} disabled={disabled} />
+        </Field>
+        {isYesLike(data.has_homecare_services) && (
+          <>
+            <Field label="Current Agency Name" required error={missing.has('homecare_agency_name')}>
+              <TextInput value={data.homecare_agency_name} onChange={(v) => set({ ...data, homecare_agency_name: v })} disabled={disabled} />
+            </Field>
+            <Field label="Current Hours and Days of Service" required error={missing.has('homecare_hours_days')}>
+              <TextArea rows={2} value={data.homecare_hours_days} onChange={(v) => set({ ...data, homecare_hours_days: v })} disabled={disabled} />
+            </Field>
+          </>
+        )}
+        <Field label="What BOE services does the patient currently receive?" required error={missing.has('boe_services')}>
+          <TextArea rows={2} value={data.boe_services} onChange={(v) => set({ ...data, boe_services: v })} disabled={disabled} />
+        </Field>
+        <Field label="Does the patient currently receive community habilitation, respite, or reshab services?" required error={missing.has('has_community_hab')}>
+          <TriStateRadio name="has_community_hab" value={data.has_community_hab} onChange={(v) => set({ ...data, has_community_hab: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Requested Services">
+        <Field label="What services are being requested for the patient?" required error={missing.has('services_needed')}>
+          <CheckboxGroup options={PEDIATRIC_SERVICES} values={data.services_needed} onChange={setServices} disabled={disabled} />
+        </Field>
+        {hasTherapy(data.services_needed) && (
+          <Field label="Therapy Availability" required error={missing.has('therapy_availability')}>
+            <TextArea rows={2} value={data.therapy_availability} onChange={(v) => set({ ...data, therapy_availability: v })} disabled={disabled} />
+          </Field>
         )}
       </FormSection>
-      <FormSection title="PCP Information">
-        <Field label="PCP" required error={missingFields?.has('pcp_name')}>
+
+      <FormSection title="Clinical Information">
+        <Field label="Any medical conditions or diagnoses?" required error={missing.has('health_conditions')}>
+          <TextArea rows={3} value={data.health_conditions} onChange={(v) => set({ ...data, health_conditions: v })} disabled={disabled} />
+        </Field>
+        <Field label="What time does the child get home from school?" required error={missing.has('school_bus_time')}>
+          <input type="time" value={data.school_bus_time || ''} onChange={(e) => set({ ...data, school_bus_time: e.target.value })} disabled={disabled} style={inputStyle} />
+        </Field>
+        <Field label="Any recent hospitalizations?" required error={missing.has('has_recent_hospitalization')}>
+          <TriStateRadio name="has_recent_hospitalization" value={data.has_recent_hospitalization} onChange={(v) => set({ ...data, has_recent_hospitalization: v })} disabled={disabled} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Primary Care Physician Information">
+        <Field label="Primary Care Physician" required error={missing.has('pcp_name')}>
           <PhysicianPicker
-            physicianId={data.pcp_physician_id}
+            physicianId={null}
             physicianName={data.pcp_name}
-            onChange={handlePcpSelect}
-            readOnly={readOnly}
+            onChange={setPcp}
+            readOnly={disabled}
             compact
           />
         </Field>
-        <Field label="Date of Last PCP Visit" required error={missingFields?.has('pcp_last_visit')}><TextInput value={data.pcp_last_visit ? data.pcp_last_visit.split('T')[0] : ''} onChange={set('pcp_last_visit')} type="date" readOnly={readOnly} /></Field>
-        <Field label="PCP Phone" required error={missingFields?.has('pcp_phone')}><TextInput value={readOnly ? formatPhone(data.pcp_phone) : data.pcp_phone} onChange={phoneSet('pcp_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Fax" required error={missingFields?.has('pcp_fax')}><TextInput value={readOnly ? formatPhone(data.pcp_fax) : data.pcp_fax} onChange={phoneSet('pcp_fax')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="PCP Address" required error={missingFields?.has('pcp_address')}><TextArea value={data.pcp_address} onChange={set('pcp_address')} rows={2} readOnly={readOnly} /></Field>
+        <Field label="Date of Last PCP Visit" required error={missing.has('pcp_last_visit')}>
+          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={new Date().toISOString().split('T')[0]} disabled={disabled} />
+        </Field>
+        <Field label="PCP Phone Number" required error={missing.has('pcp_phone')}>
+          <SmartPhoneInput value={data.pcp_phone} onChange={(v) => set({ ...data, pcp_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="PCP Fax Number" required error={missing.has('pcp_fax')}>
+          <SmartPhoneInput value={data.pcp_fax} onChange={(v) => set({ ...data, pcp_fax: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="PCP Address" required error={missing.has('pcp_address')}>
+          <SmartAddressInput value={data.pcp_address} onChange={(v) => set({ ...data, pcp_address: v })} disabled={disabled} />
+        </Field>
       </FormSection>
-      <FormSection title="Case Manager">
-        <Field label="CM Name" required error={missingFields?.has('cm_name')}><TextInput value={data.cm_name} onChange={set('cm_name')} readOnly={readOnly} /></Field>
-        <Field label="CM Phone" required error={missingFields?.has('cm_phone')}><TextInput value={readOnly ? formatPhone(data.cm_phone) : data.cm_phone} onChange={phoneSet('cm_phone')} type="tel" readOnly={readOnly} /></Field>
-        <Field label="Potential SOC Date"><TextInput value={data.potential_soc_date ? data.potential_soc_date.split('T')[0] : ''} onChange={set('potential_soc_date')} type="date" readOnly={readOnly} /></Field>
+
+      <FormSection title="Care Management">
+        <Field label="CCO Name" required error={missing.has('cco_name')}>
+          <SegmentedPicker value={data.cco_name || ''} options={CCO_OPTIONS} onChange={(v) => set({ ...data, cco_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Care Manager Name" required error={missing.has('cm_name')}>
+          <TextInput value={data.cm_name} onChange={(v) => set({ ...data, cm_name: v })} disabled={disabled} />
+        </Field>
+        <Field label="Care Manager Phone Number" required error={missing.has('cm_phone')}>
+          <SmartPhoneInput value={data.cm_phone} onChange={(v) => set({ ...data, cm_phone: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Care Manager Fax Number" required error={missing.has('cm_fax')}>
+          <SmartPhoneInput value={data.cm_fax} onChange={(v) => set({ ...data, cm_fax: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
+        <Field label="Care Manager Email Address" required error={missing.has('cm_email')}>
+          <SmartEmailInput value={data.cm_email} onChange={(v) => set({ ...data, cm_email: v })} disabled={disabled} forceValidate={forceValidate} />
+        </Field>
       </FormSection>
     </>
   );
 }
+
+// ── Demographics auto-populate ──────────────────────────────────────────────
+
+function buildDemographicSeed(patient, formType) {
+  const fullName = `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim();
+  const addr = [patient?.address_street, patient?.address_city, patient?.address_state, patient?.address_zip]
+    .filter(Boolean)
+    .join(', ');
+  const dob = patient?.dob ? String(patient.dob).split('T')[0] : '';
+  const phoneDigits = String(patient?.phone_primary || '').replace(/\D/g, '').slice(0, 10);
+
+  const seed = {
+    patient_name: fullName,
+    dob,
+    address: addr,
+    email: patient?.email || '',
+    medicaid_number: patient?.medicaid_number || '',
+  };
+  if (formType === 'adult') {
+    seed.insurance_plan_name = patient?.insurance_plan || '';
+  } else {
+    // Pediatric: emergency contact name + phone come from the patient record.
+    const ecPhone = String(patient?.emergency_contact_phone || '').replace(/\D/g, '').slice(0, 10);
+    if (patient?.emergency_contact_name) seed.emergency_contact_name = patient.emergency_contact_name;
+    if (ecPhone)                          seed.emergency_contact_phone = ecPhone;
+    if (patient?.phone_primary)           seed.primary_caregiver_phone = phoneDigits;
+  }
+  return seed;
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+
+const SAVE_DEBOUNCE_MS = 700;
 
 export default function TriageTab({ patient, referral, readOnly = false }) {
   const { user } = useUser();
   const { resolveUser } = useLookups();
   const { appUserId } = useCurrentAppUser();
   const { can } = usePermissions();
-  const [triageData, setTriageData] = useState({});
-  const [triageRecordId, setTriageRecordId] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [draft, setDraft] = useState({});
-  const [validationWarnings, setValidationWarnings] = useState([]);
 
+  // Determine which form: prefer the referral's explicit sn_age_group, else
+  // derive from DOB. Special Needs only.
   const isSpecialNeeds = referral?.division === 'Special Needs' || patient?.division === 'Special Needs';
-  const age = calcAge(patient?.dob);
-  const isPediatric = age !== null && age < 18;
-  const triageType = isSpecialNeeds ? (isPediatric ? 'pediatric' : 'adult') : 'none';
+  const explicitAgeGroup = referral?.sn_age_group || null;
+  const inferredAgeGroup = inferAgeGroupFromDob(patient?.dob);
+  const ageGroup = explicitAgeGroup || inferredAgeGroup;
+  const triageType = isSpecialNeeds ? (ageGroup === 'Pediatric' ? 'pediatric' : 'adult') : 'none';
 
-  const getFn = triageType === 'adult' ? getTriageAdult : getTriagePediatric;
+  const getFn    = triageType === 'adult' ? getTriageAdult    : getTriagePediatric;
   const createFn = triageType === 'adult' ? createTriageAdult : createTriagePediatric;
   const updateFn = triageType === 'adult' ? updateTriageAdult : updateTriagePediatric;
+  const BLANK    = triageType === 'adult' ? ADULT_BLANK       : PED_BLANK;
+  const COLS     = triageType === 'adult' ? ADULT_COLUMNS     : PEDIATRIC_COLUMNS;
 
+  const [data, setData] = useState(BLANK);
+  const [recordId, setRecordId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [savingStatus, setSavingStatus] = useState(''); // 'Saving…' | 'Saved' | 'Save failed'
+  const [filledByName, setFilledByName] = useState(null);
+  const [filledAt, setFilledAt] = useState(null);
+  const [filledBySelf, setFilledBySelf] = useState(false);
+  const [opwddPendingPrompt, setOpwddPendingPrompt] = useState(null); // pending {next, prev}
+
+  // Refs for the debounced save coordination.
+  const saveTimer = useRef(null);
+  const inFlight  = useRef(false);
+  const pendingSaveData = useRef(null);
+  const recordIdRef = useRef(null);
+  recordIdRef.current = recordId;
+
+  // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!referral?.id || triageType === 'none') { setLoading(false); return; }
     setLoading(true);
+    let cancelled = false;
     getFn(referral.id)
       .then((records) => {
+        if (cancelled) return;
         if (records.length) {
           const r = records[0];
-          setTriageRecordId(r.id);
-          setTriageData({ ...r.fields, code_95: r.fields.code_95 || referral?.code_95 || '' });
+          const normalized = normalizeIncoming(r.fields, BLANK);
+          // Even on an existing record, fill in any still-blank demographics-
+          // backed fields from the patient so users don't have to retype.
+          const seed = buildDemographicSeed(patient, triageType);
+          const merged = { ...normalized };
+          for (const [k, v] of Object.entries(seed)) {
+            if (!merged[k] || (typeof merged[k] === 'string' && merged[k].trim() === '')) {
+              merged[k] = v;
+            }
+          }
+          setData(merged);
+          setRecordId(r.id);
+          setFilledByName(resolveUser(r.fields.filled_by_id) || null);
+          setFilledBySelf(r.fields.filled_by_id === appUserId || r.fields.filled_by_id === user?.id);
+          setFilledAt(r.fields.updated_at || r.fields.created_at || null);
+        } else {
+          // Fresh record — seed everything we know from demographics.
+          const seed = buildDemographicSeed(patient, triageType);
+          setData({ ...BLANK, ...seed });
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+    // We intentionally only re-load when the referral or its type changes;
+    // this is a single-document tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referral?.id, triageType]);
 
-  function startEdit() {
-    if (readOnly) return;
-    setDraft({ ...triageData, code_95: triageData.code_95 || referral?.code_95 || '' });
-    setValidationWarnings([]);
-    setEditing(true);
+  // ── Debounced live-save ───────────────────────────────────────────────────
+
+  function scheduleSave(nextData) {
+    pendingSaveData.current = nextData;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
   }
 
-  async function save() {
+  async function flushSave() {
+    saveTimer.current = null;
+    const payload = pendingSaveData.current;
+    if (!payload || inFlight.current) return;
     if (!can(PERMISSION_KEYS.CLINICAL_TRIAGE)) return;
+    if (!referral?.id) return;
 
-    // OPWDD = "No" confirmation step. Even when the rest of triage is
-    // incomplete, answering "No" should route the patient to the OPWDD
-    // module — but we surface a confirmation popup first so this big
-    // routing decision isn't a one-click accident. (2026-05-20 spec.)
-    if (draft.code_95 === 'no' && referral?.code_95 !== 'no') {
-      const ok = window.confirm(
-        'Patient does NOT have OPWDD Code 95.\n\n' +
-        'Confirming will route them to the OPWDD Enrollment module and open an OPWDD eligibility case. ' +
-        'They will return to Intake when the OPWDD case is closed or converted.\n\n' +
-        'Continue?'
-      );
-      if (!ok) return;
-    }
-
-    const { missing } = isTriageComplete(draft, triageType);
-    setValidationWarnings(missing);
-
-    const phoneErrors = [];
-    const PHONE_CHECK = ['caregiver_phone', 'pcp_phone', 'pcp_fax', 'cm_phone'];
-    for (const pf of PHONE_CHECK) {
-      if (draft[pf] && draft[pf].replace(/\D/g, '').length > 0) {
-        const r = normalizePhone(draft[pf]);
-        if (!r.valid) phoneErrors.push(pf);
-      }
-    }
-    const emailErrors = [];
-    const EMAIL_CHECK = ['caregiver_email'];
-    for (const ef of EMAIL_CHECK) {
-      if (draft[ef] && draft[ef].trim()) {
-        const r = validateEmail(draft[ef]);
-        if (!r.valid) emailErrors.push(ef);
-      }
-    }
-    if (draft.cm_fax_or_email && draft.cm_fax_or_email.trim() && draft.cm_fax_or_email.includes('@')) {
-      const r = validateEmail(draft.cm_fax_or_email);
-      if (!r.valid) emailErrors.push('cm_fax_or_email');
-    }
-    if (phoneErrors.length > 0 || emailErrors.length > 0) {
-      const allBad = [...phoneErrors, ...emailErrors];
-      setValidationWarnings([...missing, ...allBad.filter((f) => !missing.includes(f))]);
-      setSaveError(`Fix invalid fields: ${allBad.map((f) => f.replace(/_/g, ' ')).join(', ')}`);
-      return;
-    }
-
-    setSaving(true);
-    setSaveError(null);
+    inFlight.current = true;
+    setSavingStatus('Saving…');
     try {
-      const pcp_physician_id = draft.pcp_physician_id;
-
-      // Whitelist: ONLY send fields that actually exist as Airtable columns.
-      // Sending unknown fields causes Airtable to reject the ENTIRE update.
-      const ADULT_COLUMNS = new Set([
-        'id', 'referral_id', 'filled_by_id',
-        'caregiver_name', 'caregiver_phone', 'caregiver_email',
-        'has_pets', 'pet_details',
-        'has_homecare_services', 'homecare_agency_name', 'homecare_hours', 'homecare_days',
-        'has_community_hab',
-        'services_needed', 'therapy_availability',
-        'is_diabetic', 'diabetes_monitor_by',
-        'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address',
-        'cm_name', 'cm_company', 'cm_phone', 'cm_fax_or_email',
-        'created_at', 'updated_at',
-      ]);
-      const PEDIATRIC_COLUMNS = new Set([
-        'id', 'referral_id', 'filled_by_id',
-        'phone_call_made_to', 'household_description',
-        'has_pets', 'pet_details',
-        'has_homecare_services', 'homecare_agency_name', 'homecare_hours', 'homecare_days',
-        'boe_services', 'has_boe_services', 'has_community_hab',
-        'services_needed', 'therapy_availability', 'hha_hours_frequency',
-        'is_diabetic', 'diabetes_monitor_by',
-        'immunizations_up_to_date', 'school_bus_time',
-        'has_recent_hospitalization', 'recent_hospitalization', 'hospitalization_note',
-        'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address',
-        'cm_name', 'cm_company', 'cm_phone', 'potential_soc_date',
-        'created_at', 'updated_at',
-      ]);
-      const ALLOWED = triageType === 'adult' ? ADULT_COLUMNS : PEDIATRIC_COLUMNS;
-
-      const BOOL_FIELDS = new Set([
-        'has_pets', 'has_homecare_services', 'has_community_hab', 'is_diabetic',
-        'immunizations_up_to_date',
-        ...(triageType === 'pediatric' ? ['has_recent_hospitalization', 'has_boe_services'] : []),
-      ]);
-      const DATE_FIELDS = new Set(['pcp_last_visit', 'potential_soc_date', 'created_at', 'updated_at']);
-
-      // Normalize phones
-      for (const pf of PHONE_CHECK) {
-        if (draft[pf]) {
-          const result = normalizePhone(draft[pf]);
-          draft[pf] = result.valid ? result.digits : draft[pf].replace(/\D/g, '');
-        }
-      }
-
-      const fields = {};
-      for (const [k, v] of Object.entries(draft)) {
-        if (!ALLOWED.has(k)) continue;
-        if (v === null || v === undefined) continue;
-        if (typeof v === 'string' && v.trim() === '' && DATE_FIELDS.has(k)) continue;
-        if (Array.isArray(v) && v.length === 0) continue;
-        if (BOOL_FIELDS.has(k)) {
-          if (v === true || v === 'Yes' || (typeof v === 'string' && v.toLowerCase() === 'true')) {
-            fields[k] = 'TRUE';
-          } else if (v === false || v === 'No' || (typeof v === 'string' && v.toLowerCase() === 'false')) {
-            fields[k] = 'FALSE';
-          }
-          continue;
-        }
-        fields[k] = v;
-      }
-
+      const fields = buildPayloadForSave(payload, COLS);
       fields.referral_id = referral.id;
-      fields.updated_at = new Date().toISOString();
-      if (!triageRecordId) {
+      fields.updated_at  = new Date().toISOString();
+      let saved;
+      if (!recordIdRef.current) {
         fields.filled_by_id = appUserId || user?.id || 'unknown';
-        fields.created_at = new Date().toISOString();
-      }
-
-      // Store record: will be replaced with actual Airtable response after save
-      let storeRecord = { ...fields };
-      for (const bf of BOOL_FIELDS) {
-        if (storeRecord[bf] === 'TRUE') storeRecord[bf] = true;
-        else if (storeRecord[bf] === 'FALSE') storeRecord[bf] = false;
-        // else: leave as undefined (unanswered)
-      }
-
-      console.log('[TriageTab] Saving', Object.keys(fields).length, 'fields');
-
-      const storeKey = triageType === 'adult' ? 'triageAdult' : 'triagePediatric';
-      let savedRecord;
-      if (triageRecordId) {
-        savedRecord = await updateFn(triageRecordId, fields);
-        
-        // Use the actual response from Airtable — this is the truth
-        const merged = { _id: triageRecordId, ...savedRecord.fields };
-        mergeEntities(storeKey, { [triageRecordId]: merged });
-        storeRecord = { ...merged };
+        fields.created_at   = new Date().toISOString();
+        saved = await createFn(fields);
+        setRecordId(saved.id);
+        recordIdRef.current = saved.id;
+        setFilledBySelf(true);
+        setFilledByName(user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || appUserId);
       } else {
-        savedRecord = await createFn(fields);
-        
-        setTriageRecordId(savedRecord.id);
-        const merged = { _id: savedRecord.id, ...savedRecord.fields };
-        mergeEntities(storeKey, { [savedRecord.id]: merged });
-        storeRecord = { ...merged };
+        saved = await updateFn(recordIdRef.current, fields);
       }
-      // Sync services_needed → referral.services_requested when the referral has none yet.
-      // This keeps the pipeline card's service tags populated from the triage assessment.
-      const existingServices = referral?.services_requested;
-      const needsServiceSync =
-        draft.services_needed?.length > 0 &&
-        referral?._id &&
-        (!existingServices || (Array.isArray(existingServices) && existingServices.length === 0));
-      if (needsServiceSync) {
-        await updateReferral(referral._id, { services_requested: draft.services_needed }).catch(() => {});
+      setFilledAt(saved?.fields?.updated_at || fields.updated_at);
+      const storeKey = triageType === 'adult' ? 'triageAdult' : 'triagePediatric';
+      mergeEntities(storeKey, { [saved.id]: { _id: saved.id, ...saved.fields } });
+      setSavingStatus('Saved');
+      setTimeout(() => setSavingStatus((s) => (s === 'Saved' ? '' : s)), 1800);
+      // Refresh consumers (PatientDrawer tabComplete dot, snapshot, etc.)
+      triggerDataRefresh();
+    } catch (err) {
+      console.error('[TriageTab] save failed:', err);
+      setSavingStatus('Save failed — retrying on next change');
+    } finally {
+      inFlight.current = false;
+      // If something changed mid-flight, re-flush.
+      if (pendingSaveData.current && saveTimer.current === null) {
+        const next = pendingSaveData.current;
+        pendingSaveData.current = null;
+        if (next !== payload) {
+          pendingSaveData.current = next;
+          scheduleSave(next);
+        }
       }
-      // If a physician was newly linked, sync to the referral record
-      if (pcp_physician_id && pcp_physician_id !== triageData.pcp_physician_id && referral?._id) {
-        await updateReferral(referral._id, { physician_id: pcp_physician_id }).catch(() => {});
-      }
-      // If Code 95 = no, route patient to OPWDD Enrollment AND open the
-      // OPWDDEligibilityCases row so the enrollment specialist has a
-      // seeded checklist to work from. openCaseForReferral is idempotent
-      // — calling it for a referral that already has an open case is a
-      // no-op.
-      if (draft.code_95 === 'no' && referral?._id) {
-        await updateReferral(referral._id, { current_stage: 'OPWDD Enrollment', code_95: 'no' }).catch(() => {});
+    }
+  }
+
+  // Flush any pending save on unmount.
+  useEffect(() => () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      flushSave();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── OPWDD status side-effects ─────────────────────────────────────────────
+
+  async function applyOpwddRouting(nextStatus) {
+    if (!referral?.id || !referral?._id) return;
+    try {
+      if (nextStatus === 'OPWDD Eligible') {
+        await updateReferral(referral._id, { code_95: 'yes' }).catch(() => {});
+      } else if (nextStatus === 'OPWDD Pending') {
+        await updateReferral(referral._id, { code_95: 'no', current_stage: 'OPWDD Enrollment' }).catch(() => {});
         await openCaseForReferral({
           referral: { id: referral.id, _id: referral._id },
           patientId: patient?.id,
           actorUserId: appUserId,
           assignedSpecialistId: appUserId,
-          reason: 'triage_no',
-        }).catch((err) => console.warn('Open OPWDD case after Code 95=No failed:', err));
+          reason: 'triage_opwdd_pending',
+        }).catch((err) => console.warn('Open OPWDD case failed:', err));
         triggerDataRefresh();
-      } else if (draft.code_95 === 'yes' && referral?._id) {
-        await updateReferral(referral._id, { code_95: 'yes' }).catch(() => {});
+      } else if (nextStatus === 'Non-OPWDD') {
+        // Keep code_95 consistent with "not on code 95" but DON'T trigger
+        // the enrollment routing.
+        await updateReferral(referral._id, { code_95: 'no' }).catch(() => {});
       }
-
-      // Re-fetch from DB to get the real persisted data
-      const reloaded = await getFn(referral.id);
-      if (reloaded.length) {
-        const fresh = reloaded[0];
-        const freshData = { ...fresh.fields, code_95: draft.code_95 || referral?.code_95 || '', pcp_physician_id };
-        setTriageData(freshData);
-        mergeEntities(storeKey, { [fresh.id]: { _id: fresh.id, ...fresh.fields } });
-      } else {
-        setTriageData({ ...storeRecord, pcp_physician_id, code_95: draft.code_95 || '' });
-      }
-      setEditing(false);
-      triggerDataRefresh();
     } catch (err) {
-      console.error('[TriageTab] Save failed:', err, err?.stack);
-      const msg = err?.message || 'Save failed';
-      setSaveError(`Save error: ${msg}. Check browser console for details.`);
-      window.alert?.(`Triage save failed: ${msg}`);
-    } finally {
-      setSaving(false);
+      console.warn('[TriageTab] applyOpwddRouting failed:', err);
     }
   }
 
-  if (loading) return <LoadingState message="Loading triage form..." size="small" />;
+  // ── Field change wrapper ──────────────────────────────────────────────────
 
-  if (triageType === 'none') {
-    return (
-      <div style={{ padding: 24, textAlign: 'center', color: hexToRgba(palette.backgroundDark.hex, 0.4), fontSize: 13, paddingTop: 48, fontStyle: 'italic' }}>
-        Triage forms are for Special Needs patients only.<br />This patient is classified as ALF.
-      </div>
-    );
+  function handleChange(nextData) {
+    // Detect OPWDD status flips → confirmation gate for 'OPWDD Pending'.
+    const prevStatus = data.opwdd_status;
+    const nextStatus = nextData.opwdd_status;
+    setData(nextData);
+    scheduleSave(nextData);
+
+    if (nextStatus && nextStatus !== prevStatus) {
+      if (nextStatus === 'OPWDD Pending' && prevStatus !== 'OPWDD Pending') {
+        // Surface the routing prompt before triggering OPWDD enrollment.
+        setOpwddPendingPrompt({ next: nextStatus, prev: prevStatus });
+      } else {
+        applyOpwddRouting(nextStatus);
+      }
+    }
   }
 
-  const currentData = editing ? draft : { ...triageData, code_95: triageData.code_95 || referral?.code_95 || '' };
-  const hasData = Object.keys(triageData).length > 0;
-  const isFilledByCurrentUser = triageData.filled_by_id && (triageData.filled_by_id === appUserId || triageData.filled_by_id === user?.id);
-  const resolvedFilledBy = triageData.filled_by_id ? resolveUser(triageData.filled_by_id) : null;
-  const filledByName = isFilledByCurrentUser
-    ? (user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || resolvedFilledBy)
-    : resolvedFilledBy;
-  const filledAt = triageData.updated_at || triageData.created_at;
-  const validationWarningSet = new Set(validationWarnings);
+  function confirmOpwddPending() {
+    if (!opwddPendingPrompt) return;
+    applyOpwddRouting('OPWDD Pending');
+    setOpwddPendingPrompt(null);
+  }
+
+  function declineOpwddPending() {
+    if (!opwddPendingPrompt) return;
+    // Revert OPWDD status to the previous value to avoid silent routing.
+    const reverted = { ...data, opwdd_status: opwddPendingPrompt.prev || null };
+    setData(reverted);
+    scheduleSave(reverted);
+    setOpwddPendingPrompt(null);
+  }
+
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const completeness = useMemo(
+    () => (triageType === 'none' ? { complete: true, missing: [] } : isTriageComplete(data, triageType)),
+    [data, triageType],
+  );
+  const missingSet = useMemo(() => new Set(completeness.missing), [completeness.missing]);
+  const dobBounds  = useMemo(() => getDobBoundsForAgeGroup(ageGroup), [ageGroup]);
+  const dobHint    = ageGroup
+    ? `Locked to ${ageGroup} range (age ${ageGroup === 'Pediatric' ? 'under 18' : '18+'}).`
+    : null;
+
+  // ── Print ─────────────────────────────────────────────────────────────────
 
   function handlePrint() {
     const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Patient';
-    const type = isPediatric ? 'Pediatric' : 'Adult';
+    const type = triageType === 'pediatric' ? 'Pediatric' : 'Adult';
     const win = window.open('', '_blank', 'width=800,height=900');
     const formEl = document.getElementById('triage-form-content');
     win.document.write(`
@@ -655,7 +1115,6 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
         .meta { font-size: 12px; color: #777; margin-bottom: 24px; }
         label { display: block; font-size: 11px; font-weight: 600; color: #555; margin-top: 14px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
         p { font-size: 13px; margin: 0; padding: 6px 0; border-bottom: 1px solid #eee; }
-        .section { margin-bottom: 20px; }
         .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #999; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }
       </style></head><body>
       <h1>${type} Special Needs Triage Form</h1>
@@ -668,79 +1127,114 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
     setTimeout(() => { win.print(); }, 400);
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) return <LoadingState message="Loading triage form..." size="small" />;
+  if (triageType === 'none') {
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: hexToRgba(palette.backgroundDark.hex, 0.4), fontSize: 13, paddingTop: 48, fontStyle: 'italic' }}>
+        Triage forms are for Special Needs patients only.<br />This patient is classified as ALF.
+      </div>
+    );
+  }
+
+  const disabled = readOnly || !can(PERMISSION_KEYS.CLINICAL_TRIAGE);
+  const displayName = filledBySelf
+    ? (user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || filledByName)
+    : filledByName;
+  const completionLabel = completeness.complete
+    ? 'All required fields complete'
+    : `${completeness.missing.length} required field${completeness.missing.length > 1 ? 's' : ''} remaining`;
+
   return (
     <div style={{ padding: '16px 20px 40px' }}>
-      {/* Filled-by row */}
-      {hasData && !editing && filledByName && (
+      {displayName && (
         <FilledByRow
-          name={filledByName}
+          name={displayName}
           date={filledAt}
-          isCurrentUser={isFilledByCurrentUser}
-          clerkImageUrl={isFilledByCurrentUser ? user?.imageUrl : null}
+          clerkImageUrl={filledBySelf ? user?.imageUrl : null}
           onPrint={handlePrint}
+          savingStatus={savingStatus}
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12 }}>
         <div>
           <h3 style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 2 }}>
-            {isPediatric ? 'Pediatric' : 'Adult'} Special Needs Triage Form
+            {triageType === 'pediatric' ? 'Pediatric' : 'Adult'} Special Needs Triage Form
           </h3>
-          {hasData && !editing && (
-            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-              Read-only — click Edit to modify
-            </p>
-          )}
+          <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            Auto-saved · v2 spec
+          </p>
         </div>
-        {!editing ? (
-          !readOnly && can(PERMISSION_KEYS.CLINICAL_TRIAGE) && <button onClick={startEdit} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
-            {hasData ? 'Edit' : 'Fill Out'}
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setEditing(false)} style={{ padding: '6px 14px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: `1px solid var(--color-border)`, fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
-              Cancel
-            </button>
-            <button onClick={save} disabled={saving} style={{ padding: '6px 16px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        )}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '5px 12px', borderRadius: 999,
+          background: completeness.complete
+            ? hexToRgba('#16a34a', 0.1)
+            : hexToRgba(palette.primaryMagenta.hex, 0.08),
+          color: completeness.complete ? '#16a34a' : palette.primaryMagenta.hex,
+          border: `1px solid ${hexToRgba(completeness.complete ? '#16a34a' : palette.primaryMagenta.hex, 0.25)}`,
+          fontSize: 11.5, fontWeight: 700,
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: completeness.complete ? '#16a34a' : palette.primaryMagenta.hex }} />
+          {completionLabel}
+        </div>
       </div>
 
-      {saveError && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: hexToRgba(palette.primaryMagenta.hex, 0.08), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.3)}`, fontSize: 12.5, color: palette.primaryMagenta.hex, lineHeight: 1.5 }}>
-          {saveError}
-        </div>
-      )}
-
-      {validationWarnings.length > 0 && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(230,126,34,0.08)', border: '1px solid rgba(230,126,34,0.3)', fontSize: 12.5, color: '#B7590A', lineHeight: 1.5 }}>
-          <strong>{validationWarnings.length} required field{validationWarnings.length > 1 ? 's' : ''} incomplete:</strong>{' '}
-          {validationWarnings.map((k) => k.replace(/^has_/, '').replace(/_/g, ' ')).join(', ')}
+      {!completeness.complete && completeness.missing.length > 0 && completeness.missing.length <= 8 && (
+        <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(230,126,34,0.06)', border: '1px solid rgba(230,126,34,0.22)', fontSize: 11.5, color: '#9A4A07', lineHeight: 1.5 }}>
+          Remaining: {completeness.missing.map((k) => k.replace(/^has_/, '').replace(/_/g, ' ')).join(', ')}
         </div>
       )}
 
       <div id="triage-form-content">
         {triageType === 'adult' ? (
-          <AdultForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} missingFields={validationWarningSet} />
+          <AdultForm
+            data={data}
+            set={handleChange}
+            missing={missingSet}
+            dobBounds={dobBounds}
+            dobHint={dobHint}
+            disabled={disabled}
+            forceValidate={false}
+          />
         ) : (
-          <PediatricForm data={currentData} onChange={editing ? setDraft : () => {}} readOnly={!editing} missingFields={validationWarningSet} />
+          <PediatricForm
+            data={data}
+            set={handleChange}
+            missing={missingSet}
+            dobBounds={dobBounds}
+            dobHint={dobHint}
+            disabled={disabled}
+            forceValidate={false}
+          />
         )}
       </div>
 
-      {/* Bottom save bar — visible when editing so the user doesn't scroll back up */}
-      {editing && !readOnly && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24, paddingTop: 16, borderTop: `1px solid var(--color-border)` }}>
-          {saveError && (
-            <p style={{ flex: 1, fontSize: 12, color: palette.primaryMagenta.hex, alignSelf: 'center' }}>{saveError}</p>
-          )}
-          <button onClick={() => { setEditing(false); setSaveError(null); }} style={{ padding: '8px 18px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: `1px solid var(--color-border)`, fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={save} disabled={saving} style={{ padding: '8px 24px', borderRadius: 7, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Saving…' : 'Save Form'}
-          </button>
+      {opwddPendingPrompt && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) declineOpwddPending(); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: hexToRgba(palette.backgroundDark.hex, 0.5),
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, padding: 24, maxWidth: 460, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.3)}` }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: palette.backgroundDark.hex }}>Route to OPWDD Enrollment?</h3>
+            <p style={{ fontSize: 13, lineHeight: 1.55, color: hexToRgba(palette.backgroundDark.hex, 0.75), marginBottom: 18 }}>
+              Setting OPWDD Status to <strong>OPWDD Pending</strong> moves this patient to the OPWDD Enrollment module and opens an OPWDD eligibility case. They'll return to Intake once the OPWDD case is closed or converted.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={declineOpwddPending} style={{ padding: '8px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: `1px solid var(--color-border)`, fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.65), cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={confirmOpwddPending} style={{ padding: '8px 18px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 700, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
+                Route to OPWDD Enrollment
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

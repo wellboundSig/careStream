@@ -5,10 +5,13 @@ import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 
+// Fields required for the demographics readiness dot to turn green. Aligned
+// with what the Demographics tab actually edits — `medicaid_number` is NOT
+// captured there (it lives on insurance records), so requiring it here meant
+// the dot could never go green from the demographics surface alone.
 const DEMOGRAPHICS_FIELDS = [
   'first_name', 'last_name', 'dob', 'gender', 'phone_primary',
   'address_street', 'address_city', 'address_state', 'address_zip',
-  'medicaid_number',
 ];
 
 function calcAge(dob) {

@@ -8,6 +8,8 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
+import { isF2FChecklistComplete } from '../../data/f2fChecklist.js';
+import { dbToUiFields as cursoryDbToUiFields } from '../../api/cursoryReviews.js';
 import OverviewTab from './tabs/OverviewTab.jsx';
 import ReferralInfoTab from './tabs/ReferralInfoTab.jsx';
 import EligibilityTab from './tabs/EligibilityTab.jsx';
@@ -121,6 +123,8 @@ export default function PatientDrawer() {
   const storeTriageA = useCareStore((s) => s.triageAdult);
   const storeTriageP = useCareStore((s) => s.triagePediatric);
   const storeAuths = useCareStore((s) => s.authorizations);
+  const storeFiles = useCareStore((s) => s.files);
+  const storeCursoryReviews = useCareStore((s) => s.cursoryReviews);
 
   const tabComplete = useMemo(() => {
     if (!patient || !referral) return {};
@@ -161,6 +165,21 @@ export default function PatientDrawer() {
       result.triage = true;
     }
 
+    // F2F: at least one F2F or MD Orders file is uploaded AND the cursory
+    // review checklist's required items are all checked. Both surfaces of the
+    // review (drawer + module panel) read from the same CursoryReview row.
+    const hasF2FFile = Object.values(storeFiles || {}).some((f) => {
+      const fpid = f.patient_id;
+      const linked = Array.isArray(fpid) ? fpid.includes(p.id) : fpid === p.id;
+      return linked && (f.category === 'F2F' || f.category === 'MD Orders');
+    });
+    const cursoryRow = Object.values(storeCursoryReviews || {}).find((row) => {
+      const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
+      return link === r._id;
+    });
+    const cursoryChecked = cursoryRow ? cursoryDbToUiFields(cursoryRow) : {};
+    result.f2f = hasF2FFile && isF2FChecklistComplete(cursoryChecked);
+
     // Clinical Review: decision was made
     result.clinical_review = !!r.clinical_review_decision;
 
@@ -170,7 +189,7 @@ export default function PatientDrawer() {
     result.authorizations = hasAuth && !inAuthStage;
 
     return result;
-  }, [patient, referral, storeInsChecks, storeTriageA, storeTriageP, storeAuths]);
+  }, [patient, referral, storeInsChecks, storeTriageA, storeTriageP, storeAuths, storeFiles, storeCursoryReviews]);
 
   if (!visible) return null;
 

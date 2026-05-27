@@ -200,6 +200,24 @@ const OPWDD_TASK_TYPES = [
   'OPWDD Code 95 Monitoring',
 ];
 
+// ── Triage v2 (2026-05-27) ──────────────────────────────────────────────────
+// Triage forms rebuild per careStream/triage_forms_spec.md. OPWDD on the form
+// now has THREE states (not the old Yes/No code_95). OPWDD Pending is the
+// state that routes a referral into the OPWDD Enrollment module — the other
+// two stay in the normal pipeline.
+const OPWDD_TRIAGE_STATUS = ['OPWDD Eligible', 'OPWDD Pending', 'Non-OPWDD'];
+
+const CCO_NAMES = [
+  'Advance Care Alliance (ACA/NY)',
+  'Care Design NY',
+  'Tri-County Care',
+];
+
+// Adult triage's existing `services_needed` multi-select needs HHA added per
+// the new spec. SN remains in the choice list for historical records but is
+// no longer offered in the new UI.
+const ADULT_SERVICES_NEEDED_NEW = ['HHA'];
+
 // ---------- Desired plan ----------
 const DESIRED_TABLES = [
   {
@@ -335,6 +353,57 @@ const DESIRED_NEW_FIELDS = {
   ActivityLog: [
     t.text('opwdd_case_id'),
   ],
+
+  // ── Triage v2 (2026-05-27) ────────────────────────────────────────────────
+  // All triage tables are extended in place; the existing columns
+  // (caregiver_name, homecare_hours/days, is_diabetic, etc.) stay so existing
+  // records remain readable. The new form writes the new columns going
+  // forward — see src/components/patient/tabs/TriageTab.jsx and
+  // src/utils/triageCompleteness.js.
+  TriageAdult: [
+    t.single('opwdd_status', OPWDD_TRIAGE_STATUS),
+    t.text('insurance_plan_name'),
+    t.text('medicaid_number'),
+    t.text('patient_name'),
+    t.dateTime('dob'),
+    t.longText('address'),
+    t.email('email'),
+    t.text('add_secondary_caregiver'),
+    t.text('secondary_caregiver_name'),
+    t.text('secondary_caregiver_phone'),
+    t.text('has_smoking'),
+    t.longText('homecare_hours_days'),
+    t.text('has_in_home_therapies'),
+    t.longText('current_therapy_services'),
+    t.longText('hha_hours_frequency'),
+    t.longText('health_conditions'),
+    t.text('pcp_npi_number'),
+    t.single('cco_name', CCO_NAMES),
+    t.text('cm_fax'),
+    t.email('cm_email'),
+  ],
+  TriagePediatric: [
+    t.single('opwdd_status', OPWDD_TRIAGE_STATUS),
+    t.text('medicaid_number'),
+    t.text('primary_caregiver_name'),
+    t.text('primary_caregiver_phone'),
+    t.text('add_secondary_caregiver'),
+    t.text('secondary_caregiver_name'),
+    t.text('secondary_caregiver_phone'),
+    t.text('emergency_same_as_primary'),
+    t.text('emergency_contact_name'),
+    t.text('emergency_contact_phone'),
+    t.email('email'),
+    t.text('patient_name'),
+    t.dateTime('dob'),
+    t.longText('address'),
+    t.text('has_smoking'),
+    t.longText('homecare_hours_days'),
+    t.longText('health_conditions'),
+    t.single('cco_name', CCO_NAMES),
+    t.text('cm_fax'),
+    t.email('cm_email'),
+  ],
 };
 
 // NOTE: Airtable's Meta API does NOT allow updating singleSelect choices via PATCH
@@ -353,6 +422,9 @@ const DESIRED_CHOICE_EXTENSIONS = {
   // New writes default Conflicts.status to "Open"; legacy "Unaddressed" rows
   // are treated as Open in the UI mapping (see conflictFlagging.js).
   Conflicts: { status: ['Open'] },
+  // Adult triage gains HHA in services_needed for the new spec; pediatric
+  // already has ABA + PT/OT/ST and doesn't add HHA (HHA is adult-only).
+  TriageAdult: { services_needed: ADULT_SERVICES_NEEDED_NEW },
 };
 
 const DESIRED_PERMISSIONS = [

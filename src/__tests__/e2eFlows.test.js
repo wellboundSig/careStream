@@ -1127,12 +1127,24 @@ describe('FLOW 21: Patient snapshot flags', () => {
 
   it('triage passes for SPN with complete adult triage', () => {
     const triageData = {
-      caregiver_name: 'J', caregiver_phone: '2125550100', caregiver_email: 'j@test.com',
-      has_pets: false, has_homecare_services: false, has_community_hab: false,
-      code_95: 'no', services_needed: ['SN'], therapy_availability: 'AM',
-      is_diabetic: false, pcp_name: 'Dr. X', pcp_last_visit: '2026-01-01',
+      opwdd_status: 'OPWDD Eligible',
+      insurance_plan_name: 'Fidelis Medicaid',
+      medicaid_number: 'AB12345C',
+      patient_name: 'J Doe', dob: '1985-01-01',
+      address: '123 St, Brooklyn, NY 11201',
+      email: 'j@test.com',
+      caregiver_name: 'J', caregiver_phone: '2125550100',
+      add_secondary_caregiver: 'No',
+      has_pets: 'No', has_smoking: 'No',
+      has_homecare_services: 'No', has_community_hab: 'No', has_in_home_therapies: 'No',
+      services_needed: ['PT'], therapy_availability: 'AM',
+      health_conditions: 'None',
+      pcp_name: 'Dr. X', pcp_last_visit: '2026-01-01',
       pcp_phone: '2125550200', pcp_fax: '2125550201', pcp_address: '123 St',
-      cm_name: 'CM', cm_company: 'Co', cm_phone: '2125550300', cm_fax_or_email: 'cm@co.com',
+      pcp_npi_number: '1234567890',
+      cco_name: 'Care Design NY',
+      cm_name: 'CM', cm_phone: '2125550300',
+      cm_fax: '2125550301', cm_email: 'cm@co.com',
     };
     const flags = computeSnapshotFlags(
       { dob: '1985-01-01' }, { division: 'Special Needs' }, triageData, []
@@ -1163,7 +1175,7 @@ describe('FLOW 21: Patient snapshot flags', () => {
 
 describe('FLOW 22: Triage completeness integration', () => {
   it('incomplete adult triage blocks snapshot flag', () => {
-    const partial = { caregiver_name: 'Jane', code_95: 'no' };
+    const partial = { caregiver_name: 'Jane', opwdd_status: 'Non-OPWDD' };
     const { complete } = isTriageComplete(partial, 'adult');
     expect(complete).toBe(false);
     const flags = computeSnapshotFlags(
@@ -1174,15 +1186,28 @@ describe('FLOW 22: Triage completeness integration', () => {
 
   it('complete pediatric triage passes snapshot flag', () => {
     const fullPed = {
-      phone_call_made_to: 'Mother', household_description: 'Parents',
-      has_pets: false, has_homecare_services: false, has_community_hab: false,
-      has_boe_services: false, code_95: 'yes', services_needed: ['SN', 'ABA'],
-      therapy_availability: 'After school', hha_hours_frequency: '4h/day',
-      is_diabetic: false, immunizations_up_to_date: 'true',
-      school_bus_time: '15:30', has_recent_hospitalization: false,
+      opwdd_status: 'OPWDD Eligible',
+      medicaid_number: 'XX654321',
+      phone_call_made_to: 'Mother',
+      primary_caregiver_name: 'Mom', primary_caregiver_phone: '2125550000',
+      add_secondary_caregiver: 'No',
+      emergency_same_as_primary: 'Yes',
+      email: 'mom@example.com',
+      patient_name: 'Tommy', dob: '2018-01-01',
+      address: '456 Oak Ave, Brooklyn, NY 11215',
+      has_pets: 'No', has_smoking: 'No',
+      has_homecare_services: 'No', has_community_hab: 'No',
+      boe_services: 'OT/PT/SETSS',
+      services_needed: ['PT', 'OT'],
+      therapy_availability: 'After school',
+      health_conditions: 'ASD',
+      school_bus_time: '15:30',
+      has_recent_hospitalization: 'No',
       pcp_name: 'Dr. J', pcp_last_visit: '2026-02-01', pcp_phone: '2125550400',
       pcp_fax: '2125550401', pcp_address: '456 Oak Ave',
+      cco_name: 'Tri-County Care',
       cm_name: 'CM', cm_phone: '2125550500',
+      cm_fax: '2125550501', cm_email: 'cm@cco.com',
     };
     const { complete } = isTriageComplete(fullPed, 'pediatric');
     expect(complete).toBe(true);

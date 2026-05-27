@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import { getConflictsByReferral } from '../../api/conflicts.js';
+import { getFilesByPatient } from '../../api/patientFiles.js';
 import { updateReferral } from '../../api/referrals.js';
 import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
 import { updateReferralOptimistic } from '../../store/mutations.js';
@@ -23,6 +24,7 @@ import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
+import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
 
@@ -895,6 +897,13 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
   const [saving, setSaving]                 = useState(false);
   const [saveError, setSaveError]           = useState(null);
 
+  // F2F / MD Orders files for the selected referral, fetched fresh whenever
+  // the patient changes so staff can preview/download immediately from the
+  // panel without bouncing into the Files tab.
+  const [files, setFiles] = useState([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filePreview, setFilePreview] = useState(null);
+
   // Cursory review is persisted to the CursoryReview Airtable table via
   // this shared hook so the drawer and this panel stay in lockstep.
   const {
@@ -909,6 +918,22 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
     setReceivedDate('');
     setSaveError(null);
   }, [selectedReferral?._id]);
+
+  useEffect(() => {
+    const pid = selectedReferral?.patient_id;
+    if (!pid) { setFiles([]); return; }
+    let cancelled = false;
+    setFilesLoading(true);
+    getFilesByPatient(pid)
+      .then((recs) => {
+        if (cancelled) return;
+        const mapped = recs.map((r) => ({ _id: r.id, ...r.fields }));
+        setFiles(mapped.filter((f) => f.category === 'F2F' || f.category === 'MD Orders'));
+      })
+      .catch(() => { if (!cancelled) setFiles([]); })
+      .finally(() => { if (!cancelled) setFilesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedReferral?.patient_id]);
 
   const reviewComplete = isF2FChecklistComplete(reviewChecked);
   const completedReq = F2F_REQUIRED_ITEMS.filter((i) => reviewChecked[i.key]).length;
@@ -1090,8 +1115,76 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               </div>
             )}
 
-            <ActionBtn label="Go to Files" variant="forward" onClick={() => onOpenFiles?.(selectedReferral)} />
             <ActionBtn label="Upload F2F Document" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
+          </PanelSection>
+
+          {/* Documents — inline list with Preview + Download, so staff can SEE
+              the file without bouncing to the Files tab. */}
+          <PanelSection title="Documents">
+            {filesLoading ? (
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '4px 0' }}>Loading…</p>
+            ) : files.length === 0 ? (
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', padding: '4px 0' }}>
+                No F2F or MD Order documents uploaded yet.
+              </p>
+            ) : (
+              files.map((f) => {
+                const cleanUrl = f.r2_url?.replace(/[<>\n]/g, '').trim();
+                return (
+                  <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={f.category === 'F2F' ? palette.primaryMagenta.hex : palette.accentOrange.hex} strokeWidth="1.6" />
+                      <path d="M14 2v6h6" stroke={f.category === 'F2F' ? palette.primaryMagenta.hex : palette.accentOrange.hex} strokeWidth="1.6" />
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p title={f.file_name} style={{ fontSize: 11.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
+                      <p style={{ fontSize: 10, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category}{f.created_at ? ` · ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</p>
+                    </div>
+                    {cleanUrl && (
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <button
+                          onClick={() => setFilePreview(f)}
+                          title="Preview"
+                          style={{
+                            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', fontSize: 10.5, fontWeight: 650,
+                            background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
+                            border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.18)}`,
+                            color: palette.primaryDeepPlum.hex,
+                          }}
+                        >
+                          Preview
+                        </button>
+                        <a
+                          href={cleanUrl}
+                          download={f.file_name}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Download"
+                          style={{
+                            padding: '3px 8px', borderRadius: 5, fontSize: 10.5, fontWeight: 650,
+                            background: hexToRgba(palette.accentBlue.hex, 0.1),
+                            border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
+                            color: palette.accentBlue.hex, textDecoration: 'none',
+                          }}
+                        >
+                          Download
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            <button
+              onClick={() => onOpenFiles?.(selectedReferral)}
+              style={{
+                marginTop: 8, width: '100%', padding: '6px 0', borderRadius: 6,
+                background: 'none', border: `1px dashed ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
+                fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer',
+              }}
+            >
+              Open Files tab →
+            </button>
           </PanelSection>
 
           {/* Document review checklist — persisted via CursoryReview table */}
@@ -1138,6 +1231,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
           </PanelSection>
         </>
       )}
+      {filePreview && <FilePreviewModal file={filePreview} onClose={() => setFilePreview(null)} />}
     </Panel>
   );
 }

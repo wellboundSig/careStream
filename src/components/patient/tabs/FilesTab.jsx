@@ -8,6 +8,7 @@ import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
+import FilePreviewModal from '../../common/FilePreviewModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -100,69 +101,6 @@ function FileIconSVG({ kind }) {
           </>
         )}
       </svg>
-    </div>
-  );
-}
-
-function PreviewModal({ file, onClose }) {
-  const kind = getFileIcon(file.file_type, file.file_name);
-  const url = file.r2_url?.replace(/[<>\n]/g, '').trim();
-
-  return (
-    <div
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: hexToRgba(palette.backgroundDark.hex, 0.7),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
-      }}
-    >
-      <div style={{
-        background: palette.backgroundLight.hex, borderRadius: 14,
-        width: '100%', maxWidth: 800, maxHeight: '85vh',
-        display: 'flex', flexDirection: 'column',
-        boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.3)}`,
-        overflow: 'hidden',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid var(--color-border)` }}>
-          <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, wordBreak: 'break-all' }}>{file.file_name}</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {url && (
-              <a href={url} download={file.file_name} style={{ padding: '6px 14px', borderRadius: 7, background: hexToRgba(palette.accentBlue.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`, fontSize: 12, fontWeight: 650, color: palette.accentBlue.hex, textDecoration: 'none' }}>
-                Download
-              </a>
-            )}
-            <button onClick={onClose} style={{ padding: '6px 12px', borderRadius: 7, background: hexToRgba(palette.backgroundDark.hex, 0.07), border: `1px solid var(--color-border)`, fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
-              Close
-            </button>
-          </div>
-        </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
-          {!url ? (
-            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>No preview URL available.</p>
-          ) : kind === 'image' ? (
-            <img src={url} alt={file.file_name} style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: 8 }} />
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-              <div style={{ width: 56, height: 56, borderRadius: 12, background: hexToRgba(palette.accentBlue.hex, 0.1), display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.accentBlue.hex} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke={palette.accentBlue.hex} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 6 }}>{file.file_name}</p>
-              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 20 }}>
-                {kind === 'pdf' ? 'PDF preview opens in a new tab' : 'No inline preview for this file type'}
-              </p>
-              <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 24px', borderRadius: 8, background: palette.accentBlue.hex, color: palette.backgroundLight.hex, fontSize: 13, fontWeight: 650, textDecoration: 'none' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Open {kind === 'pdf' ? 'PDF' : 'File'}
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -703,7 +641,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         />
       )}
 
-      {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../../hooks/useCursoryReview.js';
+import FilePreviewModal from '../../common/FilePreviewModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function daysLeft(exp) {
@@ -67,6 +68,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState('F2F');
+  const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -117,7 +119,9 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     if (!file || !patient) return;
     setUploading(true);
     try {
-      const r2Result = await uploadToR2(file);
+      // The worker returns `{ r2Key, r2Url }` and requires the patientId in the
+      // upload path so the file lands under the correct R2 prefix.
+      const { r2Key, r2Url } = await uploadToR2(file, patient.id);
       const fields = {
         patient_id: patient.id,
         referral_id: referral?.id || null,
@@ -125,8 +129,8 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         file_name: file.name,
         file_type: file.type || 'application/octet-stream',
         file_size: file.size,
-        r2_key: r2Result.key,
-        r2_url: r2Result.url,
+        r2_key: r2Key,
+        r2_url: r2Url,
         category: uploadCategory,
         created_at: new Date().toISOString(),
       };
@@ -269,18 +273,49 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         ) : files.length === 0 ? (
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No F2F or MD Order documents uploaded yet.</p>
         ) : (
-          files.map((f) => (
-            <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /><path d="M14 2v6h6" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /></svg>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
-                <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category} · {fmtDate(f.created_at)}</p>
+          files.map((f) => {
+            const cleanUrl = f.r2_url?.replace(/[<>\n]/g, '').trim();
+            return (
+              <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /><path d="M14 2v6h6" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /></svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
+                  <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category} · {fmtDate(f.created_at)}</p>
+                </div>
+                {cleanUrl && (
+                  <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setPreview(f)}
+                      title="Preview file"
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 650,
+                        background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
+                        border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.18)}`,
+                        color: palette.primaryDeepPlum.hex,
+                      }}
+                    >
+                      Preview
+                    </button>
+                    <a
+                      href={cleanUrl}
+                      download={f.file_name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Download file"
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 650,
+                        background: hexToRgba(palette.accentBlue.hex, 0.1),
+                        border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
+                        color: palette.accentBlue.hex, textDecoration: 'none',
+                      }}
+                    >
+                      Download
+                    </a>
+                  </div>
+                )}
               </div>
-              {f.r2_url && (
-                <a href={f.r2_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: palette.accentBlue.hex, textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}>View</a>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </Section>
 
@@ -307,6 +342,8 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
           </label>
         ))}
       </Section>
+
+      {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

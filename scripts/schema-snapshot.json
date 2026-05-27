@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-05-20T17:54:09.517Z",
+  "fetchedAt": "2026-05-27T15:48:59.228Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -1854,6 +1854,134 @@
               }
             ]
           }
+        },
+        {
+          "id": "fldnRiLBUJIzzl1mZ",
+          "name": "in_clinical_review",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldfh9szDlRxq7hZ2",
+          "name": "clinical_review_pushed_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fld832l3Jy1Pmqph9",
+          "name": "clinical_review_completed_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldDwEhjl2SjAKFY1",
+          "name": "clinical_review_completed_by_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldV6auwvahGbygDp",
+          "name": "eligibility_completed_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldjlxJs0dTOdvH6D",
+          "name": "eligibility_completed_by_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldpZDE36mdixuHWE",
+          "name": "eligibility_returned_to_intake_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldOjRTJMX6H1PhJ2",
+          "name": "eligibility_returned_to_intake_note",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldnbbToZsUwAWz9L",
+          "name": "eligibility_returned_to_intake_by_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldsOkb098jhVwXNp",
+          "name": "requires_urgent_care",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldAv6DWj30bjSqhY",
+          "name": "urgent_care_marked_at",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldwAKoOKagGyGLjz",
+          "name": "urgent_care_marked_by_id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldxe8r0J4Xd6MfVh",
+          "name": "urgent_care_note",
+          "type": "multilineText"
         }
       ]
     },
@@ -2528,6 +2656,11 @@
             },
             "timeZone": "client"
           }
+        },
+        {
+          "id": "fldsBMKdYyc5Yqzt2",
+          "name": "authorization_id",
+          "type": "singleLineText"
         }
       ]
     },
@@ -2761,6 +2894,11 @@
                 "id": "selsvf9j0UDzVqqaG",
                 "name": "Unaddressed",
                 "color": "tealLight2"
+              },
+              {
+                "id": "seltu4JIz8CJ9WDEC",
+                "name": "Open",
+                "color": "blueLight2"
               }
             ]
           }
@@ -2910,6 +3048,11 @@
           "id": "fld3uh1Hau2xjAEHf",
           "name": "created_by_id",
           "type": "singleLineText"
+        },
+        {
+          "id": "fldo6bKbBaysGfsNG",
+          "name": "source_stage",
+          "type": "multilineText"
         }
       ]
     },
@@ -3879,6 +4022,11 @@
                 "id": "selUPXTNWT51SvJ0D",
                 "name": "OT",
                 "color": "greenLight2"
+              },
+              {
+                "id": "selc7q3AwFT90er2U",
+                "name": "HHA",
+                "color": "blueLight2"
               }
             ]
           }
@@ -3985,6 +4133,155 @@
             },
             "timeZone": "client"
           }
+        },
+        {
+          "id": "fldgK6rD7OGEvyonf",
+          "name": "opwdd_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selkIxPwLlNuHRvrn",
+                "name": "OPWDD Eligible",
+                "color": "grayLight2"
+              },
+              {
+                "id": "sel7fzBu7dGLvCqfC",
+                "name": "OPWDD Pending",
+                "color": "grayLight2"
+              },
+              {
+                "id": "seladVmvLqiFzasE2",
+                "name": "Non-OPWDD",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldZCGCZr5L8m9DEC",
+          "name": "insurance_plan_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldyC65KPSoZc4dQq",
+          "name": "medicaid_number",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldZnxBLNrubUyyvs",
+          "name": "patient_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldqOX18TpE8BNcNP",
+          "name": "dob",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldOkVl4GRqH7hRvM",
+          "name": "address",
+          "type": "multilineText"
+        },
+        {
+          "id": "fld5PrBkbdWTcsuFI",
+          "name": "email",
+          "type": "email"
+        },
+        {
+          "id": "fldbTXnbox2duOTXY",
+          "name": "add_secondary_caregiver",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldz74SIJKYioFmBh",
+          "name": "secondary_caregiver_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld6CJXd3Bq1veb6L",
+          "name": "secondary_caregiver_phone",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldRsk1Iv3wuZcsvB",
+          "name": "has_smoking",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldHnP2vZTRhalVW7",
+          "name": "homecare_hours_days",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldf3VjOUr7jGBE6p",
+          "name": "has_in_home_therapies",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldhnppI9JNbSqQMM",
+          "name": "current_therapy_services",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldPaXmFsJVIRT99O",
+          "name": "hha_hours_frequency",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldMxyzNw5zEIUjag",
+          "name": "health_conditions",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldomGolYzi69PZl6",
+          "name": "pcp_npi_number",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldYFBcqROE0LCK1K",
+          "name": "cco_name",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selbrGyYjgfVpplJp",
+                "name": "Advance Care Alliance (ACA/NY)",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selSaXZKx41GtODpE",
+                "name": "Care Design NY",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selA0FIKlk3SGNnGH",
+                "name": "Tri-County Care",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldbfIffeii0RKips",
+          "name": "cm_fax",
+          "type": "singleLineText"
+        },
+        {
+          "id": "flds6VRqaqYZwFKrX",
+          "name": "cm_email",
+          "type": "email"
         }
       ]
     },
@@ -4235,6 +4532,155 @@
           "id": "fld5IBhTWxme6kcP1",
           "name": "has_boe_services",
           "type": "singleLineText"
+        },
+        {
+          "id": "fld799sBGLagP7xFm",
+          "name": "opwdd_status",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "sely7aJ7k7WIJXxIa",
+                "name": "OPWDD Eligible",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selPrHnWNDbe2rPN5",
+                "name": "OPWDD Pending",
+                "color": "grayLight2"
+              },
+              {
+                "id": "sell6ztU1V0giMfYi",
+                "name": "Non-OPWDD",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fld4V7gYwr7QgWK4m",
+          "name": "medicaid_number",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld8bYfERsob0rulc",
+          "name": "primary_caregiver_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "flddFuCHLGNnGagHh",
+          "name": "primary_caregiver_phone",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldW3aJqRMVYztNH4",
+          "name": "add_secondary_caregiver",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldnfIiQev6OoPQnm",
+          "name": "secondary_caregiver_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fld8rJgslLc1OEhoJ",
+          "name": "secondary_caregiver_phone",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldjubIJJpgnRlpyz",
+          "name": "emergency_same_as_primary",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldjpbYFtVncdTFSe",
+          "name": "emergency_contact_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldfkah69FnQeLHtQ",
+          "name": "emergency_contact_phone",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldPBlAzQCreCofLN",
+          "name": "email",
+          "type": "email"
+        },
+        {
+          "id": "fld30eIklMA7fx8Jh",
+          "name": "patient_name",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldqQghN8KRLIrOaW",
+          "name": "dob",
+          "type": "dateTime",
+          "options": {
+            "dateFormat": {
+              "name": "iso",
+              "format": "YYYY-MM-DD"
+            },
+            "timeFormat": {
+              "name": "24hour",
+              "format": "HH:mm"
+            },
+            "timeZone": "client"
+          }
+        },
+        {
+          "id": "fldwBaX1C2zNnlu7R",
+          "name": "address",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldpSX84rJQu14xea",
+          "name": "has_smoking",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldohp8P3DKafROYP",
+          "name": "homecare_hours_days",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldpAipn7azrcETLs",
+          "name": "health_conditions",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldDAPxUE8uhZXdK9",
+          "name": "cco_name",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selbwFmsKYWhuaTlc",
+                "name": "Advance Care Alliance (ACA/NY)",
+                "color": "grayLight2"
+              },
+              {
+                "id": "seldOsrBAiFwdxCS1",
+                "name": "Care Design NY",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selL8AceJ0SkdQ7yy",
+                "name": "Tri-County Care",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldCWz0ND6abmytaf",
+          "name": "cm_fax",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldG1PoxUi7Ng80SU",
+          "name": "cm_email",
+          "type": "email"
         }
       ]
     },
