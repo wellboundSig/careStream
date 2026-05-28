@@ -32,7 +32,20 @@ const ROW_GROUPS = [
   {
     label: 'Clinical Review',
     color: palette.primaryMagenta.hex,
-    stages: ['Clinical Intake RN Review', 'Authorization Pending', 'Conflict', 'Staffing Feasibility', 'Admin Confirmation'],
+    stages: ['Clinical Intake RN Review', 'Conflict'],
+  },
+  {
+    // Authorization is a supportive sub-workflow of Eligibility but it has
+    // its own dedicated module page and role mode, so it gets its own row
+    // group on the board rather than being lumped under Clinical Review.
+    label: 'Authorization',
+    color: palette.accentOrange.hex,
+    stages: ['Authorization Pending'],
+  },
+  {
+    label: 'Staffing & Admin',
+    color: palette.primaryDeepPlum.hex,
+    stages: ['Staffing Feasibility', 'Admin Confirmation'],
   },
   {
     label: 'Admission',

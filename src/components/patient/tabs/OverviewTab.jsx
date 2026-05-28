@@ -59,21 +59,28 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
   const { can } = usePermissions();
 
-  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setEditing(true); }
+  function startEdit() { if (forceReadOnly) return; setDraft(value || ''); setError(''); setEditing(true); }
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
-    if (draft === (value || '')) { setEditing(false); return; }
+    if (draft === (value || '')) { setEditing(false); setError(''); return; }
     onSave(fieldKey, draft);
     setEditing(false);
     // Update the store immediately so checklists and other readers see the change
     if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: draft });
     setSaving(true);
+    setError('');
     try {
       await updatePatient(patientId, { [fieldKey]: draft });
-    } catch {
+    } catch (err) {
+      // Surface the failure so the user knows the change didn't persist —
+      // previously the catch was empty and the store revert made the edit
+      // appear to vanish without explanation.
+      console.warn(`[OverviewTab] save failed for ${fieldKey}`, err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave(fieldKey, value || '');
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
     } finally {
@@ -109,6 +116,7 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
           {saving ? 'Saving…' : (value || empty)}
         </p>
       )}
+      {error && <p style={ve()}>{error}</p>}
     </div>
   );
 }
@@ -121,7 +129,14 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
 // group in the Referral tab (correcting an intake mistake).
 
 function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnly = false }) {
-  const value = patient.dob ? new Date(patient.dob).toISOString().split('T')[0] : '';
+  // Patients.dob is an Airtable dateTime column with format YYYY-MM-DD; we
+  // store it as either a bare date string ("2000-01-01") or a full ISO
+  // timestamp. Strip the time portion BEFORE constructing a Date so a date
+  // like "2000-01-01" doesn't get reinterpreted in the user's timezone (which
+  // can shift it by a day and, for new patients with no DOB at all, NEVER
+  // pre-fills the picker with today).
+  const raw = patient.dob ? String(patient.dob).trim() : '';
+  const value = raw ? raw.split('T')[0] : '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
   const [saving, setSaving]   = useState(false);
@@ -147,8 +162,13 @@ function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnl
     if (patientId) updateEntity('patients', patientId, { dob: draft });
     setSaving(true);
     try {
-      await updatePatient(patientId, { dob: draft });
-    } catch {
+      // Airtable's dateTime column rejects an empty string — clear it with
+      // `null` instead so users CAN remove a DOB they entered in error
+      // without the PATCH failing and silently reverting.
+      await updatePatient(patientId, { dob: draft || null });
+    } catch (err) {
+      console.warn('[OverviewTab] DOB save failed', err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave('dob', value || '');
       if (patientId) updateEntity('patients', patientId, { dob: value || '' });
     } finally {
@@ -201,6 +221,7 @@ function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnl
 function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
   const { can } = usePermissions();
 
   async function handleChange(e) {
@@ -211,9 +232,12 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
     setEditing(false);
     if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: v });
     setSaving(true);
+    setError('');
     try {
       await updatePatient(patientId, { [fieldKey]: v });
-    } catch {
+    } catch (err) {
+      console.warn(`[OverviewTab] save failed for ${fieldKey}`, err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave(fieldKey, value);
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value });
     } finally {
@@ -241,6 +265,7 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
           {saving ? 'Saving…' : (value || empty)}
         </p>
       )}
+      {error && <p style={ve()}>{error}</p>}
     </div>
   );
 }
@@ -266,7 +291,12 @@ function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: '' });
       setSaving(true);
       try { await updatePatient(patientId, { [fieldKey]: '' }); }
-      catch { onSave(fieldKey, value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' }); }
+      catch (err) {
+        console.warn(`[OverviewTab] phone save failed for ${fieldKey}`, err);
+        setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
+        onSave(fieldKey, value || '');
+        if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
+      }
       finally { setSaving(false); }
       return;
     }
@@ -279,7 +309,9 @@ function PhoneField({ label, value, fieldKey, patientId, patientRecordId, onSave
     setSaving(true);
     try {
       await updatePatient(patientId, { [fieldKey]: result.digits });
-    } catch {
+    } catch (err) {
+      console.warn(`[OverviewTab] phone save failed for ${fieldKey}`, err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave(fieldKey, value || '');
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
     } finally {
@@ -338,7 +370,12 @@ function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: '' });
       setSaving(true);
       try { await updatePatient(patientId, { [fieldKey]: '' }); }
-      catch { onSave(fieldKey, value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' }); }
+      catch (err) {
+        console.warn(`[OverviewTab] email save failed for ${fieldKey}`, err);
+        setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
+        onSave(fieldKey, value || '');
+        if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
+      }
       finally { setSaving(false); }
       return;
     }
@@ -352,7 +389,9 @@ function EmailField({ label, value, fieldKey, patientId, patientRecordId, onSave
     setSaving(true);
     try {
       await updatePatient(patientId, { [fieldKey]: trimmed });
-    } catch {
+    } catch (err) {
+      console.warn(`[OverviewTab] email save failed for ${fieldKey}`, err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave(fieldKey, value || '');
       if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: value || '' });
     } finally {
@@ -410,7 +449,12 @@ function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, on
       if (patientRecordId) updateEntity('patients', patientRecordId, { address_zip: '' });
       setSaving(true);
       try { await updatePatient(patientId, { address_zip: '' }); }
-      catch { onSave('address_zip', value || ''); if (patientRecordId) updateEntity('patients', patientRecordId, { address_zip: value || '' }); }
+      catch (err) {
+        console.warn('[OverviewTab] zip save failed', err);
+        setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
+        onSave('address_zip', value || '');
+        if (patientRecordId) updateEntity('patients', patientRecordId, { address_zip: value || '' });
+      }
       finally { setSaving(false); }
       return;
     }
@@ -426,7 +470,9 @@ function ZipField({ value, cityValue, stateValue, patientId, patientRecordId, on
     setSaving(true);
     try {
       await updatePatient(patientId, updates);
-    } catch {
+    } catch (err) {
+      console.warn('[OverviewTab] zip save failed', err);
+      setError(err?.message?.replace(/^\[Patients\]\s*/, '') || 'Save failed');
       onSave('address_zip', value || '');
       onSave('address_city', cityValue || '');
       onSave('address_state', stateValue || '');
@@ -957,12 +1003,9 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
         </div>
       </Section>
 
-      {/* ── Approved Services (permission-gated) ── */}
-      {can(PERMISSION_KEYS.CLINICAL_APPROVED_SERVICES) && (
-        <Section title="Approved Services">
-          <EditableField label="Approved Services" fieldKey="approved_services" value={patient.approved_services} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
-        </Section>
-      )}
+      {/* Approved Services live on the Authorization tab — that's where the
+          value is established (after the payer authorizes a service set), so
+          we don't surface it in Demographics. */}
 
       {/* ── Emergency Contact ── */}
       <Section title="Emergency Contact">

@@ -49,9 +49,10 @@ export function computeSnapshotFlags(patient, referral, triageData /*, _legacyIn
   }
 
   const f2f = !!r.f2f_date;
+  const f2fDate = r.f2f_date || null;
   const insurance = hasInsuranceDetails(p);
 
-  return { demographics, triage, f2f, insurance };
+  return { demographics, triage, f2f, f2fDate, insurance };
 }
 
 // Each flag row knows which patient-drawer tab to jump to when clicked. The
@@ -150,6 +151,17 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
       {FLAGS_META.map(({ key, label, tab }) => {
         const clickable = !!onOpenTab && !!tab;
         const complete = !!flags[key];
+        // The F2F row doubles as a quick read-out of the recorded visit date,
+        // so the moment a date is logged (Files tab during intake, or from
+        // the F2F panel itself) the snapshot reflects it without waiting for
+        // the patient to move into the F2F stage.
+        const isF2FRow = key === 'f2f';
+        let secondary = null;
+        if (isF2FRow && flags.f2fDate) {
+          try {
+            secondary = new Date(flags.f2fDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          } catch { /* malformed date → omit */ }
+        }
         return (
           <button
             key={key}
@@ -185,6 +197,11 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
               }}
             >
               {label}
+              {secondary && (
+                <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                  · {secondary}
+                </span>
+              )}
             </span>
             {clickable && (
               <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>

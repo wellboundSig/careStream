@@ -161,6 +161,125 @@ function Select({ value, onChange, options, placeholder, hasError, disabled }) {
   );
 }
 
+// Searchable select: behaves like Select but lets the user filter the
+// options by typing. Used for the ALF facility picker where the list of
+// network facilities is long enough that scrolling is painful.
+function SearchSelect({ value, onChange, options, placeholder, hasError }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef(null);
+
+  const selected = useMemo(
+    () => options.find((o) => (typeof o === 'string' ? o : o.value) === value) || null,
+    [options, value],
+  );
+  const selectedLabel = selected
+    ? (typeof selected === 'string' ? selected : selected.label)
+    : '';
+
+  useEffect(() => {
+    if (!open) return;
+    function dismiss(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+        setQuery('');
+      }
+    }
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => {
+      const label = typeof o === 'string' ? o : o.label;
+      return label.toLowerCase().includes(q);
+    });
+  }, [options, query]);
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          ...inputBase,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          cursor: 'pointer', textAlign: 'left',
+          color: selectedLabel ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+          boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedLabel || placeholder || 'Select...'}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 100,
+          borderRadius: 10,
+          background: palette.backgroundLight.hex,
+          boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '8px 8px 6px', borderBottom: `1px solid var(--color-border)` }}>
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search facilities…"
+              style={{
+                width: '100%', padding: '7px 9px', borderRadius: 7, border: 'none',
+                background: hexToRgba(palette.backgroundDark.hex, 0.05),
+                fontSize: 12.5, color: palette.backgroundDark.hex,
+                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: '4px 0' }}>
+            {filtered.length === 0 ? (
+              <p style={{ padding: '10px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), fontStyle: 'italic' }}>
+                No matches
+              </p>
+            ) : filtered.map((opt) => {
+              const val = typeof opt === 'string' ? opt : opt.value;
+              const label = typeof opt === 'string' ? opt : opt.label;
+              const isSelected = val === value;
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => { onChange(val); setOpen(false); setQuery(''); }}
+                  style={{
+                    width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                    background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'none',
+                    border: 'none', cursor: 'pointer', textAlign: 'left',
+                    fontSize: 12.5, color: palette.backgroundDark.hex, transition: 'background 0.08s',
+                  }}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04); }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'none'; }}
+                >
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  {isSelected && (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                      <path d="M2.5 6l2.5 2.5L9.5 3.5" stroke={palette.primaryMagenta.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldGroup({ children, cols = 2 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(var(--form-cols, ${cols}), 1fr)`, gap: '12px 16px' }}>
@@ -598,8 +717,12 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     const errs = {};
     if (!form.first_name.trim()) errs.first_name = 'Required';
     if (!form.last_name.trim()) errs.last_name = 'Required';
+    // Phone is required for Special Needs (we need to reach the patient
+    // directly), but optional for ALF intakes — those come through facilities
+    // where the social worker is the primary contact, not the resident.
+    const phoneRequired = form.division !== 'ALF';
     if (!form.phone_primary.trim()) {
-      errs.phone_primary = 'Required';
+      if (phoneRequired) errs.phone_primary = 'Required';
     } else {
       const phoneResult = normalizePhone(form.phone_primary);
       if (!phoneResult.valid) errs.phone_primary = phoneResult.error;
@@ -890,11 +1013,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
             {form.division === 'ALF' && (
               <div style={{ marginTop: 12 }}>
                 <Label required>Facility</Label>
-                <Select
+                <SearchSelect
                   value={form.facility_id}
                   onChange={(v) => setField('facility_id', v)}
                   options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
-                  placeholder="Select facility..."
+                  placeholder="Search facilities…"
                   hasError={!!errors.facility_id}
                 />
                 {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
@@ -1056,9 +1179,14 @@ export default function NewReferralForm({ onClose, onSuccess }) {
               <Input value={form.last_name} onChange={(v) => setField('last_name', v)} placeholder="Last name" hasError={!!errors.last_name} />
               {errors.last_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.last_name}</p>}
             </FieldBox>
-            <FieldBox label="Primary Phone" required>
+            <FieldBox label="Primary Phone" required={form.division !== 'ALF'}>
               <Input value={form.phone_primary} onChange={(v) => setField('phone_primary', v)} placeholder="(XXX) XXX-XXXX" type="tel" hasError={!!errors.phone_primary} />
               {errors.phone_primary && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.phone_primary}</p>}
+              {form.division === 'ALF' && (
+                <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
+                  Optional for ALF — the facility is the primary contact
+                </p>
+              )}
             </FieldBox>
           </FieldGroup>
 

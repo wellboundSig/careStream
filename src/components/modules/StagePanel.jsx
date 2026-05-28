@@ -27,6 +27,7 @@ import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
+import { resolveFileUrl } from '../../utils/r2Upload.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
 
@@ -516,14 +517,36 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
             <ReturnedFromEligibilityFlag note={selectedReferral.eligibility_returned_to_intake_note} at={selectedReferral.eligibility_returned_to_intake_at} />
           )}
 
-          {/* F2F section — shown for F2F-stage referrals */}
-          {isF2F && (
+          {/* F2F section — shown for F2F-stage referrals OR whenever an F2F
+              date has been logged. Surfacing the date the moment it's logged
+              (e.g. from the Files tab during Intake) means staff don't have
+              to wait until the patient is moved to F2F/MD Orders Pending to
+              see the 90-day clock — they get immediate confirmation that the
+              date was captured. */}
+          {(isF2F || selectedReferral.f2f_date) && (
             <>
               <PanelSection title="F2F Status">
                 {days !== null ? (
                   <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
                     <p style={{ fontSize: 28, fontWeight: 800, color: urgencyColor, lineHeight: 1 }}>{days < 0 ? 'EXPIRED' : `${days}d`}</p>
                     <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3 }}>{days < 0 ? 'F2F has expired' : 'until expiration'}</p>
+                    {selectedReferral.f2f_date && (
+                      <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>
+                        Visit {new Date(selectedReferral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {selectedReferral.f2f_expiration && (
+                          <>
+                            {' · '}
+                            Expires {new Date(selectedReferral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                ) : selectedReferral.f2f_date ? (
+                  <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
+                    <p style={{ fontSize: 13, fontWeight: 650, color: palette.accentGreen.hex, lineHeight: 1.3 }}>
+                      Visit logged {new Date(selectedReferral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
                   </div>
                 ) : (
                   <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '6px 0' }}>No F2F date recorded</p>
@@ -534,7 +557,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                     so showing them here was clutter without a workflow. */}
               </PanelSection>
 
-              {canPerm(PERMISSION_KEYS.CLINICAL_F2F) && (
+              {isF2F && canPerm(PERMISSION_KEYS.CLINICAL_F2F) && (
                 <PanelSection title="Log F2F Date">
                   {!showDatePicker ? (
                     <ActionBtn
@@ -556,6 +579,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                 </PanelSection>
               )}
 
+              {isF2F && (
               <PanelSection title="Document Review">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
@@ -585,6 +609,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                   actorUserId={appUserId}
                 />
               </PanelSection>
+              )}
             </>
           )}
 
@@ -1130,7 +1155,8 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               </p>
             ) : (
               files.map((f) => {
-                const cleanUrl = f.r2_url?.replace(/[<>\n]/g, '').trim();
+                const cleanUrl = resolveFileUrl(f);
+                const downloadUrl = resolveFileUrl(f, { download: true });
                 return (
                   <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -1156,7 +1182,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                           Preview
                         </button>
                         <a
-                          href={cleanUrl}
+                          href={downloadUrl}
                           download={f.file_name}
                           target="_blank"
                           rel="noopener noreferrer"

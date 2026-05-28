@@ -34,16 +34,42 @@ import { normalizeInsuranceCategory } from '../../../data/policies/eligibilityPo
 function deriveVirtualInsurancesFromPatient(patient) {
   if (!patient) return [];
   let plans = [];
-  try {
-    plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : [];
-  } catch { plans = []; }
+  // `insurance_plans` may arrive either as a JSON-encoded string OR as an
+  // actual array (depending on whether the column type is text or
+  // multipleSelects). Handle both shapes.
+  const raw = patient.insurance_plans;
+  if (Array.isArray(raw)) {
+    plans = raw.slice();
+  } else if (typeof raw === 'string' && raw.trim()) {
+    try { plans = JSON.parse(raw); }
+    catch { plans = []; }
+  }
   if (!Array.isArray(plans)) plans = [];
   if (plans.length === 0 && patient.insurance_plan) plans = [patient.insurance_plan];
 
+  // Drop empty/blank entries and dedupe by case-insensitive plan name. This
+  // prevents the eligibility tab from showing placeholder rows ("", "—",
+  // duplicates) just because the patient JSON happens to carry slots that
+  // were never filled in.
+  const seen = new Set();
+  plans = plans
+    .map((p) => (typeof p === 'string' ? p.trim() : ''))
+    .filter((p) => {
+      if (!p) return false;
+      const key = p.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
   let details = {};
-  try {
-    details = patient.insurance_plan_details ? JSON.parse(patient.insurance_plan_details) : {};
-  } catch { details = {}; }
+  const rawDetails = patient.insurance_plan_details;
+  if (rawDetails && typeof rawDetails === 'object' && !Array.isArray(rawDetails)) {
+    details = rawDetails;
+  } else if (typeof rawDetails === 'string' && rawDetails.trim()) {
+    try { details = JSON.parse(rawDetails); }
+    catch { details = {}; }
+  }
   if (typeof details !== 'object' || details === null) details = {};
 
   return plans.map((plan, idx) => {

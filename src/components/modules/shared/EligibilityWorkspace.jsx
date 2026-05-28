@@ -95,7 +95,12 @@ export default function EligibilityWorkspace({
   const [editingInsuranceId, setEditingInsuranceId] = useState(null);
   const [sendBackModal,  setSendBackModal]  = useState(null);
 
-  const canEdit = !readOnly && can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY);
+  // The drawer already gates edit access via the SNAPSHOT_EDIT_ELIGIBILITY
+  // permission (passed in as `readOnly`). The module-page panel doesn't pass
+  // readOnly so we still gate it there with CLINICAL_ELIGIBILITY. This keeps
+  // the Log Check button reachable for staff who have the drawer-edit perm
+  // even when they don't carry the broader module-level permission.
+  const canEdit = !readOnly && (variant === 'drawer' || can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY));
 
   // Status snapshots for the supportive workflows. Used to decide which
   // action buttons to show and which inline checkmarks to render.

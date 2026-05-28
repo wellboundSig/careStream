@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
-import { uploadToR2 } from '../../../utils/r2Upload.js';
+import { uploadToR2, resolveFileUrl } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
@@ -274,7 +274,8 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No F2F or MD Order documents uploaded yet.</p>
         ) : (
           files.map((f) => {
-            const cleanUrl = f.r2_url?.replace(/[<>\n]/g, '').trim();
+            const cleanUrl = resolveFileUrl(f);
+            const downloadUrl = resolveFileUrl(f, { download: true });
             return (
               <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /><path d="M14 2v6h6" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /></svg>
@@ -297,7 +298,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                       Preview
                     </button>
                     <a
-                      href={cleanUrl}
+                      href={downloadUrl}
                       download={f.file_name}
                       target="_blank"
                       rel="noopener noreferrer"

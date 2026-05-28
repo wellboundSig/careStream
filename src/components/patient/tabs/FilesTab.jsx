@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser } from '@clerk/react';
 import { getFilesByPatient, createFile, deleteFile } from '../../../api/patientFiles.js';
-import { uploadToR2 } from '../../../utils/r2Upload.js';
+import { uploadToR2, resolveFileUrl } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
@@ -840,7 +840,8 @@ function GroupedFileList({
 function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
-  const cleanUrl = file.r2_url?.replace(/[<>\n]/g, '').trim();
+  const cleanUrl = resolveFileUrl(file);
+  const downloadUrl = resolveFileUrl(file, { download: true });
   const canPreview = !!cleanUrl;
   const physicianName = file.physician_id ? resolvePhysician?.(file.physician_id) : null;
   const opwddSubtypeLabel = file.document_subtype
@@ -914,7 +915,7 @@ function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, app
         )}
         {canPreview && (
           <a
-            href={cleanUrl}
+            href={downloadUrl}
             download={file.file_name}
             target="_blank"
             rel="noopener noreferrer"
