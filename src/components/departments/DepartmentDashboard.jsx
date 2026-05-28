@@ -1,13 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCareStore } from '../../store/careStore.js';
-import { createTaskOptimistic } from '../../store/mutations.js';
 import { usePipelineData } from '../../hooks/usePipelineData.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import TaskComposer from '../tasks/TaskComposer.jsx';
 import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters, ColumnPicker, FilterInput, FilterIcon, ColsIcon } from '../../utils/columnModel.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
@@ -289,73 +289,18 @@ export default function DepartmentDashboard({ department, scope }) {
         </div>
       )}
 
-      {/* Assign task modal — same pattern as Team.jsx */}
+      {/* Assign task modal — universal TaskComposer with assignee pre-locked */}
       {assignTarget && (
-        <DeptAssignTaskModal target={assignTarget} appUserId={appUserId} resolveRole={resolveRole} onClose={() => setAssignTarget(null)} />
+        <TaskComposer
+          variant="modal"
+          title={`Assign Task — ${assignTarget.first_name} ${assignTarget.last_name}`}
+          defaultAssigneeId={assignTarget.id}
+          lockAssignee
+          onCreated={() => setAssignTarget(null)}
+          onCancel={() => setAssignTarget(null)}
+        />
       )}
     </div>
   );
 }
 
-const TASK_TYPES = ['Insurance Barrier', 'Missing Document', 'Auth Needed', 'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other'];
-
-function DeptAssignTaskModal({ target, appUserId, resolveRole, onClose }) {
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [desc, setDesc] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => { const h = (e) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
-
-  const canSubmit = type && title.trim() && !saving;
-
-  async function handleSubmit() {
-    if (!canSubmit) return;
-    setSaving(true); setError(null);
-    try {
-      await createTaskOptimistic({ title: title.trim(), type, description: desc.trim() || undefined, assigned_to_id: target.id, due_date: dueDate || undefined, status: 'Pending', route_to_role: 'Admin' });
-      setSuccess(true);
-    } catch (err) { setError(err.message || 'Failed'); setSaving(false); }
-  }
-
-  const inp = { width: '100%', padding: '9px 12px', borderRadius: 8, border: 'none', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), color: palette.backgroundDark.hex, boxSizing: 'border-box' };
-
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: hexToRgba(palette.backgroundDark.hex, 0.45), backdropFilter: 'blur(3px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: palette.backgroundLight.hex, borderRadius: 14, border: `1px solid var(--color-border)`, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryMagenta.hex, marginBottom: 3 }}>Assign Task</p>
-            <h2 style={{ fontSize: 17, fontWeight: 700, color: palette.backgroundDark.hex }}>{target.first_name} {target.last_name}</h2>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </button>
-        </div>
-        {success ? (
-          <div style={{ padding: '36px 24px', textAlign: 'center' }}>
-            <p style={{ fontSize: 14, fontWeight: 650, color: palette.accentGreen.hex, marginBottom: 8 }}>Task assigned</p>
-            <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer' }}>Done</button>
-          </div>
-        ) : (
-          <div style={{ padding: '18px 20px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-              <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inp, cursor: 'pointer' }}><option value="">Task type *</option>{TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title *" style={inp} autoFocus />
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...inp, resize: 'vertical' }} />
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} min={new Date().toISOString().split('T')[0]} style={inp} />
-            </div>
-            {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleSubmit} disabled={!canSubmit} style={{ padding: '8px 22px', borderRadius: 8, background: canSubmit ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? '#fff' : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>{saving ? 'Assigning…' : 'Assign Task'}</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

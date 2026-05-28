@@ -413,6 +413,11 @@ const DESIRED_NEW_FIELDS = {
   ],
   Tasks: [
     t.text('opwdd_case_id'),
+    // Optional physician association for the new universal TaskComposer.
+    // Stored as a free-text business id (mirrors the patient_id / referral_id
+    // pattern on this table) so we don't have to introduce a multipleRecordLink
+    // here. The id matches Physicians.id (e.g. `phy_xxx`).
+    t.text('physician_id'),
   ],
   ActivityLog: [
     t.text('opwdd_case_id'),
@@ -498,6 +503,10 @@ const DESIRED_CHOICE_EXTENSIONS = {
   Tasks: {
     type: OPWDD_TASK_TYPES,
     route_to_role: ['Enrollment'],
+    // UI exposes Low priority but the existing singleSelect only carries
+    // Normal/High/Urgent. Adding the choice via the typecast trick keeps
+    // legacy writes valid while letting the new TaskComposer surface Low.
+    priority: ['Low'],
   },
   // New writes default Conflicts.status to "Open"; legacy "Unaddressed" rows
   // are treated as Open in the UI mapping (see conflictFlagging.js).

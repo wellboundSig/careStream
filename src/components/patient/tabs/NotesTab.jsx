@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import { useUser } from '@clerk/react';
 import { useCareStore } from '../../../store/careStore.js';
 import { createNoteOptimistic, updateNoteOptimistic } from '../../../store/mutations.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
@@ -24,7 +25,8 @@ function generateNoteId() {
 
 export default function NotesTab({ patient, referral, readOnly = false }) {
   const { appUserId, appUserName, validAuthorIds, isValidAuthor } = useCurrentAppUser();
-  const { resolveUser } = useLookups();
+  const { user: clerkUser } = useUser();
+  const { resolveUser, resolveUserImage } = useLookups();
   const allNotes = useCareStore((s) => s.notes);
   const hydrated = useCareStore((s) => s.hydrated);
   const [composing, setComposing] = useState('');
@@ -207,6 +209,13 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
                 onTogglePin={readOnly ? undefined : togglePin}
                 currentUserId={appUserId}
                 resolveUser={resolveUser}
+                resolveUserImage={resolveUserImage}
+                // Live Clerk image URL for the signed-in user — used as a
+                // belt-and-suspenders fallback in case clerk_image_url has
+                // not yet propagated from Clerk → Airtable → store on first
+                // login. The Airtable-backed lookup is still the canonical
+                // source for *everyone else's* avatar.
+                currentClerkImageUrl={clerkUser?.imageUrl || null}
               />
             ))}
           </div>
@@ -216,7 +225,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   );
 }
 
-function NoteCard({ note, onTogglePin, currentUserId, resolveUser }) {
+function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserImage, currentClerkImageUrl }) {
   const isPinned = note.is_pinned === true || note.is_pinned === 'true';
   const isOwn = note.author_id === currentUserId;
   const authorName = resolveUser ? resolveUser(note.author_id) : note.author_id || 'Unknown';
@@ -227,6 +236,19 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser }) {
     .slice(0, 2)
     .map((w) => w[0].toUpperCase())
     .join('');
+
+  // Resolve the avatar URL from the Airtable-backed lookup. For the author's
+  // OWN notes, fall back to the live Clerk image URL so the avatar shows
+  // immediately on first login, before the Clerk → Airtable sync round-trip
+  // has populated `clerk_image_url` on the user record.
+  const lookupImage = resolveUserImage ? resolveUserImage(note.author_id) : null;
+  const photoUrl = lookupImage || (isOwn ? currentClerkImageUrl : null);
+
+  // Track whether the <img> failed to load — when it does we render the
+  // initials circle instead. (Clerk image URLs can 404 if the user deletes
+  // their profile photo upstream and we haven't re-synced yet.)
+  const [imgFailed, setImgFailed] = useState(false);
+  const showImage = photoUrl && !imgFailed;
 
   return (
     <div
@@ -240,17 +262,34 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-            background: isOwn
-              ? hexToRgba(palette.primaryMagenta.hex, 0.14)
-              : hexToRgba(palette.accentBlue.hex, 0.14),
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 10.5, fontWeight: 800,
-            color: isOwn ? palette.primaryMagenta.hex : palette.accentBlue.hex,
-          }}>
-            {initials || '?'}
-          </div>
+          {showImage ? (
+            <img
+              src={photoUrl}
+              alt={authorName}
+              onError={() => setImgFailed(true)}
+              style={{
+                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                objectFit: 'cover',
+                // Subtle ring so the avatar reads as "person" even on
+                // light backgrounds where the photo edge can disappear.
+                boxShadow: isOwn
+                  ? `0 0 0 1.5px ${hexToRgba(palette.primaryMagenta.hex, 0.35)}`
+                  : `0 0 0 1px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              background: isOwn
+                ? hexToRgba(palette.primaryMagenta.hex, 0.14)
+                : hexToRgba(palette.accentBlue.hex, 0.14),
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10.5, fontWeight: 800,
+              color: isOwn ? palette.primaryMagenta.hex : palette.accentBlue.hex,
+            }}>
+              {initials || '?'}
+            </div>
+          )}
           <div>
             <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, lineHeight: 1.1 }}>
               {isOwn ? `${authorName} (you)` : authorName}

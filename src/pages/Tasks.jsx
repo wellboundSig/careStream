@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useCareStore } from '../store/careStore.js';
-import { updateTaskOptimistic, createTaskOptimistic } from '../store/mutations.js';
+import { updateTaskOptimistic } from '../store/mutations.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
+import TaskComposer from '../components/tasks/TaskComposer.jsx';
 import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
@@ -65,15 +66,28 @@ export default function Tasks() {
     setTimeout(() => setToast(null), 2800);
   }
 
-  function handleComplete(task) {
-    if (!can(PERMISSION_KEYS.TASK_COMPLETE)) return;
-    updateTaskOptimistic(task._id, { status: 'Completed', completed_at: new Date().toISOString() })
-      .then(() => showToast('Task marked complete'))
-      .catch((err) => showToast(err.message, 'error'));
-  }
-
   function handleStatusChange(task, newStatus) {
-    updateTaskOptimistic(task._id, { status: newStatus }).catch(() => {});
+    if (newStatus === task.status) return;
+    // Moving INTO a terminal state requires task.complete; the dropdown
+    // disables those options for users without it, but we re-check here as
+    // a safety net for any programmatic callers.
+    const movingToTerminal = newStatus === 'Completed' || newStatus === 'Cancelled';
+    if (movingToTerminal && !can(PERMISSION_KEYS.TASK_COMPLETE)) {
+      showToast('You do not have permission to close tasks', 'error');
+      return;
+    }
+    // Stamp completed_at when transitioning to Completed (preserves the
+    // behavior of the old standalone "Done" button). Cancelled tasks share
+    // the same closure timestamp so reports treat them consistently.
+    const fields = { status: newStatus };
+    if (movingToTerminal && !task.completed_at) {
+      fields.completed_at = new Date().toISOString();
+    }
+    updateTaskOptimistic(task._id, fields)
+      .then(() => {
+        if (newStatus === 'Completed') showToast('Task marked complete');
+      })
+      .catch((err) => showToast(err.message, 'error'));
   }
 
   const filtered = useMemo(() => {
@@ -195,8 +209,9 @@ export default function Tasks() {
 
         {/* ── Inline new task form ── */}
         {showNewTask && (
-          <PageNewTaskForm
-            appUserId={appUserId}
+          <TaskComposer
+            variant="inline"
+            title="New Task"
             onCreated={() => { setShowNewTask(false); showToast('Task created'); }}
             onCancel={() => setShowNewTask(false)}
           />
@@ -223,7 +238,6 @@ export default function Tasks() {
                 resolveUser={resolveUser}
                 resolvePatient={resolvePatient}
                 resolvePatientRecord={resolvePatientRecord}
-                onComplete={handleComplete}
                 onStatusChange={handleStatusChange}
               />
             );
@@ -242,7 +256,7 @@ export default function Tasks() {
 }
 
 /* ── Section group ── */
-function SectionGroup({ section, tasks, resolveUser, resolvePatient, resolvePatientRecord, onComplete, onStatusChange }) {
+function SectionGroup({ section, tasks, resolveUser, resolvePatient, resolvePatientRecord, onStatusChange }) {
   const [collapsed, setCollapsed] = useState(false);
   const isAlert = section.alert; // overdue section
 
@@ -302,68 +316,11 @@ function SectionGroup({ section, tasks, resolveUser, resolvePatient, resolvePati
               resolveUser={resolveUser}
               resolvePatient={resolvePatient}
               resolvePatientRecord={resolvePatientRecord}
-              onComplete={onComplete}
               onStatusChange={onStatusChange}
             />
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ── Inline new task form (page-level, no patient context) ── */
-const TASK_TYPES_LIST = ['Insurance Barrier', 'Missing Document', 'Auth Needed', 'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other'];
-
-function PageNewTaskForm({ appUserId, onCreated, onCancel }) {
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState('');
-  const [priority, setPriority] = useState('Normal');
-  const [dueDate, setDueDate] = useState('');
-  const [description, setDescription] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const canSubmit = title.trim() && type && !saving;
-
-  function handleSubmit() {
-    if (!canSubmit) return;
-    setSaving(true);
-    createTaskOptimistic({
-      title: title.trim(),
-      type,
-      priority,
-      status: 'Pending',
-      assigned_to_id: appUserId || undefined,
-      ...(dueDate && { due_date: dueDate }),
-      ...(description.trim() && { description: description.trim() }),
-    }).then(() => onCreated()).catch(() => setSaving(false));
-  }
-
-  const inp = { width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box' };
-
-  return (
-    <div style={{ padding: '16px 18px', borderRadius: 10, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.3)}`, background: hexToRgba(palette.accentGreen.hex, 0.04), marginBottom: 18 }}>
-      <p style={{ fontSize: 12, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 10, letterSpacing: '0.04em', textTransform: 'uppercase' }}>New Task</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px', marginBottom: 10 }}>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title *" style={inp} autoFocus />
-        </div>
-        <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
-          <option value="">Type *</option>
-          {TASK_TYPES_LIST.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
-          {['Low', 'Normal', 'High', 'Urgent'].map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} min={new Date().toISOString().split('T')[0]} style={inp} />
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...inp, resize: 'vertical', gridColumn: '1 / -1' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button onClick={onCancel} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'none', fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
-        <button onClick={handleSubmit} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, border: 'none', background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), fontSize: 12.5, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-          {saving ? 'Creating…' : 'Create Task'}
-        </button>
-      </div>
     </div>
   );
 }

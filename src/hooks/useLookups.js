@@ -56,6 +56,21 @@ export function useLookups() {
     return map;
   }, [users]);
 
+  // Profile-image lookup, keyed identically to userMap so any caller that
+  // already has a user business id (or clerk_user_id) can resolve the
+  // avatar URL in one call. `clerk_image_url` is synced from Clerk into
+  // Airtable via useCurrentAppUser — see that hook for the sync path.
+  const userImageMap = useMemo(() => {
+    const map = {};
+    Object.values(users).forEach((u) => {
+      const url = u.clerk_image_url || null;
+      if (!url) return;
+      if (u.id) map[u.id] = url;
+      if (u.clerk_user_id) map[u.clerk_user_id] = url;
+    });
+    return map;
+  }, [users]);
+
   const sourceMap = useMemo(() => {
     const map = {};
     Object.values(referralSources).forEach((s) => {
@@ -115,6 +130,11 @@ export function useLookups() {
   const resolveMarketer  = useMemo(() => (id) => (id && marketerMap[id])  || '—', [marketerMap]);
   const resolveEntity    = useMemo(() => (id) => (id && entityMap[id])    || '—', [entityMap]);
   const resolveUser      = useMemo(() => (id) => (id && userMap[id])      || '—', [userMap]);
+  // Returns the Clerk profile image URL for a user id (or null if none).
+  // Distinct from `resolveUser` because callers usually want to render an
+  // <img> with an initials fallback, so a null sentinel is more useful
+  // than the "—" placeholder used by the name resolvers.
+  const resolveUserImage = useMemo(() => (id) => (id ? (userImageMap[id] || null) : null), [userImageMap]);
   const resolveSource    = useMemo(() => (id) => (id && sourceMap[id])    || '—', [sourceMap]);
   const resolveRole      = useMemo(() => (id) => (id && roleMap[id])     || '—', [roleMap]);
   const resolveFacility  = useMemo(() => (id) => (id && facilityMap[id]) || '—', [facilityMap]);
@@ -125,6 +145,7 @@ export function useLookups() {
     resolveEntity,
     resolveMarketer,
     resolveUser,
+    resolveUserImage,
     resolveSource,
     resolveRole,
     resolveFacility,

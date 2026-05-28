@@ -1,37 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useCareStore } from '../../../store/careStore.js';
-import { updateTaskOptimistic, createTaskOptimistic } from '../../../store/mutations.js';
+import { updateTaskOptimistic } from '../../../store/mutations.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import TaskComposer from '../../tasks/TaskComposer.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-
-const TASK_TYPES = [
-  'Insurance Barrier', 'Missing Document', 'Auth Needed',
-  'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other',
-];
-
-const PRIORITIES = ['Low', 'Normal', 'High', 'Urgent'];
-
-const PRIORITY_COLORS = {
-  Urgent: palette.primaryMagenta.hex,
-  High:   palette.accentOrange.hex,
-  Normal: palette.accentBlue.hex,
-  Low:    hexToRgba(palette.backgroundDark.hex, 0.35),
-};
-
-// Auto-derive route_to_role from assignee's role
-const ROLE_ROUTE_MAP = {
-  'rol_003': 'Intake',
-  'rol_005': 'Clinical',
-  'rol_006': 'Admin',
-  'rol_001': 'Admin',
-  'rol_002': 'Admin',
-  'rol_004': 'Admin',
-  'rol_007': 'Admin',
-};
 
 function isOverdue(dueDate) {
   if (!dueDate) return false;
@@ -67,15 +43,15 @@ const TYPE_ACCENT = {
 
 export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTaskConsumed, readOnly = false }) {
   const { resolveUser }          = useLookups();
-  const { appUser, appUserId }   = useCurrentAppUser();
+  useCurrentAppUser(); // ensure current user hydrates for TaskComposer
   const allTasks                 = useCareStore((s) => s.tasks);
   const hydrated                 = useCareStore((s) => s.hydrated);
   const [filter, setFilter]      = useState('open');
   const [confirmId, setConfirmId]= useState(null);
   const [showForm, setShowForm]  = useState(false);
 
-  const { can, canAssignTo } = usePermissions();
-  const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
+  const { can } = usePermissions();
+  void can(PERMISSION_KEYS.TASK_ASSIGN); // permission gating moved into TaskComposer
 
   const tasks = useMemo(() => {
     if (!patient?.id) return [];
@@ -137,16 +113,17 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
 
       {/* Inline new task form */}
       {showForm && !readOnly && (
-        <NewTaskForm
-          patient={patient}
-          referral={referral}
-          appUser={appUser}
-          appUserId={appUserId}
-          isAdmin={isAdmin}
-          canAssignTo={canAssignTo}
-          onCreated={handleTaskCreated}
-          onCancel={() => setShowForm(false)}
-        />
+        <div style={{ padding: '12px 20px 0' }}>
+          <TaskComposer
+            variant="inline"
+            title={`New Task — ${patient?.first_name || ''} ${patient?.last_name || ''}`.trim()}
+            defaultPatient={patient}
+            defaultReferral={referral}
+            lockPatient
+            onCreated={handleTaskCreated}
+            onCancel={() => setShowForm(false)}
+          />
+        </div>
       )}
 
       {/* Task list */}
@@ -172,201 +149,6 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
             ))}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ── New Task Form ──────────────────────────────────────────────────────────────
-const EMPTY = { type: '', title: '', description: '', priority: 'Normal', due_date: '', scheduled_date: '' };
-
-function NewTaskForm({ patient, referral, appUser, appUserId, isAdmin, canAssignTo, onCreated, onCancel }) {
-  const [form, setForm]         = useState(EMPTY);
-  const [assigneeId, setAssigneeId] = useState('');
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState(null);
-  const storeUsers              = useCareStore((s) => s.users);
-
-  const users = useMemo(() => {
-    if (!isAdmin) return [];
-    return Object.values(storeUsers)
-      .filter((u) => u.status === 'Active')
-      .filter((u) => canAssignTo ? canAssignTo(u.id) : true)
-      .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
-  }, [storeUsers, isAdmin, canAssignTo]);
-
-  useEffect(() => {
-    if (appUserId) setAssigneeId(appUserId);
-  }, [appUserId]);
-
-  function set(key, val) { setForm((f) => ({ ...f, [key]: val })); }
-
-  function handleSubmit() {
-    if (!form.type || !form.title.trim()) return;
-    setSaving(true);
-    setError(null);
-
-    const effectiveAssignee = assigneeId || appUserId;
-
-    const assignedUser = users.find((u) => u.id === effectiveAssignee);
-    const route_to_role = assignedUser
-      ? (ROLE_ROUTE_MAP[assignedUser.role_id] || 'Admin')
-      : (ROLE_ROUTE_MAP[appUser?.role_id] || 'Admin');
-
-    createTaskOptimistic({
-      title:          form.title.trim(),
-      description:    form.description.trim() || undefined,
-      type:           form.type,
-      route_to_role,
-      priority:       form.priority,
-      status:         'Pending',
-      assigned_to_id: effectiveAssignee || undefined,
-      patient_id:     patient?.id || undefined,
-      referral_id:    referral?._id || undefined,
-      due_date:       form.due_date || undefined,
-      scheduled_date: form.scheduled_date || undefined,
-    }).then(() => {
-      onCreated();
-    }).catch((err) => {
-      setError(err.message || 'Failed to create task');
-      setSaving(false);
-    });
-  }
-
-  const canSubmit = form.type && form.title.trim() && !saving;
-
-  return (
-    <div style={{
-      borderBottom: `1px solid var(--color-border)`,
-      background: hexToRgba(palette.primaryMagenta.hex, 0.025),
-      padding: '14px 20px 16px',
-      flexShrink: 0,
-      maxHeight: '60vh',
-      overflowY: 'auto',
-    }}>
-      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: palette.primaryMagenta.hex, marginBottom: 12 }}>
-        New Task — {patient?.first_name} {patient?.last_name}
-      </p>
-
-      {/* Task type pills */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={lbl}>Type <span style={{ color: palette.primaryMagenta.hex }}>*</span></label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 5 }}>
-          {TASK_TYPES.map((t) => (
-            <button key={t} onClick={() => set('type', t)} style={{
-              padding: '3px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
-              border: `1px solid ${form.type === t ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.18)}`,
-              background: form.type === t ? hexToRgba(palette.primaryMagenta.hex, 0.09) : 'transparent',
-              color: form.type === t ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
-              cursor: 'pointer', transition: 'all 0.1s',
-            }}>{t}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Title */}
-      <div style={{ marginBottom: 10 }}>
-        <label style={lbl}>Title <span style={{ color: palette.primaryMagenta.hex }}>*</span></label>
-        <input
-          value={form.title}
-          onChange={(e) => set('title', e.target.value)}
-          placeholder="Brief description of what needs to be done…"
-          style={inp}
-        />
-      </div>
-
-      {/* Description */}
-      <div style={{ marginBottom: 10 }}>
-        <label style={lbl}>Description <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
-        <textarea
-          value={form.description}
-          onChange={(e) => set('description', e.target.value)}
-          placeholder="Additional context or steps…"
-          rows={2}
-          style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }}
-        />
-      </div>
-
-      {/* Priority */}
-      <div style={{ marginBottom: 10 }}>
-        <label style={lbl}>Priority</label>
-        <div style={{ display: 'flex', gap: 4, marginTop: 5 }}>
-          {PRIORITIES.map((p) => (
-            <button key={p} onClick={() => set('priority', p)} style={{
-              flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
-              border: `1px solid ${form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-              background: form.priority === p ? hexToRgba(PRIORITY_COLORS[p], 0.1) : 'transparent',
-              color: form.priority === p ? PRIORITY_COLORS[p] : hexToRgba(palette.backgroundDark.hex, 0.45),
-              cursor: 'pointer', transition: 'all 0.1s',
-            }}>{p}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Due date + Scheduled date (side by side) */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-        <div style={{ flex: 1 }}>
-          <label style={lbl}>Due Date <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
-          <input type="date" value={form.due_date} min={new Date().toISOString().split('T')[0]} onChange={(e) => set('due_date', e.target.value)} style={{ ...inp, marginTop: 5 }} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={lbl}>Scheduled Date <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>(optional)</span></label>
-          <input type="date" value={form.scheduled_date} min={new Date().toISOString().split('T')[0]} onChange={(e) => set('scheduled_date', e.target.value)} style={{ ...inp, marginTop: 5 }} />
-        </div>
-      </div>
-
-      {/* Assignee */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={lbl}>Assign to</label>
-        {isAdmin ? (
-          <select
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-            style={{ ...inp, marginTop: 5 }}
-          >
-            <option value="">— Select team member —</option>
-            {users.map((u) => (
-              <option key={u._id} value={u.id}>
-                {u.first_name} {u.last_name}{u.id === appUserId ? ' (you)' : ''}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div style={{
-            marginTop: 5, padding: '6px 10px', borderRadius: 7,
-            background: hexToRgba(palette.accentBlue.hex, 0.07),
-            border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.2)}`,
-            fontSize: 12.5, color: palette.accentBlue.hex, fontWeight: 550,
-          }}>
-            Assigning to you — {appUser?.first_name} {appUser?.last_name}
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{error}</p>
-      )}
-
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          style={{
-            flex: 1, padding: '8px 0', borderRadius: 7, border: 'none',
-            background: canSubmit ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-            color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
-            fontSize: 12.5, fontWeight: 650, cursor: canSubmit ? 'pointer' : 'not-allowed',
-            transition: 'filter 0.12s',
-          }}
-          onMouseEnter={(e) => canSubmit && (e.currentTarget.style.filter = 'brightness(1.08)')}
-          onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-        >
-          {saving ? 'Creating…' : 'Create Task'}
-        </button>
-        <button onClick={onCancel} style={{ padding: '8px 16px', borderRadius: 7, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.06), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 12.5, fontWeight: 650, cursor: 'pointer' }}>
-          Cancel
-        </button>
       </div>
     </div>
   );
@@ -454,19 +236,3 @@ function TaskCard({ task, resolveUser, confirmPending, onRequestComplete, onConf
   );
 }
 
-// ── Style helpers ──────────────────────────────────────────────────────────────
-const lbl = {
-  fontSize: 11.5, fontWeight: 650,
-  color: hexToRgba(palette.backgroundDark.hex, 0.55),
-  display: 'block',
-};
-
-const inp = {
-  width: '100%', boxSizing: 'border-box',
-  padding: '7px 10px', borderRadius: 7,
-  border: `1px solid var(--color-border)`,
-  fontSize: 12.5, fontFamily: 'inherit', outline: 'none',
-  background: palette.backgroundLight.hex,
-  color: palette.backgroundDark.hex,
-  display: 'block',
-};

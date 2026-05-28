@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /* ─── Type → hue mapping ───────────────────────────────────────── */
@@ -59,10 +61,10 @@ function formatDue(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function TaskCard({ task, resolveUser, resolvePatient, resolvePatientRecord, onComplete, onStatusChange }) {
+export default function TaskCard({ task, resolveUser, resolvePatient, resolvePatientRecord, onStatusChange }) {
   const { open: openPatient } = usePatientDrawer();
-  const [expanded, setExpanded]     = useState(false);
-  const [completing, setCompleting] = useState(false);
+  const { can } = usePermissions();
+  const [expanded, setExpanded] = useState(false);
 
   const urgency      = taskUrgencyLevel(task.due_date);
   const isBlocking   = task.blocks_stage_progression === true || task.blocks_stage_progression === 'true';
@@ -74,17 +76,15 @@ export default function TaskCard({ task, resolveUser, resolvePatient, resolvePat
   const dueColor     = URGENCY_COLOR[urgency];
   const assignedName = resolveUser ? resolveUser(task.assigned_to_id) : (task.assigned_to_id || null);
 
+  // Permission gate: users without task.complete can't move a task into a
+  // terminal state from this card. (The dropdown is still shown so they can
+  // see the current status, but the Completed/Cancelled options are disabled.)
+  const canComplete = can(PERMISSION_KEYS.TASK_COMPLETE);
+
   /* Left border: blocking > type color */
   const leftBorder = isBlocking && !isDone
     ? `3px solid ${palette.primaryMagenta.hex}`
     : `3px solid ${hexToRgba(typeColor, 0.55)}`;
-
-  async function handleComplete() {
-    if (completing || isDone) return;
-    setCompleting(true);
-    await onComplete(task);
-    setCompleting(false);
-  }
 
   function openPatientTasks() {
     if (!task.patient_id) return;
@@ -231,43 +231,42 @@ export default function TaskCard({ task, resolveUser, resolvePatient, resolvePat
           )}
         </div>
 
-        {/* ── Right column: status top, complete bottom ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0, minHeight: 56 }}>
-
-          {/* Status dropdown — top right */}
-          <select
-            value={task.status}
-            onChange={(e) => onStatusChange(task, e.target.value)}
-            style={{
-              fontSize: 10.5, padding: '3px 6px', borderRadius: 5,
-              border: `1px solid var(--color-border)`,
-              background: palette.backgroundLight.hex,
-              color: hexToRgba(palette.backgroundDark.hex, 0.5),
-              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
-            }}
-          >
-            <option>Pending</option>
-            <option>In Progress</option>
-            <option>Completed</option>
-            <option>Cancelled</option>
-          </select>
-
-          {/* Mark complete — green text, bottom right */}
-          {!isDone && (
-            <button
-              onClick={handleComplete}
-              disabled={completing}
-              style={{
-                fontSize: 11.5, fontWeight: 600,
-                color: completing ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
-                background: 'none', border: 'none', cursor: completing ? 'not-allowed' : 'pointer',
-                padding: 0, fontFamily: 'inherit',
-                transition: 'opacity 0.12s',
-              }}
-            >
-              {completing ? 'Saving…' : 'Done'}
-            </button>
-          )}
+        {/* ── Right column: status dropdown ── */}
+        {/* The dropdown is the single status control — its colored chip carries
+            the current state (Pending / In Progress / Completed / Cancelled),
+            replacing the separate "Done" button so we don't ship two ways to
+            mark a task complete from the same card. */}
+        <div style={{ display: 'flex', flexShrink: 0, alignItems: 'flex-start' }}>
+          {(() => {
+            const statusChip = STATUS_STYLES[task.status] || STATUS_STYLES.Pending;
+            return (
+              <select
+                value={task.status}
+                onChange={(e) => onStatusChange(task, e.target.value)}
+                style={{
+                  fontSize: 11, padding: '3px 22px 3px 8px',
+                  borderRadius: 5,
+                  border: `1px solid ${hexToRgba(statusChip.text, 0.25)}`,
+                  background: statusChip.bg,
+                  color: statusChip.text,
+                  cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none'><path d='M6 9l6 6 6-6' stroke='${encodeURIComponent(statusChip.text)}' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 6px center',
+                }}
+              >
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed" disabled={!canComplete && task.status !== 'Completed'}>
+                  Completed
+                </option>
+                <option value="Cancelled" disabled={!canComplete && task.status !== 'Cancelled'}>
+                  Cancelled
+                </option>
+              </select>
+            );
+          })()}
         </div>
       </div>
     </div>
