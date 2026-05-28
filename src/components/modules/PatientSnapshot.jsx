@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
+import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -19,11 +20,13 @@ function calcAge(dob) {
   return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 
-function isTruthyFlag(val) {
-  return val === true || val === 'TRUE' || val === 'true';
-}
-
-export function computeSnapshotFlags(patient, referral, triageData, insuranceChecks) {
+// The fourth arg (formerly `insuranceChecks`) is preserved as a positional
+// placeholder so older callers don't break, but we no longer consult it —
+// the Insurance Details readiness flag is sourced from Demographics now
+// (insurance plan + member ID). PECOS/OPRA was dropped from this panel in
+// the 2026-05-27 intake-UX revision: nothing in software can act on those
+// verifications, so they don't belong in the readiness snapshot.
+export function computeSnapshotFlags(patient, referral, triageData /*, _legacyInsuranceChecks */) {
   const p = patient || {};
   const r = referral || {};
 
@@ -46,24 +49,22 @@ export function computeSnapshotFlags(patient, referral, triageData, insuranceChe
   }
 
   const f2f = !!r.f2f_date;
+  const insurance = hasInsuranceDetails(p);
 
-  const insurance =
-    Array.isArray(insuranceChecks) && insuranceChecks.length > 0;
-
-  const pecos = isTruthyFlag(r.is_pecos_verified) && isTruthyFlag(r.is_opra_verified);
-
-  return { demographics, triage, f2f, insurance, pecos };
+  return { demographics, triage, f2f, insurance };
 }
 
 // Each flag row knows which patient-drawer tab to jump to when clicked. The
 // snapshot doubles as a quick navigation surface — clicking a row opens the
 // corresponding tab in the patient drawer.
 const FLAGS_META = [
-  { key: 'demographics', label: 'Demographics',     tab: 'demographics' },
-  { key: 'triage',       label: 'Triage',           tab: 'triage'       },
-  { key: 'f2f',          label: 'F2F Received',     tab: 'f2f'          },
-  { key: 'insurance',    label: 'Insurance Details', tab: 'eligibility' },
-  { key: 'pecos',        label: 'PECOS / OPRA',     tab: 'f2f'          },
+  { key: 'demographics', label: 'Demographics',      tab: 'demographics' },
+  { key: 'triage',       label: 'Triage',            tab: 'triage'       },
+  { key: 'f2f',          label: 'F2F Received',      tab: 'f2f'          },
+  // Insurance Details lives in Demographics — clicking jumps there, not to
+  // the Eligibility tab (eligibility verification is a separate workflow,
+  // and the readiness dot tracks data capture only).
+  { key: 'insurance',    label: 'Insurance Details', tab: 'demographics' },
 ];
 
 function StatusDot({ complete }) {

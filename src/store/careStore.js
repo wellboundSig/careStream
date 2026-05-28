@@ -24,6 +24,7 @@ export const useCareStore = create((set, get) => ({
   triageAdult: {},
   triagePediatric: {},
   cursoryReviews: {},          // CursoryReview rows — one per referral
+  clinicalReviews: {},         // ClinicalReview rows — one per referral (Clinical Intake RN checklist)
   opwddCases: {},              // OPWDDEligibilityCases — one per active OPWDD referral
   opwddChecklistItems: {},     // OPWDDCaseChecklistItems — per-requirement rows
 
@@ -92,7 +93,8 @@ export function removeEntity(key, recordId) {
 const SYNC_KEYS = [
   'patients', 'referrals', 'notes', 'tasks', 'stageHistory', 'files',
   'insuranceChecks', 'conflicts', 'authorizations', 'disenrollmentAssistanceFlags', 'episodes',
-  'triageAdult', 'triagePediatric', 'opwddCases', 'opwddChecklistItems',
+  'triageAdult', 'triagePediatric', 'cursoryReviews', 'clinicalReviews',
+  'opwddCases', 'opwddChecklistItems',
   'entities',
   'marketers', 'users', 'referralSources',
   'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',

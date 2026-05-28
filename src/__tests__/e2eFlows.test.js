@@ -1096,32 +1096,36 @@ describe('FLOW 21: Patient snapshot flags', () => {
       gender: 'Female', phone_primary: '2125551234',
       address_street: '123 Main St', address_city: 'New York',
       address_state: 'NY', address_zip: '10001', medicaid_number: 'AB12345C',
+      insurance_plans: JSON.stringify(['Fidelis Medicaid']),
+      insurance_plan: 'Fidelis Medicaid',
+      insurance_plan_details: JSON.stringify({ 'Fidelis Medicaid': 'AB12345C' }),
     };
     const referral = {
       division: 'ALF', f2f_date: '2026-03-20',
-      is_pecos_verified: 'TRUE', is_opra_verified: true,
     };
-    const flags = computeSnapshotFlags(patient, referral, null, [{ id: 'check1' }]);
+    const flags = computeSnapshotFlags(patient, referral, null);
     expect(flags.demographics).toBe(true);
     expect(flags.triage).toBe(true); // ALF auto-passes
     expect(flags.f2f).toBe(true);
     expect(flags.insurance).toBe(true);
-    expect(flags.pecos).toBe(true);
+    // pecos flag was removed from the snapshot on 2026-05-27 (no software
+    // workflow could act on it); the key should be absent now.
+    expect('pecos' in flags).toBe(false);
   });
 
   it('demographics fails when required field is missing', () => {
     const patient = { first_name: 'Maria', last_name: 'Rodriguez', dob: '1985-06-15' };
-    const flags = computeSnapshotFlags(patient, {}, null, []);
+    const flags = computeSnapshotFlags(patient, {}, null);
     expect(flags.demographics).toBe(false);
   });
 
   it('triage auto-passes for ALF', () => {
-    const flags = computeSnapshotFlags({}, { division: 'ALF' }, null, []);
+    const flags = computeSnapshotFlags({}, { division: 'ALF' }, null);
     expect(flags.triage).toBe(true);
   });
 
   it('triage fails for SPN without triage data', () => {
-    const flags = computeSnapshotFlags({ dob: '1985-01-01' }, { division: 'Special Needs' }, null, []);
+    const flags = computeSnapshotFlags({ dob: '1985-01-01' }, { division: 'Special Needs' }, null);
     expect(flags.triage).toBe(false);
   });
 
@@ -1147,25 +1151,59 @@ describe('FLOW 21: Patient snapshot flags', () => {
       cm_fax: '2125550301', cm_email: 'cm@co.com',
     };
     const flags = computeSnapshotFlags(
-      { dob: '1985-01-01' }, { division: 'Special Needs' }, triageData, []
+      { dob: '1985-01-01' }, { division: 'Special Needs' }, triageData
     );
     expect(flags.triage).toBe(true);
   });
 
   it('f2f flag passes only when f2f_date exists', () => {
-    expect(computeSnapshotFlags({}, { f2f_date: '2026-03-01' }, null, []).f2f).toBe(true);
-    expect(computeSnapshotFlags({}, {}, null, []).f2f).toBe(false);
+    expect(computeSnapshotFlags({}, { f2f_date: '2026-03-01' }, null).f2f).toBe(true);
+    expect(computeSnapshotFlags({}, {}, null).f2f).toBe(false);
   });
 
-  it('insurance flag requires at least one check', () => {
-    expect(computeSnapshotFlags({}, {}, null, []).insurance).toBe(false);
-    expect(computeSnapshotFlags({}, {}, null, [{ id: 'c1' }]).insurance).toBe(true);
+  it('insurance flag is sourced from Demographics, not eligibility checks', () => {
+    // Empty patient → no plan captured → flag fails.
+    expect(computeSnapshotFlags({}, {}, null).insurance).toBe(false);
+
+    // Plan selected but no member ID recorded → still incomplete.
+    expect(
+      computeSnapshotFlags(
+        {
+          insurance_plans: JSON.stringify(['Fidelis Medicaid']),
+          insurance_plan: 'Fidelis Medicaid',
+          insurance_plan_details: JSON.stringify({}),
+        },
+        {},
+        null,
+      ).insurance,
+    ).toBe(false);
+
+    // Plan + member ID together → flag passes (the new spec).
+    expect(
+      computeSnapshotFlags(
+        {
+          insurance_plans: JSON.stringify(['Fidelis Medicaid']),
+          insurance_plan: 'Fidelis Medicaid',
+          insurance_plan_details: JSON.stringify({ 'Fidelis Medicaid': 'AB12345C' }),
+        },
+        {},
+        null,
+      ).insurance,
+    ).toBe(true);
+
+    // Legacy callers that still pass an `insuranceChecks` array (the old
+    // 4th positional arg) must NOT be able to satisfy the flag — readiness
+    // is sourced from Demographics only now.
+    expect(computeSnapshotFlags({}, {}, null, [{ id: 'c1' }]).insurance).toBe(false);
   });
 
-  it('pecos flag requires both verifications', () => {
-    expect(computeSnapshotFlags({}, { is_pecos_verified: 'TRUE', is_opra_verified: true }, null, []).pecos).toBe(true);
-    expect(computeSnapshotFlags({}, { is_pecos_verified: 'TRUE', is_opra_verified: false }, null, []).pecos).toBe(false);
-    expect(computeSnapshotFlags({}, { is_pecos_verified: false, is_opra_verified: 'TRUE' }, null, []).pecos).toBe(false);
+  it('snapshot no longer exposes a PECOS/OPRA flag', () => {
+    const flags = computeSnapshotFlags(
+      {},
+      { is_pecos_verified: 'TRUE', is_opra_verified: true },
+      null,
+    );
+    expect('pecos' in flags).toBe(false);
   });
 });
 
@@ -1179,7 +1217,7 @@ describe('FLOW 22: Triage completeness integration', () => {
     const { complete } = isTriageComplete(partial, 'adult');
     expect(complete).toBe(false);
     const flags = computeSnapshotFlags(
-      { dob: '1985-01-01' }, { division: 'Special Needs' }, partial, []
+      { dob: '1985-01-01' }, { division: 'Special Needs' }, partial,
     );
     expect(flags.triage).toBe(false);
   });
@@ -1212,7 +1250,7 @@ describe('FLOW 22: Triage completeness integration', () => {
     const { complete } = isTriageComplete(fullPed, 'pediatric');
     expect(complete).toBe(true);
     const flags = computeSnapshotFlags(
-      { dob: '2015-01-01' }, { division: 'Special Needs' }, fullPed, []
+      { dob: '2015-01-01' }, { division: 'Special Needs' }, fullPed,
     );
     expect(flags.triage).toBe(true);
   });

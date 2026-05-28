@@ -19,6 +19,15 @@ vi.mock('../../../../api/patientInsurances.js', () => ({
 vi.mock('../../../../api/eligibilityVerifications.js', () => ({
   getVerificationsByPatient: vi.fn().mockResolvedValue([]),
   createEligibilityVerification: vi.fn(),
+  // The canonical link reader added during the EligibilityVerifications
+  // insurance_id → patient_insurance_id migration (2026-05-27). The hooks
+  // call this on every verification row, so the mock must provide it even
+  // when the test doesn't seed any verifications.
+  readVerificationInsuranceId: vi.fn((v) => {
+    const f = v?.patient_insurance_id || v?.insurance_id;
+    if (!f) return null;
+    return Array.isArray(f) ? (f[0] || null) : f;
+  }),
 }));
 vi.mock('../../../../api/insuranceChecks.js', () => ({
   getChecksByPatient: vi.fn().mockResolvedValue([]),

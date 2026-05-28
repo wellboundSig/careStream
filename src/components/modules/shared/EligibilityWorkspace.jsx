@@ -421,7 +421,10 @@ export default function EligibilityWorkspace({
                 const realInsId = await ensureRealInsurance(conflictModal.insurance, { patientRecordId });
                 await createEligibilityVerification({
                   patient_id: patientRecordId,
-                  insurance_id: realInsId,
+                  // `patient_insurance_id` is the canonical link → PatientInsurances.
+                  // The legacy `insurance_id` field on EligibilityVerifications
+                  // was wired to the wrong table; see the API module's notes.
+                  patient_insurance_id: realInsId,
                   verification_status: denialStatus || VERIFICATION_STATUS.DENIED_NOT_FOUND,
                   verified_by_user_id: verifierRecordId || undefined,
                   verification_date_time: new Date().toISOString(),
@@ -618,7 +621,8 @@ function InsuranceCard({
 
       await createEligibilityVerification({
         patient_id: patientRecordId,
-        insurance_id: realInsuranceId,
+        // Canonical link to PatientInsurances; see eligibilityVerifications.js.
+        patient_insurance_id: realInsuranceId,
         verification_status: status,
         staff_confirmed_payer_type: payerType,
         staff_confirmed_order_rank: order,

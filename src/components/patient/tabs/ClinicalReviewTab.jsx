@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useLookups } from '../../../hooks/useLookups.js';
+import { useClinicalReview } from '../../../hooks/useClinicalReview.js';
 import ClinicalChecklistUI from '../../clinical/ClinicalChecklistUI.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -39,20 +39,17 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const decisionLabel = DECISION_LABELS[decision] || decision;
   const decisionColor = DECISION_COLORS[decision] || hexToRgba(palette.backgroundDark.hex, 0.5);
 
-  // Session-only checklist for when the user is actively reviewing
-  const [checked, setChecked] = useState({});
-  const [localDecision, setLocalDecision] = useState(null);
-  const [authRequired, setAuthRequired] = useState(false);
-
-  useEffect(() => {
-    setChecked({});
-    setLocalDecision(null);
-    setAuthRequired(false);
-  }, [patient?.id, referral?._id]);
-
-  function toggleItem(key) {
-    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
+  // Persisted checklist state — saves to the ClinicalReview table on every
+  // toggle (debounced inside the hook). The same hook backs the Clinical RN
+  // module panel, so the drawer tab and panel stay in lockstep.
+  const {
+    checked,
+    decision: workingDecision,
+    authRequired,
+    toggle: toggleItem,
+    setDecision: setLocalDecision,
+    setAuthRequired,
+  } = useClinicalReview(referral?._id);
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
@@ -96,7 +93,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
       <ClinicalChecklistUI
         checked={checked}
         onToggle={readOnly ? () => {} : toggleItem}
-        decision={localDecision}
+        decision={workingDecision}
         onDecisionChange={readOnly ? () => {} : setLocalDecision}
         authRequired={authRequired}
         onAuthRequiredChange={readOnly ? () => {} : setAuthRequired}

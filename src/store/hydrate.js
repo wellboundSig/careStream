@@ -25,6 +25,7 @@ const TABLES = [
   { key: 'triageAdult',      table: 'TriageAdult' },
   { key: 'triagePediatric',  table: 'TriagePediatric' },
   { key: 'cursoryReviews',   table: 'CursoryReview' },
+  { key: 'clinicalReviews',  table: 'ClinicalReview' },
   { key: 'opwddCases',          table: 'OPWDDEligibilityCases' },
   { key: 'opwddChecklistItems', table: 'OPWDDCaseChecklistItems' },
 

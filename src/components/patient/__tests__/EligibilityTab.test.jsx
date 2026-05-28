@@ -20,6 +20,13 @@ vi.mock('../../../api/disenrollmentFlags.js', () => ({
 vi.mock('../../../api/eligibilityVerifications.js', () => ({
   getVerificationsByPatient: vi.fn().mockResolvedValue([]),
   createEligibilityVerification: vi.fn(),
+  // See workspaceSync.test for context; the canonical link reader was
+  // added during the insurance_id → patient_insurance_id migration.
+  readVerificationInsuranceId: vi.fn((v) => {
+    const f = v?.patient_insurance_id || v?.insurance_id;
+    if (!f) return null;
+    return Array.isArray(f) ? (f[0] || null) : f;
+  }),
 }));
 vi.mock('../../../api/conflicts.js', () => ({ createConflict: vi.fn() }));
 vi.mock('../../../api/activityLog.js', () => ({ recordActivity: vi.fn() }));

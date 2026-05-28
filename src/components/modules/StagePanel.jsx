@@ -6,6 +6,7 @@ import { updateReferral } from '../../api/referrals.js';
 import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
 import { updateReferralOptimistic } from '../../store/mutations.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
+import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { recordTransition } from '../../utils/recordTransition.js';
@@ -24,6 +25,7 @@ import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
+import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
@@ -448,14 +450,12 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
     if (Array.isArray(tid) && (tid.includes(refId) || tid.includes(refAirtableId))) return true;
     return false;
   }) || null;
-  const patientInsuranceChecks = Object.values(insuranceCheckStore || {}).filter((c) => {
-    const pid = c.patient_id;
-    const target = selectedReferral?.patient_id;
-    if (!pid || !target) return false;
-    if (pid === target) return true;
-    if (Array.isArray(pid) && pid.includes(target)) return true;
-    return false;
-  });
+  // Insurance Details readiness is now sourced from Demographics (plan +
+  // member ID), not from legacy InsuranceChecks rows. We still subscribe to
+  // `insuranceCheckStore` above to keep the store hydrated for the
+  // Eligibility module surfaces, but this panel no longer reads from it.
+  void insuranceCheckStore;
+  const intakeInsuranceComplete = hasInsuranceDetails(selectedReferral?.patient);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate] = useState('');
@@ -508,7 +508,6 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
             patient={selectedReferral?.patient}
             referral={selectedReferral}
             triageData={triageData}
-            insuranceChecks={patientInsuranceChecks}
             onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
           />
 
@@ -529,8 +528,10 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                 ) : (
                   <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '6px 0' }}>No F2F date recorded</p>
                 )}
-                <InfoRow label="PECOS" value={selectedReferral.is_pecos_verified === 'TRUE' || selectedReferral.is_pecos_verified === true ? 'Yes' : 'No'} highlight={selectedReferral.is_pecos_verified === 'TRUE' || selectedReferral.is_pecos_verified === true ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
-                <InfoRow label="OPRA" value={selectedReferral.is_opra_verified === 'TRUE' || selectedReferral.is_opra_verified === true ? 'Yes' : 'No'} />
+                {/* PECOS / OPRA InfoRows removed from the intake right-hand
+                    panel on 2026-05-27: staff cannot act on those checks
+                    inside this software (they live on the provider profile),
+                    so showing them here was clutter without a workflow. */}
               </PanelSection>
 
               {canPerm(PERMISSION_KEYS.CLINICAL_F2F) && (
@@ -591,7 +592,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
               Clinical RN has been pushed AND Insurance Details are collected. */}
           <PushToEligibilityAction
             referral={selectedReferral}
-            insuranceComplete={patientInsuranceChecks?.length > 0}
+            insuranceComplete={intakeInsuranceComplete}
             onOpenTriage={() => onOpenTriage?.(selectedReferral)}
             onInitiateTransition={onInitiateTransition}
             isSN={isSN}
@@ -1298,21 +1299,23 @@ function ApproveButton({ enabled, onSelect }) {
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
-  const [checked, setChecked] = useState({});
-  const [decision, setDecision] = useState(null);
+  // Checklist + working decision are persisted to ClinicalReview via this
+  // shared hook so the drawer Clinical Review tab and this module panel
+  // stay in lockstep. `sendBackNote` / `showSendBack` remain local since
+  // they're transient UI state, not part of the saved review.
+  const {
+    checked,
+    decision,
+    toggle: toggleItem,
+    setDecision,
+  } = useClinicalReview(selectedReferral?._id);
   const [sendBackNote, setSendBackNote] = useState('');
   const [showSendBack, setShowSendBack] = useState(false);
 
   useEffect(() => {
-    setChecked({});
-    setDecision(null);
     setSendBackNote('');
     setShowSendBack(false);
   }, [selectedReferral?._id]);
-
-  function toggleItem(key) {
-    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
 
   const checklistComplete = isChecklistComplete(checked);
   const canConfirm = checklistComplete && (decision === 'accept' || decision === 'conditional');
@@ -1728,14 +1731,10 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
     if (Array.isArray(tid) && (tid.includes(sRefId) || tid.includes(sRefAirtableId))) return true;
     return false;
   }) || null;
-  const staffingInsuranceChecks = Object.values(insuranceCheckStore || {}).filter((c) => {
-    const pid = c.patient_id;
-    const target = selectedReferral?.patient_id;
-    if (!pid || !target) return false;
-    if (pid === target) return true;
-    if (Array.isArray(pid) && pid.includes(target)) return true;
-    return false;
-  });
+  // Insurance Details readiness in the staffing panel mirrors intake: it
+  // reflects Demographics capture, not InsuranceChecks. The subscription
+  // above is retained so other surfaces that share the store stay hydrated.
+  void insuranceCheckStore;
 
   const isOnTrack = selectedReferral?.current_stage === 'Staffing Feasibility';
   const isConflict = selectedReferral?.current_stage === 'Conflict';
@@ -1766,7 +1765,6 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
             patient={selectedReferral?.patient}
             referral={selectedReferral}
             triageData={staffingTriageData}
-            insuranceChecks={staffingInsuranceChecks}
             onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>

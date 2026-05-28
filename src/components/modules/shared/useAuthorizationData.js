@@ -12,10 +12,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRefreshVersion } from '../../../hooks/useRefreshTrigger.js';
 import { getInsurancesByPatient }      from '../../../api/patientInsurances.js';
-import { getVerificationsByPatient }   from '../../../api/eligibilityVerifications.js';
+import { getVerificationsByPatient, readVerificationInsuranceId } from '../../../api/eligibilityVerifications.js';
 import { getAuthorizationsByReferral } from '../../../api/authorizations.js';
 import { getPatient }                  from '../../../api/patients.js';
-import { readLink }                    from '../../../api/_linkHelpers.js';
 import { VERIFICATION_STATUS, INSURANCE_CATEGORY, ORDER_RANK } from '../../../data/eligibilityEnums.js';
 import { normalizeInsuranceCategory }  from '../../../data/policies/eligibilityPolicies.js';
 
@@ -90,7 +89,8 @@ export function useAuthorizationData({ patient, patientId, referralId }) {
   const activeInsurances = useMemo(() => {
     const latestByIns = new Map();
     for (const v of verifications) {
-      const key = readLink(v.insurance_id);
+      // Reads from `patient_insurance_id` first, then legacy `insurance_id`.
+      const key = readVerificationInsuranceId(v);
       if (!key) continue;
       const prev = latestByIns.get(key);
       if (!prev || new Date(v.verification_date_time || 0) > new Date(prev.verification_date_time || 0)) {

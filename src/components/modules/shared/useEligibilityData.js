@@ -18,12 +18,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRefreshVersion } from '../../../hooks/useRefreshTrigger.js';
 import { getInsurancesByPatient }         from '../../../api/patientInsurances.js';
-import { getVerificationsByPatient }      from '../../../api/eligibilityVerifications.js';
+import { getVerificationsByPatient, readVerificationInsuranceId } from '../../../api/eligibilityVerifications.js';
 import { getChecksByPatient }             from '../../../api/insuranceChecks.js';
 import { getAuthorizationsByReferral }    from '../../../api/authorizations.js';
 import { getDisenrollmentFlagsByPatient } from '../../../api/disenrollmentFlags.js';
 import { getPatient }                     from '../../../api/patients.js';
-import { readLink } from '../../../api/_linkHelpers.js';
 import { VERIFICATION_STATUS, INSURANCE_CATEGORY, ORDER_RANK } from '../../../data/eligibilityEnums.js';
 import { normalizeInsuranceCategory } from '../../../data/policies/eligibilityPolicies.js';
 
@@ -116,12 +115,13 @@ export function useEligibilityData({ patient, patientId, referralId }) {
   }, [realInsurances, patientRecord, patient]);
 
   // Latest verification per insurance id (real or virtual).
-  // insurance_id is a multipleRecordLinks field so Airtable returns [id];
-  // we index by the first id.
+  // The link is now `patient_insurance_id` (canonical, links to
+  // PatientInsurances); `readVerificationInsuranceId` falls back to the
+  // legacy `insurance_id` field for any rows written before the migration.
   const latestVerByInsurance = useMemo(() => {
     const map = new Map();
     for (const v of verifications) {
-      const key = readLink(v.insurance_id);
+      const key = readVerificationInsuranceId(v);
       if (!key) continue;
       const prev = map.get(key);
       if (!prev || new Date(v.verification_date_time || 0) > new Date(prev.verification_date_time || 0)) {

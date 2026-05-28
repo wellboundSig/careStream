@@ -73,11 +73,19 @@ export default function DepartmentManagement() {
       </div>
 
       {creating && (
-        <DeptForm users={users} scopes={deptScopes} deptMembers={{}} onMemberChange={() => {}} onSave={async (fields) => {
-          const rec = await createDepartment(fields);
-          mergeEntities('departments', { [rec.id]: { _id: rec.id, ...rec.fields } });
-          setCreating(false);
-          showToast('Department created');
+        // `deptMembers` MUST be an array — `DeptForm` calls `.map()` on it.
+        // A new department has no members yet, so pass [].
+        <DeptForm users={users} scopes={deptScopes} deptMembers={[]} onMemberChange={() => {}} onSave={async (fields) => {
+          try {
+            const rec = await createDepartment(fields);
+            mergeEntities('departments', { [rec.id]: { _id: rec.id, ...rec.fields } });
+            setCreating(false);
+            showToast('Department created');
+          } catch (err) {
+            console.error('createDepartment failed', err);
+            showToast(`Failed to create: ${err?.message || 'unknown error'}`);
+            throw err; // bubble up so DeptForm clears its `saving` state
+          }
         }} onCancel={() => setCreating(false)} />
       )}
 
@@ -90,7 +98,9 @@ export default function DepartmentManagement() {
           if (isEditing) {
             return (
               <DeptForm key={dept.id} initial={dept} users={users} scopes={deptScopes}
-                deptMembers={members} onMemberChange={(uid, add) => handleMemberChange(dept.id, uid, add)}
+                deptMembers={members} departments={departments}
+                currentDeptId={dept.id}
+                onMemberChange={(uid, add) => handleMemberChange(dept.id, uid, add)}
                 onSave={async (fields) => {
                   await updateDepartment(dept._id, fields);
                   mergeEntities('departments', { [dept._id]: { ...dept, ...fields } });
@@ -146,17 +156,53 @@ export default function DepartmentManagement() {
   );
 }
 
-function DeptForm({ initial, users, scopes, deptMembers, onMemberChange, onSave, onCancel }) {
+function DeptForm({ initial, users, scopes, deptMembers, departments, currentDeptId, onMemberChange, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || '');
   const [supervisor, setSupervisor] = useState(initial?.supervisor || '');
   const [division, setDivision] = useState(initial?.division || '');
   const [scopeId, setScopeId] = useState(initial?.department_scope_id || '');
   const [saving, setSaving] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
   const canSubmit = name.trim() && supervisor && !saving;
 
-  const currentMemberIds = new Set((deptMembers || []).map((m) => m.id));
-  const unassigned = users.filter((u) => !u.department_id || currentMemberIds.has(u.id));
+  // Defensive coercion: callers occasionally pass `{}` (no members) instead
+  // of `[]`. Without this guard, `.map()` crashes the whole admin page.
+  const members = Array.isArray(deptMembers) ? deptMembers : [];
+  const currentMemberIds = new Set(members.map((m) => m.id));
+
+  // Resolve a user's current department NAME for the picker chip. Returns
+  // null when the user is unassigned. Uses `departments` (the live store
+  // collection) so renames flow through without a refresh.
+  const deptNameById = useMemo(() => {
+    const map = {};
+    (departments || []).forEach((d) => { if (d?.id) map[d.id] = d.name || '—'; });
+    return map;
+  }, [departments]);
+
+  // The picker shows EVERY active user except the ones already in this
+  // department (they're rendered as removable pills above). For users in
+  // OTHER departments we surface the current assignment as a chip so the
+  // admin can see what they'd be reassigning — checking the box moves
+  // them here (handleMemberChange writes the new department_id either way).
+  // Sort: unassigned first, then alphabetical.
+  const pickerCandidates = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    const matches = (u) => {
+      if (!q) return true;
+      const full = `${u.first_name || ''} ${u.last_name || ''} ${u.email || ''}`.toLowerCase();
+      return full.includes(q);
+    };
+    return users
+      .filter((u) => !currentMemberIds.has(u.id) && matches(u))
+      .sort((a, b) => {
+        const aUn = !a.department_id;
+        const bUn = !b.department_id;
+        if (aUn !== bUn) return aUn ? -1 : 1;
+        return (a.first_name || '').localeCompare(b.first_name || '');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users, currentMemberIds, memberSearch]);
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -213,16 +259,16 @@ function DeptForm({ initial, users, scopes, deptMembers, onMemberChange, onSave,
       {initial && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <label style={{ ...lbl, marginBottom: 0 }}>Members ({(deptMembers || []).length})</label>
+            <label style={{ ...lbl, marginBottom: 0 }}>Members ({members.length})</label>
             <button onClick={() => setShowMembers((v) => !v)} style={{ fontSize: 11.5, fontWeight: 600, color: palette.primaryMagenta.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               {showMembers ? 'Hide' : 'Manage members'}
             </button>
           </div>
 
           {/* Current member pills */}
-          {(deptMembers || []).length > 0 && (
+          {members.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: showMembers ? 10 : 0 }}>
-              {(deptMembers || []).map((m) => (
+              {members.map((m) => (
                 <span key={m.id} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 20, background: hexToRgba(palette.primaryDeepPlum.hex, 0.07), color: palette.primaryDeepPlum.hex, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                   {m.first_name} {m.last_name}
                   <button onClick={() => onMemberChange?.(m.id, false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: hexToRgba(palette.primaryMagenta.hex, 0.7), fontSize: 12, fontWeight: 800, padding: 0, lineHeight: 1 }} title="Remove">×</button>
@@ -233,20 +279,56 @@ function DeptForm({ initial, users, scopes, deptMembers, onMemberChange, onSave,
 
           {/* Add members dropdown */}
           {showMembers && (
-            <div style={{ maxHeight: 200, overflowY: 'auto', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.03), padding: '4px 0' }}>
-              {users.filter((u) => !u.department_id && !currentMemberIds.has(u.id)).length === 0 ? (
-                <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), padding: '12px 14px', fontStyle: 'italic' }}>All active team members are already in a department.</p>
-              ) : (
-                users.filter((u) => !u.department_id && !currentMemberIds.has(u.id)).map((u) => (
-                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 14px', cursor: 'pointer', transition: 'background 0.1s' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05))}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                    <input type="checkbox" checked={false} onChange={() => onMemberChange?.(u.id, true)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, cursor: 'pointer' }} />
-                    <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{u.first_name} {u.last_name}</span>
-                    {u.email && <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.3), marginLeft: 'auto' }}>{u.email}</span>}
-                  </label>
-                ))
-              )}
+            <div style={{ borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.03), padding: '6px 0' }}>
+              {/* Search filter — useful once a team gets large. */}
+              <div style={{ padding: '4px 10px 8px' }}>
+                <input
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Search by name or email…"
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: 'none', background: palette.backgroundLight.hex, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', color: palette.backgroundDark.hex }}
+                />
+              </div>
+
+              <p style={{ fontSize: 10.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '0 14px 6px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {pickerCandidates.length === 0 ? 'No matches' : `${pickerCandidates.length} ${pickerCandidates.length === 1 ? 'person' : 'people'} — check to add (will reassign from current dept)`}
+              </p>
+
+              <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                {pickerCandidates.length === 0 ? (
+                  <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), padding: '8px 14px 12px', fontStyle: 'italic' }}>
+                    {memberSearch.trim()
+                      ? 'No active team members match that search.'
+                      : 'Every active team member is already in this department.'}
+                  </p>
+                ) : (
+                  pickerCandidates.map((u) => {
+                    const currentDeptName = u.department_id && u.department_id !== currentDeptId
+                      ? (deptNameById[u.department_id] || 'Other dept')
+                      : null;
+                    return (
+                      <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 14px', cursor: 'pointer', transition: 'background 0.1s' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05))}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                        <input type="checkbox" checked={false} onChange={() => onMemberChange?.(u.id, true)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
+                        <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{u.first_name} {u.last_name}</span>
+                        {currentDeptName && (
+                          <span title={`Currently in ${currentDeptName} — checking the box will reassign to this department.`}
+                            style={{ fontSize: 10, fontWeight: 650, padding: '2px 7px', borderRadius: 20, background: hexToRgba(palette.accentOrange.hex, 0.13), color: palette.accentOrange.hex, letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                            {currentDeptName}
+                          </span>
+                        )}
+                        {!u.department_id && (
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20, background: hexToRgba(palette.backgroundDark.hex, 0.06), color: hexToRgba(palette.backgroundDark.hex, 0.5), letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+                            Unassigned
+                          </span>
+                        )}
+                        {u.email && <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.3), marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{u.email}</span>}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
           )}
         </div>

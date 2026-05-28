@@ -105,6 +105,25 @@ const t = {
     type: 'multipleSelects',
     options: { choices: choices.map((c) => ({ name: c })) },
   }),
+  // multipleRecordLinks. `linkedTableName` is resolved to a table id at apply
+  // time so we don't have to hard-code Airtable's tblXXX values into source.
+  // `singleLink` mirrors `prefersSingleRecordLink` for parity with how the
+  // UI surfaces the field (true ⇒ one chip / link per row).
+  // NOTE on the Meta-API quirks for multipleRecordLinks on field creation:
+  // The endpoint accepts ONLY `linkedTableId` in `options` — every other
+  // option (`isReversed`, `prefersSingleRecordLink`, `inverseLinkFieldId`)
+  // triggers `INVALID_FIELD_TYPE_OPTIONS_FOR_CREATE`. Airtable will manage
+  // those internally; if a single-link preference is needed, set it via
+  // the UI (the API does not expose it on create or patch as of 2026-05).
+  // We keep the `singleLink` arg in the signature so callers can document
+  // intent at the call site even though it's not applied at creation.
+  // eslint-disable-next-line no-unused-vars
+  link: (name, linkedTableName, { singleLink = true } = {}) => ({
+    name,
+    type: 'multipleRecordLinks',
+    __linkedTableName: linkedTableName,
+    options: {},
+  }),
 };
 
 // ---------- Enums / constants ----------
@@ -302,6 +321,51 @@ const DESIRED_TABLES = [
       t.dateTime('updated_at'),
     ],
   },
+  // ── ClinicalReview (2026-05-27) ───────────────────────────────────────────
+  // One row per referral capturing the Clinical Intake RN's pre-confirmation
+  // checklist responses + working decision/auth-required state. The final
+  // immutable accept/conditional decision still lives on
+  // `Referrals.clinical_review_decision`; this table holds the in-progress
+  // working state so a user can step away and resume without losing work.
+  // Column names mirror the UI keys in src/data/clinicalChecklist.js — keep
+  // the two in lock-step.
+  {
+    name: 'ClinicalReview',
+    description: 'Per-referral RN checklist responses + working decision state.',
+    fields: [
+      t.text('id'), // primary
+      t.link('referral_id', 'Referrals'),
+      t.longText('reviewed_by'),
+      t.single('decision', ['accept', 'conditional']),
+      t.check('auth_required'),
+      // Checklist columns — must stay in sync with CLINICAL_CHECKLIST in
+      // src/data/clinicalChecklist.js. Adding a new item: add it there with
+      // a matching dbField, append the corresponding t.check below, and
+      // re-run `npm run schema:apply`.
+      t.check('dx_reviewed'),
+      t.check('comorbidities'),
+      t.check('hospitalization'),
+      t.check('skilled_need'),
+      t.check('homebound'),
+      t.check('physician_cert'),
+      t.check('medical_necessity'),
+      t.check('med_list'),
+      t.check('high_risk_meds'),
+      t.check('allergies'),
+      t.check('safety_risks'),
+      t.check('loc_sn'),
+      t.check('loc_pt'),
+      t.check('loc_ot'),
+      t.check('loc_st'),
+      t.check('loc_hha'),
+      t.check('risk_high'),
+      t.check('risk_moderate'),
+      t.check('risk_low'),
+      t.check('soc_timeframe'),
+      t.check('scheduling_needs'),
+      t.check('clinician_match'),
+    ],
+  },
 ];
 
 const DESIRED_NEW_FIELDS = {
@@ -404,6 +468,22 @@ const DESIRED_NEW_FIELDS = {
     t.text('cm_fax'),
     t.email('cm_email'),
   ],
+
+  // ── EligibilityVerifications.insurance_id repair (2026-05-27) ────────────
+  // The legacy `insurance_id` multipleRecordLinks field on this table was
+  // wired to `PatientInsurancePlans` (an older catalog table), but every
+  // caller now writes from `PatientInsurances` (the canonical patient
+  // insurance table). Airtable rejects those writes with:
+  //   Record ID rec... belongs to table tblg7s0UuWsN99367,
+  //   but the field links to table tblBGbuHgt54oaDbS
+  // We can't relink an existing field via the Meta API, so we add a NEW
+  // canonical link field — `patient_insurance_id` → PatientInsurances —
+  // and switch all reads/writes to it. The old field is left in place so
+  // any historical rows referenced from the legacy table remain readable;
+  // new writes ignore it.
+  EligibilityVerifications: [
+    t.link('patient_insurance_id', 'PatientInsurances'),
+  ],
 };
 
 // NOTE: Airtable's Meta API does NOT allow updating singleSelect choices via PATCH
@@ -452,14 +532,58 @@ async function fetchSchema() {
   return res.json();
 }
 
-async function createTable(def) {
+async function createTable(def, byNameSnapshot) {
+  // Strip / resolve any link fields the same way `createField` does so that
+  // link columns declared in the initial table definition aren't sent with
+  // an unresolved `__linkedTableName` (Airtable rejects with INVALID_REQUEST).
+  // Also remove any fields where the linked table doesn't exist YET — those
+  // will be re-attempted in the "Adding fields" step after every base table
+  // has been created.
+  const resolvedFields = [];
+  for (const f of def.fields) {
+    if (f.__linkedTableName) {
+      const linked = byNameSnapshot?.[f.__linkedTableName];
+      if (!linked) {
+        // Defer: linked table doesn't exist yet, add later via createField.
+        continue;
+      }
+      // eslint-disable-next-line no-unused-vars
+      const { __linkedTableName, ...rest } = f;
+      resolvedFields.push({
+        ...rest,
+        options: { ...(rest.options || {}), linkedTableId: linked.id },
+      });
+    } else {
+      resolvedFields.push(f);
+    }
+  }
+  const body = { ...def, fields: resolvedFields };
   console.log(`  + creating table: ${def.name}`);
-  return api('POST', `${META}/tables`, def);
+  return api('POST', `${META}/tables`, body);
 }
 
-async function createField(tableId, def) {
-  console.log(`    + adding field: ${def.name} (${def.type})`);
-  return api('POST', `${META}/tables/${tableId}/fields`, def);
+async function createField(tableId, def, byNameSnapshot) {
+  // Resolve `__linkedTableName` → `options.linkedTableId` from the current
+  // schema snapshot. Done here (not at definition time) so we don't have
+  // to hard-code Airtable tblXXX ids into source. Internal fields prefixed
+  // with `__` are stripped from the outgoing body.
+  let body = def;
+  if (def.__linkedTableName) {
+    const linkedTable = byNameSnapshot?.[def.__linkedTableName];
+    if (!linkedTable) {
+      throw new Error(
+        `createField: linkedTableName="${def.__linkedTableName}" not found for ${def.name}`,
+      );
+    }
+    // eslint-disable-next-line no-unused-vars
+    const { __linkedTableName, ...rest } = def;
+    body = {
+      ...rest,
+      options: { ...(rest.options || {}), linkedTableId: linkedTable.id },
+    };
+  }
+  console.log(`    + adding field: ${body.name} (${body.type})`);
+  return api('POST', `${META}/tables/${tableId}/fields`, body);
 }
 
 /**
@@ -555,7 +679,7 @@ async function main() {
       console.log(`  = table exists: ${def.name}`);
       continue;
     }
-    await createTable(def);
+    await createTable(def, byName());
   }
 
   if (!DRY_RUN) schema = await fetchSchema();
@@ -566,14 +690,15 @@ async function main() {
     ...Object.fromEntries(DESIRED_TABLES.map((d) => [d.name, d.fields.slice(1)])), // skip primary
     ...DESIRED_NEW_FIELDS,
   };
+  const nameIndex = byName();
   for (const [tableName, fields] of Object.entries(allFieldTargets)) {
-    const table = byName()[tableName];
+    const table = nameIndex[tableName];
     if (!table) { console.log(`  ! table not found: ${tableName} (skipping)`); continue; }
     const existingNames = new Set(table.fields.map((f) => f.name));
     console.log(`  -> ${tableName}`);
     for (const f of fields) {
       if (existingNames.has(f.name)) continue;
-      await createField(table.id, f);
+      await createField(table.id, f, nameIndex);
     }
   }
 

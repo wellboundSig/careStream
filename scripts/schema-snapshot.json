@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-05-27T15:48:59.228Z",
+  "fetchedAt": "2026-05-27T16:24:32.498Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -1982,6 +1982,17 @@
           "id": "fldxe8r0J4Xd6MfVh",
           "name": "urgent_care_note",
           "type": "multilineText"
+        },
+        {
+          "id": "fldkcOktcXTIimidx",
+          "name": "ClinicalReview",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbl411ASyzmUCB9aB",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldTgVBYurjEYvhyc"
+          }
         }
       ]
     },
@@ -5913,6 +5924,17 @@
             "prefersSingleRecordLink": false,
             "inverseLinkFieldId": "fldqG8SQajWEYpa5t"
           }
+        },
+        {
+          "id": "fldXYaf7MWRVLzhqi",
+          "name": "EligibilityVerifications",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblkwkBM1rEIPd7uN",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldVxV9sbzdxEyUSO"
+          }
         }
       ]
     },
@@ -6273,6 +6295,17 @@
               "format": "HH:mm"
             },
             "timeZone": "utc"
+          }
+        },
+        {
+          "id": "fldVxV9sbzdxEyUSO",
+          "name": "patient_insurance_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblg7s0UuWsN99367",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldXYaf7MWRVLzhqi"
           }
         }
       ]
@@ -7706,6 +7739,260 @@
           "id": "fldFMtRPqcw7Aotfl",
           "name": "entity_name",
           "type": "multilineText"
+        }
+      ]
+    },
+    {
+      "id": "tbl411ASyzmUCB9aB",
+      "name": "ClinicalReview",
+      "primaryFieldId": "fldc0jWV2m4sggUfr",
+      "fields": [
+        {
+          "id": "fldc0jWV2m4sggUfr",
+          "name": "id",
+          "type": "singleLineText"
+        },
+        {
+          "id": "fldTgVBYurjEYvhyc",
+          "name": "referral_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbloxB8jeC1LQThDe",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldkcOktcXTIimidx"
+          }
+        },
+        {
+          "id": "fldEO76MJUyIwSypk",
+          "name": "reviewed_by",
+          "type": "multilineText"
+        },
+        {
+          "id": "fld1PqtjVgI333wYi",
+          "name": "decision",
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selqiVVUARhVZ1xmg",
+                "name": "accept",
+                "color": "grayLight2"
+              },
+              {
+                "id": "selJu32cw0L1ta5EH",
+                "name": "conditional",
+                "color": "grayLight2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "fldu5TZ27DCWYWDYT",
+          "name": "auth_required",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldCoWxMyJXJ9OQFE",
+          "name": "dx_reviewed",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldWNt1odTuC16TQy",
+          "name": "comorbidities",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldxW1WJGCMphOKDw",
+          "name": "hospitalization",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fld5TFZOtb6nmncRe",
+          "name": "skilled_need",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldfxOUrGqlRMUnNk",
+          "name": "homebound",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldl8Uuk2RnOH0QK4",
+          "name": "physician_cert",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fld4hRAjTonjM5mru",
+          "name": "medical_necessity",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldRIVzWIhfjPUpbA",
+          "name": "med_list",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldLGDOh05ujxli3L",
+          "name": "high_risk_meds",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldnFU7vAb7Fh3OFI",
+          "name": "allergies",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldCDp64996vVM5Eh",
+          "name": "safety_risks",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldd9nVQytR7kH3CB",
+          "name": "loc_sn",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldDuKfCXh4WNYOk3",
+          "name": "loc_pt",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldBzSU87goAa9GFA",
+          "name": "loc_ot",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldvFgPvztoezL9JJ",
+          "name": "loc_st",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fld19a6PZ4vZErQGf",
+          "name": "loc_hha",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fld5Kq9IzvBvqVh6S",
+          "name": "risk_high",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldjGtfWH1U0TkEMQ",
+          "name": "risk_moderate",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldPbIeC2mvNQic5x",
+          "name": "risk_low",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldPM6g9LSBNPsJEm",
+          "name": "soc_timeframe",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldx02Rx6BeQSfJvL",
+          "name": "scheduling_needs",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldXzPRoi5EgLNfDl",
+          "name": "clinician_match",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "greenBright"
+          }
         }
       ]
     }
