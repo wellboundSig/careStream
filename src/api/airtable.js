@@ -66,7 +66,7 @@ async function fetchOne(tableName, recordId) {
   return res.json();
 }
 
-async function create(tableName, fields) {
+async function create(tableName, fields, { silent = false } = {}) {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
     method: 'POST',
     headers: { ...authHeader(), 'Content-Type': 'application/json' },
@@ -75,15 +75,19 @@ async function create(tableName, fields) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = err?.error?.message || 'Create failed';
-    try {
-      // eslint-disable-next-line no-console
-      console.error('[airtable.create] failed', {
-        table: tableName,
-        status: res.status,
-        airtableError: err?.error || err,
-        fields,
-      });
-    } catch {}
+    // `silent` lets callers that expect-and-handle a failure (e.g. the audit
+    // log retrying without select-locked fields) skip the scary console noise.
+    if (!silent) {
+      try {
+        // eslint-disable-next-line no-console
+        console.error('[airtable.create] failed', {
+          table: tableName,
+          status: res.status,
+          airtableError: err?.error || err,
+          fields,
+        });
+      } catch {}
+    }
     const error = new Error(`[${tableName}] ${msg}`);
     error.airtable = err?.error || err;
     error.table = tableName;

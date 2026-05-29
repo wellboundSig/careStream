@@ -31,18 +31,21 @@ export const getActivityByPatient = (patientId, limit = 100) =>
 /**
  * Record an action to the audit log.
  *
- * NOTE: ActivityLog's actor_id / patient_id / referral_id are currently
- * `singleSelect` fields with a fixed allowlist of legacy ids in Airtable.
- * Sending a NEW id (e.g. `pat_<timestamp>_<rand>`) would trigger a 422
- * "Insufficient permissions to create new select option" because our token
- * cannot create new select options. To avoid that breaking user actions:
- *  1. We attempt the audit write with full context first.
- *  2. If Airtable rejects it because of a select-option permission issue,
- *     we retry once with the offending select fields stripped, so the
- *     audit row is still created with `action`, `detail`, and `metadata`.
- *  3. Audit failures NEVER throw — user-facing operations should not be
- *     blocked by an audit log schema mismatch. The full payload is folded
- *     into `metadata` so the data is recoverable later.
+ * ActivityLog's actor_id / patient_id / referral_id are meant to be plain
+ * TEXT columns (the rest of the app stores ids as text — see the insurance
+ * consolidation work). Some bases still have them as legacy `singleSelect`
+ * fields with a fixed allowlist; sending a new id (e.g. `pat_<ts>_<rand>`)
+ * there returns 422 `INVALID_MULTIPLE_CHOICE_OPTIONS` because our token can't
+ * mint new select options.
+ *
+ * Strategy (resilient to either schema, never blocks the user):
+ *  1. Attempt the full write WITH the id columns, silently — if those columns
+ *     are text (the desired end state) this succeeds and the ids land in
+ *     their own columns.
+ *  2. If it fails for ANY reason, retry once with the id columns stripped.
+ *     The ids are always also folded into `metadata`, so nothing is lost.
+ *  3. Audit failures NEVER throw — a logging hiccup must not break the
+ *     user-facing action that triggered it.
  *
  * @param {object} entry
  * @param {string} entry.actorUserId       Required — who performed the action
@@ -59,40 +62,33 @@ export async function recordActivity(entry) {
     ...(entry.referralId ? { referralId: entry.referralId } : {}),
     ...(entry.actorUserId ? { actorUserId: entry.actorUserId } : {}),
   };
+  const metadataJson = JSON.stringify(baseMetadata);
+
+  // Text-only row that always writes regardless of the id-column types.
+  const reducedFields = {
+    action:    entry.action,
+    timestamp: new Date().toISOString(),
+    ...(entry.detail && { detail: entry.detail }),
+    metadata:  metadataJson,
+  };
 
   const fullFields = {
-    actor_id:    entry.actorUserId,
-    action:      entry.action,
-    timestamp:   new Date().toISOString(),
-    ...(entry.patientId  && { patient_id:  entry.patientId  }),
-    ...(entry.referralId && { referral_id: entry.referralId }),
-    ...(entry.detail     && { detail:      entry.detail     }),
-    metadata:    JSON.stringify(baseMetadata),
+    ...reducedFields,
+    ...(entry.actorUserId && { actor_id:    entry.actorUserId }),
+    ...(entry.patientId   && { patient_id:  entry.patientId   }),
+    ...(entry.referralId  && { referral_id: entry.referralId  }),
   };
 
   try {
-    return await airtable.create(TABLE, fullFields);
-  } catch (err) {
-    const isSelectOptionIssue = /Insufficient permissions to create new select option/i
-      .test(err?.airtable?.message || err?.message || '');
-    if (!isSelectOptionIssue) {
-      // eslint-disable-next-line no-console
-      console.warn('[recordActivity] audit write failed (non-fatal):', err?.message || err);
-      return null;
-    }
-    // Retry without the single-select-locked fields. The original ids are
-    // preserved inside `metadata` so we don't lose any context.
-    const reducedFields = {
-      action:    entry.action,
-      timestamp: new Date().toISOString(),
-      ...(entry.detail && { detail: entry.detail }),
-      metadata:  JSON.stringify(baseMetadata),
-    };
+    // Silent: a failure here is expected on bases where the id columns are
+    // still legacy selects, and is fully handled by the retry below.
+    return await airtable.create(TABLE, fullFields, { silent: true });
+  } catch {
     try {
       return await airtable.create(TABLE, reducedFields);
     } catch (err2) {
       // eslint-disable-next-line no-console
-      console.warn('[recordActivity] audit retry also failed (non-fatal):', err2?.message || err2);
+      console.warn('[recordActivity] audit write failed (non-fatal):', err2?.message || err2);
       return null;
     }
   }

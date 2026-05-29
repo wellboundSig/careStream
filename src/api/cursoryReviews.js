@@ -85,38 +85,62 @@ export const getCursoryReviewsByReferral = (referralRecordId) =>
 export const createCursoryReview = (fields) => airtable.create(TABLE, normaliseFields(fields));
 export const updateCursoryReview = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
 
+/** Oldest row wins as the canonical one (stable across saves). */
+function pickCanonical(records) {
+  return [...records].sort((a, b) => {
+    const at = new Date(a.fields?.created_at || a.createdTime || 0).getTime();
+    const bt = new Date(b.fields?.created_at || b.createdTime || 0).getTime();
+    if (at !== bt) return at - bt;
+    return String(a.id).localeCompare(String(b.id));
+  })[0];
+}
+
 /**
- * Upsert the CursoryReview for a referral. If a row already exists, update
- * it; otherwise create one. This preserves the invariant that there is at
- * most one CursoryReview per referral, which keeps audit simple.
+ * Upsert the CursoryReview for a referral, enforcing one row per referral.
+ *
+ * Idempotency + self-heal: if the lookup finds MORE than one row (a legacy
+ * duplicate set from the old racing-create bug), we update the canonical
+ * (oldest) row and best-effort delete the extras so the data collapses back
+ * to a single row. Deletes are non-fatal — the read hook merges duplicates
+ * defensively in the meantime.
  *
  * @param {object} input
  * @param {string} input.referralRecordId  Airtable rec id of the Referral
  * @param {object} input.checkedUiKeys     UI-keyed map { f2f_doc_present: true, ... }
  * @param {string} [input.reviewedBy]      User business id (reviewed_by is multilineText in Airtable)
- * @param {string} [input.existingId]      If known, skips the lookup query
+ * @param {string} [input.existingId]      Canonical row id, if known (still de-dupes others)
  * @returns {Promise<{ id: string, fields: object }>}
  */
 export async function upsertCursoryReview({ referralRecordId, checkedUiKeys, reviewedBy, existingId }) {
   if (!referralRecordId) throw new Error('upsertCursoryReview: referralRecordId required');
 
-  const payload = {
+  const payload = normaliseFields({
     ...uiToDbFields(checkedUiKeys),
     referral_id: referralRecordId,
     ...(reviewedBy ? { reviewed_by: reviewedBy } : {}),
-  };
+  });
 
-  if (existingId) {
-    return airtable.update(TABLE, existingId, normaliseFields(payload));
-  }
-
+  // Always resolve the full row set so we can heal duplicates regardless of
+  // whether the caller handed us an existingId.
   const existing = await getCursoryReviewsByReferral(referralRecordId).catch(() => []);
-  if (existing.length > 0) {
-    return airtable.update(TABLE, existing[0].id, normaliseFields(payload));
+
+  if (existing.length === 0) {
+    // No row yet (and none in flight we can see) — create the single row.
+    return airtable.create(TABLE, normaliseFields({
+      id: `cr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      ...payload,
+    }));
   }
 
-  return airtable.create(TABLE, normaliseFields({
-    id: `cr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-    ...payload,
-  }));
+  // Choose the canonical row: caller's hint if it's still present, else oldest.
+  const canonical = existing.find((r) => r.id === existingId) || pickCanonical(existing);
+  const result = await airtable.update(TABLE, canonical.id, payload);
+
+  // Self-heal: remove any other rows for this referral.
+  const extras = existing.filter((r) => r.id !== canonical.id);
+  if (extras.length > 0) {
+    await Promise.allSettled(extras.map((r) => airtable.remove(TABLE, r.id)));
+  }
+
+  return result;
 }

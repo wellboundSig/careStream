@@ -34,18 +34,39 @@ export function useCursoryReview(referralRecordId) {
   const { appUserId } = useCurrentAppUser();
   const cursoryReviews = useCareStore((s) => s.cursoryReviews);
 
-  // Locate the existing CursoryReview row for this referral.
-  const existingRow = useMemo(() => {
-    if (!referralRecordId) return null;
+  // Collect EVERY CursoryReview row for this referral. The table is meant to
+  // hold one row per referral, but rapid checkbox toggling historically raced
+  // upsert into creating several partial-snapshot rows. We tolerate that here
+  // so a stray incomplete row can never hide a finished review.
+  const matchingRows = useMemo(() => {
+    if (!referralRecordId) return [];
+    const rows = [];
     for (const row of Object.values(cursoryReviews || {})) {
       const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
-      if (link === referralRecordId) return row;
+      if (link === referralRecordId) rows.push(row);
     }
-    return null;
+    return rows;
   }, [cursoryReviews, referralRecordId]);
 
-  // Derived UI-keyed checked map.
-  const serverChecked = useMemo(() => dbToUiFields(existingRow), [existingRow]);
+  // Canonical row = the oldest (lowest created_at, else stable record id).
+  // upsert writes/heals against this one so duplicates collapse over time.
+  const existingRow = useMemo(() => {
+    if (matchingRows.length === 0) return null;
+    return [...matchingRows].sort((a, b) => {
+      const at = new Date(a.created_at || 0).getTime();
+      const bt = new Date(b.created_at || 0).getTime();
+      if (at !== bt) return at - bt;
+      return String(a._id).localeCompare(String(b._id));
+    })[0];
+  }, [matchingRows]);
+
+  // Derived UI-keyed checked map — the UNION of every matching row, so the
+  // completed state is whatever the reviewer ever checked across all rows.
+  const serverChecked = useMemo(() => {
+    const merged = {};
+    for (const row of matchingRows) Object.assign(merged, dbToUiFields(row));
+    return merged;
+  }, [matchingRows]);
 
   // Local working state — seeded from server. Keyed by UI keys, e.g.
   // { f2f_doc_present: true, patient_name_match: false }
