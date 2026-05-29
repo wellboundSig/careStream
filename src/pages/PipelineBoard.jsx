@@ -5,6 +5,7 @@ import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordTransition } from '../utils/recordTransition.js';
+import { applyStageEntryEffects } from '../utils/stageEntryEffects.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
@@ -153,6 +154,13 @@ export default function PipelineBoard() {
     if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
     if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     if (wasIntercepted && note) updateFields.ntuc_reason = note;
+
+    Object.assign(updateFields, applyStageEntryEffects({
+      referral,
+      fromStage,
+      toStage: effectiveStage,
+      actorUserId: appUserId,
+    }));
 
     updateReferralOptimistic(referral._id, updateFields).catch(() => {
       showToast(`Failed to move ${referral.patientName || referral.patient_id} — reverted`, 'error');

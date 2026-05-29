@@ -52,6 +52,7 @@ import {
 import { suggestNar } from '../../../data/policies/authorizationPolicies.js';
 import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
 import { generateConflictId } from '../../../utils/conflictFlagging.js';
+import { recordTransition } from '../../../utils/recordTransition.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
 import { tokens, inputStyle, primaryBtn, secondaryBtn, smallActionBtn, sectionHeading, cardStyle, STATUS_PILL_MAP } from './workspaceStyles.js';
@@ -87,7 +88,12 @@ export default function EligibilityWorkspace({
     legacyChecks,
     authorizations,
     disenrollFlags,
-  } = useEligibilityData({ patient, patientId: patient?.id, referralId: referral?.id });
+  } = useEligibilityData({
+    patient,
+    patientId: patient?.id,
+    referralId: referral?.id,
+    recheckRequestedAt: referral?.eligibility_recheck_requested_at,
+  });
 
   const [conflictModal,  setConflictModal]  = useState(null);
   const [disenrollModal, setDisenrollModal] = useState(null);
@@ -256,16 +262,33 @@ export default function EligibilityWorkspace({
               onClick={async () => {
                 if (eligibilityCompleted || !referral?._id) return;
                 const now = new Date().toISOString();
+                const fromStage = referral.current_stage;
+                const isRecheck = fromStage === 'Eligibility Verification';
+                const returnStage = referral.eligibility_recheck_return_stage || 'Clinical Intake RN Review';
                 const fields = {
                   eligibility_completed_at: now,
                   eligibility_completed_by_id: appUserId || 'unknown',
+                  // Resolving a re-check clears its markers so the gate releases.
+                  ...(isRecheck ? { eligibility_recheck_requested_at: '', eligibility_recheck_return_stage: '' } : {}),
                 };
                 try {
                   if (clinicalReviewDone) {
-                    // LIFO trigger — flip stage to Staffing and apply our
-                    // completion fields alongside.
+                    // Both eligibility + clinical complete — LIFO flip to Staffing.
                     onInitiateTransition?.(referral, 'Staffing Feasibility');
                     updateReferralOptimistic(referral._id, fields).catch(() => {});
+                  } else if (isRecheck) {
+                    // Re-check completed but clinical not yet done — return the
+                    // patient to the stage they came from when the re-check was
+                    // requested (system move; bypasses the edge list by design).
+                    fields.current_stage = returnStage;
+                    await updateReferralOptimistic(referral._id, fields);
+                    recordTransition({
+                      referral,
+                      fromStage,
+                      toStage: returnStage,
+                      note: '[Eligibility re-check completed]',
+                      authorId: appUserId,
+                    });
                   } else {
                     await updateReferralOptimistic(referral._id, fields);
                   }
@@ -276,7 +299,9 @@ export default function EligibilityWorkspace({
                     referralId: referral?.id,
                     detail: clinicalReviewDone
                       ? 'Eligibility completed — patient flipped to Staffing Feasibility (LIFO trigger).'
-                      : 'Eligibility completed — awaiting Clinical RN completion.',
+                      : isRecheck
+                        ? `Eligibility re-check completed — returned to ${returnStage}.`
+                        : 'Eligibility completed — awaiting Clinical RN completion.',
                   });
                   triggerDataRefresh();
                 } catch (err) {

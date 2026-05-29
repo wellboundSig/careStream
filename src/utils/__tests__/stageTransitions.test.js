@@ -85,6 +85,12 @@ describe('canMoveFromTo (existing behavior preserved)', () => {
     expect(canMoveFromTo('Intake', 'Hold')).toBe(true);
     expect(canMoveFromTo('Conflict', 'Hold')).toBe(true);
   });
+
+  it('allows Intake → Clinical Intake RN Review (push to Clinical RN leaves Intake)', () => {
+    // 2026-05-29: pushing to Clinical RN now moves the patient out of Intake,
+    // so the edge must exist for pipeline/context-menu moves too.
+    expect(canMoveFromTo('Intake', 'Clinical Intake RN Review')).toBe(true);
+  });
 });
 
 describe('needsModal (NTUC always requires modal)', () => {

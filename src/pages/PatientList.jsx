@@ -7,6 +7,7 @@ import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 import { updateReferral } from '../api/referrals.js';
 import { recordTransition } from '../utils/recordTransition.js';
+import { applyStageEntryEffects } from '../utils/stageEntryEffects.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
@@ -199,6 +200,7 @@ export default function PatientList() {
     resolveSource,
     resolveFacility,
     resolvePhysician,
+    resolveUser,
     resolveEntity = (id) => id || '—',
   } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
@@ -446,6 +448,14 @@ export default function PatientList() {
     if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
     if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     if (wasIntercepted && note) updateFields.ntuc_reason = note;
+
+    Object.assign(updateFields, applyStageEntryEffects({
+      referral,
+      fromStage,
+      toStage: effectiveStage,
+      actorUserId: appUserId,
+      resolveUserName: resolveUser,
+    }));
     try {
       await updateReferral(referral._id, updateFields);
       recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });

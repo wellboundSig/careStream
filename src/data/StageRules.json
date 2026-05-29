@@ -46,6 +46,7 @@
       "gridRow": 0,
       "gridCol": 1,
       "canMoveTo": [
+        "Clinical Intake RN Review",
         "Eligibility Verification",
         "F2F/MD Orders Pending",
         "OPWDD Enrollment",
@@ -57,7 +58,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Patient is pushed concurrently to Clinical RN once the first four are done; leaves Intake when pushed to Eligibility Verification."
+      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Completing the cursory review and pushing to Clinical RN moves the patient to Clinical Intake RN Review (it leaves Intake). Eligibility is completed concurrently from the patient drawer."
     },
 
     "Eligibility Verification": {

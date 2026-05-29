@@ -6,7 +6,6 @@ import { updateReferral } from '../../api/referrals.js';
 import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
 import { updateReferralOptimistic } from '../../store/mutations.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
-import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { recordTransition } from '../../utils/recordTransition.js';
@@ -455,18 +454,23 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
   // member ID), not from legacy InsuranceChecks rows. We still subscribe to
   // `insuranceCheckStore` above to keep the store hydrated for the
   // Eligibility module surfaces, but this panel no longer reads from it.
+  // Eligibility itself is completed concurrently from the patient drawer, so
+  // the Intake panel no longer gates a forward button on insurance details.
   void insuranceCheckStore;
-  const intakeInsuranceComplete = hasInsuranceDetails(selectedReferral?.patient);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate] = useState('');
   const [saving, setSaving] = useState(false);
-  const [reviewChecked, setReviewChecked] = useState({});
+
+  // Cursory review is persisted via the shared CursoryReview hook (same one
+  // the F2F module panel + drawer F2F tab use), so the checklist reflects
+  // work already done — regardless of which module the referral lives in.
+  // This is the "did the work happen" model, not a "what stage is it in" one.
+  const { checked: reviewChecked, toggle: toggleReview } = useCursoryReview(selectedReferral?._id);
 
   useEffect(() => {
     setShowDatePicker(false);
     setReceivedDate('');
-    setReviewChecked({});
   }, [selectedReferral?._id]);
 
   const reviewComplete = isF2FChecklistComplete(reviewChecked);
@@ -579,7 +583,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                 </PanelSection>
               )}
 
-              {isF2F && (
+              {(isF2F || selectedReferral.f2f_date) && (
               <PanelSection title="Document Review">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
@@ -590,7 +594,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                 </div>
                 {F2F_REVIEW_CHECKLIST.map((item) => (
                   <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => setReviewChecked((prev) => ({ ...prev, [item.key]: !prev[item.key] }))} style={{ accentColor: palette.accentGreen.hex, width: 12, height: 12, flexShrink: 0 }} />
+                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 12, height: 12, flexShrink: 0 }} />
                     <span style={{ fontSize: 11.5, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
                       {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
                     </span>
@@ -613,15 +617,16 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
             </>
           )}
 
-          {/* Final forward button — Push to Eligibility. Only relevant once
-              Clinical RN has been pushed AND Insurance Details are collected. */}
-          <PushToEligibilityAction
-            referral={selectedReferral}
-            insuranceComplete={intakeInsuranceComplete}
-            onOpenTriage={() => onOpenTriage?.(selectedReferral)}
-            onInitiateTransition={onInitiateTransition}
-            isSN={isSN}
-          />
+          {/* Forward movement out of Intake happens via "Push to Clinical RN"
+              (above, under the cursory review) — that's what leaves Intake now.
+              Eligibility is completed concurrently from the patient drawer, so
+              there is no linear "Push to Eligibility" button here anymore. SN
+              referrals still get a quick link to the triage form. */}
+          {isSN && (
+            <PanelSection title="Actions">
+              <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />
+            </PanelSection>
+          )}
         </>
       )}
     </Panel>
@@ -633,21 +638,30 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
 // checked. Other readiness gates (demographics / triage) are surfaced as
 // status dots in the PatientSnapshot above; this button intentionally only
 // cares about the cursory review per the 2026-05-20 UX spec.
+//
+// Behaviour (2026-05-29): pushing to Clinical RN now MOVES the patient out of
+// Intake — `current_stage` becomes 'Clinical Intake RN Review'. Intake's work
+// is done once the cursory review is in and the push fires, so the referral
+// should not linger in the Intake module. Eligibility is completed
+// concurrently from the patient drawer at any stage; the LIFO rule still flips
+// the patient to Staffing once both eligibility + clinical review complete.
 function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId }) {
   const inClinical = referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
 
   async function handlePushClinical() {
     if (!referral?._id) return;
+    const fromStage = referral.current_stage;
     try {
       await updateReferralOptimistic(referral._id, {
+        current_stage: 'Clinical Intake RN Review',
         in_clinical_review: true,
         clinical_review_pushed_at: new Date().toISOString(),
       });
       recordTransition({
         referral,
-        fromStage: referral.current_stage,
+        fromStage,
         toStage: 'Clinical Intake RN Review',
-        note: '[Pushed concurrently — current stage unchanged]',
+        note: '[Pushed to Clinical RN — left Intake]',
         authorId: actorUserId,
       });
     } catch {}
@@ -687,31 +701,6 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId }
     >
       {cursoryReviewComplete ? 'Push to Intake Clinical RN Review →' : 'Check off the cursory review to push'}
     </button>
-  );
-}
-
-// ── Push to Eligibility — final Intake exit ──────────────────────────────────
-// Surfaces in the Actions section. Disabled until the patient has been
-// pushed to Clinical RN AND Insurance Details are collected.
-function PushToEligibilityAction({ referral, insuranceComplete, onOpenTriage, onInitiateTransition, isSN }) {
-  const inClinical = referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
-  const ready = inClinical && insuranceComplete;
-
-  let label = 'Push to Eligibility Verification →';
-  if (!inClinical && !insuranceComplete) label = 'Complete cursory review and Insurance Details';
-  else if (!inClinical) label = 'Push to Clinical RN first';
-  else if (!insuranceComplete) label = 'Collect Insurance Details to send to Eligibility';
-
-  return (
-    <PanelSection title="Actions">
-      <ActionBtn
-        label={label}
-        variant={ready ? 'forward' : 'default'}
-        disabled={!ready}
-        onClick={ready ? () => onInitiateTransition?.(referral, 'Eligibility Verification') : undefined}
-      />
-      {isSN && <ActionBtn label="Open Triage Form" variant="default" onClick={onOpenTriage} />}
-    </PanelSection>
   );
 }
 

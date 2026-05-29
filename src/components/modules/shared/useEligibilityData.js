@@ -23,7 +23,7 @@ import { getAuthorizationsByReferral }    from '../../../api/authorizations.js';
 import { getDisenrollmentFlagsByPatient } from '../../../api/disenrollmentFlags.js';
 import { VERIFICATION_STATUS } from '../../../data/eligibilityEnums.js';
 
-export function useEligibilityData({ patient, patientId, referralId }) {
+export function useEligibilityData({ patient, patientId, referralId, recheckRequestedAt }) {
   const refreshVersion = useRefreshVersion();
   const pid = patientId || patient?.id;
 
@@ -77,10 +77,23 @@ export function useEligibilityData({ patient, patientId, referralId }) {
     return map;
   }, [verifications]);
 
-  const activeInsurances = useMemo(() => insurances.filter((ins) => {
-    const v = latestVerByInsurance.get(ins._id);
-    return v && v.verification_status === VERIFICATION_STATUS.CONFIRMED_ACTIVE;
-  }), [insurances, latestVerByInsurance]);
+  // An insurance is "active" when its latest verification is confirmed-active.
+  // When a re-check has been requested (patient moved into Eligibility
+  // Verification), a verification only counts if it was logged AFTER the
+  // re-check timestamp — stale pre-recheck checks don't satisfy the gate, so
+  // the "Eligibility Complete" button stays disabled until fresh checks land.
+  const activeInsurances = useMemo(() => {
+    const recheckAt = recheckRequestedAt ? new Date(recheckRequestedAt).getTime() : 0;
+    return insurances.filter((ins) => {
+      const v = latestVerByInsurance.get(ins._id);
+      if (!v || v.verification_status !== VERIFICATION_STATUS.CONFIRMED_ACTIVE) return false;
+      if (recheckAt) {
+        const vt = new Date(v.verification_date_time || 0).getTime();
+        if (!(vt > recheckAt)) return false;
+      }
+      return true;
+    });
+  }, [insurances, latestVerByInsurance, recheckRequestedAt]);
 
   return {
     loading,

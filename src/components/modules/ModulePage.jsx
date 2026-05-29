@@ -9,6 +9,7 @@ import { updateReferralOptimistic } from '../../store/mutations.js';
 import { STAGE_META } from '../../data/stageConfig.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../../utils/stageTransitions.js';
 import { recordTransition } from '../../utils/recordTransition.js';
+import { applyStageEntryEffects } from '../../utils/stageEntryEffects.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../../utils/conflictFlagging.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -399,6 +400,16 @@ export default function ModulePage({ stage }) {
     if (effectiveStage === 'Hold') { if (note) updateFields.hold_reason = note; updateFields.hold_return_stage = fromStage; }
     if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
     if (wasIntercepted && note) updateFields.ntuc_reason = note;
+
+    // Stage-entry side effects (e.g. Eligibility Verification re-check clears
+    // prior completion + logs history). Merged into the same update.
+    Object.assign(updateFields, applyStageEntryEffects({
+      referral,
+      fromStage,
+      toStage: effectiveStage,
+      actorUserId: appUserId,
+      resolveUserName: resolveUser,
+    }));
 
     updateReferralOptimistic(referral._id, updateFields).catch(() => {
       showToast('Failed to move patient — change reverted', 'error');
