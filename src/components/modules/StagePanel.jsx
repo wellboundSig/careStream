@@ -1339,6 +1339,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const now = new Date().toISOString();
+    const fromStage = selectedReferral.current_stage;
     const baseFields = {
       clinical_review_decision: decision,
       clinical_review_by: appUserId || 'unknown',
@@ -1348,19 +1349,35 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       in_clinical_review: false,
     };
     if (eligibilityDone) {
-      // LIFO trigger — Eligibility already completed, so the patient officially
-      // enters Staffing Feasibility now.
-      onInitiateTransition?.(selectedReferral, 'Staffing Feasibility');
-      // Apply the extra audit fields alongside the stage flip. The optimistic
-      // update path in ModulePage owns current_stage; we just add the extras.
-      updateReferral(selectedReferral._id, baseFields).catch(() => {});
+      // LIFO trigger — eligibility is already complete, so the patient moves to
+      // Staffing Feasibility and leaves Clinical Review entirely. We write the
+      // stage flip AND the cleared concurrent flag in ONE optimistic update so
+      // the in-memory store drops the patient from the Clinical module
+      // immediately (no lingering via in_clinical_review until the next poll).
+      // We deliberately bypass onInitiateTransition here: Clinical Intake RN
+      // Review is a protectedExit stage, and the RN's Confirm IS the sanctioned
+      // exit — it must not pop a generic move-confirmation modal.
+      try {
+        await updateReferralOptimistic(selectedReferral._id, {
+          ...baseFields,
+          current_stage: 'Staffing Feasibility',
+        });
+      } catch {}
+      recordTransition({
+        referral: selectedReferral,
+        fromStage,
+        toStage: 'Staffing Feasibility',
+        note: '[Clinical RN confirmed — eligibility already complete → Staffing Feasibility]',
+        authorId: appUserId,
+      });
+      triggerDataRefresh();
     } else {
-      // Eligibility still in flight — leave current_stage alone, just clear
-      // the concurrent presence and stamp completion.
+      // Eligibility still in flight — clear the concurrent presence and stamp
+      // completion. The patient stays put; the Eligibility "Completed" action
+      // will fire the LIFO flip to Staffing later.
       try {
         await updateReferralOptimistic(selectedReferral._id, baseFields);
       } catch {}
-      // Audit row for the clinical exit (not a stage change).
       recordTransition({
         referral: selectedReferral,
         fromStage: 'Clinical Intake RN Review',
@@ -1368,6 +1385,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
         note: '[Clinical RN confirmed — awaiting Eligibility completion]',
         authorId: appUserId,
       });
+      triggerDataRefresh();
     }
   }
 

@@ -273,9 +273,24 @@ export default function EligibilityWorkspace({
                 };
                 try {
                   if (clinicalReviewDone) {
-                    // Both eligibility + clinical complete — LIFO flip to Staffing.
-                    onInitiateTransition?.(referral, 'Staffing Feasibility');
-                    updateReferralOptimistic(referral._id, fields).catch(() => {});
+                    // Both eligibility + clinical complete — LIFO flip to
+                    // Staffing. Done as ONE optimistic update (stage + fields)
+                    // so the patient leaves their current module immediately.
+                    // We bypass onInitiateTransition because the patient may be
+                    // sitting in Clinical Intake RN Review (a protectedExit
+                    // stage) — this system-driven LIFO move must not pop a
+                    // generic move-confirmation modal.
+                    await updateReferralOptimistic(referral._id, {
+                      ...fields,
+                      current_stage: 'Staffing Feasibility',
+                    });
+                    recordTransition({
+                      referral,
+                      fromStage,
+                      toStage: 'Staffing Feasibility',
+                      note: '[Eligibility complete — clinical already done → Staffing Feasibility]',
+                      authorId: appUserId,
+                    });
                   } else if (isRecheck) {
                     // Re-check completed but clinical not yet done — return the
                     // patient to the stage they came from when the re-check was
