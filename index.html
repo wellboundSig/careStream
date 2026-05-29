@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      GitHub Pages caches the served HTML for ~10 minutes by default. The Vite
+      bundle filenames are content-hashed, so the JS/CSS are safe to cache
+      forever — but the HTML that *points* to them must always be re-fetched,
+      otherwise users keep loading the previous bundle for ten minutes after
+      every deploy. These meta tags tell the browser to never reuse a cached
+      copy of index.html.
+    -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma"        content="no-cache" />
+    <meta http-equiv="Expires"       content="0" />
     <title>CareStream</title>
     <!-- SPA redirect restore: reads the path encoded by 404.html and restores it via history API -->
     <script>
@@ -18,7 +29,7 @@
         }
       }(window.location));
     </script>
-    <script type="module" crossorigin src="/assets/index-hD_3uPIR.js"></script>
+    <script type="module" crossorigin src="/assets/index-CvM3Xr6u.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BZDEFjj5.css">
   </head>
   <body>
