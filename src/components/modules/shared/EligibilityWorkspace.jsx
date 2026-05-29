@@ -423,10 +423,8 @@ export default function EligibilityWorkspace({
               await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient.id });
               if (conflictModal.insurance?._id) {
                 await createEligibilityVerification({
-                  patient_id: patientRecordId,
-                  // PatientInsurances is the single source of truth — every
-                  // insurance row in the workspace is already real, so we can
-                  // link straight to its record id with no materialise step.
+                  // TEXT column queried by business id — store business id.
+                  patient_id: patient.id,
                   patient_insurance_id: conflictModal.insurance._id,
                   verification_status: denialStatus || VERIFICATION_STATUS.DENIED_NOT_FOUND,
                   verified_by_user_id: verifierRecordId || undefined,
@@ -624,9 +622,11 @@ function InsuranceCard({
     try {
       const insuranceId = insurance._id;
       await createEligibilityVerification({
-        patient_id: patientRecordId,
-        // PatientInsurances is the canonical source — every row in the
-        // workspace already has a real record id, so we link straight to it.
+        // patient_id is a TEXT column queried by business id (pat_…) in
+        // getVerificationsByPatient — store the business id, not the rec id.
+        patient_id: patientBusinessId,
+        // patient_insurance_id is TEXT holding the PatientInsurances record
+        // id (how insurance rows are keyed as `ins._id` in the workspace).
         patient_insurance_id: insuranceId,
         verification_status: status,
         staff_confirmed_payer_type: payerType,

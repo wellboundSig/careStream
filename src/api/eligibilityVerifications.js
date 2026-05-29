@@ -1,38 +1,46 @@
 /**
  * EligibilityVerifications API — verification events per insurance.
  *
- * Linked-record fields in Airtable require array values. We normalise at
- * this boundary so callers can pass a plain string id and be correct.
+ * Every cross-table reference on this table is a plain TEXT column (no
+ * Airtable linked-record fields). We store ids as bare strings:
+ *   - `patient_id`            → the patient BUSINESS id (pat_…), so the
+ *                               FIND() reads below match.
+ *   - `patient_insurance_id`  → the PatientInsurances record id (rec…),
+ *                               which is how insurance rows are keyed in the
+ *                               UI (`ins._id`).
+ *   - `verified_by_user_id`   → whatever id the caller supplies.
  *
- * ── insurance_id → patient_insurance_id repair (2026-05-27) ────────────────
- * Airtable's legacy `insurance_id` link on this table is wired to the
- * `PatientInsurancePlans` table (`tblBGbuHgt54oaDbS`), but every caller
- * passes ids from the canonical `PatientInsurances` table
- * (`tblg7s0UuWsN99367`). Airtable rejected those writes with:
- *   Record ID rec… belongs to table tblg7s0UuWsN99367,
- *   but the field links to table tblBGbuHgt54oaDbS
- * We can't relink an existing field via the Meta API, so this module:
- *   1. Accepts the historical `insurance_id` arg from callers
- *   2. Rewrites it to the new `patient_insurance_id` link field (correctly
- *      wired to PatientInsurances by the schema-apply script)
- *   3. Strips the now-stale `insurance_id` from outgoing payloads so the
- *      original Airtable error stops firing.
- * Readers prefer `patient_insurance_id`, falling back to `insurance_id`
- * for back-compat with any rows already present in the legacy field.
+ * Historically these were treated as `multipleRecordLinks` and wrapped in
+ * arrays; the columns are now text, so an array value like `["rec…"]` is
+ * rejected by Airtable. `toText` coerces any stray array/string to a clean
+ * scalar string at this boundary.
+ *
+ * ── legacy `insurance_id` → `patient_insurance_id` ─────────────────────────
+ * Older callers passed `insurance_id`; we rewrite it to the canonical
+ * `patient_insurance_id` and drop the stale field. Readers prefer the
+ * canonical field and fall back to the legacy one for old rows.
  */
 
 import airtable from './airtable.js';
-import { toLinks, readLink } from './_linkHelpers.js';
+import { readLink } from './_linkHelpers.js';
 
 const TABLE = 'EligibilityVerifications';
 
 const LEGACY_INSURANCE_FIELD = 'insurance_id';
 const CANONICAL_INSURANCE_FIELD = 'patient_insurance_id';
 
-// patient_id, patient_insurance_id, and verified_by_user_id are
-// multipleRecordLinks. We normalise array-vs-string at the boundary and
-// rewrite the legacy `insurance_id` arg into the new canonical field.
-const LINK_FIELDS = ['patient_id', CANONICAL_INSURANCE_FIELD, 'verified_by_user_id'];
+// All id references are plain text. Coerce array/string → scalar string.
+const TEXT_ID_FIELDS = ['patient_id', CANONICAL_INSURANCE_FIELD, 'verified_by_user_id'];
+
+function toText(value) {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) {
+    const first = value.find((x) => typeof x === 'string' && x.trim());
+    return first ? String(first) : undefined;
+  }
+  const s = String(value).trim();
+  return s || undefined;
+}
 
 function normaliseFields(fields) {
   if (!fields) return fields;
@@ -43,9 +51,9 @@ function normaliseFields(fields) {
   }
   delete out[LEGACY_INSURANCE_FIELD];
 
-  for (const f of LINK_FIELDS) {
+  for (const f of TEXT_ID_FIELDS) {
     if (f in out) {
-      const v = toLinks(out[f]);
+      const v = toText(out[f]);
       if (v === undefined) delete out[f];
       else out[f] = v;
     }
