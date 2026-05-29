@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getFilesByReferral } from '../../../api/patientFiles.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
-import { resolveFileUrl } from '../../../utils/r2Upload.js';
+import { fileToUrl } from '../../../utils/r2Upload.js';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
@@ -47,7 +47,7 @@ function FilesSection({ referralId, onClose }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {files.map((f) => {
-            const cleanUrl = resolveFileUrl(f);
+            const cleanUrl = fileToUrl(f);
             return (
               <div key={f._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div>

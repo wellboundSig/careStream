@@ -27,7 +27,7 @@ import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
-import { resolveFileUrl } from '../../utils/r2Upload.js';
+import { fileToUrl } from '../../utils/r2Upload.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
 
@@ -1155,8 +1155,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               </p>
             ) : (
               files.map((f) => {
-                const cleanUrl = resolveFileUrl(f);
-                const downloadUrl = resolveFileUrl(f, { download: true });
+                const cleanUrl = fileToUrl(f);
                 return (
                   <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -1182,7 +1181,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                           Preview
                         </button>
                         <a
-                          href={downloadUrl}
+                          href={cleanUrl}
                           download={f.file_name}
                           target="_blank"
                           rel="noopener noreferrer"

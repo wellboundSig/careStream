@@ -27,7 +27,6 @@ import { createAuthorization } from '../../../api/authorizations.js';
 import { createFile } from '../../../api/patientFiles.js';
 import { createConflict } from '../../../api/conflicts.js';
 import { recordActivity } from '../../../api/activityLog.js';
-import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import { uploadToR2 } from '../../../utils/r2Upload.js';
 import palette from '../../../utils/colors.js';
 import {
@@ -150,18 +149,11 @@ export default function AuthorizationWorkspace({
     if (!patientRecordId) { setError('Patient Airtable record id missing.'); return null; }
 
     const selectedId = payload.payer_insurance_id || payerInsuranceId || null;
-    // If the user picked a virtual insurance entry, materialize it before
-    // we can write payer_insurance_id (a multipleRecordLinks field).
+    // Every row in `insurances` is a real PatientInsurances record (single
+    // source of truth), so its `_id` is directly link-writable to the
+    // Authorizations.payer_insurance_id field — no materialise step needed.
     const selectedIns = insurances.find((ins) => ins._id === selectedId);
-    let realPayerInsuranceId = null;
-    if (selectedIns) {
-      try {
-        realPayerInsuranceId = await ensureRealInsurance(selectedIns, { patientRecordId });
-      } catch (err) {
-        setError(`Could not resolve insurance link: ${err.message}`);
-        return null;
-      }
-    }
+    const realPayerInsuranceId = selectedIns?._id || null;
 
     const check = validateAuthorizationRecord({
       patientId: patientRecordId,

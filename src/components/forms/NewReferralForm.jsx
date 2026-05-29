@@ -823,11 +823,11 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
       // Populate the canonical PatientInsurances table for this new patient
       // so every downstream consumer sees structured rows from day one.
-      // Failure is non-fatal: the legacy JSON fields still saved above, and
-      // the migration/sync script can backfill later if this call fails.
+      // Failure is non-fatal: the legacy JSON mirror still saved above.
       if (form.insurance_plans.length > 0) {
         syncPatientInsurances({
-          patientId: patientRecord.id,      // Airtable record id (rec...)
+          patientRecordId:   patientRecord.id,    // Airtable rec… (link write)
+          patientBusinessId: createdPatientId,    // pat_… (filter read / dedupe)
           plans:   form.insurance_plans,
           details: form.insurance_plan_details,
         }).catch((err) => console.warn('New referral: PatientInsurances sync failed', err));

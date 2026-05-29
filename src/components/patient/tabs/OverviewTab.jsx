@@ -6,6 +6,7 @@ import { updateReferral } from '../../../api/referrals.js';
 import { updateEntity } from '../../../store/careStore.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
+import { usePatientInsurances } from '../../../hooks/usePatientInsurances.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import {
@@ -762,14 +763,58 @@ function InsuranceEditor({ patient, patientId, onSave }) {
   const [saving, setSaving] = useState(false);
   const dropRef = useRef(null);
 
-  let plans = [];
-  try { plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; } catch { plans = []; }
-  if (!Array.isArray(plans)) plans = [];
-  if (plans.length === 0 && patient.insurance_plan) plans = [patient.insurance_plan];
+  // `patientId` is the Airtable record id (rec…); `patient.id` is the
+  // business id (pat_…). syncPatientInsurances needs both — the first to
+  // write the multipleRecordLinks field, the second to FIND existing rows.
+  const patientBusinessId = patient.id;
 
-  let details = {};
-  try { details = patient.insurance_plan_details ? JSON.parse(patient.insurance_plan_details) : {}; } catch { details = {}; }
-  if (typeof details !== 'object' || details === null) details = {};
+  // ── Source of truth: PatientInsurances table ─────────────────────────────
+  const { rows: realRows, loading: rowsLoading } = usePatientInsurances(patientBusinessId);
+
+  // ── Local UI state ───────────────────────────────────────────────────────
+  // The inputs are driven by local state, NOT directly by the hook. Reading
+  // straight from `realRows` makes the field fight the user mid-typing,
+  // because every save triggers a global refresh → refetch → re-derive →
+  // input snaps back to the server-side value while the user is mid-word.
+  // Local state is seeded once on first load, then becomes authoritative.
+  const [plans, setPlans] = useState([]);
+  const [details, setDetails] = useState({});
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (rowsLoading) return;            // wait for first fetch to settle
+
+    if (realRows.length > 0) {
+      const RANK = { primary: 0, secondary: 1, tertiary: 2, unknown: 3 };
+      const sorted = [...realRows].sort(
+        (a, b) => (RANK[a.order_rank] ?? 3) - (RANK[b.order_rank] ?? 3),
+      );
+      setPlans(sorted.map((r) => r.payer_display_name).filter(Boolean));
+      setDetails(Object.fromEntries(
+        sorted
+          .filter((r) => r.payer_display_name)
+          .map((r) => [r.payer_display_name, r.member_id || '']),
+      ));
+    } else {
+      // Un-migrated patient: fall back to the legacy JSON columns so the
+      // editor isn't blank. The first save will create the real rows.
+      let p = [];
+      try { p = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; } catch { p = []; }
+      if (!Array.isArray(p)) p = [];
+      if (p.length === 0 && patient.insurance_plan) p = [patient.insurance_plan];
+      let d = {};
+      try { d = patient.insurance_plan_details ? JSON.parse(patient.insurance_plan_details) : {}; } catch { d = {}; }
+      if (typeof d !== 'object' || d === null) d = {};
+      setPlans(p);
+      setDetails(d);
+    }
+    seededRef.current = true;
+  }, [realRows, rowsLoading, patient]);
+
+  // If the patient swaps under us (drawer navigated to a different patient),
+  // re-seed from the new source.
+  useEffect(() => { seededRef.current = false; }, [patientBusinessId]);
 
   useEffect(() => {
     if (!open) return;
@@ -782,6 +827,10 @@ function InsuranceEditor({ patient, patientId, onSave }) {
     const primary = nextPlans[0] || '';
     const plansJson = nextPlans.length > 0 ? JSON.stringify(nextPlans) : '';
     const detailsJson = Object.keys(nextDetails).length > 0 ? JSON.stringify(nextDetails) : '';
+
+    // Mirror to the legacy JSON columns so existing readers (reports,
+    // exports, list-column display) keep working unchanged. This is a
+    // write-through copy — `PatientInsurances` is the source of truth.
     const fields = {
       insurance_plans: plansJson,
       insurance_plan_details: detailsJson,
@@ -790,23 +839,35 @@ function InsuranceEditor({ patient, patientId, onSave }) {
     onSave('insurance_plans', plansJson);
     onSave('insurance_plan_details', detailsJson);
     onSave('insurance_plan', primary);
-    if (patientId) {
-      updateEntity('patients', patientId, fields);
-      setSaving(true);
-      try { await updatePatient(patientId, fields); } catch {} finally { setSaving(false); }
-      // Dual-write: reconcile PatientInsurances rows with the plan set so the
-      // canonical insurance table stays in sync with Demographics edits.
-      // See INSURANCE_CONSOLIDATION_PLAN.md.
-      syncPatientInsurances({ patientId, plans: nextPlans, details: nextDetails })
-        .then(() => triggerDataRefresh())
-        .catch((err) => console.warn('PatientInsurances sync failed (JSON save still succeeded)', err));
+
+    if (!patientId || !patientBusinessId) return;
+
+    updateEntity('patients', patientId, fields);
+    setSaving(true);
+    try {
+      await syncPatientInsurances({
+        patientRecordId: patientId,
+        patientBusinessId,
+        plans: nextPlans,
+        details: nextDetails,
+      });
+      await updatePatient(patientId, fields);
+    } catch (err) {
+      console.warn('[InsuranceEditor] persist failed', err);
+    } finally {
+      setSaving(false);
+      triggerDataRefresh();
     }
   }
 
+  // Plan toggles, removals, and "Other" additions are discrete clicks — they
+  // update local state AND persist immediately.
   function togglePlan(plan) {
     const next = plans.includes(plan) ? plans.filter((p) => p !== plan) : [...plans, plan];
     const nextDetails = { ...details };
     if (!next.includes(plan)) delete nextDetails[plan];
+    setPlans(next);
+    setDetails(nextDetails);
     persist(next, nextDetails);
   }
 
@@ -814,20 +875,36 @@ function InsuranceEditor({ patient, patientId, onSave }) {
     const next = plans.filter((p) => p !== plan);
     const nextDetails = { ...details };
     delete nextDetails[plan];
+    setPlans(next);
+    setDetails(nextDetails);
     persist(next, nextDetails);
   }
 
   function addOther() {
     if (!otherValue.trim()) return;
     const label = otherValue.trim();
-    if (!plans.includes(label)) persist([...plans, label], details);
+    if (!plans.includes(label)) {
+      const next = [...plans, label];
+      setPlans(next);
+      persist(next, details);
+    }
     setOtherValue('');
     setShowOther(false);
   }
 
+  // Member-ID typing updates local state on every keystroke (so the input
+  // never fights the user), and persists once on blur. The blur compares
+  // against the seeded value to skip no-op saves.
   function handleDetailChange(plan, value) {
-    const nextDetails = { ...details, [plan]: value };
-    persist(plans, nextDetails);
+    setDetails((prev) => ({ ...prev, [plan]: value }));
+  }
+
+  function handleDetailBlur(plan) {
+    const real = realRows.find((r) => r.payer_display_name === plan);
+    const serverVal = real?.member_id || '';
+    const localVal  = details[plan] || '';
+    if (serverVal === localVal) return;
+    persist(plans, details);
   }
 
   return (
@@ -941,6 +1018,8 @@ function InsuranceEditor({ patient, patientId, onSave }) {
               <input
                 value={details[plan] || ''}
                 onChange={(e) => handleDetailChange(plan, e.target.value)}
+                onBlur={() => handleDetailBlur(plan)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                 placeholder={`${plan} member ID or plan #`}
                 style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
               />

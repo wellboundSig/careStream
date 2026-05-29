@@ -3,14 +3,10 @@
 //
 // Worker endpoint: VITE_R2_WORKER_URL (set in .env)
 //   PUT /upload/{patientId}/{filename}  → stores file, returns { r2Key, r2Url }
-//   GET /file/{r2Key…}                  → streams the stored file
 //
 // Bucket:  wellbound
 // Folder:  CareStream/files/{patientId}/{timestamp_filename}
-//
-// Read URL: the worker now proxies reads through GET /file/{r2Key}. We no
-// longer rely on the bucket being public, which means files keep working
-// even if the bucket's anonymous read access is disabled.
+// Public:  https://pub-d7fda00c74254211bfe47adcb51427b0.r2.dev/{key}
 
 const R2_PUBLIC_BASE = 'https://pub-d7fda00c74254211bfe47adcb51427b0.r2.dev';
 
@@ -46,38 +42,26 @@ export async function uploadToR2(file, patientId) {
 }
 
 /**
- * Build a readable URL for a file row. Prefers the worker-proxied GET route
- * (works even when the bucket is private). Falls back to whatever `r2_url`
- * the legacy record carries when neither the worker base nor an r2_key is
- * available — this is mostly for tests / read-only mocks.
+ * Build a public R2 URL for a stored file row.
  *
- * @param {{ r2_key?: string, r2_url?: string }} file
- * @param {{ download?: boolean }} [opts]
+ * IMPORTANT: the `r2_url` column in Airtable is type `richText`, which means
+ * Airtable serialises every write through a markdown round-trip. Underscores,
+ * asterisks, and other markdown control chars get backslash-escaped on the
+ * way back out (`foo_bar` → `foo\_bar`), which produces 404s when the URL is
+ * fetched literally by the browser.
+ *
+ * The `r2_key` column is `multilineText`, so it stores cleanly. Prefer
+ * reconstructing the public URL from the key; only fall back to `r2_url`
+ * (with the escapes stripped) when the key is missing on legacy rows.
  */
-export function resolveFileUrl(file, opts = {}) {
+export function fileToUrl(file) {
   if (!file) return '';
-  const workerBase = import.meta.env.VITE_R2_WORKER_URL;
-  const r2Key = file.r2_key && String(file.r2_key).trim();
-  if (workerBase && r2Key) {
-    const encoded = r2Key
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const suffix = opts.download ? '?download=1' : '';
-    return `${workerBase.replace(/\/$/, '')}/file/${encoded}${suffix}`;
-  }
-  // Best-effort fallback: rewrite the legacy public R2 URL so the worker
-  // still serves it when the bucket isn't public. Same idea, just inferred
-  // from the historical URL when we don't have r2_key handy.
-  const legacy = (file.r2_url || '').replace(/[<>\n]/g, '').trim();
-  if (workerBase && legacy.startsWith(`${R2_PUBLIC_BASE}/`)) {
-    const key = legacy.slice(R2_PUBLIC_BASE.length + 1);
-    const encoded = key
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const suffix = opts.download ? '?download=1' : '';
-    return `${workerBase.replace(/\/$/, '')}/file/${encoded}${suffix}`;
-  }
-  return legacy;
+  const key = file.r2_key && String(file.r2_key).trim();
+  if (key) return `${R2_PUBLIC_BASE}/${key}`;
+  // Strip markdown backslash-escapes and any trailing whitespace/newline
+  // from the legacy richText value.
+  return (file.r2_url || '')
+    .replace(/\\([\\_*[\](){}#+\-.!`])/g, '$1')
+    .replace(/[<>\n\r]/g, '')
+    .trim();
 }

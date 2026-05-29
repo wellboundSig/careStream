@@ -24,7 +24,6 @@ import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
 import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
 import { useCareStore }         from '../../../store/careStore.js';
-import { ensureRealInsurance } from '../../../api/_insuranceMaterialize.js';
 import palette                 from '../../../utils/colors.js';
 
 import {
@@ -422,14 +421,13 @@ export default function EligibilityWorkspace({
                 conflict_reasons: reasons?.join(', ') || '',
               });
               await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient.id });
-              if (conflictModal.insurance) {
-                const realInsId = await ensureRealInsurance(conflictModal.insurance, { patientRecordId });
+              if (conflictModal.insurance?._id) {
                 await createEligibilityVerification({
                   patient_id: patientRecordId,
-                  // `patient_insurance_id` is the canonical link → PatientInsurances.
-                  // The legacy `insurance_id` field on EligibilityVerifications
-                  // was wired to the wrong table; see the API module's notes.
-                  patient_insurance_id: realInsId,
+                  // PatientInsurances is the single source of truth — every
+                  // insurance row in the workspace is already real, so we can
+                  // link straight to its record id with no materialise step.
+                  patient_insurance_id: conflictModal.insurance._id,
                   verification_status: denialStatus || VERIFICATION_STATUS.DENIED_NOT_FOUND,
                   verified_by_user_id: verifierRecordId || undefined,
                   verification_date_time: new Date().toISOString(),
@@ -618,16 +616,18 @@ function InsuranceCard({
       setError('Patient Airtable record id missing; cannot persist link.');
       return;
     }
+    if (!insurance?._id) {
+      setError('Insurance row missing; reload the patient and try again.');
+      return;
+    }
     setSaving(true); setError(null);
     try {
-      // Virtual insurance rows (demo:pat:plan) must be promoted to real
-      // PatientInsurances records before we can write a link-field value.
-      const realInsuranceId = await ensureRealInsurance(insurance, { patientRecordId });
-
+      const insuranceId = insurance._id;
       await createEligibilityVerification({
         patient_id: patientRecordId,
-        // Canonical link to PatientInsurances; see eligibilityVerifications.js.
-        patient_insurance_id: realInsuranceId,
+        // PatientInsurances is the canonical source — every row in the
+        // workspace already has a real record id, so we link straight to it.
+        patient_insurance_id: insuranceId,
         verification_status: status,
         staff_confirmed_payer_type: payerType,
         staff_confirmed_order_rank: order,
@@ -651,7 +651,7 @@ function InsuranceCard({
         patientId: patientBusinessId,
         referralId,
         detail: `Eligibility ${status} for ${insurance.payer_display_name}`,
-        metadata: { insuranceId: realInsuranceId, sources, order, payerType },
+        metadata: { insuranceId, sources, order, payerType },
       });
       onSaved?.();
     } catch (err) {
