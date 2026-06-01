@@ -37,6 +37,22 @@ const PIPELINE_STAGES = [
   'Conflict', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled',
 ];
 
+// Format a calendar date WITHOUT timezone shift. A value like '2026-06-01'
+// (or its ISO form) is the calendar day the user picked; parsing it through
+// `new Date(...).toLocaleDateString()` reinterprets midnight-UTC in local time
+// and can show the previous day. We parse the Y-M-D parts and build a LOCAL
+// date so "June 1" always renders as "Jun 1".
+function fmtCalendarDate(value) {
+  if (!value) return null;
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 // Shared panel wrapper ────────────────────────────────────────────────────────
 function Panel({ children, width = 280 }) {
   return (
@@ -1849,9 +1865,21 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferra
 
 function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
   const [clinicianMatched, setClinicianMatched] = useState(false);
 
   useEffect(() => { setClinicianMatched(false); }, [selectedReferral?._id]);
+
+  // Stamp the staffing confirmation (clinician matched) on the referral before
+  // moving to Pre-SOC, so the timeline can show it as a milestone.
+  function handleStaffingConfirm() {
+    if (!selectedReferral?._id) return;
+    updateReferralOptimistic(selectedReferral._id, {
+      staffing_confirmed_at: new Date().toISOString(),
+      staffing_confirmed_by_id: appUserId || 'unknown',
+    }).catch(() => {});
+    onInitiateTransition?.(selectedReferral, 'Pre-SOC');
+  }
 
   const triageAdultStore = useCareStore((s) => s.triageAdult);
   const triagePedStore = useCareStore((s) => s.triagePediatric);
@@ -1953,7 +1981,7 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
               </label>
               <button
                 data-testid="staffing-confirm-btn"
-                onClick={() => canConfirm && onInitiateTransition?.(selectedReferral, 'Pre-SOC')}
+                onClick={() => canConfirm && handleStaffingConfirm()}
                 disabled={!canConfirm}
                 style={{
                   width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
@@ -2063,6 +2091,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
 function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
   const actualStage = selectedReferral?.current_stage;
   const today = new Date().toISOString().split('T')[0];
 
@@ -2084,12 +2113,22 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     setSaving(true);
     setError(null);
     try {
-      const enteredAt = new Date().toISOString();
-      await updateReferral(selectedReferral._id, { current_stage: 'SOC Scheduled', soc_scheduled_date: socDate });
+      await updateReferral(selectedReferral._id, {
+        current_stage: 'SOC Scheduled',
+        soc_scheduled_date: socDate,
+        soc_scheduled_at: new Date().toISOString(),
+        soc_scheduled_by_id: appUserId || 'unknown',
+      });
       await createEpisode({ patient_id: selectedReferral.patient_id, referral_id: selectedReferral._id, soc_date: socDate, episode_start: socDate });
-      recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: null });
+      recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: appUserId });
       triggerDataRefresh();
-    } catch (err) { setError(err.message || 'Failed to schedule SOC'); setSaving(false); }
+    } catch (err) {
+      setError(err.message || 'Failed to schedule SOC');
+    } finally {
+      // Always release the spinner — previously this only fired in catch, so a
+      // successful schedule left the button stuck in "Scheduling…" until a refresh.
+      setSaving(false);
+    }
   }
 
   async function handleDownloadPdf() {
@@ -2119,9 +2158,7 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' },
   ];
 
-  const socDateDisplay = selectedReferral?.soc_scheduled_date
-    ? new Date(selectedReferral.soc_scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
+  const socDateDisplay = fmtCalendarDate(selectedReferral?.soc_scheduled_date);
 
   return (
     <Panel>
@@ -2268,9 +2305,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
     }
   }
 
-  const socDateDisplay = selectedReferral?.soc_scheduled_date
-    ? new Date(selectedReferral.soc_scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '—';
+  const socDateDisplay = fmtCalendarDate(selectedReferral?.soc_scheduled_date) || '—';
 
   return (
     <Panel>

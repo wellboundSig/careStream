@@ -26,9 +26,16 @@ function calcAge(dob) {
 export function recentHospitalizationDate(referral) {
   const raw = referral?.hospitalization_date;
   if (!raw) return null;
-  const date = new Date(raw);
+  // Parse the calendar date in LOCAL time (not UTC midnight) so the day count
+  // and display don't shift by a day in negative-UTC timezones.
+  const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    : new Date(raw);
   if (isNaN(date.getTime())) return null;
-  const days = Math.floor((Date.now() - date.getTime()) / 86400000);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const days = Math.round((startOfToday.getTime() - date.getTime()) / 86400000);
   if (days < 0 || days > 14) return null;
   return date;
 }

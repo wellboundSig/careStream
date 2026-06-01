@@ -24,6 +24,60 @@ function calcAge(dob) {
   return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 
+// Format a calendar date (YYYY-MM-DD or ISO) without a timezone shift.
+function fmtCalendarDate(value) {
+  if (!value) return '';
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Build milestone timeline entries from the referral's own persisted
+// timestamp fields. This is the resilient source of truth for the clinical /
+// scheduling journey — it does not depend on StageHistory (whose writes can be
+// blocked by legacy locked select columns).
+function referralMilestones(referral) {
+  if (!referral) return [];
+  const r = referral;
+  const out = [];
+  const push = (id, ts, title, detail, actor) => {
+    if (!ts) return;
+    out.push({ _id: id, type: 'milestone', timestamp: ts, title, detail: detail || null, actor: actor || null });
+  };
+
+  push('ms-clin-pushed', r.clinical_review_pushed_at, 'Pushed to Clinical RN Review', null, null);
+
+  if (r.clinical_review_completed_at) {
+    const decision = (r.clinical_review_decision || '').toLowerCase();
+    const decLabel = decision === 'accept' ? 'Accepted'
+      : decision === 'conditional' ? 'Accepted (conditional)'
+      : decision ? decision.charAt(0).toUpperCase() + decision.slice(1)
+      : null;
+    push('ms-clin-done', r.clinical_review_completed_at, 'Clinical RN review completed',
+      decLabel ? `Decision: ${decLabel}` : null,
+      r.clinical_review_completed_by_id || r.clinical_review_by || null);
+  }
+
+  push('ms-elig-done', r.eligibility_completed_at, 'Eligibility completed', null, r.eligibility_completed_by_id || null);
+  push('ms-emr', r.emr_onboarded_at, 'EMR onboarding completed', null, r.emr_onboarded_by_id || null);
+  push('ms-staffing', r.staffing_confirmed_at, 'Staffing confirmed — clinician matched', 'Sent to Pre-SOC', r.staffing_confirmed_by_id || null);
+  // Prefer the precise scheduling timestamp; fall back to the SOC date itself
+  // for referrals scheduled before `soc_scheduled_at` was captured.
+  push('ms-soc-sched', r.soc_scheduled_at || r.soc_scheduled_date, 'SOC scheduled',
+    r.soc_scheduled_date ? `SOC date: ${fmtCalendarDate(r.soc_scheduled_date)}` : null,
+    r.soc_scheduled_by_id || null);
+  push('ms-soc-done', r.soc_completed_date, 'SOC completed', null, null);
+
+  if (r.recent_hospitalization === true || r.recent_hospitalization === 'true') {
+    // Hospitalization has no event timestamp; anchor it to the hospitalization
+    // date so it lands in chronological context.
+    push('ms-hosp', r.hospitalization_date, 'Recent hospitalization',
+      r.hospitalization_date ? `Hospitalized ${fmtCalendarDate(r.hospitalization_date)}` : null, null);
+  }
+
+  return out;
+}
+
 // Replace bare `usr_###` tokens in free text with the resolved user name.
 // Historical notes (e.g. "Owner assigned: usr_006") were written before
 // the codebase started resolving names at write time. Sanitizing at
@@ -213,6 +267,12 @@ export default function TimelineTab({ patient, referral }) {
       detail: isPediatric ? 'Pediatric Special Needs triage form' : 'Adult Special Needs triage form',
       actor: triage.filled_by_id || null,
     }] : []),
+
+    // Clinical / scheduling milestones synthesised from the referral's own
+    // persisted timestamps. These are reliable even when a StageHistory row
+    // failed to write, so the journey (clinical accepted, eligibility done,
+    // EMR onboarded, staffing confirmed, SOC scheduled/completed) always shows.
+    ...referralMilestones(referral),
   ].sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
 
   if (loading) return <LoadingState message="Loading timeline..." size="small" />;

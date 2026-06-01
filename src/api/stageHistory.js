@@ -7,4 +7,4 @@ export const getStageHistory = (referralId) =>
     sort: [{ field: 'timestamp', direction: 'desc' }],
   });
 
-export const createStageHistory = (fields) => airtable.create(TABLE, fields);
+export const createStageHistory = (fields, opts) => airtable.create(TABLE, fields, opts);

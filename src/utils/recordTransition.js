@@ -33,20 +33,40 @@ export async function recordTransition({ referral, fromStage, toStage, note, aut
     });
   } catch {}
 
-  createStageHistory(historyFields)
-    .then((rec) => {
-      if (rec?.id) {
-        try {
-          // Replace the temp row with the real one keyed by Airtable record id.
-          mergeEntities('stageHistory', {
-            [rec.id]: { _id: rec.id, ...rec.fields },
-          });
-        } catch {}
-      }
-    })
-    .catch((err) => {
-      console.warn('[recordTransition] StageHistory create failed (audit row skipped):', err?.message || err);
-      // Best-effort — must not block the referral stage update.
+  // Resilient write. On some bases `referral_id`, `from_stage`, `to_stage`, and
+  // `changed_by_id` are still legacy singleSelect columns with a fixed
+  // allowlist — a new id/stage value 422s with "Insufficient permissions to
+  // create new select option". We try the full row silently first; if it
+  // fails we retry with those locked columns folded into `metadata` (text) so
+  // the audit row still lands instead of being dropped with a scary error.
+  // (Convert those four columns to plain text in Airtable to restore full
+  // per-referral timeline linkage.)
+  const promote = (rec) => {
+    if (rec?.id) {
+      try { mergeEntities('stageHistory', { [rec.id]: { _id: rec.id, ...rec.fields } }); } catch {}
+    }
+  };
+
+  createStageHistory(historyFields, { silent: true })
+    .then(promote)
+    .catch(() => {
+      const reduced = {
+        id: historyFields.id,
+        timestamp: now,
+        ...(note?.trim() ? { reason: note.trim() } : {}),
+        metadata: JSON.stringify({
+          referral_id: referral?.id || null,
+          from_stage: fromStage || null,
+          to_stage: toStage || null,
+          changed_by_id: authorId || null,
+        }),
+      };
+      createStageHistory(reduced)
+        .then(promote)
+        .catch((err2) => {
+          // eslint-disable-next-line no-console
+          console.warn('[recordTransition] StageHistory audit skipped (non-fatal):', err2?.message || err2);
+        });
     });
 
   // ── 2. Note record — only when a note was provided ───────────────────────
