@@ -1204,6 +1204,28 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                 </p>
               )}
             </FieldBox>
+            {/* Date of Birth lives in the always-visible Patient section (not the
+                optional drawer) — it drives age-group routing/eligibility and was
+                being missed when buried under "Additional Patient Info". */}
+            <FieldBox label="Date of Birth">
+              {(() => {
+                const dobBounds = form.division === 'Special Needs' && form.sn_age_group
+                  ? getDobBoundsForAgeGroup(form.sn_age_group)
+                  : { min: null, max: null };
+                const dobLocked = form.division === 'Special Needs' && !!form.sn_age_group;
+                return (
+                  <>
+                    <Input value={form.dob} onChange={(v) => setField('dob', v)} type="date" min={dobBounds.min} max={dobBounds.max} hasError={!!errors.dob} />
+                    {dobLocked && !errors.dob && (
+                      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4, fontStyle: 'italic' }}>
+                        Locked to {form.sn_age_group} range (age {form.sn_age_group === 'Pediatric' ? 'under 18' : '18+'}).
+                      </p>
+                    )}
+                    {errors.dob && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.dob}</p>}
+                  </>
+                );
+              })()}
+            </FieldBox>
           </FieldGroup>
 
           {/* ── 4. Insurance + Physician side by side ── */}
@@ -1239,31 +1261,9 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           {/* ── 5. Optional patient details ── */}
           <SectionDivider title="Additional Patient Info" expanded={showPatientDetails} onToggle={() => setShowPatientDetails((v) => !v)} />
           {showPatientDetails && (() => {
-            // Pediatric/Adult ↔ DOB are mutually-locking on SN referrals: the
-            // date picker advertises the valid range via min/max so the
-            // browser blocks out-of-range picks, and a hint explains why.
-            const dobBounds = form.division === 'Special Needs' && form.sn_age_group
-              ? getDobBoundsForAgeGroup(form.sn_age_group)
-              : { min: null, max: null };
-            const dobLocked = form.division === 'Special Needs' && !!form.sn_age_group;
             return (
             <FieldGroup cols={2}>
-              <FieldBox label="Date of Birth">
-                <Input
-                  value={form.dob}
-                  onChange={(v) => setField('dob', v)}
-                  type="date"
-                  min={dobBounds.min}
-                  max={dobBounds.max}
-                  hasError={!!errors.dob}
-                />
-                {dobLocked && !errors.dob && (
-                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4, fontStyle: 'italic' }}>
-                    Locked to {form.sn_age_group} range (age {form.sn_age_group === 'Pediatric' ? 'under 18' : '18+'}).
-                  </p>
-                )}
-                {errors.dob && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.dob}</p>}
-              </FieldBox>
+              {/* Date of Birth moved to the always-visible Patient section above. */}
               <FieldBox label="Gender"><Select value={form.gender} onChange={(v) => setField('gender', v)} options={GENDERS.map((g) => ({ value: g, label: g }))} placeholder="Select…" /></FieldBox>
               <FieldBox label="Secondary Phone"><Input value={form.phone_secondary} onChange={(v) => setField('phone_secondary', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
               <FieldBox label="Email">

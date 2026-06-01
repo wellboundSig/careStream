@@ -9,6 +9,7 @@ import { ThemeContextProvider } from './utils/ThemeContext.jsx';
 import { UserPreferencesProvider } from './context/UserPreferencesContext.jsx';
 import ThemeProvider from './utils/ThemeProvider.jsx';
 import { PatientDrawerProvider } from './context/PatientDrawerContext.jsx';
+import MaintenanceGate from './components/system/MaintenanceGate.jsx';
 import App from './App.jsx';
 
 applyFont();
@@ -27,7 +28,9 @@ createRoot(document.getElementById('root')).render(
           <ThemeProvider>
             <UserPreferencesProvider>
               <PatientDrawerProvider>
-                <App />
+                <MaintenanceGate>
+                  <App />
+                </MaintenanceGate>
               </PatientDrawerProvider>
             </UserPreferencesProvider>
           </ThemeProvider>
