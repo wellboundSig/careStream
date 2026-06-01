@@ -67,7 +67,7 @@
       "gridCol": 2,
       "canMoveTo": [
         "Intake",
-        "Staffing Feasibility",
+        "EMR Onboarding",
         "OPWDD Enrollment",
         "Conflict",
         "Hold"
@@ -77,7 +77,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Parent module for insurance / eligibility. Authorization Pending and Disenrollment Required are supportive side workflows — the patient stays here while those are in flight."
+      "description": "Parent module for insurance / eligibility. Authorization Pending and Disenrollment Required are supportive side workflows — the patient stays here while those are in flight. Once eligibility + clinical review are both complete, the LIFO trigger advances the patient to EMR Onboarding."
     },
 
     "Disenrollment Required": {
@@ -113,7 +113,7 @@
       "gridCol": 0,
       "canMoveTo": [
         "F2F/MD Orders Pending",
-        "Staffing Feasibility",
+        "EMR Onboarding",
         "Conflict",
         "Hold"
       ],
@@ -123,7 +123,7 @@
       "requiresPermission": "clinical.rn_review",
       "protectedExit": true,
       "protectedExitMessage": "Only the clinical intake RN can move a patient out of Clinical RN Review. Issues should be escalated to Conflict — there is no Decline action.",
-      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to Staffing Feasibility (LIFO with Eligibility). Send Back to F2F is also available; Decline does not exist — escalate to Conflict instead."
+      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to EMR Onboarding (LIFO with Eligibility). Send Back to F2F is also available; Decline does not exist — escalate to Conflict instead."
     },
 
     "Authorization Pending": {
@@ -163,6 +163,19 @@
       "requiresPermission": null,
       "protectedExit": false,
       "description": "Escalation lane. On creation, source_stage is captured so 'Resolve & Return to Source' knows where to send the patient back. Resolution always requires a note."
+    },
+
+    "EMR Onboarding": {
+      "displayName": "EMR Onboarding",
+      "gridRow": 1,
+      "gridCol": 3,
+      "canMoveTo": ["Staffing Feasibility", "Conflict", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": null,
+      "protectedExit": false,
+      "description": "Patient is onboarded into the external EMR (HCHB) before scheduling. Staff download the EMR Onboarding Packet, complete onboarding, then mark the patient onboarded to advance to Staffing Feasibility. Scheduling cannot plot a SOC until the patient exists in the EMR, so this gates the downstream flow."
     },
 
     "Staffing Feasibility": {

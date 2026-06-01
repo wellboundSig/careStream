@@ -32,6 +32,9 @@ const CATEGORY_COLORS = {
   'Discharge': { bg: hexToRgba(palette.highlightYellow.hex, 0.15), text: '#7A5F00' },
   'ID': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
   'Consent': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
+  'Medications': { bg: hexToRgba(palette.accentGreen.hex, 0.12), text: '#3A6E00' },
+  'Progress Notes': { bg: hexToRgba(palette.accentBlue.hex, 0.12), text: '#005B84' },
+  'Miscellaneous': { bg: hexToRgba(palette.backgroundDark.hex, 0.06), text: hexToRgba(palette.backgroundDark.hex, 0.5) },
   'Other': { bg: hexToRgba(palette.backgroundDark.hex, 0.06), text: hexToRgba(palette.backgroundDark.hex, 0.5) },
   // OPWDD categories share the deep-plum family since they all belong to the
   // OPWDD enrollment flow
@@ -42,7 +45,7 @@ const CATEGORY_COLORS = {
   'OPWDD Notice':     { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), text: palette.primaryDeepPlum.hex },
 };
 
-const STANDARD_FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Discharge', 'ID', 'Consent', 'Other'];
+const STANDARD_FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Discharge', 'ID', 'Consent', 'Medications', 'Progress Notes', 'Miscellaneous', 'Other'];
 const FILE_CATEGORIES = [...STANDARD_FILE_CATEGORIES, ...OPWDD_FILE_CATEGORIES];
 
 function isOpwddCategory(cat) {
@@ -695,9 +698,23 @@ function GroupedFileList({
       accent: '#7A5F00',
     },
     {
+      id: 'records',
+      label: 'Clinical Records',
+      match: (file) => file.category === 'Medications' || file.category === 'Progress Notes',
+      accent: palette.accentGreen.hex,
+    },
+    {
       id: 'other',
+      // Catch-all: anything not claimed by a group above (incl. Other,
+      // Miscellaneous, empty, or any unrecognised category) so no file is
+      // ever hidden from the list.
       label: 'Other / Uncategorized',
-      match: (file) => !file.category || file.category === 'Other',
+      match: (file) => {
+        const c = file.category;
+        if (!c) return true;
+        if (isOpwddCategory(c)) return false;
+        return !['F2F', 'MD Orders', 'Insurance', 'ID', 'Consent', 'Auth Letter', 'Discharge', 'Medications', 'Progress Notes'].includes(c);
+      },
       accent: hexToRgba(palette.backgroundDark.hex, 0.5),
     },
   ]), []);

@@ -26,6 +26,7 @@ export const STAGE_SLUGS = {
   'Clinical Intake RN Review': 'clinical-rn',
   'Authorization Pending':     'authorization',
   'Conflict':                  'conflict',
+  'EMR Onboarding':            'emr-onboarding',
   'Staffing Feasibility':      'staffing',
   'Admin Confirmation':        'admin-confirmation',
   'Pre-SOC':                   'pre-soc',
@@ -66,7 +67,7 @@ export const ROLE_MODES = [
     id: 'scheduler',
     label: 'Scheduler',
     color: palette.accentGreen.hex,
-    stages: ['Staffing Feasibility', 'Pre-SOC', 'SOC Completed'],
+    stages: ['EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Completed'],
   },
   {
     id: 'admin',
@@ -174,6 +175,13 @@ export const STAGE_META = {
     color: palette.primaryMagenta.hex,
     matchReferral: (r) => r.current_stage === 'Conflict',
   },
+  'EMR Onboarding': {
+    description: 'Onboard the patient into the external EMR (HCHB) before scheduling. Download the EMR Onboarding Packet, complete onboarding, then mark the patient onboarded to advance to Staffing Feasibility.',
+    isGlobal: false,
+    isTerminal: false,
+    color: palette.accentGreen.hex,
+    matchReferral: (r) => r.current_stage === 'EMR Onboarding',
+  },
   'Staffing Feasibility': {
     description: 'Clinician availability — the entire active pipeline is your radar',
     isGlobal: false,
@@ -182,12 +190,12 @@ export const STAGE_META = {
     consolidatedStages: [
       'Intake', 'Eligibility Verification', 'Disenrollment Required',
       'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
-      'Conflict', 'Staffing Feasibility',
+      'Conflict', 'EMR Onboarding', 'Staffing Feasibility',
     ],
     matchReferral: (r) => [
       'Intake', 'Eligibility Verification', 'Disenrollment Required',
       'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
-      'Conflict', 'Staffing Feasibility',
+      'Conflict', 'EMR Onboarding', 'Staffing Feasibility',
     ].includes(r.current_stage),
   },
   'Admin Confirmation': {

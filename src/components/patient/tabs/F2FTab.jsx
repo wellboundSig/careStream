@@ -9,6 +9,7 @@ import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../../hooks/useCursoryReview.js';
+import HospitalizationReview from '../../modules/shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -341,6 +342,8 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
             </span>
           </label>
         ))}
+
+        <HospitalizationReview referral={referral} patient={patient} readOnly={readOnly} />
       </Section>
 
       {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}

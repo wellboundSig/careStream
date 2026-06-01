@@ -34,6 +34,7 @@ export const PIN_GROUPS = [
       { label: 'Clinical Intake',path: '/modules/clinical-rn' },
       { label: 'Auth Pending',   path: '/modules/authorization' },
       { label: 'Conflict',       path: '/modules/conflict' },
+      { label: 'EMR Onboarding', path: '/modules/emr-onboarding' },
       { label: 'Staffing',       path: '/modules/staffing' },
       { label: 'Admin Confirm',  path: '/modules/admin-confirmation' },
       { label: 'Pre-SOC',        path: '/modules/pre-soc' },

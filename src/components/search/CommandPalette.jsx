@@ -19,6 +19,7 @@ const STAGE_ROUTES = {
   'Clinical Intake RN Review': '/modules/clinical-rn',
   'Authorization Pending':     '/modules/authorization',
   'Conflict':                  '/modules/conflict',
+  'EMR Onboarding':            '/modules/emr-onboarding',
   'Staffing Feasibility':      '/modules/staffing',
   'Admin Confirmation':        '/modules/admin-confirmation',
   'Pre-SOC':                   '/modules/pre-soc',

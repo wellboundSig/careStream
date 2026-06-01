@@ -172,15 +172,19 @@ describe('canMoveFromTo', () => {
     expect(canMoveFromTo('Intake', 'Eligibility Verification')).toBe(true);
     // F2F is a sub-state of Intake — Intake can flip to F2F and back
     expect(canMoveFromTo('F2F/MD Orders Pending', 'Intake')).toBe(true);
-    // Clinical RN routes only to Staffing now (Decline removed, Auth is Eligibility-side)
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
-    // Eligibility → Staffing (LIFO trigger with Clinical RN completion)
-    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(true);
+    // Clinical RN routes to EMR Onboarding now (LIFO target; Decline removed, Auth is Eligibility-side)
+    expect(canMoveFromTo('Clinical Intake RN Review', 'EMR Onboarding')).toBe(true);
+    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(false);
+    // Eligibility → EMR Onboarding (LIFO trigger with Clinical RN completion)
+    expect(canMoveFromTo('Eligibility Verification', 'EMR Onboarding')).toBe(true);
+    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(false);
     // Eligibility can send back to Intake with a required note
     expect(canMoveFromTo('Eligibility Verification', 'Intake')).toBe(true);
     // Auth Pending and Disenrollment Required return to Eligibility (their parent)
     expect(canMoveFromTo('Authorization Pending', 'Eligibility Verification')).toBe(true);
     expect(canMoveFromTo('Disenrollment Required', 'Eligibility Verification')).toBe(true);
+    // EMR Onboarding gates Staffing — the patient must be in the EMR first
+    expect(canMoveFromTo('EMR Onboarding', 'Staffing Feasibility')).toBe(true);
     // Staffing → Pre-SOC → SOC Completed (Admin Confirmation no longer in forward path)
     expect(canMoveFromTo('Staffing Feasibility', 'Pre-SOC')).toBe(true);
     expect(canMoveFromTo('Pre-SOC', 'SOC Completed')).toBe(true);
@@ -412,29 +416,37 @@ describe('Full pipeline journey — ALF happy path', () => {
     await moveStage('Eligibility Verification');
     expect(getRefStage()).toBe('Eligibility Verification');
 
-    // 3. Eligibility Verification → Staffing Feasibility (LIFO with Clinical
-    //    RN completion; auth/disen are supportive side flows, NOT forward
+    // 3. Eligibility Verification → EMR Onboarding (LIFO with Clinical RN
+    //    completion; auth/disen are supportive side flows, NOT forward
     //    destinations under the new model)
-    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(true);
-    await moveStage('Staffing Feasibility', {
+    expect(canMoveFromTo('Eligibility Verification', 'EMR Onboarding')).toBe(true);
+    await moveStage('EMR Onboarding', {
       eligibility_completed_at: new Date().toISOString(),
       clinical_review_completed_at: new Date().toISOString(),
     });
+    expect(getRefStage()).toBe('EMR Onboarding');
+
+    // 4. EMR Onboarding → Staffing Feasibility (patient is onboarded into the
+    //    external EMR before scheduling can plot a SOC)
+    expect(canMoveFromTo('EMR Onboarding', 'Staffing Feasibility')).toBe(true);
+    await moveStage('Staffing Feasibility', {
+      emr_onboarded_at: new Date().toISOString(),
+    });
     expect(getRefStage()).toBe('Staffing Feasibility');
 
-    // 4. Staffing Feasibility → Pre-SOC (Admin Confirmation is now a side
+    // 5. Staffing Feasibility → Pre-SOC (Admin Confirmation is now a side
     //    channel for NTUC review only; not in the forward path)
     expect(canMoveFromTo('Staffing Feasibility', 'Pre-SOC')).toBe(true);
     await moveStage('Pre-SOC');
     expect(getRefStage()).toBe('Pre-SOC');
 
-    // 5. Pre-SOC → SOC Completed (SOC Scheduled retained as legacy, but the
+    // 6. Pre-SOC → SOC Completed (SOC Scheduled retained as legacy, but the
     //    forward path skips it)
     expect(canMoveFromTo('Pre-SOC', 'SOC Completed')).toBe(true);
     await moveStage('SOC Completed', { soc_completed_date: '2026-04-15' });
     expect(getRefStage()).toBe('SOC Completed');
 
-    // 6. Cannot move out of terminal
+    // 7. Cannot move out of terminal
     expect(canMoveFromTo('SOC Completed', 'Pre-SOC')).toBe(false);
     expect(canMoveFromTo('SOC Completed', 'Intake')).toBe(false);
   });
@@ -453,9 +465,9 @@ describe('Authorization Pending as a supportive sub-module of Eligibility (post-
   it('Authorization Pending is no longer reachable directly from Clinical RN', () => {
     // Pre-2026-05-20 Clinical RN could route to Auth Pending. Under the new
     // model auth is an Eligibility-side concern (and a concurrent flag, not a
-    // forward destination), so Clinical RN's only forward path is Staffing.
+    // forward destination), so Clinical RN's only forward path is EMR Onboarding.
     expect(canMoveFromTo('Clinical Intake RN Review', 'Authorization Pending')).toBe(false);
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
+    expect(canMoveFromTo('Clinical Intake RN Review', 'EMR Onboarding')).toBe(true);
   });
 
   it('Authorization Pending → Eligibility Verification is the canonical exit (Send to Eligibility)', () => {
@@ -1063,32 +1075,44 @@ describe('Workflow overhaul (2026-05-20) — concurrent presence + LIFO + suppor
     expect(r.in_clinical_review).toBe(true);
   });
 
-  it('LIFO: Clinical RN Confirm AFTER Eligibility Completed flips to Staffing', async () => {
+  it('LIFO: Clinical RN Confirm AFTER Eligibility Completed advances to EMR Onboarding', async () => {
     // Eligibility completes first
     await updateReferralOptimistic('rec_ref1', {
       current_stage: 'Eligibility Verification',
       eligibility_completed_at: new Date().toISOString(),
     });
-    // Clinical RN confirms last → fires LIFO transition
+    // Clinical RN confirms last → fires LIFO transition to EMR Onboarding
     await updateReferralOptimistic('rec_ref1', {
-      current_stage: 'Staffing Feasibility',
+      current_stage: 'EMR Onboarding',
       clinical_review_completed_at: new Date().toISOString(),
       in_clinical_review: false,
     });
-    expect(getRefStage()).toBe('Staffing Feasibility');
+    expect(getRefStage()).toBe('EMR Onboarding');
   });
 
-  it('LIFO: Eligibility Completed AFTER Clinical RN Confirm flips to Staffing', async () => {
+  it('LIFO: Eligibility Completed AFTER Clinical RN Confirm advances to EMR Onboarding', async () => {
     await updateReferralOptimistic('rec_ref1', {
       current_stage: 'Eligibility Verification',
       clinical_review_completed_at: new Date().toISOString(),
       in_clinical_review: false,
     });
     await updateReferralOptimistic('rec_ref1', {
-      current_stage: 'Staffing Feasibility',
+      current_stage: 'EMR Onboarding',
       eligibility_completed_at: new Date().toISOString(),
     });
+    expect(getRefStage()).toBe('EMR Onboarding');
+  });
+
+  it('EMR Onboarding gates Staffing: mark onboarded advances to Staffing Feasibility', async () => {
+    await updateReferralOptimistic('rec_ref1', { current_stage: 'EMR Onboarding' });
+    expect(canMoveFromTo('EMR Onboarding', 'Staffing Feasibility')).toBe(true);
+    await updateReferralOptimistic('rec_ref1', {
+      current_stage: 'Staffing Feasibility',
+      emr_onboarded_at: new Date().toISOString(),
+      emr_onboarded_by_id: 'usr_sched',
+    });
     expect(getRefStage()).toBe('Staffing Feasibility');
+    expect(getStore().referrals['rec_ref1'].emr_onboarded_at).toBeTruthy();
   });
 
   it('Eligibility Send-Back-to-Intake writes the three flag fields and flips current_stage', async () => {

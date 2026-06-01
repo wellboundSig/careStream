@@ -25,6 +25,7 @@ import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
+import HospitalizationReview from './shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import { fileToUrl } from '../../utils/r2Upload.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -33,7 +34,7 @@ import PatientSnapshot from './PatientSnapshot.jsx';
 const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
   'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
-  'Conflict', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled',
+  'Conflict', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled',
 ];
 
 // Shared panel wrapper ────────────────────────────────────────────────────────
@@ -600,6 +601,8 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                     </span>
                   </label>
                 ))}
+
+                <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
 
                 {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
                     checkboxes per spec — it's only clickable once every
@@ -1227,6 +1230,8 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               ))}
             </div>
 
+            <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
+
             <button
               data-testid="f2f-confirm-btn"
               onClick={() => reviewComplete && onInitiateTransition?.(selectedReferral, 'Clinical Intake RN Review')}
@@ -1349,25 +1354,25 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       in_clinical_review: false,
     };
     if (eligibilityDone) {
-      // LIFO trigger — eligibility is already complete, so the patient moves to
-      // Staffing Feasibility and leaves Clinical Review entirely. We write the
-      // stage flip AND the cleared concurrent flag in ONE optimistic update so
-      // the in-memory store drops the patient from the Clinical module
-      // immediately (no lingering via in_clinical_review until the next poll).
-      // We deliberately bypass onInitiateTransition here: Clinical Intake RN
-      // Review is a protectedExit stage, and the RN's Confirm IS the sanctioned
-      // exit — it must not pop a generic move-confirmation modal.
+      // LIFO trigger — eligibility is already complete, so the patient advances
+      // to EMR Onboarding (the gate before Staffing) and leaves Clinical Review
+      // entirely. We write the stage flip AND the cleared concurrent flag in
+      // ONE optimistic update so the in-memory store drops the patient from the
+      // Clinical module immediately (no lingering via in_clinical_review until
+      // the next poll). We deliberately bypass onInitiateTransition here:
+      // Clinical Intake RN Review is a protectedExit stage, and the RN's Confirm
+      // IS the sanctioned exit — it must not pop a generic move modal.
       try {
         await updateReferralOptimistic(selectedReferral._id, {
           ...baseFields,
-          current_stage: 'Staffing Feasibility',
+          current_stage: 'EMR Onboarding',
         });
       } catch {}
       recordTransition({
         referral: selectedReferral,
         fromStage,
-        toStage: 'Staffing Feasibility',
-        note: '[Clinical RN confirmed — eligibility already complete → Staffing Feasibility]',
+        toStage: 'EMR Onboarding',
+        note: '[Clinical RN confirmed — eligibility already complete → EMR Onboarding]',
         authorId: appUserId,
       });
       triggerDataRefresh();
@@ -1489,7 +1494,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
-              {canConfirm ? 'Confirm → Staffing Feasibility' : 'Complete checklist + Accept to confirm'}
+              {canConfirm
+                ? (eligibilityDone ? 'Confirm → EMR Onboarding' : 'Confirm Review (awaiting Eligibility)')
+                : 'Complete checklist + Accept to confirm'}
             </button>
           </PanelSection>
           )}
@@ -1745,6 +1752,101 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
   );
 }
 
+// ── EMR Onboarding ────────────────────────────────────────────────────────────
+// Sits between Clinical Intake RN Review and Staffing Feasibility. The patient
+// must be onboarded into the external EMR (HCHB) before scheduling can plot a
+// SOC. Staff download the EMR Onboarding Packet, complete onboarding in the
+// EMR, then mark the patient onboarded — which advances them to Staffing.
+function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferralLeftModule }) {
+  const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+  const [onboarding, setOnboarding] = useState(false);
+  const [onboardError, setOnboardError] = useState(null);
+
+  useEffect(() => {
+    setPdfError(null); setOnboardError(null); setOnboarding(false);
+  }, [selectedReferral?._id]);
+
+  // Onboarding is owned by the scheduling team; reuse the existing staffing
+  // permission so current schedulers aren't locked out by a brand-new key.
+  const canOnboard = canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
+  const alreadyOnboarded = !!selectedReferral?.emr_onboarded_at;
+
+  async function handleDownloadPdf() {
+    if (!selectedReferral) return;
+    setPdfLoading(true); setPdfError(null);
+    try { await generateEmrPacket(selectedReferral, resolveSource); }
+    catch (err) { setPdfError(err.message || 'Failed to generate PDF'); }
+    finally { setPdfLoading(false); }
+  }
+
+  async function handleMarkOnboarded() {
+    if (!selectedReferral || !canOnboard) return;
+    const fromStage = selectedReferral.current_stage;
+    const now = new Date().toISOString();
+    setOnboarding(true); setOnboardError(null);
+    try {
+      await updateReferralOptimistic(selectedReferral._id, {
+        current_stage: 'Staffing Feasibility',
+        emr_onboarded_at: now,
+        emr_onboarded_by_id: appUserId || 'unknown',
+      });
+      recordTransition({
+        referral: selectedReferral,
+        fromStage,
+        toStage: 'Staffing Feasibility',
+        note: '[EMR onboarding complete → Staffing Feasibility]',
+        authorId: appUserId,
+      });
+      triggerDataRefresh();
+      onSelectedReferralLeftModule?.();
+    } catch (err) {
+      setOnboardError(err.message || 'Failed to mark onboarded');
+      setOnboarding(false);
+    }
+  }
+
+  return (
+    <Panel>
+      {!selectedReferral ? <EmptyPanelState message="Select a patient to onboard into the EMR." /> : (
+        <>
+          <PanelSection title="Patient">
+            <InfoRow label="Name" value={selectedReferral.patientName} />
+            <InfoRow label="Division" value={selectedReferral.division} />
+            <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
+          </PanelSection>
+
+          <PanelSection title="EMR Onboarding">
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
+              Download the onboarding packet and enter the patient into the EMR (HCHB). Scheduling can&apos;t plot a SOC until the patient exists in the EMR. Mark onboarded once complete to advance to Staffing.
+            </p>
+            <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+            {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
+
+            <div style={{ marginTop: 10 }}>
+              {onboardError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{onboardError}</p>}
+              <ActionBtn
+                label={onboarding ? 'Saving…' : (canOnboard ? 'Mark EMR Onboarded → Staffing' : 'Onboarding handled by scheduling')}
+                variant={canOnboard ? 'forward' : 'default'}
+                onClick={handleMarkOnboarded}
+                disabled={!canOnboard || onboarding}
+              />
+            </div>
+          </PanelSection>
+
+          {alreadyOnboarded && (
+            <PanelSection title="Status">
+              <InfoRow label="EMR Onboarded" value={new Date(selectedReferral.emr_onboarded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} highlight={palette.accentGreen.hex} />
+            </PanelSection>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
 function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
   const [clinicianMatched, setClinicianMatched] = useState(false);
@@ -1851,7 +1953,7 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
               </label>
               <button
                 data-testid="staffing-confirm-btn"
-                onClick={() => canConfirm && onInitiateTransition?.(selectedReferral, 'Admin Confirmation')}
+                onClick={() => canConfirm && onInitiateTransition?.(selectedReferral, 'Pre-SOC')}
                 disabled={!canConfirm}
                 style={{
                   width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
@@ -1863,7 +1965,7 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
                 onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
               >
-                {canConfirm ? 'Confirm → Admin Confirmation' : 'Match a clinician to confirm'}
+                {canConfirm ? 'Confirm → Pre-SOC' : 'Match a clinician to confirm'}
               </button>
             </div>
           )}
@@ -2009,9 +2111,10 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     } catch (err) { setOnboardError(err.message || 'Failed'); setOnboarding(false); setConfirming(false); }
   }
 
-  // Step indicator
+  // Step indicator. EMR onboarding now happens upstream (its own stage), so by
+  // the time a patient is in Pre-SOC it's already done — reflect that.
   const steps = [
-    { key: 'emr', label: 'EMR Onboarding', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
+    { key: 'emr', label: 'EMR Onboarding', done: !!selectedReferral?.emr_onboarded_at || actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
     { key: 'schedule', label: 'SOC Scheduled', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
     { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' },
   ];
@@ -2055,17 +2158,20 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
             </div>
           </PanelSection>
 
-          {/* Step A: EMR Onboarding (only when in Pre-SOC) */}
+          {/* Step 1: Schedule SOC (only when in Pre-SOC). EMR onboarding now
+              happens upstream in the dedicated EMR Onboarding stage, so this
+              panel only schedules the SOC. The packet stays downloadable here
+              as a reference copy. */}
           {actualStage === 'Pre-SOC' && (
-            <PanelSection title="Step 1 — EMR Onboarding">
-              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+            <PanelSection title="Step 1 — Schedule SOC">
+              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Packet (reference)'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
               {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
               <div style={{ marginTop: 10 }}>
                 <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>SOC Date</p>
                 <input type="date" value={socDate} min={today} onChange={(e) => setSocDate(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }} />
                 {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
-                <ActionBtn label={saving ? 'Scheduling…' : 'Confirm EMR Onboarded & Schedule SOC →'} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
+                <ActionBtn label={saving ? 'Scheduling…' : 'Schedule SOC →'} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
               </div>
             </PanelSection>
           )}
@@ -2532,6 +2638,7 @@ export default function StagePanel({ stage, referrals, allReferrals, selectedRef
     case 'Clinical Intake RN Review': return <ClinicalRNPanel {...props} />;
     case 'Authorization Pending':     return <AuthorizationPanel {...props} />;
     case 'Conflict':                  return <ConflictPanel {...props} />;
+    case 'EMR Onboarding':            return <EmrOnboardingPanel {...props} />;
     case 'Staffing Feasibility':      return <StaffingPanel {...props} />;
     case 'Admin Confirmation':        return <AdminConfirmationPanel {...props} />;
     case 'Pre-SOC':                   return <PreSocPanel {...props} />;

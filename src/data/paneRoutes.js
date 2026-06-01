@@ -24,6 +24,7 @@ export const PANE_NAV = [
       { path: '/modules/clinical-rn', label: 'Clinical RN Review' },
       { path: '/modules/authorization', label: 'Authorization' },
       { path: '/modules/conflict', label: 'Conflict' },
+      { path: '/modules/emr-onboarding', label: 'EMR Onboarding' },
       { path: '/modules/staffing', label: 'Staffing' },
       { path: '/modules/admin-confirmation', label: 'Admin Confirmation' },
       { path: '/modules/pre-soc', label: 'Pre-SOC' },

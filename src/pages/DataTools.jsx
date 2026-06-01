@@ -11,7 +11,7 @@ import palette, { hexToRgba } from '../utils/colors.js';
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
-  'Conflict','Staffing Feasibility','Admin Confirmation',
+  'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
 const TERMINAL = new Set(['SOC Completed','NTUC']);
@@ -26,6 +26,7 @@ const STAGE_COLOR = {
   'Clinical Intake RN Review': palette.primaryMagenta.hex,
   'Authorization Pending': hexToRgba(palette.primaryMagenta.hex, 0.6),
   'Conflict': hexToRgba(palette.primaryMagenta.hex, 0.4),
+  'EMR Onboarding': hexToRgba(palette.accentGreen.hex, 0.55),
   'Staffing Feasibility': hexToRgba(palette.accentBlue.hex, 0.4),
   'Admin Confirmation': palette.primaryDeepPlum.hex,
   'Pre-SOC': hexToRgba(palette.accentGreen.hex, 0.4),

@@ -46,7 +46,7 @@ const ROW_GROUPS = [
   {
     label: 'Staffing & Admin',
     color: palette.primaryDeepPlum.hex,
-    stages: ['Staffing Feasibility', 'Admin Confirmation'],
+    stages: ['EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation'],
   },
   {
     label: 'Admission',

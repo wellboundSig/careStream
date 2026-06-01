@@ -20,7 +20,7 @@ import palette, { hexToRgba } from '../utils/colors.js';
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
-  'Conflict','Staffing Feasibility','Admin Confirmation',
+  'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
 
@@ -36,6 +36,7 @@ const STAGE_ROUTE = {
   'Clinical Intake RN Review': '/modules/clinical-rn',
   'Authorization Pending':     '/modules/authorization',
   'Conflict':                  '/modules/conflict',
+  'EMR Onboarding':            '/modules/emr-onboarding',
   'Staffing Feasibility':      '/modules/staffing',
   'Admin Confirmation':        '/modules/admin-confirmation',
   'Pre-SOC':                   '/modules/pre-soc',

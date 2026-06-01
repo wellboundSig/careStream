@@ -20,6 +20,28 @@ function calcAge(dob) {
   return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
 }
 
+// Returns the hospitalization Date when the patient had a hospitalization
+// within the last 14 days (per the cursory review), else null. Drives the
+// hospital indicator in the snapshot.
+export function recentHospitalizationDate(referral) {
+  const raw = referral?.hospitalization_date;
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) return null;
+  const days = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (days < 0 || days > 14) return null;
+  return date;
+}
+
+function HospitalIcon({ size = 13, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke={color} strokeWidth="1.8" />
+      <path d="M12 8v6M9 11h6" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // The fourth arg (formerly `insuranceChecks`) is preserved as a positional
 // placeholder so older callers don't break, but we no longer consult it —
 // the Insurance Details readiness flag is sourced from Demographics now
@@ -93,6 +115,7 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   const flags = computeSnapshotFlags(patient, referral, triageData, insuranceChecks);
   const { appUserId } = useCurrentAppUser();
   const urgent = isUrgentCare(referral);
+  const hospDate = recentHospitalizationDate(referral);
   const [busy, setBusy] = useState(false);
 
   // We intentionally do NOT gate the toggle on a permission check at the UI
@@ -145,6 +168,30 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
         <UrgentCareIcon size={13} muted={!urgent} />
         <span>{urgent ? 'Urgent care required' : 'Mark urgent care'}</span>
       </button>
+
+      {/* Recent hospitalization indicator — shown when the cursory review
+          flagged a hospitalization within the last 14 days. Informational
+          (not clickable); opens the F2F tab where the review lives. */}
+      {hospDate && (
+        <button
+          type="button"
+          onClick={() => onOpenTab?.('f2f')}
+          title="Recent hospitalization — see Document Review (F2F tab)"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 8px', marginBottom: 2, borderRadius: 7, border: 'none',
+            textAlign: 'left', cursor: onOpenTab ? 'pointer' : 'default',
+            background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+            color: palette.primaryMagenta.hex,
+            fontFamily: 'inherit', fontWeight: 650, fontSize: 11.5,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.16); }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.1); }}
+        >
+          <HospitalIcon size={13} color={palette.primaryMagenta.hex} />
+          <span>Hospitalized {hospDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        </button>
+      )}
 
       {/* Snapshot flag rows — each is a button that opens the matching tab
           in the patient drawer (when an onOpenTab callback is wired). */}

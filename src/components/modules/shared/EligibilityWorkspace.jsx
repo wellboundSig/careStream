@@ -273,22 +273,22 @@ export default function EligibilityWorkspace({
                 };
                 try {
                   if (clinicalReviewDone) {
-                    // Both eligibility + clinical complete — LIFO flip to
-                    // Staffing. Done as ONE optimistic update (stage + fields)
-                    // so the patient leaves their current module immediately.
-                    // We bypass onInitiateTransition because the patient may be
-                    // sitting in Clinical Intake RN Review (a protectedExit
-                    // stage) — this system-driven LIFO move must not pop a
-                    // generic move-confirmation modal.
+                    // Both eligibility + clinical complete — LIFO advance to
+                    // EMR Onboarding (the gate before Staffing). Done as ONE
+                    // optimistic update (stage + fields) so the patient leaves
+                    // their current module immediately. We bypass
+                    // onInitiateTransition because the patient may be sitting in
+                    // Clinical Intake RN Review (a protectedExit stage) — this
+                    // system-driven LIFO move must not pop a generic move modal.
                     await updateReferralOptimistic(referral._id, {
                       ...fields,
-                      current_stage: 'Staffing Feasibility',
+                      current_stage: 'EMR Onboarding',
                     });
                     recordTransition({
                       referral,
                       fromStage,
-                      toStage: 'Staffing Feasibility',
-                      note: '[Eligibility complete — clinical already done → Staffing Feasibility]',
+                      toStage: 'EMR Onboarding',
+                      note: '[Eligibility complete — clinical already done → EMR Onboarding]',
                       authorId: appUserId,
                     });
                   } else if (isRecheck) {
@@ -313,7 +313,7 @@ export default function EligibilityWorkspace({
                     patientId: patient.id,
                     referralId: referral?.id,
                     detail: clinicalReviewDone
-                      ? 'Eligibility completed — patient flipped to Staffing Feasibility (LIFO trigger).'
+                      ? 'Eligibility completed — patient advanced to EMR Onboarding (LIFO trigger).'
                       : isRecheck
                         ? `Eligibility re-check completed — returned to ${returnStage}.`
                         : 'Eligibility completed — awaiting Clinical RN completion.',
