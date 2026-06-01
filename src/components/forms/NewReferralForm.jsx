@@ -668,6 +668,22 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           } else {
             next.entity_id = '';
           }
+
+          // Auto-populate the patient address from the chosen ALF facility —
+          // an ALF resident lives at the facility, so its address is theirs.
+          // The network facility carries street + zip; we derive city/state
+          // from the zip (same lookup the rest of the form uses). Phone is not
+          // stored on network facilities, so it isn't auto-filled.
+          if (fac.address_street) next.address_street = fac.address_street;
+          const zip = fac.zipcode != null ? String(fac.zipcode).trim() : '';
+          if (zip) {
+            next.address_zip = zip;
+            const zipInfo = lookupZip(zip);
+            if (zipInfo.valid) {
+              next.address_city = zipInfo.city;
+              next.address_state = zipInfo.state;
+            }
+          }
         }
       }
       if (key === 'facility_id' && !value) {
