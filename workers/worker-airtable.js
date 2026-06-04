@@ -22,6 +22,7 @@
 const ALLOWED_ORIGINS = [
   'https://wellboundcarestream.com',
   'https://www.wellboundcarestream.com',
+  'https://support.wellboundcarestream.com',
   'http://localhost:5173',
 ];
 
