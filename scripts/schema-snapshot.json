@@ -1,6 +1,6 @@
 {
   "baseId": "appr7CZdBQ966kwvL",
-  "fetchedAt": "2026-06-04T15:05:27.228Z",
+  "fetchedAt": "2026-06-12T17:36:53.645Z",
   "tables": [
     {
       "id": "tbl8DYIoXcJKklgZJ",
@@ -636,6 +636,17 @@
           "options": {
             "icon": "check",
             "color": "greenBright"
+          }
+        },
+        {
+          "id": "fldEvYB0KXVRCGmBp",
+          "name": "resolved_tickets",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tbli84zqw10oZTFaI",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldTyUPqvBA8tkmTU"
           }
         }
       ]
@@ -1824,7 +1835,7 @@
         },
         {
           "id": "fldVQeBluWrntwJH1",
-          "name": "clinical_review_by\t",
+          "name": "clinical_review_by",
           "type": "singleLineText"
         },
         {
@@ -7924,6 +7935,31 @@
             "isReversed": false,
             "prefersSingleRecordLink": false,
             "inverseLinkFieldId": "fldN7dcAltP5ZaqmX"
+          }
+        },
+        {
+          "id": "fldjrMfk10dov7Lyc",
+          "name": "resolution_note",
+          "type": "multilineText"
+        },
+        {
+          "id": "fldTyUPqvBA8tkmTU",
+          "name": "resolved_by_id",
+          "type": "multipleRecordLinks",
+          "options": {
+            "linkedTableId": "tblsIufqA7e9asJkV",
+            "isReversed": false,
+            "prefersSingleRecordLink": false,
+            "inverseLinkFieldId": "fldEvYB0KXVRCGmBp"
+          }
+        },
+        {
+          "id": "fldpCp7x2vMTZebTq",
+          "name": "internal_override",
+          "type": "checkbox",
+          "options": {
+            "icon": "check",
+            "color": "redBright"
           }
         }
       ]
