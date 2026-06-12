@@ -5,10 +5,9 @@ import { getFilesByPatient } from '../../api/patientFiles.js';
 import { updateReferral } from '../../api/referrals.js';
 import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
 import { updateReferralOptimistic } from '../../store/mutations.js';
+import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
-import { createEpisode } from '../../api/episodes.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
-import { recordTransition } from '../../utils/recordTransition.js';
 import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
@@ -320,40 +319,43 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
   const today = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 86400000).length;
   const thisWeek = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 7 * 86400000).length;
 
-  function handleDiscard(reason, explanation) {
+  async function handleDiscard(reason, explanation) {
     if (!selectedReferral) return;
     const note = `[Discarded] ${reason}\n${explanation}`;
-    const ts = new Date().toISOString();
-    updateReferralOptimistic(selectedReferral._id, {
-      current_stage: 'Discarded Leads',
-      discard_reason: reason,
-      discard_explanation: explanation,
-      updated_at: ts,
-    }).catch(() => {});
-    recordTransition({ referral: selectedReferral, fromStage: 'Lead Entry', toStage: 'Discarded Leads', note, authorId: appUserId });
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'Discarded Leads',
+      context: {
+        note,
+        actorUserId: appUserId,
+        extraFields: { discard_reason: reason, discard_explanation: explanation, updated_at: new Date().toISOString() },
+      },
+    });
+    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
     triggerDataRefresh();
     onSelectedReferralLeftModule?.();
     setShowDiscard(false);
   }
 
-  function handlePromote(ownerId) {
+  async function handlePromote(ownerId) {
     if (!selectedReferral) return;
-    const ts = new Date().toISOString();
-    const fields = { current_stage: 'Intake', intake_owner_id: ownerId, updated_at: ts };
-    updateReferralOptimistic(selectedReferral._id, fields)
-      .then(() => { console.log('[LeadEntry] Moved to Intake successfully'); })
-      .catch((err) => { console.error('[LeadEntry] Move failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
     // Resolve the staff member's display name so the timeline note never
     // surfaces a raw `usr_###` id to a clinical/business reader.
     const ownerUser = Object.values(useCareStore.getState().users || {}).find((u) => u.id === ownerId);
     const ownerName = ownerUser ? `${ownerUser.first_name || ''} ${ownerUser.last_name || ''}`.trim() : ownerId;
-    recordTransition({
+    const result = attemptTransition({
       referral: selectedReferral,
-      fromStage: 'Lead Entry',
       toStage: 'Intake',
-      note: `Owner assigned: ${ownerName}`,
-      authorId: appUserId,
+      context: {
+        note: `Owner assigned: ${ownerName}`,
+        actorUserId: appUserId,
+        extraFields: { intake_owner_id: ownerId, updated_at: new Date().toISOString() },
+      },
     });
+    if (result.allowed) {
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } })
+        .catch((err) => { console.error('[LeadEntry] Move failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
+    }
     triggerDataRefresh();
     onSelectedReferralLeftModule?.();
     setShowPromote(false);
@@ -672,20 +674,18 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
 
   async function handlePushClinical() {
     if (!referral?._id) return;
-    const fromStage = referral.current_stage;
-    try {
-      await updateReferralOptimistic(referral._id, {
-        current_stage: 'Clinical Intake RN Review',
-        in_clinical_review: true,
-        clinical_review_pushed_at: new Date().toISOString(),
-      });
-      recordTransition({
-        referral,
-        fromStage,
-        toStage: 'Clinical Intake RN Review',
+    const result = attemptTransition({
+      referral,
+      toStage: 'Clinical Intake RN Review',
+      context: {
         note: '[Pushed to Clinical RN — left Intake]',
-        authorId: actorUserId,
-      });
+        actorUserId,
+        extraFields: { in_clinical_review: true, clinical_review_pushed_at: new Date().toISOString() },
+      },
+    });
+    if (!result.allowed) return;
+    try {
+      await applyTransition({ referral, result, context: { actorUserId } });
       // Patient has left Intake — clear the right-hand panel selection so we
       // don't keep rendering snapshot + cursory review for a record that's
       // no longer in this module. Mirrors LeadEntryPanel / EmrOnboardingPanel.
@@ -1370,7 +1370,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const now = new Date().toISOString();
-    const fromStage = selectedReferral.current_stage;
     // Clinical RN's confirm is now ALWAYS the exit from this module —
     // patient moves to EMR Onboarding regardless of where eligibility stands.
     // Eligibility can still be completed concurrently from the patient drawer;
@@ -1378,24 +1377,23 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     // onInitiateTransition because Clinical Intake RN Review is a
     // protectedExit stage and the RN's Confirm IS the sanctioned exit — it
     // must not pop a generic move modal.
-    try {
-      await updateReferralOptimistic(selectedReferral._id, {
-        clinical_review_decision: decision,
-        clinical_review_by: appUserId || 'unknown',
-        clinical_review_at: now,
-        clinical_review_completed_at: now,
-        clinical_review_completed_by_id: appUserId || 'unknown',
-        in_clinical_review: false,
-        current_stage: 'EMR Onboarding',
-      });
-    } catch {}
-    recordTransition({
+    const result = attemptTransition({
       referral: selectedReferral,
-      fromStage,
       toStage: 'EMR Onboarding',
-      note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
-      authorId: appUserId,
+      context: {
+        note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
+        actorUserId: appUserId,
+        extraFields: {
+          clinical_review_decision: decision,
+          clinical_review_by: appUserId || 'unknown',
+          clinical_review_at: now,
+          clinical_review_completed_at: now,
+          clinical_review_completed_by_id: appUserId || 'unknown',
+          in_clinical_review: false,
+        },
+      },
     });
+    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
     triggerDataRefresh();
     // Patient has left Clinical RN — clear the right-hand panel selection so
     // we don't keep rendering snapshot + checklist for a record that's no
@@ -1403,23 +1401,24 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     onSelectedReferralLeftModule?.();
   }
 
-  function handleSendBack() {
+  async function handleSendBack() {
     if (!sendBackNote.trim() || !selectedReferral) return;
-    updateReferral(selectedReferral._id, {
-      current_stage: 'F2F/MD Orders Pending',
-      in_clinical_review: false,
-      returned_from_clinical: 'true',
-      returned_from_clinical_note: sendBackNote.trim(),
-      returned_from_clinical_at: new Date().toISOString(),
-      returned_from_clinical_by: appUserId || 'unknown',
-    }).catch(() => {});
-    recordTransition({
+    const result = attemptTransition({
       referral: selectedReferral,
-      fromStage: 'Clinical Intake RN Review',
       toStage: 'F2F/MD Orders Pending',
-      note: `[Returned from Clinical] ${sendBackNote.trim()}`,
-      authorId: appUserId,
+      context: {
+        note: `[Returned from Clinical] ${sendBackNote.trim()}`,
+        actorUserId: appUserId,
+        extraFields: {
+          in_clinical_review: false,
+          returned_from_clinical: 'true',
+          returned_from_clinical_note: sendBackNote.trim(),
+          returned_from_clinical_at: new Date().toISOString(),
+          returned_from_clinical_by: appUserId || 'unknown',
+        },
+      },
     });
+    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
     triggerDataRefresh();
     setShowSendBack(false);
     setSendBackNote('');
@@ -1803,22 +1802,20 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferra
 
   async function handleMarkOnboarded() {
     if (!selectedReferral || !canOnboard) return;
-    const fromStage = selectedReferral.current_stage;
     const now = new Date().toISOString();
     setOnboarding(true); setOnboardError(null);
-    try {
-      await updateReferralOptimistic(selectedReferral._id, {
-        current_stage: 'Staffing Feasibility',
-        emr_onboarded_at: now,
-        emr_onboarded_by_id: appUserId || 'unknown',
-      });
-      recordTransition({
-        referral: selectedReferral,
-        fromStage,
-        toStage: 'Staffing Feasibility',
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'Staffing Feasibility',
+      context: {
         note: '[EMR onboarding complete → Staffing Feasibility]',
-        authorId: appUserId,
-      });
+        actorUserId: appUserId,
+        extraFields: { emr_onboarded_at: now, emr_onboarded_by_id: appUserId || 'unknown' },
+      },
+    });
+    if (!result.allowed) { setOnboardError(result.reason); setOnboarding(false); return; }
+    try {
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
       onSelectedReferralLeftModule?.();
     } catch (err) {
@@ -2115,19 +2112,29 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, on
     if (!socDate || !selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)) return;
     setSaving(true);
     setError(null);
+    // Pre-SOC -> SOC Scheduled is a sanctioned sub-state move (not a user-facing
+    // graph edge), so it goes through the engine as a `system` transition. The
+    // engine writes optimistically, so the panel re-renders into Step 2
+    // immediately. createEpisode rides along as a side effect.
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'SOC Scheduled',
+      context: {
+        system: true,
+        actorUserId: appUserId,
+        extraFields: {
+          soc_scheduled_date: socDate,
+          soc_scheduled_at: new Date().toISOString(),
+          soc_scheduled_by_id: appUserId || 'unknown',
+        },
+        extraSideEffects: [
+          { type: 'createEpisode', patientId: selectedReferral.patient_id, referralRecordId: selectedReferral._id, socDate },
+        ],
+      },
+    });
+    if (!result.allowed) { setError(result.reason || 'Failed to schedule SOC'); setSaving(false); return; }
     try {
-      // Optimistic update: writes to the local store immediately so the
-      // panel re-renders into Step 2 the moment the user clicks. Without
-      // this, the patient's current_stage in the panel stayed 'Pre-SOC'
-      // until the next background sync, which made the click look broken.
-      await updateReferralOptimistic(selectedReferral._id, {
-        current_stage: 'SOC Scheduled',
-        soc_scheduled_date: socDate,
-        soc_scheduled_at: new Date().toISOString(),
-        soc_scheduled_by_id: appUserId || 'unknown',
-      });
-      await createEpisode({ patient_id: selectedReferral.patient_id, referral_id: selectedReferral._id, soc_date: socDate, episode_start: socDate });
-      recordTransition({ referral: selectedReferral, fromStage: 'Pre-SOC', toStage: 'SOC Scheduled', authorId: appUserId });
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
     } catch (err) {
       setError(err.message || 'Failed to schedule SOC');
@@ -2150,9 +2157,17 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, on
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true); setOnboardError(null);
     let succeeded = false;
+    // current_stage at click time is either 'Pre-SOC' (no SOC Scheduled
+    // sub-state yet) or 'SOC Scheduled'. Both reach SOC Completed; mark the
+    // move `system` so it works from either without depending on the edge list.
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'SOC Completed',
+      context: { system: true, actorUserId: appUserId, extraFields: { soc_completed_date: new Date().toISOString().split('T')[0] } },
+    });
     try {
-      await updateReferralOptimistic(selectedReferral._id, { current_stage: 'SOC Completed', soc_completed_date: new Date().toISOString().split('T')[0] });
-      recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
+      if (!result.allowed) throw new Error(result.reason || 'Failed');
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
       succeeded = true;
     } catch (err) {
@@ -2281,6 +2296,7 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, on
 // ── 12. SOC Scheduled ─────────────────────────────────────────────────────────
 function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
   const [pdfLoading, setPdfLoading]       = useState(false);
   const [pdfError, setPdfError]           = useState(null);
   const [confirming, setConfirming]       = useState(false);
@@ -2312,14 +2328,14 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
     setOnboarding(true);
     setOnboardError(null);
     let succeeded = false;
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'SOC Completed',
+      context: { actorUserId: appUserId, extraFields: { soc_completed_date: new Date().toISOString().split('T')[0] } },
+    });
     try {
-      // Optimistic so the panel reflects 'SOC Completed' the instant the
-      // user clicks rather than after the next background sync.
-      await updateReferralOptimistic(selectedReferral._id, {
-        current_stage: 'SOC Completed',
-        soc_completed_date: new Date().toISOString().split('T')[0],
-      });
-      recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
+      if (!result.allowed) throw new Error(result.reason || 'Failed to update patient');
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
       succeeded = true;
     } catch (err) {

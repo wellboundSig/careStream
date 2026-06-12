@@ -42,36 +42,10 @@ const {
   createStageHistoryOptimistic, createTaskOptimistic, createNoteOptimistic,
   updateTaskOptimistic, updatePatientOptimistic,
 } = await import('../store/mutations.js');
+// Canonical patient/referral builders live in the shared factory now.
+const { makePatient, makeReferral } = await import('../test/factories.js');
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
-
-function makePatient(overrides = {}) {
-  return {
-    _id: 'rec_pat1', id: 'pat_001',
-    first_name: 'Maria', last_name: 'Rodriguez',
-    dob: '1985-06-15', gender: 'Female',
-    division: 'ALF', address_zip: '10001', address_state: 'NY',
-    county: 'New York', phone_primary: '212-555-0100',
-    medicaid_number: 'AB12345C', insurance_plan: 'Fidelis Care',
-    is_active: 'TRUE', created_at: '2026-03-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function makeReferral(overrides = {}) {
-  return {
-    _id: 'rec_ref1', id: 'ref_001',
-    patient_id: 'pat_001', current_stage: 'Lead Entry',
-    division: 'ALF', priority: 'Normal',
-    marketer_id: 'mkt_001', referral_source_id: 'src_001',
-    services_requested: ['SN', 'PT'],
-    referral_date: '2026-03-15T00:00:00.000Z',
-    created_at: '2026-03-15T00:00:00.000Z',
-    updated_at: '2026-03-15T00:00:00.000Z',
-    entity_id: 'WB',
-    ...overrides,
-  };
-}
 
 function seedStore(patientOvr = {}, referralOvr = {}) {
   const patient = makePatient(patientOvr);

@@ -11,6 +11,7 @@
 import { createOpwddCase, findActiveCaseByReferral, updateOpwddCase } from '../api/opwddCases.js';
 import { seedChecklistForCase, getChecklistItemsByCase, updateChecklistItem } from '../api/opwddChecklistItems.js';
 import { updateReferral } from '../api/referrals.js';
+import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 import { recordActivity } from '../api/activityLog.js';
 import { useCareStore } from './careStore.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
@@ -311,10 +312,14 @@ export async function convertCaseToIntake({ opwddCase, referral, actorUserId, ha
     ...(handoffNote ? { intake_handoff_note: handoffNote } : {}),
   });
   if (referral?._id) {
-    await updateReferral(referral._id, {
-      opwdd_handoff_status: OPWDD_HANDOFF_STATUS.HANDED_OFF,
-      current_stage: 'Intake',
-    }).catch(() => {});
+    // OPWDD case handoff re-enters the pipeline at Intake — a sanctioned
+    // system move through the shared engine.
+    const result = attemptTransition({
+      referral,
+      toStage: 'Intake',
+      context: { system: true, actorUserId, note: '[OPWDD case converted to intake]', extraFields: { opwdd_handoff_status: OPWDD_HANDOFF_STATUS.HANDED_OFF } },
+    });
+    if (result.allowed) await applyTransition({ referral, result, context: { actorUserId } }).catch(() => {});
   }
   await recordActivity({
     actorUserId,

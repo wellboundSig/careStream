@@ -38,39 +38,30 @@ vi.mock('../api/airtable.js', () => ({
 const airtable = (await import('../api/airtable.js')).default;
 const { useCareStore, getStore, setStore, mergeEntities, updateEntity, removeEntity } = await import('../store/careStore.js');
 const { updateReferralOptimistic, createReferralOptimistic, createPatientOptimistic, createStageHistoryOptimistic, createTaskOptimistic, createNoteOptimistic, updateTaskOptimistic, getNextTaskId } = await import('../store/mutations.js');
+const { makePatient: baseMakePatient, makeReferral: baseMakeReferral } = await import('../test/factories.js');
 
 // ── Test Fixtures ───────────────────────────────────────────────────────────
+// These delegate to the shared factory but pin this suite's historical ids
+// (pat_test / ref_test) so existing assertions keep matching.
 
 function makePatient(overrides = {}) {
-  return {
-    _id: 'rec_pat1',
+  return baseMakePatient({
     id: 'pat_test',
     first_name: 'John',
     last_name: 'Smith',
     dob: '1980-01-01',
     gender: 'Male',
-    division: 'ALF',
     address_zip: '11201',
-    is_active: 'TRUE',
     ...overrides,
-  };
+  });
 }
 
 function makeReferral(overrides = {}) {
-  return {
-    _id: 'rec_ref1',
+  return baseMakeReferral({
     id: 'ref_test',
     patient_id: 'pat_test',
-    current_stage: 'Lead Entry',
-    division: 'ALF',
-    priority: 'Normal',
-    marketer_id: 'mkt_001',
-    referral_source_id: 'src_001',
-    services_requested: ['SN', 'PT'],
-    referral_date: '2026-03-01T00:00:00.000Z',
-    created_at: '2026-03-01T00:00:00.000Z',
     ...overrides,
-  };
+  });
 }
 
 function seedStore(referralOverrides = {}) {

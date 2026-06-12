@@ -5,11 +5,9 @@ import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
-import { updateReferral } from '../api/referrals.js';
-import { recordTransition } from '../utils/recordTransition.js';
-import { applyStageEntryEffects } from '../utils/stageEntryEffects.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
-import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { canMoveFromTo, needsModal } from '../utils/stageTransitions.js';
+import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import QuickNoteModal from '../components/patients/QuickNoteModal.jsx';
@@ -399,18 +397,12 @@ export default function PatientList() {
 
   async function executeTransition(referral, patient, toStage, noteOrPayload) {
     if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
-    const fromStage = referral.current_stage;
-    const enteredAt = new Date().toISOString();
     setTransitioning(true);
     setPendingTransition(null);
+    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
 
-    const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
-      requestedStage: toStage,
-      fromStage,
-      canDirect: () => can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
-      userId: appUserId,
-    });
-
+    // Conflict creation is a bespoke pre-step; the move goes through the shared
+    // transition engine (same path as ModulePage + PipelineBoard).
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
       const patientRecordId = patient?._id || referral?.patient?._id;
       const patientCustomId = patient?.id || referral?.patient_id;
@@ -429,7 +421,7 @@ export default function PatientList() {
           referralCustomId,
           createdByUserRecordId,
           actorUserId: appUserId,
-          sourceModule: inferConflictSourceModuleFromStage(fromStage),
+          sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
           category: noteOrPayload.category,
           severity: noteOrPayload.severity,
           description: noteOrPayload.description,
@@ -443,24 +435,20 @@ export default function PatientList() {
       }
     }
 
-    const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
-    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
-    if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
-    if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
-    if (wasIntercepted && note) updateFields.ntuc_reason = note;
-
-    Object.assign(updateFields, applyStageEntryEffects({
+    const result = attemptTransition({
       referral,
-      fromStage,
-      toStage: effectiveStage,
-      actorUserId: appUserId,
-      resolveUserName: resolveUser,
-    }));
+      toStage,
+      context: { note, actorUserId: appUserId, canDirectNtuc: can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT), resolveUserName: resolveUser },
+    });
+    if (!result.allowed) {
+      showToast(result.reason || `Cannot move to ${toStage}`, 'error');
+      setTransitioning(false);
+      return;
+    }
     try {
-      await updateReferral(referral._id, updateFields);
-      recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
+      await applyTransition({ referral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
-      showToast(wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `Moved to ${effectiveStage}`);
+      showToast(result.wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `Moved to ${result.effectiveStage}`);
     } catch {
       showToast('Stage change failed', 'error');
     } finally {

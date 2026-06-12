@@ -52,7 +52,7 @@ import {
 import { suggestNar } from '../../../data/policies/authorizationPolicies.js';
 import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
 import { generateConflictId, CONFLICT_SEVERITY, CONFLICT_SEVERITY_OPTIONS } from '../../../utils/conflictFlagging.js';
-import { recordTransition } from '../../../utils/recordTransition.js';
+import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
 import { tokens, inputStyle, primaryBtn, secondaryBtn, smallActionBtn, sectionHeading, cardStyle, STATUS_PILL_MAP } from './workspaceStyles.js';
@@ -273,38 +273,31 @@ export default function EligibilityWorkspace({
                 };
                 try {
                   if (clinicalReviewDone) {
-                    // Both eligibility + clinical complete — LIFO advance to
-                    // EMR Onboarding (the gate before Staffing). Done as ONE
-                    // optimistic update (stage + fields) so the patient leaves
-                    // their current module immediately. We bypass
-                    // onInitiateTransition because the patient may be sitting in
-                    // Clinical Intake RN Review (a protectedExit stage) — this
-                    // system-driven LIFO move must not pop a generic move modal.
-                    await updateReferralOptimistic(referral._id, {
-                      ...fields,
-                      current_stage: 'EMR Onboarding',
-                    });
-                    recordTransition({
+                    // Both eligibility + clinical complete — LIFO advance to EMR
+                    // Onboarding. Routed through the engine as a `system` move
+                    // (the patient may be sitting in Clinical Intake RN Review, a
+                    // protectedExit stage; this system-driven LIFO move must not
+                    // pop a generic move modal).
+                    const result = attemptTransition({
                       referral,
-                      fromStage,
                       toStage: 'EMR Onboarding',
-                      note: '[Eligibility complete — clinical already done → EMR Onboarding]',
-                      authorId: appUserId,
+                      context: { system: true, actorUserId: appUserId, note: '[Eligibility complete — clinical already done → EMR Onboarding]', extraFields: fields },
                     });
+                    if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } });
                   } else if (isRecheck) {
                     // Re-check completed but clinical not yet done — return the
                     // patient to the stage they came from when the re-check was
                     // requested (system move; bypasses the edge list by design).
-                    fields.current_stage = returnStage;
-                    await updateReferralOptimistic(referral._id, fields);
-                    recordTransition({
+                    const result = attemptTransition({
                       referral,
-                      fromStage,
                       toStage: returnStage,
-                      note: '[Eligibility re-check completed]',
-                      authorId: appUserId,
+                      context: { system: true, actorUserId: appUserId, note: '[Eligibility re-check completed]', extraFields: fields },
                     });
+                    if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } });
                   } else {
+                    // No stage change — just stamp completion. The LIFO flip to
+                    // EMR Onboarding happens when Clinical RN confirms. (Not a
+                    // transition, so it stays a direct field write.)
                     await updateReferralOptimistic(referral._id, fields);
                   }
                   await recordActivity({
@@ -499,12 +492,21 @@ export default function EligibilityWorkspace({
             if (!note?.trim() || !referral?._id) return;
             const now = new Date().toISOString();
             try {
-              await updateReferralOptimistic(referral._id, {
-                current_stage: 'Intake',
-                eligibility_returned_to_intake_at: now,
-                eligibility_returned_to_intake_note: note.trim(),
-                eligibility_returned_to_intake_by_id: appUserId || 'unknown',
+              const result = attemptTransition({
+                referral,
+                toStage: 'Intake',
+                context: {
+                  system: true,
+                  actorUserId: appUserId,
+                  note: note.trim(),
+                  extraFields: {
+                    eligibility_returned_to_intake_at: now,
+                    eligibility_returned_to_intake_note: note.trim(),
+                    eligibility_returned_to_intake_by_id: appUserId || 'unknown',
+                  },
+                },
               });
+              if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } });
               await recordActivity({
                 actorUserId: appUserId,
                 action: 'Eligibility Sent Back to Intake',

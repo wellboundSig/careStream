@@ -5,12 +5,10 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
-import { updateReferralOptimistic } from '../../store/mutations.js';
 import { STAGE_META } from '../../data/stageConfig.js';
-import { canMoveFromTo, needsModal, resolveNtucDestination } from '../../utils/stageTransitions.js';
-import { recordTransition } from '../../utils/recordTransition.js';
-import { applyStageEntryEffects } from '../../utils/stageEntryEffects.js';
-import { flagConflict, inferConflictSourceModuleFromStage, resolveConflict } from '../../utils/conflictFlagging.js';
+import { canMoveFromTo, needsModal } from '../../utils/stageTransitions.js';
+import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
+import { flagConflict, inferConflictSourceModuleFromStage } from '../../utils/conflictFlagging.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import {
@@ -370,16 +368,13 @@ export default function ModulePage({ stage }) {
   }, []);
 
   async function executeTransition(referral, toStage, noteOrPayload) {
-    const fromStage = referral.current_stage;
     setPendingTransition(null);
+    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
 
-    const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
-      requestedStage: toStage,
-      fromStage,
-      canDirect: () => canPerm(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
-      userId: appUserId,
-    });
-
+    // Conflict creation is a bespoke pre-step (needs UI-available record ids +
+    // its own error message). Everything else — edge validation, NTUC
+    // interception, field updates, stage-entry effects, audit, and the
+    // leaving-Conflict auto-resolve — is owned by the transition engine.
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
       const patientRecordId = referral?.patient?._id;
       const patientCustomId = referral?.patient?.id || referral?.patient_id;
@@ -410,51 +405,28 @@ export default function ModulePage({ stage }) {
       }
     }
 
-    const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
-    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
-    if (effectiveStage === 'Hold') { if (note) updateFields.hold_reason = note; updateFields.hold_return_stage = fromStage; }
-    if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
-    if (wasIntercepted && note) updateFields.ntuc_reason = note;
-
-    // Stage-entry side effects (e.g. Eligibility Verification re-check clears
-    // prior completion + logs history). Merged into the same update.
-    Object.assign(updateFields, applyStageEntryEffects({
+    const result = attemptTransition({
       referral,
-      fromStage,
-      toStage: effectiveStage,
-      actorUserId: appUserId,
-      resolveUserName: resolveUser,
-    }));
-
-    updateReferralOptimistic(referral._id, updateFields).catch(() => {
-      showToast('Failed to move patient — change reverted', 'error');
+      toStage,
+      context: {
+        note,
+        actorUserId: appUserId,
+        canDirectNtuc: canPerm(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
+        resolveUserName: resolveUser,
+      },
     });
-    recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
-
-    // When the patient leaves Conflict, mark every open Conflicts row on this
-    // referral as Resolved using the user's note. Without this, the rows stay
-    // "Open" in the DB and the patient continues to show with open conflicts
-    // after they've been routed back to a working stage. Fire-and-forget per
-    // row — failures are logged but don't block the stage move that already
-    // succeeded.
-    if (fromStage === 'Conflict' && note) {
-      const conflicts = useCareStore.getState().conflicts || {};
-      const openConflicts = Object.values(conflicts).filter((c) => {
-        const cRef = Array.isArray(c.referral_id) ? c.referral_id[0] : c.referral_id;
-        if (cRef !== referral.id) return false;
-        const s = c.status;
-        return s === 'Open' || s === 'Unaddressed' || s === 'In Progress';
-      });
-      for (const c of openConflicts) {
-        resolveConflict({ conflict: c, note, actorUserId: appUserId }).catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[executeTransition] auto-resolve of conflict failed (non-fatal):', c._id, err?.message || err);
-        });
-      }
+    if (!result.allowed) {
+      showToast(result.reason || `Cannot move to ${toStage}`, 'error');
+      return;
     }
-
+    try {
+      await applyTransition({ referral, result, context: { actorUserId: appUserId } });
+    } catch {
+      showToast('Failed to move patient — change reverted', 'error');
+      return;
+    }
     setSelectedReferralId(null);
-    const label = wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${effectiveStage}`;
+    const label = result.wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${result.effectiveStage}`;
     showToast(`${referral.patientName || referral.patient_id} ${label}`);
   }
 

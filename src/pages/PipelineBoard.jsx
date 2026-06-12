@@ -3,11 +3,9 @@ import { useOutletContext } from 'react-router-dom';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
-import { updateReferralOptimistic } from '../store/mutations.js';
-import { recordTransition } from '../utils/recordTransition.js';
-import { applyStageEntryEffects } from '../utils/stageEntryEffects.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
-import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { canMoveFromTo, needsModal } from '../utils/stageTransitions.js';
+import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
 import { STAGE_META } from '../data/stageConfig.js';
 
@@ -110,16 +108,11 @@ export default function PipelineBoard() {
 
   async function executeTransition(referral, toStage, noteOrPayload) {
     if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
-    const fromStage = referral.current_stage;
     setPendingTransition(null);
+    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
 
-    const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
-      requestedStage: toStage,
-      fromStage,
-      canDirect: () => can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
-      userId: appUserId,
-    });
-
+    // Conflict creation is a bespoke pre-step; the move itself goes through the
+    // shared transition engine (same path as ModulePage + PatientList).
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
       const patientRecordId = referral?.patient?._id;
       const patientCustomId = referral?.patient?.id || referral?.patient_id;
@@ -136,7 +129,7 @@ export default function PipelineBoard() {
           referralCustomId,
           createdByUserRecordId,
           actorUserId: appUserId,
-          sourceModule: inferConflictSourceModuleFromStage(fromStage),
+          sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
           category: noteOrPayload.category,
           severity: noteOrPayload.severity,
           description: noteOrPayload.description,
@@ -149,25 +142,22 @@ export default function PipelineBoard() {
       }
     }
 
-    const updateFields = { current_stage: effectiveStage, ...ntucMetadata };
-    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
-    if (effectiveStage === 'Hold' && note) updateFields.hold_reason = note;
-    if (effectiveStage === 'NTUC' && note) updateFields.ntuc_reason = note;
-    if (wasIntercepted && note) updateFields.ntuc_reason = note;
-
-    Object.assign(updateFields, applyStageEntryEffects({
+    const result = attemptTransition({
       referral,
-      fromStage,
-      toStage: effectiveStage,
-      actorUserId: appUserId,
-    }));
-
-    updateReferralOptimistic(referral._id, updateFields).catch(() => {
-      showToast(`Failed to move ${referral.patientName || referral.patient_id} — reverted`, 'error');
+      toStage,
+      context: { note, actorUserId: appUserId, canDirectNtuc: can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT) },
     });
-
-    recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
-    const label = wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${effectiveStage}`;
+    if (!result.allowed) {
+      showToast(result.reason || `Cannot move to ${toStage}`, 'error');
+      return;
+    }
+    try {
+      await applyTransition({ referral, result, context: { actorUserId: appUserId } });
+    } catch {
+      showToast(`Failed to move ${referral.patientName || referral.patient_id} — reverted`, 'error');
+      return;
+    }
+    const label = result.wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${result.effectiveStage}`;
     showToast(`${referral.patientName || referral.patient_id} ${label}`);
   }
 

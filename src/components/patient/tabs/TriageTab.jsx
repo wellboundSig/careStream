@@ -45,6 +45,7 @@ import {
   getTriagePediatric, createTriagePediatric, updateTriagePediatric,
 } from '../../../api/triage.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { openCaseForReferral } from '../../../store/opwddOrchestration.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { mergeEntities } from '../../../store/careStore.js';
@@ -1035,7 +1036,14 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
       if (nextStatus === 'OPWDD Eligible') {
         await updateReferral(referral._id, { code_95: 'yes' }).catch(() => {});
       } else if (nextStatus === 'OPWDD Pending') {
-        await updateReferral(referral._id, { code_95: 'no', current_stage: 'OPWDD Enrollment' }).catch(() => {});
+        // Triage answer auto-routes the referral into OPWDD Enrollment — a
+        // sanctioned system move through the shared engine.
+        const result = attemptTransition({
+          referral,
+          toStage: 'OPWDD Enrollment',
+          context: { system: true, actorUserId: appUserId, note: '[Triage: OPWDD Pending -> OPWDD Enrollment]', extraFields: { code_95: 'no' } },
+        });
+        if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } }).catch(() => {});
         await openCaseForReferral({
           referral: { id: referral.id, _id: referral._id },
           patientId: patient?.id,
