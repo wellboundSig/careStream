@@ -510,7 +510,9 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
     setSaving(true);
     try {
       const expiration = addDays(receivedDate, 90);
-      await updateReferral(selectedReferral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
+      // Optimistic so the F2F section + Push-to-Clinical-RN gate reflect the
+      // new date instantly (both read selectedReferral / the store).
+      await updateReferralOptimistic(selectedReferral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
       triggerDataRefresh();
       setShowDatePicker(false); setReceivedDate('');
     } catch {} finally { setSaving(false); }
@@ -684,12 +686,15 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
       },
     });
     if (!result.allowed) return;
+    // Clear the selection BEFORE the await so the panel collapses on the same
+    // render the optimistic store update lands. Without this, the patient
+    // drops from the left queue immediately but the right panel keeps
+    // rendering them, so the user thinks the click did nothing and clicks
+    // again — and the second click is a silent no-op because the patient's
+    // current_stage is already 'Clinical Intake RN Review'.
+    onSelectedReferralLeftModule?.();
     try {
       await applyTransition({ referral, result, context: { actorUserId } });
-      // Patient has left Intake — clear the right-hand panel selection so we
-      // don't keep rendering snapshot + cursory review for a record that's
-      // no longer in this module. Mirrors LeadEntryPanel / EmrOnboardingPanel.
-      onSelectedReferralLeftModule?.();
     } catch {}
   }
 
@@ -997,7 +1002,9 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
     setSaveError(null);
     try {
       const expiration = addDays(receivedDate, 90);
-      await updateReferral(selectedReferral._id, {
+      // Optimistic — drawer F2F indicator + Push-to-Clinical-RN gate read from
+      // the store; raw updateReferral leaves them stale until the next sync.
+      await updateReferralOptimistic(selectedReferral._id, {
         f2f_date:       receivedDate,
         f2f_expiration: expiration,
       });
@@ -1393,12 +1400,17 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
         },
       },
     });
-    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
-    triggerDataRefresh();
-    // Patient has left Clinical RN — clear the right-hand panel selection so
-    // we don't keep rendering snapshot + checklist for a record that's no
-    // longer in this module. Mirrors LeadEntryPanel / EmrOnboardingPanel.
+    if (!result.allowed) return;
+    // Clear the selection BEFORE awaiting the network write so the panel
+    // collapses on the same render the optimistic store update lands. If we
+    // wait until after the await, the panel keeps rendering the patient for
+    // the round-trip window, the user thinks the click did nothing, clicks
+    // again, and the second click is a silent no-op because the patient's
+    // current_stage is already 'EMR Onboarding'. On rare failure, the
+    // optimistic update rolls back and the patient reappears in the queue.
     onSelectedReferralLeftModule?.();
+    await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
+    triggerDataRefresh();
   }
 
   async function handleSendBack() {
@@ -1418,12 +1430,14 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
         },
       },
     });
-    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
-    triggerDataRefresh();
+    if (!result.allowed) return;
     setShowSendBack(false);
     setSendBackNote('');
-    // Same as Confirm — the patient is no longer in this module.
+    // Clear the selection BEFORE the await so the panel collapses on the same
+    // render the optimistic update lands (see handleConfirm for the rationale).
     onSelectedReferralLeftModule?.();
+    await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
+    triggerDataRefresh();
   }
 
   return (

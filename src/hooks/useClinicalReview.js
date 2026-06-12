@@ -24,12 +24,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useCareStore, mergeEntities } from '../store/careStore.js';
-import { upsertClinicalReview, dbToUiFields } from '../api/clinicalReviews.js';
+import { useCareStore, mergeEntities, removeEntity } from '../store/careStore.js';
+import { upsertClinicalReview, dbToUiFields, uiToDbFields } from '../api/clinicalReviews.js';
 import { useCurrentAppUser } from './useCurrentAppUser.js';
 import { triggerDataRefresh } from './useRefreshTrigger.js';
 
 const SAVE_DEBOUNCE_MS = 400;
+
+// See useCursoryReview for the rationale — deterministic per-referral temp id
+// for the optimistic store mirror until a real Airtable row arrives.
+function pendingId(referralRecordId) {
+  return `_pending_clinical_${referralRecordId}`;
+}
 
 export function useClinicalReview(referralRecordId) {
   const { appUserId } = useCurrentAppUser();
@@ -106,6 +112,9 @@ export function useClinicalReview(referralRecordId) {
         mergeEntities('clinicalReviews', {
           [created.id]: { _id: created.id, ...created.fields },
         });
+        if (created.id !== pendingId(referralRecordId)) {
+          try { removeEntity('clinicalReviews', pendingId(referralRecordId)); } catch {}
+        }
       }
       triggerDataRefresh();
     } catch (err) {
@@ -127,33 +136,56 @@ export function useClinicalReview(referralRecordId) {
     }, SAVE_DEBOUNCE_MS);
   }
 
+  // Optimistic store mirror — keep every consumer reading from the store
+  // (drawer indicators, module panels, other hook instances) in lockstep with
+  // the click, not the debounced save. See useCursoryReview for the rationale.
+  function mirrorToStore(next) {
+    const rowId = existingRow?._id || pendingId(referralRecordId);
+    mergeEntities('clinicalReviews', {
+      [rowId]: {
+        _id: rowId,
+        ...(existingRow || {}),
+        referral_id: [referralRecordId],
+        ...uiToDbFields(next.checked),
+        ...(next.decision === 'accept' || next.decision === 'conditional' ? { decision: next.decision } : {}),
+        auth_required: next.authRequired === true,
+      },
+    });
+  }
+
   // ── Public mutators ─────────────────────────────────────────────────────
   const toggle = useCallback((uiKey) => {
     if (!referralRecordId) return;
     dirtyRef.current = true;
     setChecked((prev) => {
       const next = { ...prev, [uiKey]: !prev[uiKey] };
-      scheduleSave({ checked: next, decision, authRequired });
+      const payload = { checked: next, decision, authRequired };
+      mirrorToStore(payload);
+      scheduleSave(payload);
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referralRecordId, decision, authRequired]);
+  }, [referralRecordId, existingRow, decision, authRequired]);
 
   const updateDecision = useCallback((nextDecision) => {
     if (!referralRecordId) return;
     dirtyRef.current = true;
     setDecision(nextDecision);
-    scheduleSave({ checked, decision: nextDecision, authRequired });
+    const payload = { checked, decision: nextDecision, authRequired };
+    mirrorToStore(payload);
+    scheduleSave(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referralRecordId, checked, authRequired]);
+  }, [referralRecordId, existingRow, checked, authRequired]);
 
   const updateAuthRequired = useCallback((nextAuth) => {
     if (!referralRecordId) return;
     dirtyRef.current = true;
     setAuthRequired(nextAuth);
-    scheduleSave({ checked, decision, authRequired: nextAuth });
+    const payload = { checked, decision, authRequired: nextAuth };
+    mirrorToStore(payload);
+    scheduleSave(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referralRecordId, checked, decision]);
+  }, [referralRecordId, existingRow, checked, decision]);
 
   const saveNow = useCallback(async () => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }

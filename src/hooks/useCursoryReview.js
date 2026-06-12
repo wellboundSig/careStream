@@ -23,12 +23,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useCareStore, mergeEntities } from '../store/careStore.js';
+import { useCareStore, mergeEntities, removeEntity } from '../store/careStore.js';
 import { upsertCursoryReview, dbToUiFields, uiToDbFields } from '../api/cursoryReviews.js';
 import { useCurrentAppUser } from './useCurrentAppUser.js';
 import { triggerDataRefresh } from './useRefreshTrigger.js';
 
 const SAVE_DEBOUNCE_MS = 400;
+
+// Stable id for the optimistic store mirror when no Airtable row exists yet.
+// Using a deterministic per-referral id means subsequent toggles update the
+// SAME store entry instead of producing duplicates.
+function pendingId(referralRecordId) {
+  return `_pending_cursory_${referralRecordId}`;
+}
 
 export function useCursoryReview(referralRecordId) {
   const { appUserId } = useCurrentAppUser();
@@ -118,6 +125,11 @@ export function useCursoryReview(referralRecordId) {
         mergeEntities('cursoryReviews', {
           [created.id]: { _id: created.id, ...created.fields },
         });
+        // If we'd been mirroring under a temp id (no existingRow at toggle
+        // time), drop the temp row so the store holds only the canonical one.
+        if (created.id !== pendingId(referralRecordId)) {
+          try { removeEntity('cursoryReviews', pendingId(referralRecordId)); } catch {}
+        }
       }
       triggerDataRefresh();
     } catch (err) {
@@ -146,11 +158,24 @@ export function useCursoryReview(referralRecordId) {
     dirtyRef.current = true;
     setChecked((prev) => {
       const next = { ...prev, [uiKey]: !prev[uiKey] };
+      // Optimistic store mirror: every consumer that reads cursoryReviews
+      // from the store (PatientDrawer's green-check, the Intake panel's
+      // Push-to-Clinical-RN gate, the F2F module panel) sees the click
+      // immediately, not after the ~400ms debounce + network round-trip.
+      const rowId = existingRow?._id || pendingId(referralRecordId);
+      mergeEntities('cursoryReviews', {
+        [rowId]: {
+          _id: rowId,
+          ...(existingRow || {}),
+          referral_id: [referralRecordId],
+          ...uiToDbFields(next),
+        },
+      });
       scheduleSave(next);
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referralRecordId]);
+  }, [referralRecordId, existingRow]);
 
   const saveNow = useCallback(async () => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }

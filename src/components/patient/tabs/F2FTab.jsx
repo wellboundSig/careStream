@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2, fileToUrl } from '../../../utils/r2Upload.js';
-import { updateReferral } from '../../../api/referrals.js';
+import { updateReferralOptimistic } from '../../../store/mutations.js';
+import { mergeEntities } from '../../../store/careStore.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
@@ -104,7 +105,10 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     setSaveError(null);
     try {
       const expiration = addDays(receivedDate, 90);
-      await updateReferral(referral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
+      // Optimistic: the F2F tab indicator (green check in the drawer) and the
+      // Intake panel's "Push to Clinical RN" section both read from the store.
+      // Without an optimistic write, neither updates until the next data sync.
+      await updateReferralOptimistic(referral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
       triggerDataRefresh();
       setShowDatePicker(false);
       setReceivedDate('');
@@ -136,11 +140,16 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         created_at: new Date().toISOString(),
       };
       const created = await createFile(fields);
-      setFiles((prev) => [{ _id: created.id, ...created.fields }, ...prev]);
+      const newFile = { _id: created.id, ...created.fields };
+      setFiles((prev) => [newFile, ...prev]);
+      // Mirror into the global file store so the PatientDrawer's `hasF2FFile`
+      // check (which reads from storeFiles) sees the new file immediately
+      // — otherwise the F2F tab green-check waits for the next data sync.
+      mergeEntities('files', { [created.id]: newFile });
 
       if (uploadCategory === 'F2F' && referral && !referral.f2f_date) {
         const today = new Date().toISOString().split('T')[0];
-        await updateReferral(referral._id, { f2f_date: today, f2f_expiration: addDays(today, 90) });
+        await updateReferralOptimistic(referral._id, { f2f_date: today, f2f_expiration: addDays(today, 90) });
         triggerDataRefresh();
       }
     } catch { /* silent */ } finally {
