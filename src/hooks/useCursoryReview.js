@@ -74,13 +74,33 @@ export function useCursoryReview(referralRecordId) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
-  // Reset when the referral changes or when the server row updates.
-  const serverSignature = useMemo(() => JSON.stringify(serverChecked), [serverChecked]);
-  useEffect(() => { setChecked(serverChecked); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [referralRecordId, serverSignature]);
-
   // ── Debounced save ──────────────────────────────────────────────────────
   const saveTimerRef = useRef(null);
   const inFlightRef  = useRef(false);
+  // True from the moment a user toggles until BOTH (a) any pending debounce
+  // has fired and (b) the in-flight save has completed with no further edits
+  // queued. While dirty we treat LOCAL state as the source of truth and skip
+  // the server re-sync below — otherwise a save's own response would race
+  // back through mergeEntities and stomp the user's most recent click, which
+  // surfaces as the "click again to retry, second click un-checks" glitch.
+  const dirtyRef = useRef(false);
+
+  // Hard reset when the user switches to a different referral. New context,
+  // no in-flight edits apply.
+  useEffect(() => {
+    dirtyRef.current = false;
+    setChecked(serverChecked);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referralRecordId]);
+
+  // Pick up external / post-save server changes ONLY when the user is idle.
+  // If the user has unsaved local work, skip — their click wins.
+  const serverSignature = useMemo(() => JSON.stringify(serverChecked), [serverChecked]);
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    setChecked(serverChecked);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverSignature]);
 
   const flush = useCallback(async (nextChecked) => {
     if (!referralRecordId) return;
@@ -105,17 +125,25 @@ export function useCursoryReview(referralRecordId) {
     } finally {
       inFlightRef.current = false;
       setSaving(false);
+      // Only clear dirty when there's nothing else queued. If the user
+      // toggled again during the round-trip, saveTimerRef will be set and
+      // we stay dirty so the resync effect doesn't clobber that newer click.
+      if (!saveTimerRef.current) dirtyRef.current = false;
     }
   }, [referralRecordId, existingRow, appUserId]);
 
   function scheduleSave(nextChecked) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => flush(nextChecked), SAVE_DEBOUNCE_MS);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      flush(nextChecked);
+    }, SAVE_DEBOUNCE_MS);
   }
 
   // ── Public toggle ───────────────────────────────────────────────────────
   const toggle = useCallback((uiKey) => {
     if (!referralRecordId) return;
+    dirtyRef.current = true;
     setChecked((prev) => {
       const next = { ...prev, [uiKey]: !prev[uiKey] };
       scheduleSave(next);

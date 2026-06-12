@@ -8,7 +8,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
-import { isF2FChecklistComplete } from '../../data/f2fChecklist.js';
+import { isF2FCursoryFullyChecked } from '../../data/f2fChecklist.js';
 import { dbToUiFields as cursoryDbToUiFields } from '../../api/cursoryReviews.js';
 import OverviewTab from './tabs/OverviewTab.jsx';
 import ReferralInfoTab from './tabs/ReferralInfoTab.jsx';
@@ -71,7 +71,20 @@ function getF2FStatus(f2fExpiration) {
 }
 
 export default function PatientDrawer() {
-  const { isOpen, patient, referral, activeTab, setActiveTab, close } = usePatientDrawer();
+  const { isOpen, patient: ctxPatient, referral: ctxReferral, activeTab, setActiveTab, close } = usePatientDrawer();
+
+  // The drawer context only tracks WHICH patient/referral is open (captured at
+  // open() time). The DATA shown must come from the live zustand store —
+  // otherwise mutations that write through the store (e.g. Eligibility
+  // Complete via updateReferralOptimistic) don't reach the UI and the user
+  // sees their click "do nothing" until a hard refresh re-opens the drawer
+  // with a fresh snapshot. Keep the context snapshot as a fallback so a
+  // just-opened record that isn't in the store yet still renders.
+  const storeReferrals = useCareStore((s) => s.referrals);
+  const storePatients  = useCareStore((s) => s.patients);
+  const referral = (ctxReferral?._id && storeReferrals[ctxReferral._id]) || ctxReferral;
+  const patient  = (ctxPatient?._id  && storePatients[ctxPatient._id])  || ctxPatient;
+
   const [visible, setVisible] = useState(false);
   const [animated, setAnimated] = useState(false);
   const [autoNewTask, setAutoNewTask] = useState(false);
@@ -165,20 +178,28 @@ export default function PatientDrawer() {
       result.triage = true;
     }
 
-    // F2F: at least one F2F or MD Orders file is uploaded AND the cursory
-    // review checklist's required items are all checked. Both surfaces of the
-    // review (drawer + module panel) read from the same CursoryReview row.
+    // F2F is "fully done" (green snapshot indicator) when ALL THREE hold:
+    //   1. At least one F2F or MD Orders file is uploaded.
+    //   2. Date of visit is locked in on the referral (`f2f_date` set —
+    //      written by F2FTab.handleLogReceived / auto-set on first F2F upload).
+    //   3. Every cursory review checkbox is checked.
+    // Hospitalization Review is intentionally OUT of scope: it's a separate
+    // widget below the cursory checklist that's genuinely optional (may or
+    // may not be applicable to a given patient).
+    // Both surfaces of the review (drawer + module panel) read from the same
+    // CursoryReview row, so this stays in sync wherever the user edited it.
     const hasF2FFile = Object.values(storeFiles || {}).some((f) => {
       const fpid = f.patient_id;
       const linked = Array.isArray(fpid) ? fpid.includes(p.id) : fpid === p.id;
       return linked && (f.category === 'F2F' || f.category === 'MD Orders');
     });
+    const hasF2FDate = !!r.f2f_date;
     const cursoryRow = Object.values(storeCursoryReviews || {}).find((row) => {
       const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
       return link === r._id;
     });
     const cursoryChecked = cursoryRow ? cursoryDbToUiFields(cursoryRow) : {};
-    result.f2f = hasF2FFile && isF2FChecklistComplete(cursoryChecked);
+    result.f2f = hasF2FFile && hasF2FDate && isF2FCursoryFullyChecked(cursoryChecked);
 
     // Clinical Review: decision was made
     result.clinical_review = !!r.clinical_review_decision;

@@ -24,8 +24,24 @@ export const F2F_REVIEW_CHECKLIST = [
 
 export const F2F_REQUIRED_ITEMS = F2F_REVIEW_CHECKLIST.filter((i) => i.required);
 
+/**
+ * Required-items only. Drives the X/Y progress label, the "*" required markers
+ * in the F2F tab, and the "Push to Clinical RN" gate in the module panel —
+ * i.e. the minimum bar to advance work. NOT the same as "fully complete".
+ */
 export function isF2FChecklistComplete(checked) {
   return F2F_REQUIRED_ITEMS.every((item) => checked[item.key]);
+}
+
+/**
+ * Every cursory checkbox is checked — used by the snapshot drawer's green
+ * "tab complete" indicator, which represents "this work is fully done," not
+ * "this work has met the minimum bar." Hospitalization Review is intentionally
+ * out of scope here: it lives in a separate widget below the cursory checklist
+ * and is genuinely optional (it may or may not be true for a given patient).
+ */
+export function isF2FCursoryFullyChecked(checked) {
+  return F2F_REVIEW_CHECKLIST.every((item) => checked[item.key]);
 }
 
 // Convenient lookup tables derived from the checklist.

@@ -1,10 +1,26 @@
-import { CLINICAL_CHECKLIST, REQUIRED_ITEMS, isChecklistComplete, CLINICAL_DECISIONS } from '../../data/clinicalChecklist.js';
+import {
+  CLINICAL_CHECKLIST,
+  REQUIRED_ITEMS,
+  isChecklistComplete,
+  CLINICAL_DECISIONS,
+  RISK_KEYS,
+  RISK_OPTIONS,
+  getRiskLevel,
+} from '../../data/clinicalChecklist.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const DECISION_COLORS = {
   accept: palette.accentGreen.hex,
   conditional: palette.highlightYellow.hex,
   decline: palette.primaryMagenta.hex,
+};
+
+// Selected-state labels make the commitment unambiguous — "Accept" vs "✓
+// Accepted" is the difference between "I'm picking" and "I've decided".
+const DECISION_SELECTED_LABELS = {
+  accept: '✓ Accepted',
+  conditional: '✓ Conditional',
+  decline: '✓ Declined',
 };
 
 /**
@@ -19,14 +35,27 @@ const DECISION_COLORS = {
  *  - authRequired: boolean
  *  - onAuthRequiredChange: (bool) => void
  *  - compact: boolean — smaller rendering for drawer tab
+ *  - locked: boolean — true once a decision is set; locks the checklist and
+ *    the risk dropdown so the review can't be silently edited after Accept.
  */
-export default function ClinicalChecklistUI({ checked, onToggle, decision, onDecisionChange, authRequired, onAuthRequiredChange, compact }) {
+export default function ClinicalChecklistUI({ checked, onToggle, decision, onDecisionChange, authRequired, onAuthRequiredChange, compact, locked = false }) {
   const completedRequired = REQUIRED_ITEMS.filter((i) => checked[i.key]).length;
   const totalRequired = REQUIRED_ITEMS.length;
   const pct = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
   const complete = isChecklistComplete(checked);
 
-  const sectionPad = compact ? '8px 0' : '10px 0';
+  // Risk Stratification renders as a single dropdown — the three checkbox
+  // columns in the DB stay, but the UI presents them as one mutually-exclusive
+  // choice. Changing the dropdown emits the necessary toggles to flip the
+  // chosen key on and clear the others.
+  const currentRisk = getRiskLevel(checked);
+  function handleRiskChange(nextKey) {
+    if (locked) return;
+    for (const k of RISK_KEYS) {
+      const shouldBe = (k === nextKey);
+      if (!!checked[k] !== shouldBe) onToggle(k);
+    }
+  }
 
   return (
     <div data-testid="clinical-checklist">
@@ -45,33 +74,78 @@ export default function ClinicalChecklistUI({ checked, onToggle, decision, onDec
         </div>
       </div>
 
-      {/* Checklist sections */}
-      {CLINICAL_CHECKLIST.map((group) => (
-        <div key={group.section} style={{ marginBottom: compact ? 10 : 14 }}>
-          <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
-            {group.section}
-          </p>
-          {group.items.map((item) => {
-            const done = !!checked[item.key];
-            return (
-              <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: `${compact ? 4 : 5}px 0`, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={() => onToggle(item.key)}
-                  style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: compact ? 12 : 12.5, color: done ? hexToRgba(palette.backgroundDark.hex, 0.45) : palette.backgroundDark.hex, textDecoration: done ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
-                  {item.label}
-                  {item.required && !done && <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3, fontSize: 10 }}>*</span>}
-                </span>
-              </label>
-            );
-          })}
+      {/* Locked banner — surfaces above the checklist so the user knows why
+          checkboxes won't respond once a decision is set. */}
+      {locked && (
+        <div style={{ marginBottom: compact ? 10 : 12, padding: '7px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: palette.accentGreen.hex }}>
+            Locked — deselect {decision === 'conditional' ? 'Conditional' : 'Accepted'} to edit
+          </span>
         </div>
-      ))}
+      )}
 
-      {/* Clinical Validation */}
+      {/* Checklist sections */}
+      {CLINICAL_CHECKLIST.map((group) => {
+        const isRiskGroup = group.items.every((i) => i.exclusive === 'risk');
+        if (isRiskGroup) {
+          return (
+            <div key={group.section} style={{ marginBottom: compact ? 10 : 14 }}>
+              <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
+                {group.section}
+              </p>
+              <select
+                data-testid="risk-stratification"
+                value={currentRisk}
+                disabled={locked}
+                onChange={(e) => handleRiskChange(e.target.value)}
+                style={{
+                  width: '100%', padding: compact ? '6px 8px' : '7px 10px', borderRadius: 7,
+                  border: `1px solid var(--color-border)`,
+                  background: locked ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
+                  color: locked ? hexToRgba(palette.backgroundDark.hex, 0.5) : palette.backgroundDark.hex,
+                  fontSize: compact ? 12 : 12.5, fontFamily: 'inherit',
+                  cursor: locked ? 'not-allowed' : 'pointer', outline: 'none',
+                }}
+              >
+                <option value="">Select risk level…</option>
+                {RISK_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+
+        return (
+          <div key={group.section} style={{ marginBottom: compact ? 10 : 14 }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
+              {group.section}
+            </p>
+            {group.items.map((item) => {
+              const done = !!checked[item.key];
+              return (
+                <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: `${compact ? 4 : 5}px 0`, cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={done}
+                    disabled={locked}
+                    onChange={() => onToggle(item.key)}
+                    style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0, cursor: locked ? 'not-allowed' : 'pointer' }}
+                  />
+                  <span style={{ fontSize: compact ? 12 : 12.5, color: done ? hexToRgba(palette.backgroundDark.hex, 0.45) : palette.backgroundDark.hex, textDecoration: done ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
+                    {item.label}
+                    {item.required && !done && <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3, fontSize: 10 }}>*</span>}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Clinical Validation — the decision buttons remain interactive even
+          when locked, so the reviewer can switch Accept↔Conditional or
+          deselect entirely (which unlocks the checklist for further edits). */}
       <div style={{ marginBottom: compact ? 10 : 14 }}>
         <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
           Clinical Validation
@@ -80,15 +154,18 @@ export default function ClinicalChecklistUI({ checked, onToggle, decision, onDec
           {CLINICAL_DECISIONS.map((d) => {
             const sel = decision === d.key;
             const c = DECISION_COLORS[d.key] || palette.backgroundDark.hex;
+            // Clicking the SELECTED decision again deselects it — that's how
+            // the reviewer "unlocks" the checklist to make a correction.
+            const onClick = () => onDecisionChange(sel ? null : d.key);
             return (
-              <button key={d.key} type="button" data-testid={`decision-${d.key}`} onClick={() => onDecisionChange(d.key)} style={{
+              <button key={d.key} type="button" data-testid={`decision-${d.key}`} onClick={onClick} style={{
                 flex: 1, padding: compact ? '7px 6px' : '9px 8px', borderRadius: 7, cursor: 'pointer',
                 background: sel ? c : hexToRgba(palette.backgroundDark.hex, 0.04),
                 border: `1.5px solid ${sel ? c : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
                 color: sel ? (d.key === 'conditional' ? palette.backgroundDark.hex : palette.backgroundLight.hex) : hexToRgba(palette.backgroundDark.hex, 0.6),
                 fontSize: compact ? 11 : 12, fontWeight: 650, transition: 'all 0.12s', textAlign: 'center',
               }}>
-                {d.label}
+                {sel ? (DECISION_SELECTED_LABELS[d.key] || d.label) : d.label}
               </button>
             );
           })}

@@ -171,7 +171,7 @@ describe('EligibilityTab — conflict modal', () => {
     const modal = await screen.findByTestId('conflict-modal');
     await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-reason-coverage_not_active')); });
     await act(async () => {
-      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'Medium' } });
+      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'High' } });
       fireEvent.change(within(modal).getByPlaceholderText(/what’s blocking progress/i), { target: { value: 'Coverage inactive per portal.' } });
     });
     await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-confirm')); });

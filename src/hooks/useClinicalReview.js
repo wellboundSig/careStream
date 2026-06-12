@@ -57,21 +57,36 @@ export function useClinicalReview(referralRecordId) {
   const [saving, setSaving]             = useState(false);
   const [saveError, setSaveError]       = useState(null);
 
-  // Reset when the referral changes or when the server row updates.
+  // ── Debounced save ──────────────────────────────────────────────────────
+  const saveTimerRef = useRef(null);
+  const inFlightRef  = useRef(false);
+  // True while the user has unsaved edits (pending debounce or in-flight save
+  // with more queued). While dirty we skip the server-resync effect so a
+  // save's own response can't clobber a click that happened mid round-trip —
+  // the bug that surfaced as "click again to retry, second click un-checks".
+  const dirtyRef = useRef(false);
+
+  // Hard reset when the user switches to a different referral.
+  useEffect(() => {
+    dirtyRef.current = false;
+    setChecked(serverChecked);
+    setDecision(serverDecision);
+    setAuthRequired(serverAuthRequired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referralRecordId]);
+
+  // Pick up external / post-save server changes ONLY when the user is idle.
   const serverSignature = useMemo(
     () => JSON.stringify({ c: serverChecked, d: serverDecision, a: serverAuthRequired }),
     [serverChecked, serverDecision, serverAuthRequired],
   );
   useEffect(() => {
+    if (dirtyRef.current) return;
     setChecked(serverChecked);
     setDecision(serverDecision);
     setAuthRequired(serverAuthRequired);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [referralRecordId, serverSignature]);
-
-  // ── Debounced save ──────────────────────────────────────────────────────
-  const saveTimerRef = useRef(null);
-  const inFlightRef  = useRef(false);
+  }, [serverSignature]);
 
   const flush = useCallback(async (next) => {
     if (!referralRecordId) return;
@@ -98,17 +113,24 @@ export function useClinicalReview(referralRecordId) {
     } finally {
       inFlightRef.current = false;
       setSaving(false);
+      // Only clear dirty if nothing new is queued; otherwise the resync effect
+      // would clobber the still-pending edits.
+      if (!saveTimerRef.current) dirtyRef.current = false;
     }
   }, [referralRecordId, existingRow, appUserId]);
 
   function scheduleSave(next) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => flush(next), SAVE_DEBOUNCE_MS);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      flush(next);
+    }, SAVE_DEBOUNCE_MS);
   }
 
   // ── Public mutators ─────────────────────────────────────────────────────
   const toggle = useCallback((uiKey) => {
     if (!referralRecordId) return;
+    dirtyRef.current = true;
     setChecked((prev) => {
       const next = { ...prev, [uiKey]: !prev[uiKey] };
       scheduleSave({ checked: next, decision, authRequired });
@@ -119,6 +141,7 @@ export function useClinicalReview(referralRecordId) {
 
   const updateDecision = useCallback((nextDecision) => {
     if (!referralRecordId) return;
+    dirtyRef.current = true;
     setDecision(nextDecision);
     scheduleSave({ checked, decision: nextDecision, authRequired });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,6 +149,7 @@ export function useClinicalReview(referralRecordId) {
 
   const updateAuthRequired = useCallback((nextAuth) => {
     if (!referralRecordId) return;
+    dirtyRef.current = true;
     setAuthRequired(nextAuth);
     scheduleSave({ checked, decision, authRequired: nextAuth });
     // eslint-disable-next-line react-hooks/exhaustive-deps

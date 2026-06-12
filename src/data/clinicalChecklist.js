@@ -78,6 +78,25 @@ export function isChecklistComplete(checked) {
   return REQUIRED_ITEMS.every((item) => checked[item.key]);
 }
 
+// ── Risk Stratification (mutually exclusive group) ─────────────────────────
+// The three risk-level items carry `exclusive: 'risk'` so they render as a
+// single dropdown (you can't be both "high risk" and "low risk"). The UI keeps
+// the underlying schema unchanged — three checkbox columns in Airtable — and
+// just toggles them as a group at the boundary.
+export const RISK_KEYS = ALL_CHECKLIST_ITEMS
+  .filter((i) => i.exclusive === 'risk')
+  .map((i) => i.key);
+
+export const RISK_OPTIONS = ALL_CHECKLIST_ITEMS
+  .filter((i) => i.exclusive === 'risk')
+  .map((i) => ({ value: i.key, label: i.label }));
+
+/** Returns the currently-selected risk key, or '' if none. */
+export function getRiskLevel(checked) {
+  for (const k of RISK_KEYS) if (checked?.[k]) return k;
+  return '';
+}
+
 // Convenient lookup tables for the persistence layer (see api/clinicalReviews.js).
 export const CLINICAL_UI_TO_DB = Object.fromEntries(ALL_CHECKLIST_ITEMS.map((i) => [i.key, i.dbField]));
 export const CLINICAL_DB_TO_UI = Object.fromEntries(ALL_CHECKLIST_ITEMS.map((i) => [i.dbField, i.key]));

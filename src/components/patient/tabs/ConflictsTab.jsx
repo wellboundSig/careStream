@@ -2,17 +2,17 @@ import { useState, useEffect } from 'react';
 import { getConflictsByReferral } from '../../../api/conflicts.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
-import { conflictCategoryLabel, resolveConflict as resolveConflictApi } from '../../../utils/conflictFlagging.js';
+import { conflictCategoryLabel, resolveConflict as resolveConflictApi, normalizeSeverity } from '../../../utils/conflictFlagging.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 
+// Two-level severity (2026-06-12). Legacy Medium / Critical values are folded
+// into Low / High at display time via `normalizeSeverity` below.
 const SEVERITY_COLORS = {
-  Low:      { bg: hexToRgba(palette.accentBlue.hex, 0.1),       text: '#005B84' },
-  Medium:   { bg: hexToRgba(palette.highlightYellow.hex, 0.18), text: '#7A5F00' },
-  High:     { bg: hexToRgba(palette.accentOrange.hex, 0.14),    text: '#8B4A00' },
-  Critical: { bg: hexToRgba(palette.primaryMagenta.hex, 0.14),  text: palette.primaryMagenta.hex },
+  Low:  { bg: hexToRgba(palette.accentBlue.hex, 0.1),    text: '#005B84' },
+  High: { bg: hexToRgba(palette.primaryMagenta.hex, 0.14), text: palette.primaryMagenta.hex },
 };
 
 const STATUS_COLORS = {
@@ -154,7 +154,8 @@ export default function ConflictsTab({ referral, readOnly = false }) {
 
 function ConflictCard({ conflict, onResolve, resolveUser }) {
   const status     = conflict.status || 'Unaddressed';
-  const sevColors  = SEVERITY_COLORS[conflict.severity] || SEVERITY_COLORS.Medium;
+  const displaySeverity = normalizeSeverity(conflict.severity);
+  const sevColors  = SEVERITY_COLORS[displaySeverity] || SEVERITY_COLORS.Low;
   const statColors = STATUS_COLORS[status] || STATUS_COLORS.Unaddressed;
   const isActive   = ACTIVE_STATUSES.has(status);
 
@@ -176,9 +177,9 @@ function ConflictCard({ conflict, onResolve, resolveUser }) {
           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: statColors.bg, color: statColors.text }}>
             {status}
           </span>
-          {conflict.severity && (
+          {displaySeverity && (
             <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: sevColors.bg, color: sevColors.text }}>
-              {conflict.severity}
+              {displaySeverity}
             </span>
           )}
           {sourceLabel && (
@@ -280,7 +281,7 @@ function ResolveConflictModal({ conflict, submitting, error, onCancel, onConfirm
           </h2>
           <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.4 }}>
             <strong>{categoryLabel}</strong>
-            {conflict?.severity ? <> &middot; {conflict.severity}</> : null}
+            {conflict?.severity ? <> &middot; {normalizeSeverity(conflict.severity)}</> : null}
           </p>
         </div>
 

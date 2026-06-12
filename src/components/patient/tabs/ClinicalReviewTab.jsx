@@ -97,6 +97,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         onDecisionChange={readOnly ? () => {} : setLocalDecision}
         authRequired={authRequired}
         onAuthRequiredChange={readOnly ? () => {} : setAuthRequired}
+        locked={workingDecision === 'accept' || workingDecision === 'conditional'}
       />
     </div>
   );

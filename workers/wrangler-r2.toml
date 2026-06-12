@@ -1,0 +1,10 @@
+name = "worker-r2"
+main = "worker-r2.js"
+compatibility_date = "2024-11-01"
+
+# R2 bucket binding — REQUIRED. A config-less `wrangler deploy` strips remote
+# bindings, so the binding must be declared here and deployed with:
+#   npx wrangler deploy -c workers/wrangler-r2.toml
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "wellbound"

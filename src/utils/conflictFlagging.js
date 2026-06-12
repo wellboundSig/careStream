@@ -4,19 +4,36 @@ import { recordActivity } from '../api/activityLog.js';
 import { mergeEntities } from '../store/careStore.js';
 import { CONFLICT_SOURCE_MODULE, CONFLICT_REASON_OPTIONS } from '../data/eligibilityEnums.js';
 
+// Conflict severity (2026-06-12): consolidated from 4 levels (Low/Medium/High/
+// Critical) down to 2 (Low/High). The Airtable column is `multilineText`, so
+// the DB itself doesn't constrain values — legacy rows still hold Medium /
+// Critical strings. Use `normalizeSeverity` at every DISPLAY site to fold
+// those legacy values into the new 2-level scale (Medium → Low,
+// Critical → High) so the UI never shows the retired labels.
 export const CONFLICT_SEVERITY = Object.freeze({
   LOW: 'Low',
-  MEDIUM: 'Medium',
   HIGH: 'High',
-  CRITICAL: 'Critical',
 });
 
 export const CONFLICT_SEVERITY_OPTIONS = [
-  { value: CONFLICT_SEVERITY.LOW,      label: 'Low' },
-  { value: CONFLICT_SEVERITY.MEDIUM,   label: 'Medium' },
-  { value: CONFLICT_SEVERITY.HIGH,     label: 'High' },
-  { value: CONFLICT_SEVERITY.CRITICAL, label: 'Critical' },
+  { value: CONFLICT_SEVERITY.LOW,  label: 'Low' },
+  { value: CONFLICT_SEVERITY.HIGH, label: 'High' },
 ];
+
+/**
+ * Fold legacy severity values into the new 2-level scale for display:
+ *   - 'Medium'   → 'Low'
+ *   - 'Critical' → 'High'
+ *   - anything else (Low, High, null, future values) → returned unchanged
+ *
+ * Call this anywhere severity is rendered in the UI; never call it before
+ * writing to the DB (we keep historical rows untouched).
+ */
+export function normalizeSeverity(severity) {
+  if (severity === 'Medium')   return 'Low';
+  if (severity === 'Critical') return 'High';
+  return severity;
+}
 
 /**
  * Mint a domain id for a Conflict row. The Airtable `id` column on

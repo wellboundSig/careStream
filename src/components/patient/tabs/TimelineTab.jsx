@@ -5,7 +5,7 @@ import { getConflictsByReferral } from '../../../api/conflicts.js';
 import { getTriageAdult, getTriagePediatric } from '../../../api/triage.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
-import { conflictCategoryLabel } from '../../../utils/conflictFlagging.js';
+import { conflictCategoryLabel, normalizeSeverity } from '../../../utils/conflictFlagging.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -232,15 +232,16 @@ export default function TimelineTab({ patient, referral }) {
     ...conflicts.flatMap((c) => {
       const categoryLabel = conflictCategoryLabel(c.type);
       const description   = c.description || c.details || '';
+      const displaySeverity = normalizeSeverity(c.severity);
       const out = [{
         _id: `conflict-flagged-${c._id}`,
         type: 'conflict',
         timestamp: c.created_at,
         title: `${categoryLabel} conflict`,
-        detail: c.severity ? `Severity: ${c.severity}` : null,
+        detail: displaySeverity ? `Severity: ${displaySeverity}` : null,
         noteContent: description || null,
         actor: c.flagged_by_id || c.created_by_id || null,
-        severity: c.severity || null,
+        severity: displaySeverity || null,
         status: c.status || 'Unaddressed',
       }];
       if (c.resolved_at && (c.status === 'Resolved' || c.status === 'Waived')) {

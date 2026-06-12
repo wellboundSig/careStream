@@ -28,6 +28,8 @@ import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import HospitalizationReview from './shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import { fileToUrl } from '../../utils/r2Upload.js';
+import { normalizeSeverity } from '../../utils/conflictFlagging.js';
+import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
 
@@ -447,7 +449,7 @@ const INTAKE_DEMO_FIELDS = [
   { key: 'medicaid_number', label: 'Medicaid number' },
 ];
 
-function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition }) {
+function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const p = selectedReferral?.patient;
@@ -630,6 +632,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
                   referral={selectedReferral}
                   cursoryReviewComplete={reviewComplete}
                   actorUserId={appUserId}
+                  onSelectedReferralLeftModule={onSelectedReferralLeftModule}
                 />
               </PanelSection>
               )}
@@ -664,7 +667,7 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
 // should not linger in the Intake module. Eligibility is completed
 // concurrently from the patient drawer at any stage; the LIFO rule still flips
 // the patient to Staffing once both eligibility + clinical review complete.
-function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId }) {
+function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, onSelectedReferralLeftModule }) {
   const inClinical = referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
 
   async function handlePushClinical() {
@@ -683,6 +686,10 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId }
         note: '[Pushed to Clinical RN — left Intake]',
         authorId: actorUserId,
       });
+      // Patient has left Intake — clear the right-hand panel selection so we
+      // don't keep rendering snapshot + cursory review for a record that's
+      // no longer in this module. Mirrors LeadEntryPanel / EmrOnboardingPanel.
+      onSelectedReferralLeftModule?.();
     } catch {}
   }
 
@@ -1331,7 +1338,7 @@ function ApproveButton({ enabled, onSelect }) {
 //         'Staffing Feasibility'.
 //       - otherwise we just clear in_clinical_review and record the timestamp;
 //         the Eligibility "Completed" action will flip the stage later.
-function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition }) {
+function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   // Checklist + working decision are persisted to ClinicalReview via this
@@ -1353,61 +1360,47 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   }, [selectedReferral?._id]);
 
   const checklistComplete = isChecklistComplete(checked);
-  const canConfirm = checklistComplete && (decision === 'accept' || decision === 'conditional');
-
+  const decisionLocked = decision === 'accept' || decision === 'conditional';
+  const canConfirm = checklistComplete && decisionLocked;
+  // Informational only — surfaced as a header badge so the RN can see
+  // whether eligibility has also completed (the drawer's eligibility tab
+  // can finish that work in parallel). Does not gate the Confirm action.
   const eligibilityDone = !!selectedReferral?.eligibility_completed_at;
 
   async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const now = new Date().toISOString();
     const fromStage = selectedReferral.current_stage;
-    const baseFields = {
-      clinical_review_decision: decision,
-      clinical_review_by: appUserId || 'unknown',
-      clinical_review_at: now,
-      clinical_review_completed_at: now,
-      clinical_review_completed_by_id: appUserId || 'unknown',
-      in_clinical_review: false,
-    };
-    if (eligibilityDone) {
-      // LIFO trigger — eligibility is already complete, so the patient advances
-      // to EMR Onboarding (the gate before Staffing) and leaves Clinical Review
-      // entirely. We write the stage flip AND the cleared concurrent flag in
-      // ONE optimistic update so the in-memory store drops the patient from the
-      // Clinical module immediately (no lingering via in_clinical_review until
-      // the next poll). We deliberately bypass onInitiateTransition here:
-      // Clinical Intake RN Review is a protectedExit stage, and the RN's Confirm
-      // IS the sanctioned exit — it must not pop a generic move modal.
-      try {
-        await updateReferralOptimistic(selectedReferral._id, {
-          ...baseFields,
-          current_stage: 'EMR Onboarding',
-        });
-      } catch {}
-      recordTransition({
-        referral: selectedReferral,
-        fromStage,
-        toStage: 'EMR Onboarding',
-        note: '[Clinical RN confirmed — eligibility already complete → EMR Onboarding]',
-        authorId: appUserId,
+    // Clinical RN's confirm is now ALWAYS the exit from this module —
+    // patient moves to EMR Onboarding regardless of where eligibility stands.
+    // Eligibility can still be completed concurrently from the patient drawer;
+    // EMR Onboarding gates on its own readiness, not on us. We bypass
+    // onInitiateTransition because Clinical Intake RN Review is a
+    // protectedExit stage and the RN's Confirm IS the sanctioned exit — it
+    // must not pop a generic move modal.
+    try {
+      await updateReferralOptimistic(selectedReferral._id, {
+        clinical_review_decision: decision,
+        clinical_review_by: appUserId || 'unknown',
+        clinical_review_at: now,
+        clinical_review_completed_at: now,
+        clinical_review_completed_by_id: appUserId || 'unknown',
+        in_clinical_review: false,
+        current_stage: 'EMR Onboarding',
       });
-      triggerDataRefresh();
-    } else {
-      // Eligibility still in flight — clear the concurrent presence and stamp
-      // completion. The patient stays put; the Eligibility "Completed" action
-      // will fire the LIFO flip to Staffing later.
-      try {
-        await updateReferralOptimistic(selectedReferral._id, baseFields);
-      } catch {}
-      recordTransition({
-        referral: selectedReferral,
-        fromStage: 'Clinical Intake RN Review',
-        toStage: selectedReferral.current_stage,
-        note: '[Clinical RN confirmed — awaiting Eligibility completion]',
-        authorId: appUserId,
-      });
-      triggerDataRefresh();
-    }
+    } catch {}
+    recordTransition({
+      referral: selectedReferral,
+      fromStage,
+      toStage: 'EMR Onboarding',
+      note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
+      authorId: appUserId,
+    });
+    triggerDataRefresh();
+    // Patient has left Clinical RN — clear the right-hand panel selection so
+    // we don't keep rendering snapshot + checklist for a record that's no
+    // longer in this module. Mirrors LeadEntryPanel / EmrOnboardingPanel.
+    onSelectedReferralLeftModule?.();
   }
 
   function handleSendBack() {
@@ -1430,6 +1423,8 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     triggerDataRefresh();
     setShowSendBack(false);
     setSendBackNote('');
+    // Same as Confirm — the patient is no longer in this module.
+    onSelectedReferralLeftModule?.();
   }
 
   return (
@@ -1462,6 +1457,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             authRequired={false}
             onAuthRequiredChange={() => {}}
             compact
+            locked={decisionLocked}
           />
 
           {/* Send back to F2F — always available, not gated by clinical permission */}
@@ -1511,8 +1507,10 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
               {canConfirm
-                ? (eligibilityDone ? 'Confirm → EMR Onboarding' : 'Confirm Review (awaiting Eligibility)')
-                : 'Complete checklist + Accept to confirm'}
+                ? 'Confirm → EMR Onboarding'
+                : !checklistComplete
+                  ? 'Complete checklist to confirm'
+                  : 'Select Accept or Conditional to confirm'}
             </button>
           </PanelSection>
           )}
@@ -1560,21 +1558,25 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
 }
 
 // ── 8. Conflict ───────────────────────────────────────────────────────────────
+// Two-level severity (2026-06-12). Legacy Medium / Critical values are
+// normalized to Low / High at display time via `normalizeSeverity`.
 const SEVERITY_PILL = {
-  Low:      { bg: hexToRgba(palette.accentBlue.hex, 0.14),     text: palette.accentBlue.hex },
-  Medium:   { bg: hexToRgba(palette.highlightYellow.hex, 0.22), text: '#7A5F00' },
-  High:     { bg: hexToRgba(palette.accentOrange.hex, 0.18),   text: palette.accentOrange.hex },
-  Critical: { bg: hexToRgba(palette.primaryMagenta.hex, 0.18), text: palette.primaryMagenta.hex },
+  Low:  { bg: hexToRgba(palette.accentBlue.hex, 0.14),     text: palette.accentBlue.hex },
+  High: { bg: hexToRgba(palette.primaryMagenta.hex, 0.18), text: palette.primaryMagenta.hex },
 };
 
-// All active stages — used by "Resolve and Send to..." for free-form routing.
-// We keep Conflict and the strictly-terminal stages out of this list because
-// you can't resolve into the same lane and you can't pick NTUC / Completed.
-const CONFLICT_ANY_STAGE_DESTINATIONS = [
-  'Lead Entry', 'Intake', 'F2F/MD Orders Pending', 'Clinical Intake RN Review',
-  'Eligibility Verification', 'Authorization Pending', 'Disenrollment Required',
-  'Staffing Feasibility', 'Pre-SOC', 'OPWDD Enrollment', 'Hold',
-];
+// Destinations shown in the Conflict panel's "Resolve and send to…" dropdown.
+// Derived DIRECTLY from StageRules so the dropdown and `canMoveFromTo` can
+// never drift apart (the previous hardcoded list missed an edge that produced
+// "Cannot move from Conflict to OPWDD Enrollment" toasts).
+//
+// Two stages are filtered out for UX, not policy:
+//   - NTUC is reached via its own dedicated "Request NTUC" button below.
+//   - Admin Confirmation is an internal interception target for NTUC requests
+//     and not a user-pickable resolution destination.
+const CONFLICT_PANEL_HIDDEN_DESTINATIONS = new Set(['NTUC', 'Admin Confirmation']);
+const CONFLICT_ANY_STAGE_DESTINATIONS = (StageRules.stages.Conflict?.canMoveTo || [])
+  .filter((s) => !CONFLICT_PANEL_HIDDEN_DESTINATIONS.has(s));
 
 function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onInitiateTransition }) {
   const [conflicts, setConflicts] = useState([]);
@@ -1634,12 +1636,13 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
               {openConflicts.length === 0 ? (
                 <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.38), fontStyle: 'italic' }}>No open conflicts recorded.</p>
               ) : openConflicts.map((c) => {
-                const sc = SEVERITY_PILL[c.severity] || SEVERITY_PILL.Medium;
+                const displaySeverity = normalizeSeverity(c.severity);
+                const sc = SEVERITY_PILL[displaySeverity] || SEVERITY_PILL.Low;
                 return (
                   <div key={c._id} style={{ padding: '10px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}`, marginBottom: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{c.type || 'Unknown'}</span>
-                      <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>{c.severity}</span>
+                      <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>{displaySeverity}</span>
                     </div>
                     {c.description && (
                       <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6), lineHeight: 1.5 }}>{c.description}</p>
@@ -2089,7 +2092,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 }
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
-function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
+function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const actualStage = selectedReferral?.current_stage;
@@ -2113,7 +2116,11 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
     setSaving(true);
     setError(null);
     try {
-      await updateReferral(selectedReferral._id, {
+      // Optimistic update: writes to the local store immediately so the
+      // panel re-renders into Step 2 the moment the user clicks. Without
+      // this, the patient's current_stage in the panel stayed 'Pre-SOC'
+      // until the next background sync, which made the click look broken.
+      await updateReferralOptimistic(selectedReferral._id, {
         current_stage: 'SOC Scheduled',
         soc_scheduled_date: socDate,
         soc_scheduled_at: new Date().toISOString(),
@@ -2142,12 +2149,27 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
   async function handleOnboarded() {
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true); setOnboardError(null);
+    let succeeded = false;
     try {
-      const enteredAt = new Date().toISOString();
-      await updateReferral(selectedReferral._id, { current_stage: 'SOC Completed', soc_completed_date: new Date().toISOString().split('T')[0] });
+      await updateReferralOptimistic(selectedReferral._id, { current_stage: 'SOC Completed', soc_completed_date: new Date().toISOString().split('T')[0] });
       recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
       triggerDataRefresh();
-    } catch (err) { setOnboardError(err.message || 'Failed'); setOnboarding(false); setConfirming(false); }
+      succeeded = true;
+    } catch (err) {
+      setOnboardError(err.message || 'Failed');
+    } finally {
+      // Always release the spinner. Without this, a successful save left the
+      // button stuck in "Saving…" until a manual refresh.
+      setOnboarding(false);
+      if (!succeeded) setConfirming(false);
+    }
+    if (succeeded) {
+      setConfirming(false);
+      // Patient has left this module (now in SOC Completed) — clear the right
+      // panel so it doesn't keep rendering the Confirm UI for a stage they
+      // already moved past.
+      onSelectedReferralLeftModule?.();
+    }
   }
 
   // Step indicator. EMR onboarding now happens upstream (its own stage), so by
@@ -2257,7 +2279,7 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition }) 
 }
 
 // ── 12. SOC Scheduled ─────────────────────────────────────────────────────────
-function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition }) {
+function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const [pdfLoading, setPdfLoading]       = useState(false);
   const [pdfError, setPdfError]           = useState(null);
@@ -2289,19 +2311,32 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true);
     setOnboardError(null);
+    let succeeded = false;
     try {
-      const enteredAt = new Date().toISOString();
-      await updateReferral(selectedReferral._id, {
+      // Optimistic so the panel reflects 'SOC Completed' the instant the
+      // user clicks rather than after the next background sync.
+      await updateReferralOptimistic(selectedReferral._id, {
         current_stage: 'SOC Completed',
         soc_completed_date: new Date().toISOString().split('T')[0],
       });
-      // stage_entered_at not a column in Referrals
       recordTransition({ referral: selectedReferral, fromStage: 'SOC Scheduled', toStage: 'SOC Completed', authorId: null });
       triggerDataRefresh();
+      succeeded = true;
     } catch (err) {
       setOnboardError(err.message || 'Failed to update patient');
+    } finally {
+      // Always release the spinner — previously this only fired in catch, so a
+      // successful save left the button stuck in "Saving…" with a spinner
+      // until a manual refresh.
       setOnboarding(false);
+      if (!succeeded) setConfirming(false);
+    }
+    if (succeeded) {
       setConfirming(false);
+      // Patient has left SOC Scheduled (now SOC Completed) — clear the right
+      // panel so it doesn't keep rendering the Confirm UI for a stage they
+      // already moved past. Mirrors LeadEntry / Push to Clinical RN pattern.
+      onSelectedReferralLeftModule?.();
     }
   }
 

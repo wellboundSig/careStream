@@ -51,7 +51,7 @@ import {
 } from '../../../data/policies/eligibilityPolicies.js';
 import { suggestNar } from '../../../data/policies/authorizationPolicies.js';
 import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
-import { generateConflictId } from '../../../utils/conflictFlagging.js';
+import { generateConflictId, CONFLICT_SEVERITY, CONFLICT_SEVERITY_OPTIONS } from '../../../utils/conflictFlagging.js';
 import { recordTransition } from '../../../utils/recordTransition.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
@@ -451,7 +451,7 @@ export default function EligibilityWorkspace({
                 ...record,
                 id: generateConflictId(),
                 type: reasons?.[0] || 'other',
-                severity: severity || 'Medium',
+                severity: severity || CONFLICT_SEVERITY.HIGH,
                 description: details || '',
                 status: 'Unaddressed',
                 flagged_by_id: appUserId || 'unknown',
@@ -872,10 +872,9 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
         <Field t={t} label="Severity *">
           <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={inputStyle(t)} data-testid="conflict-severity">
             <option value="" disabled>Select severity…</option>
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-            <option value="Critical">Critical</option>
+            {CONFLICT_SEVERITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </Field>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>

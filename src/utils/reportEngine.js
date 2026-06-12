@@ -368,7 +368,7 @@ export const TABLE_SCHEMAS = {
         label: 'Conflict',
         fields: [
           { key: 'type',             label: 'Type',          type: 'enum', options: ['Hospice Overlap','SNF Overlap','CDPAP','HHA Respite Overlap','ALF Refusal','No-Fault','Regulatory','Clinical','Other'], filterable: true },
-          { key: 'severity',         label: 'Severity',      type: 'enum', options: ['Low','Medium','High','Critical'], filterable: true },
+          { key: 'severity',         label: 'Severity',      type: 'enum', options: ['Low','High'], filterable: true },
           { key: 'status',           label: 'Status',        type: 'enum', options: ['Open','In Progress','Resolved','Waived'], filterable: true },
           { key: 'description',      label: 'Description',   type: 'text', filterable: false },
           { key: 'resolution_note',  label: 'Resolution',    type: 'text', filterable: false },
@@ -381,7 +381,7 @@ export const TABLE_SCHEMAS = {
     ],
     airtableFilters: [
       { key: 'type',     label: 'Type',     type: 'enum', options: ['Hospice Overlap','SNF Overlap','CDPAP','HHA Respite Overlap','ALF Refusal','No-Fault','Regulatory','Clinical','Other'] },
-      { key: 'severity', label: 'Severity', type: 'enum', options: ['Low','Medium','High','Critical'] },
+      { key: 'severity', label: 'Severity', type: 'enum', options: ['Low','High'] },
       { key: 'status',   label: 'Status',   type: 'enum', options: ['Open','In Progress','Resolved','Waived'] },
       { key: 'created_at', label: 'Flagged Date', type: 'date' },
       { key: 'resolved_at', label: 'Resolved Date', type: 'date' },

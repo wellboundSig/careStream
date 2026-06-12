@@ -10,7 +10,7 @@ import { STAGE_META } from '../../data/stageConfig.js';
 import { canMoveFromTo, needsModal, resolveNtucDestination } from '../../utils/stageTransitions.js';
 import { recordTransition } from '../../utils/recordTransition.js';
 import { applyStageEntryEffects } from '../../utils/stageEntryEffects.js';
-import { flagConflict, inferConflictSourceModuleFromStage } from '../../utils/conflictFlagging.js';
+import { flagConflict, inferConflictSourceModuleFromStage, resolveConflict } from '../../utils/conflictFlagging.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import {
@@ -99,7 +99,13 @@ export default function ModulePage({ stage }) {
   const { appUser, appUserId } = useCurrentAppUser();
   const { can: canPerm } = usePermissions();
 
-  const [selectedReferral, setSelectedReferral] = useState(null);
+  // We track which referral the user clicked by its Airtable record id and
+  // DERIVE the live referral object from `allReferrals` on every render. The
+  // right-hand panel + toolbar previously held a snapshot from click-time,
+  // which meant any in-flight optimistic update to the store (Schedule SOC,
+  // Mark Complete, etc.) didn't reach the panel until a manual refresh.
+  // Tracking by id makes the selection automatically reflect the latest data.
+  const [selectedReferralId, setSelectedReferralId] = useState(null);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('days');
   const [sortDir, setSortDir] = useState('desc');
@@ -115,8 +121,17 @@ export default function ModulePage({ stage }) {
 
   const meta = STAGE_META[stage] || {};
 
+  // Live selectedReferral — looked up from `allReferrals` every render so the
+  // panel reflects optimistic store updates instantly. Falls back to null if
+  // the patient is no longer in the pipeline (e.g. deleted), which collapses
+  // the right panel to its empty state.
+  const selectedReferral = useMemo(() => {
+    if (!selectedReferralId) return null;
+    return allReferrals.find((r) => r._id === selectedReferralId) || null;
+  }, [allReferrals, selectedReferralId]);
+
   useEffect(() => {
-    setSelectedReferral(null);
+    setSelectedReferralId(null);
     setSearch('');
     clearFilters();
   }, [stage]);
@@ -324,8 +339,8 @@ export default function ModulePage({ stage }) {
     };
   }
 
-  function handleRowSelect(referral) { setSelectedReferral(referral); }
-  function handleRowOpen(referral) { setSelectedReferral(referral); openPatient(buildPatient(referral), referral); }
+  function handleRowSelect(referral) { setSelectedReferralId(referral?._id || null); }
+  function handleRowOpen(referral) { setSelectedReferralId(referral?._id || null); openPatient(buildPatient(referral), referral); }
   function handleRowContextMenu(e, referral) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, referral }); }
 
   function showToast(message, type = 'success') {
@@ -415,7 +430,30 @@ export default function ModulePage({ stage }) {
       showToast('Failed to move patient — change reverted', 'error');
     });
     recordTransition({ referral, fromStage, toStage: effectiveStage, note, authorId: appUserId });
-    setSelectedReferral(null);
+
+    // When the patient leaves Conflict, mark every open Conflicts row on this
+    // referral as Resolved using the user's note. Without this, the rows stay
+    // "Open" in the DB and the patient continues to show with open conflicts
+    // after they've been routed back to a working stage. Fire-and-forget per
+    // row — failures are logged but don't block the stage move that already
+    // succeeded.
+    if (fromStage === 'Conflict' && note) {
+      const conflicts = useCareStore.getState().conflicts || {};
+      const openConflicts = Object.values(conflicts).filter((c) => {
+        const cRef = Array.isArray(c.referral_id) ? c.referral_id[0] : c.referral_id;
+        if (cRef !== referral.id) return false;
+        const s = c.status;
+        return s === 'Open' || s === 'Unaddressed' || s === 'In Progress';
+      });
+      for (const c of openConflicts) {
+        resolveConflict({ conflict: c, note, actorUserId: appUserId }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[executeTransition] auto-resolve of conflict failed (non-fatal):', c._id, err?.message || err);
+        });
+      }
+    }
+
+    setSelectedReferralId(null);
     const label = wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `moved to ${effectiveStage}`;
     showToast(`${referral.patientName || referral.patient_id} ${label}`);
   }
@@ -813,8 +851,8 @@ export default function ModulePage({ stage }) {
             onOpenFiles={(ref) => openPatient(buildPatient(ref), ref, 'files')}
             onOpenEligibility={(ref) => openPatient(buildPatient(ref), ref, 'eligibility')}
             onOpenTab={(ref, tab) => openPatient(buildPatient(ref), ref, tab)}
-            onInitiateTransition={(ref, toStage) => initiateTransition(ref, toStage)}
-            onSelectedReferralLeftModule={() => setSelectedReferral(null)}
+            onInitiateTransition={(ref, toStage, prefilledNote) => initiateTransition(ref, toStage, prefilledNote)}
+            onSelectedReferralLeftModule={() => setSelectedReferralId(null)}
           />
         </div>
       </div>
