@@ -1,0 +1,39 @@
+# Nightly production invariant scan.
+#
+# Runs `npm run invariants` against the live Airtable base and FAILS the job if
+# any error-severity violation is found (e.g. a referral in EMR Onboarding with
+# no clinical decision, or an open conflict left on a non-Conflict stage).
+# This is the safety net for whatever the unit/property tests miss.
+#
+# Setup (one-time): add two repository secrets under
+#   Settings -> Secrets and variables -> Actions:
+#     AIRTABLE_TOKEN    (the read-capable PAT)
+#     AIRTABLE_BASE_ID  (appr7CZdBQ966kwvL)
+#
+# Trigger: nightly at 07:00 UTC, or manually via the Actions tab.
+
+name: Invariant Scan
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: careStream
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No production deps are needed for the scan (it uses global fetch +
+      # the engine source), so we skip `npm ci` for speed. Run directly.
+      - name: Run invariant scan
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+        run: node scripts/check-invariants.js
