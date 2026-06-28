@@ -8,7 +8,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
-import { isF2FCursoryFullyChecked } from '../../data/f2fChecklist.js';
+import { isF2FTabComplete } from '../../data/f2fChecklist.js';
 import { dbToUiFields as cursoryDbToUiFields } from '../../api/cursoryReviews.js';
 import OverviewTab from './tabs/OverviewTab.jsx';
 import ReferralInfoTab from './tabs/ReferralInfoTab.jsx';
@@ -22,6 +22,7 @@ import TasksTab from './tabs/TasksTab.jsx';
 import AuthorizationsTab from './tabs/AuthorizationsTab.jsx';
 import ConflictsTab from './tabs/ConflictsTab.jsx';
 import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
+import PhysicianTab from './tabs/PhysicianTab.jsx';
 
 const HEADER_TEXT = '#F7F7FA';
 
@@ -30,6 +31,7 @@ export const DRAWER_TABS = [
   { id: 'demographics', label: 'Demographics' },
   { id: 'triage', label: 'Triage' },
   { id: 'f2f', label: 'Face to Face' },
+  { id: 'physician', label: 'Physician' },
   { id: 'eligibility', label: 'Eligibility' },
   { id: 'notes', label: 'Notes' },
   { id: 'timeline', label: 'Timeline' },
@@ -45,6 +47,7 @@ const TAB_EDIT_PERMISSIONS = {
   demographics:    PERMISSION_KEYS.SNAPSHOT_EDIT_DEMOGRAPHICS,
   triage:          PERMISSION_KEYS.SNAPSHOT_EDIT_TRIAGE,
   f2f:             PERMISSION_KEYS.SNAPSHOT_EDIT_F2F,
+  physician:       PERMISSION_KEYS.SNAPSHOT_EDIT_PHYSICIAN,
   eligibility:     PERMISSION_KEYS.SNAPSHOT_EDIT_ELIGIBILITY,
   notes:           PERMISSION_KEYS.SNAPSHOT_EDIT_NOTES,
   timeline:        null,
@@ -178,28 +181,37 @@ export default function PatientDrawer() {
       result.triage = true;
     }
 
-    // F2F is "fully done" (green snapshot indicator) when ALL THREE hold:
-    //   1. At least one F2F or MD Orders file is uploaded.
-    //   2. Date of visit is locked in on the referral (`f2f_date` set —
-    //      written by F2FTab.handleLogReceived / auto-set on first F2F upload).
-    //   3. Every cursory review checkbox is checked.
-    // Hospitalization Review is intentionally OUT of scope: it's a separate
-    // widget below the cursory checklist that's genuinely optional (may or
-    // may not be applicable to a given patient).
-    // Both surfaces of the review (drawer + module panel) read from the same
-    // CursoryReview row, so this stays in sync wherever the user edited it.
+    // F2F green check — the rule lives in ONE place (`isF2FTabComplete`):
+    //   1. At least one F2F or MD Orders file uploaded (either counts).
+    //   2. A date of visit is logged on the referral (`f2f_date`).
+    //   3. The MANDATORY cursory-review items are checked.
+    // All three inputs come from the live store (files, referral, cursory
+    // review), so the check re-evaluates in realtime for every existing and
+    // future case as those change.
     const hasF2FFile = Object.values(storeFiles || {}).some((f) => {
       const fpid = f.patient_id;
       const linked = Array.isArray(fpid) ? fpid.includes(p.id) : fpid === p.id;
       return linked && (f.category === 'F2F' || f.category === 'MD Orders');
     });
     const hasF2FDate = !!r.f2f_date;
-    const cursoryRow = Object.values(storeCursoryReviews || {}).find((row) => {
-      const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
-      return link === r._id;
-    });
-    const cursoryChecked = cursoryRow ? cursoryDbToUiFields(cursoryRow) : {};
-    result.f2f = hasF2FFile && hasF2FDate && isF2FCursoryFullyChecked(cursoryChecked);
+    // Read the CANONICAL (oldest) cursory row only — the same source of truth
+    // useCursoryReview uses. Unioning duplicate rows used to resurrect an
+    // unchecked box, so the green check wouldn't drop when a required item was
+    // removed. With the canonical row, unchecking a required item immediately
+    // (and reactively) clears the check.
+    const cursoryRows = Object.values(storeCursoryReviews || {})
+      .filter((row) => {
+        const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
+        return link === r._id;
+      })
+      .sort((a, b) => {
+        const at = new Date(a.created_at || 0).getTime();
+        const bt = new Date(b.created_at || 0).getTime();
+        if (at !== bt) return at - bt;
+        return String(a._id).localeCompare(String(b._id));
+      });
+    const cursoryChecked = cursoryRows[0] ? cursoryDbToUiFields(cursoryRows[0]) : {};
+    result.f2f = isF2FTabComplete({ hasF2FFile, hasF2FDate, cursoryChecked });
 
     // Clinical Review: decision was made
     result.clinical_review = !!r.clinical_review_decision;
@@ -421,6 +433,7 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
           case 'demographics': return <OverviewTab {...props} />;
           case 'triage': return <TriageTab {...props} />;
           case 'f2f': return <F2FTab {...props} />;
+          case 'physician': return <PhysicianTab {...props} />;
           case 'eligibility': return <EligibilityTab {...props} />;
           case 'notes': return <NotesTab {...props} />;
           case 'timeline': return <TimelineTab {...props} />;

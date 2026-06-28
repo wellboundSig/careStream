@@ -13,11 +13,12 @@ describe('Dashboard permission keys', () => {
   it('has a catalog entry for DASHBOARD_MODE_TOGGLE', () => {
     const entry = PERMISSION_CATALOG.find((c) => c.key === PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE);
     expect(entry).toBeTruthy();
-    expect(entry.category).toBe('Dashboard');
+    // Dashboard toggle now lives under the consolidated Access & Modules group.
+    expect(entry.category).toBe('Access & Modules');
   });
 
-  it('has "Dashboard" in PERMISSION_CATEGORIES', () => {
-    expect(PERMISSION_CATEGORIES).toContain('Dashboard');
+  it('has "Access & Modules" in PERMISSION_CATEGORIES', () => {
+    expect(PERMISSION_CATEGORIES).toContain('Access & Modules');
   });
 });
 

@@ -18,6 +18,7 @@ export const useCareStore = create((set, get) => ({
   files: {},
   insuranceChecks: {},
   conflicts: {},
+  conflictCategories: {},       // ConflictCategories — admin-managed conflict category list
   authorizations: {},
   disenrollmentAssistanceFlags: {}, // DisenrollmentAssistanceFlags — open/in_review rows drive the Disenrollment module queue
   episodes: {},
@@ -92,7 +93,7 @@ export function removeEntity(key, recordId) {
 
 const SYNC_KEYS = [
   'patients', 'referrals', 'notes', 'tasks', 'stageHistory', 'files',
-  'insuranceChecks', 'conflicts', 'authorizations', 'disenrollmentAssistanceFlags', 'episodes',
+  'insuranceChecks', 'conflicts', 'conflictCategories', 'authorizations', 'disenrollmentAssistanceFlags', 'episodes',
   'triageAdult', 'triagePediatric', 'cursoryReviews', 'clinicalReviews',
   'opwddCases', 'opwddChecklistItems',
   'entities',

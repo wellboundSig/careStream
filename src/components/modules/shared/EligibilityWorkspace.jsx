@@ -15,6 +15,7 @@ import { useCurrentAppUser }   from '../../../hooks/useCurrentAppUser.js';
 import { useLookups }          from '../../../hooks/useLookups.js';
 import { usePermissions }      from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS }     from '../../../data/permissionKeys.js';
+import { useConflictCategoryOptions } from '../../../hooks/useConflictCategories.js';
 import { triggerDataRefresh }  from '../../../hooks/useRefreshTrigger.js';
 import { createEligibilityVerification } from '../../../api/eligibilityVerifications.js';
 import { createConflict }      from '../../../api/conflicts.js';
@@ -23,19 +24,19 @@ import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
 import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
-import { useCareStore }         from '../../../store/careStore.js';
+import { useCareStore, mergeEntities } from '../../../store/careStore.js';
+import { createNoteOptimistic } from '../../../store/mutations.js';
 import palette                 from '../../../utils/colors.js';
 
 import {
   INSURANCE_CATEGORY,
   INSURANCE_CATEGORY_OPTIONS,
+  PAYER_TYPE_STAFF_OPTIONS,
   ORDER_RANK,
   ORDER_RANK_OPTIONS,
   VERIFICATION_STATUS,
   VERIFICATION_STATUS_OPTIONS,
   VERIFICATION_SOURCE_OPTIONS,
-  NOTE_CATEGORY_OPTIONS,
-  CONFLICT_REASON_OPTIONS,
   CONFLICT_SOURCE_MODULE,
   DISENROLLMENT_FLAG_TYPE,
   DISENROLLMENT_FLAG_STATUS,
@@ -327,13 +328,20 @@ export default function EligibilityWorkspace({
               label={hasOpenAuth ? 'Add another auth request' : 'Get Auth'}
               onClick={async () => {
                 try {
-                  await createAuthorization({
+                  const createdAuth = await createAuthorization({
                     id: `auth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                     referral_id: referral?.id || '',
                     auth_status: 'pending',
                     status: 'Pending',
                     created_at: new Date().toISOString(),
                   });
+                  // Merge into the store immediately so the Authorization
+                  // module queue (which reads careStore.authorizations) lists
+                  // the patient without waiting for a full re-hydrate. This is
+                  // the fix for the "Get Auth needs a refresh to populate" bug.
+                  if (createdAuth?.id) {
+                    mergeEntities('authorizations', { [createdAuth.id]: { _id: createdAuth.id, ...createdAuth.fields } });
+                  }
                   await recordActivity({
                     actorUserId: appUserId,
                     action: 'Authorization Requested',
@@ -355,10 +363,15 @@ export default function EligibilityWorkspace({
               onClick={() => setDisenrollModal({ note: '', followUpDate: '', followUpOwnerUserId: '' })}
               testId="action-disenrollment-assist" />
 
-            {/* Send Back to Intake — required note becomes a flag in Intake. */}
-            <WsBtn variant="default" label="Send back to Intake"
-              onClick={() => setSendBackModal({ note: '' })}
-              testId="action-back-intake" />
+            {/* Send Back to Intake — only when the patient is EXPLICITLY in the
+                Eligibility Verification stage. Eligibility is frequently worked
+                during Intake (where there's nothing to "send back" to), so this
+                stays hidden everywhere except the eligibility module itself. */}
+            {referral?.current_stage === 'Eligibility Verification' && (
+              <WsBtn variant="default" label="Send back to Intake"
+                onClick={() => setSendBackModal({ note: '' })}
+                testId="action-back-intake" />
+            )}
 
             {/* Route to OPWDD when Code 95 is invalid. */}
             {opwddSuggestion.suggest && can(PERMISSION_KEYS.ROUTING_OPWDD) && (
@@ -587,7 +600,9 @@ function InlineTag({ t, label, color }) {
 function WsBtn({ variant = 'default', label, onClick, disabled, testId }) {
   const styles = {
     forward: { bg: palette.accentGreen.hex,      color: palette.backgroundLight.hex,    pad: '11px 14px', size: 13.5, weight: 700 },
-    success: { bg: palette.backgroundLight.hex,  color: '#15803d',                       pad: '8px 12px',  size: 12.5, weight: 650, border: '1px solid #15803d' },
+    // Soft solid green pill (no harsh white-with-border) — supportive action,
+    // visually subordinate to the solid-green primary "forward" button.
+    success: { bg: '#E7F8EE',                    color: '#157347',                       pad: '8px 12px',  size: 12.5, weight: 650 },
     warning: { bg: palette.highlightYellow.hex,  color: palette.backgroundDark.hex,     pad: '8px 12px',  size: 12.5, weight: 650 },
     danger:  { bg: palette.accentOrange.hex,     color: palette.backgroundLight.hex,    pad: '8px 12px',  size: 12.5, weight: 650 },
     default: { bg: '#F0F0F0',                    color: '#555',                         pad: '7px 12px',  size: 12,   weight: 600 },
@@ -633,7 +648,9 @@ function InsuranceCard({
   const [sources, setSources]   = useState(verification?.verification_sources || []);
   const [order, setOrder]       = useState(verification?.staff_confirmed_order_rank || insurance.order_rank || ORDER_RANK.UNKNOWN);
   const [payerType, setPayerType] = useState(verification?.staff_confirmed_payer_type || insurance.insurance_category || INSURANCE_CATEGORY.UNKNOWN);
-  const [noteCat, setNoteCat]   = useState(verification?.note_category || 'general');
+  // Note categories were removed (2026-06 spec); the note is a single general
+  // note. We keep the field value for the existing column default.
+  const [noteCat] = useState(verification?.note_category || 'general');
   const [noteText, setNoteText] = useState(verification?.note_text || '');
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState(null);
@@ -687,6 +704,18 @@ function InsuranceCard({
           staffConfirmedPayerType: payerType,
         }).required,
       });
+      // A typed note also lands in the Notes tab / Timeline (2026-06 spec).
+      if (noteText.trim() && patientBusinessId) {
+        createNoteOptimistic({
+          id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          patient_id: patientBusinessId,
+          author_id: verifierRecordId || appUserId,
+          content: `[Eligibility · ${insurance.payer_display_name || 'insurance'}] ${noteText.trim()}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ...(referralId ? { referral_id: referralId } : {}),
+        }).catch(() => {});
+      }
       await recordActivity({
         actorUserId: appUserId,
         action: AUDIT_ACTION.ELIGIBILITY_CHECKED,
@@ -773,7 +802,7 @@ function InsuranceCard({
 
           <Field t={t} label="Payer Type (staff-confirmed)">
             <select value={payerType} onChange={(e) => setPayerType(e.target.value)} style={inputStyle(t)} data-testid="payer-type-select">
-              {INSURANCE_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {PAYER_TYPE_STAFF_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             {suggestion.category !== INSURANCE_CATEGORY.UNKNOWN && suggestion.category !== payerType && (
               <p style={{ fontSize: t.fontMuted - 0.5, color: '#888', marginTop: 3 }}>
@@ -800,13 +829,7 @@ function InsuranceCard({
             </div>
           </Field>
 
-          <Field t={t} label="Note Category">
-            <select value={noteCat} onChange={(e) => setNoteCat(e.target.value)} style={inputStyle(t)}>
-              {NOTE_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-
-          <Field t={t} label="Note">
+          <Field t={t} label="Note (also added to Notes)">
             <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={3}
               style={{ ...inputStyle(t), resize: 'vertical' }}
               placeholder="Findings, observations, portal reference." />
@@ -833,6 +856,7 @@ function InsuranceCard({
 
 // ── Conflict modal ─────────────────────────────────────────────────────────
 function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
+  const conflictCategoryOptions = useConflictCategoryOptions();
   const { selectedReasons, details, denialStatus, insurance } = state;
   const insuranceId = insurance?._id || null;
   function toggle(r) {
@@ -851,7 +875,7 @@ function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
           Select at least one reason, choose severity, and add an explanation.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-          {CONFLICT_REASON_OPTIONS.map((r) => (
+          {conflictCategoryOptions.map((r) => (
             <label key={r.value} style={{ fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={selectedReasons.includes(r.value)} onChange={() => toggle(r.value)} data-testid={`conflict-reason-${r.value}`} />
               {r.label}

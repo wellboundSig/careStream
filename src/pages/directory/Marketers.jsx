@@ -3,7 +3,7 @@ import { useCareStore } from '../../store/careStore.js';
 import MarketerDrawer from '../../components/marketers/MarketerDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -64,7 +64,7 @@ export default function Marketers() {
   }, [marketers, search, sortField, sortDir]);
 
   const { can } = usePermissions();
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'marketers')) return <AccessDenied message="You do not have permission to view the Marketers directory." />;
 
   function toggleSort(field) {
     if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');

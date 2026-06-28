@@ -84,7 +84,7 @@ describe('CLINICAL_APPROVED_SERVICES permission', () => {
   it('has a catalog entry', () => {
     const entry = PERMISSION_CATALOG.find((c) => c.key === PERMISSION_KEYS.CLINICAL_APPROVED_SERVICES);
     expect(entry).toBeTruthy();
-    expect(entry.category).toBe('Clinical');
+    expect(entry.category).toBe('Clinical Review');
   });
 });
 

@@ -48,7 +48,7 @@ import { updateReferral } from '../../../api/referrals.js';
 import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { openCaseForReferral } from '../../../store/opwddOrchestration.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
-import { mergeEntities } from '../../../store/careStore.js';
+import { mergeEntities, useCareStore } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
@@ -74,7 +74,7 @@ const OPWDD_OPTIONS = ['OPWDD Eligible', 'OPWDD Pending', 'Non-OPWDD'];
 const CCO_OPTIONS = ['Advance Care Alliance (ACA/NY)', 'Care Design NY', 'Tri-County Care'];
 
 const ADULT_SERVICES   = ['PT', 'OT', 'ST', 'HHA'];
-const PEDIATRIC_SERVICES = ['PT', 'OT', 'ST', 'ABA'];
+const PEDIATRIC_SERVICES = ['PT', 'OT', 'ST', 'ABA', 'HHA'];
 
 // Per-form blank skeleton. Used so the completeness checker sees explicit
 // null/empty values for every required field on a fresh record — without
@@ -111,6 +111,7 @@ const ADULT_BLANK = {
   pcp_fax: '',
   pcp_address: '',
   pcp_npi_number: '',
+  pcp_physician_id: '',
   cco_name: '',
   cm_name: '',
   cm_phone: '',
@@ -151,6 +152,7 @@ const PED_BLANK = {
   pcp_phone: '',
   pcp_fax: '',
   pcp_address: '',
+  pcp_physician_id: '',
   cco_name: '',
   cm_name: '',
   cm_phone: '',
@@ -259,7 +261,7 @@ const ADULT_COLUMNS = new Set([
   // Clinical
   'health_conditions',
   // PCP
-  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address', 'pcp_npi_number',
+  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address', 'pcp_npi_number', 'pcp_physician_id',
   // Care Mgmt
   'cco_name', 'cm_name', 'cm_phone', 'cm_fax', 'cm_email',
   // Timestamps
@@ -289,7 +291,7 @@ const PEDIATRIC_COLUMNS = new Set([
   // Clinical
   'health_conditions', 'school_bus_time', 'has_recent_hospitalization',
   // PCP (no NPI for pediatric per spec)
-  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address',
+  'pcp_name', 'pcp_last_visit', 'pcp_phone', 'pcp_fax', 'pcp_address', 'pcp_physician_id',
   // Care Mgmt
   'cco_name', 'cm_name', 'cm_phone', 'cm_fax', 'cm_email',
   // Timestamps
@@ -492,7 +494,7 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
     set(next);
   }
   function setPcp(phy) {
-    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '', pcp_npi_number: data.pcp_npi_number }); return; }
+    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '', pcp_npi_number: data.pcp_npi_number, pcp_physician_id: '' }); return; }
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
     set({
       ...data,
@@ -501,6 +503,8 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
       pcp_npi_number: phy.npi || data.pcp_npi_number || '',
+      // Link to the directory record so the physician is universalized.
+      pcp_physician_id: phy.id || phy._id || '',
     });
   }
 
@@ -619,7 +623,7 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
       <FormSection title="Primary Care Physician Information">
         <Field label="Primary Care Physician" required error={missing.has('pcp_name')}>
           <PhysicianPicker
-            physicianId={null}
+            physicianId={data.pcp_physician_id || null}
             physicianName={data.pcp_name}
             onChange={setPcp}
             readOnly={disabled}
@@ -676,7 +680,7 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
     set(next);
   }
   function setPcp(phy) {
-    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '' }); return; }
+    if (!phy) { set({ ...data, pcp_name: '', pcp_phone: '', pcp_fax: '', pcp_address: '', pcp_physician_id: '' }); return; }
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
     set({
       ...data,
@@ -684,6 +688,8 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
       pcp_phone: phy.phone || data.pcp_phone || '',
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
+      // Link to the directory record so the physician is universalized.
+      pcp_physician_id: phy.id || phy._id || '',
     });
   }
 
@@ -811,7 +817,7 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
       <FormSection title="Primary Care Physician Information">
         <Field label="Primary Care Physician" required error={missing.has('pcp_name')}>
           <PhysicianPicker
-            physicianId={null}
+            physicianId={data.pcp_physician_id || null}
             physicianName={data.pcp_name}
             onChange={setPcp}
             readOnly={disabled}
@@ -882,6 +888,26 @@ function buildDemographicSeed(patient, formType) {
   return seed;
 }
 
+// Seed the PCP block from the referral's linked physician so a physician known
+// at intake autofills into triage. Returns only fields we can fill; the caller
+// applies these only where the triage record is still blank.
+function buildPhysicianSeed(referral, storePhysicians, formType) {
+  const pid = referral?.physician_id;
+  if (!pid) return {};
+  const phy = Object.values(storePhysicians || {}).find((p) => p.id === pid || p._id === pid);
+  if (!phy) return {};
+  const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
+  const seed = {
+    pcp_physician_id: phy.id || phy._id || '',
+    pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+    pcp_phone: phy.phone || '',
+    pcp_fax: phy.fax || '',
+    pcp_address: addr,
+  };
+  if (formType === 'adult') seed.pcp_npi_number = phy.npi || '';
+  return seed;
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 const SAVE_DEBOUNCE_MS = 700;
@@ -891,6 +917,7 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
   const { resolveUser } = useLookups();
   const { appUserId } = useCurrentAppUser();
   const { can } = usePermissions();
+  const storePhysicians = useCareStore((s) => s.physicians);
 
   // Determine which form: prefer the referral's explicit sn_age_group, else
   // derive from DOB. Special Needs only.
@@ -934,8 +961,10 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
           const r = records[0];
           const normalized = normalizeIncoming(r.fields, BLANK);
           // Even on an existing record, fill in any still-blank demographics-
-          // backed fields from the patient so users don't have to retype.
-          const seed = buildDemographicSeed(patient, triageType);
+          // backed fields from the patient so users don't have to retype. The
+          // physician seed pulls the referral's linked PCP into triage when the
+          // triage record doesn't already have one.
+          const seed = { ...buildPhysicianSeed(referral, storePhysicians, triageType), ...buildDemographicSeed(patient, triageType) };
           const merged = { ...normalized };
           for (const [k, v] of Object.entries(seed)) {
             if (!merged[k] || (typeof merged[k] === 'string' && merged[k].trim() === '')) {
@@ -948,8 +977,9 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
           setFilledBySelf(r.fields.filled_by_id === appUserId || r.fields.filled_by_id === user?.id);
           setFilledAt(r.fields.updated_at || r.fields.created_at || null);
         } else {
-          // Fresh record — seed everything we know from demographics.
-          const seed = buildDemographicSeed(patient, triageType);
+          // Fresh record — seed everything we know from demographics + the
+          // referral's linked physician.
+          const seed = { ...buildPhysicianSeed(referral, storePhysicians, triageType), ...buildDemographicSeed(patient, triageType) };
           setData({ ...BLANK, ...seed });
         }
       })

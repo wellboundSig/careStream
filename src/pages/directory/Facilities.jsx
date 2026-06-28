@@ -5,6 +5,7 @@ import FacilityDrawer from '../../components/facilities/FacilityDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory } from '../../data/directoryPermissions.js';
 import { createMarketerFacility, updateMarketerFacility, deleteMarketerFacility } from '../../api/marketerFacilities.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -154,7 +155,7 @@ export default function Facilities() {
 
   const { can } = usePermissions();
   const canEditMarketers = can(PERMISSION_KEYS.FACILITY_EDIT_MARKETERS);
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'facilities')) return <AccessDenied message="You do not have permission to view the Facilities directory." />;
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');

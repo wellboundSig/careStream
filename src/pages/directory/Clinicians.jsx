@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useEsperClinicians } from '../../hooks/useEsperClinicians.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import LoadingState from '../../components/common/LoadingState.jsx';
 import ClinicianDrawer from '../../components/clinicians/ClinicianDrawer.jsx';
@@ -81,7 +81,7 @@ export default function Clinicians() {
   }, [showColPicker]);
 
   const { can } = usePermissions();
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'clinicians')) return <AccessDenied message="You do not have permission to view the Clinicians directory." />;
 
   // Deduplicate by name; prefer the online record when duplicates exist.
   const clinicians = useMemo(() => {

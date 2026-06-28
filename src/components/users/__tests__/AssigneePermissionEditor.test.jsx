@@ -37,15 +37,20 @@ const { default: AssigneePermissionEditor } = await import('../AssigneePermissio
 
 const targetUser = { id: 'usr_target', first_name: 'Target', last_name: 'User' };
 
+// The editor starts collapsed; expand it before interacting.
+function expand() { fireEvent.click(screen.getByText('Can Assign To')); }
+function restrict() { fireEvent.click(screen.getByText('Restrict to specific people')); }
+
 describe('AssigneePermissionEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore.userPermissions = {};
   });
 
-  it('renders users grouped by role in restricted mode', () => {
+  it('renders users grouped by role when restricted', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
-    fireEvent.click(screen.getByText('Restricted'));
+    expand();
+    restrict();
     expect(screen.getByText('Intake')).toBeTruthy();
     expect(screen.getByText('Clinical')).toBeTruthy();
     expect(screen.getByText('Alice Smith')).toBeTruthy();
@@ -55,26 +60,33 @@ describe('AssigneePermissionEditor', () => {
 
   it('excludes the target user from their own assignee list', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
+    expand();
+    restrict();
     expect(screen.queryByText('Target User')).toBeFalsy();
   });
 
-  it('starts in unrestricted mode by default', () => {
+  it('defaults to unrestricted (Everyone) and is collapsed', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
+    // Summary badge is visible even while collapsed.
+    expect(screen.getByText('Everyone')).toBeTruthy();
+    // The explanatory text only appears once expanded.
+    expect(screen.queryByText(/can assign tasks and ownership to any/i)).toBeFalsy();
+    expand();
     expect(screen.getByText(/can assign tasks and ownership to any/i)).toBeTruthy();
   });
 
-  it('shows checkboxes in restricted mode', () => {
+  it('shows checkboxes when restricted', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
-    fireEvent.click(screen.getByText('Restricted'));
+    expand();
+    restrict();
     const checkboxes = screen.getAllByRole('checkbox');
     expect(checkboxes.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('supports individual checkbox selection', () => {
+  it('starts restricted selection empty and supports individual checkbox selection', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
-    fireEvent.click(screen.getByText('Restricted'));
-    fireEvent.click(screen.getByText('Select None'));
-
+    expand();
+    restrict();
     const aliceCheckbox = screen.getByText('Alice Smith').closest('label').querySelector('input');
     expect(aliceCheckbox.checked).toBe(false);
     fireEvent.click(aliceCheckbox);
@@ -83,8 +95,8 @@ describe('AssigneePermissionEditor', () => {
 
   it('supports bulk role-group selection', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
-    fireEvent.click(screen.getByText('Restricted'));
-    fireEvent.click(screen.getByText('Select None'));
+    expand();
+    restrict();
 
     const intakeGroup = screen.getByTestId('role-group-rol_1');
     const groupCheckbox = intakeGroup.querySelector('input[type="checkbox"]');
@@ -99,11 +111,19 @@ describe('AssigneePermissionEditor', () => {
     expect(carolCheckbox.checked).toBe(false);
   });
 
-  it('renders "Select All" and "Select None" buttons', () => {
+  it('offers a Clear action but no "Select All" shortcut', () => {
     render(<AssigneePermissionEditor user={targetUser} />);
-    fireEvent.click(screen.getByText('Restricted'));
-    expect(screen.getByText('Select All')).toBeTruthy();
-    expect(screen.getByText('Select None')).toBeTruthy();
+    expand();
+    restrict();
+    expect(screen.getByText('Clear')).toBeTruthy();
+    expect(screen.queryByText('Select All')).toBeFalsy();
+  });
+
+  it('warns when restricted with no one selected', () => {
+    render(<AssigneePermissionEditor user={targetUser} />);
+    expand();
+    restrict();
+    expect(screen.getByText(/won.t be able to assign to anyone/i)).toBeTruthy();
   });
 
   it('loads existing allowed_assignees from store', () => {
@@ -111,6 +131,7 @@ describe('AssigneePermissionEditor', () => {
       up1: { _id: 'up1', user_id: 'usr_target', permissions: '[]', allowed_assignees: '["usr_A"]' },
     };
     render(<AssigneePermissionEditor user={targetUser} />);
+    expand();
     const aliceCheckbox = screen.getByText('Alice Smith').closest('label').querySelector('input');
     expect(aliceCheckbox.checked).toBe(true);
     const bobCheckbox = screen.getByText('Bob Jones').closest('label').querySelector('input');

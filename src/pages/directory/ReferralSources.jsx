@@ -3,7 +3,7 @@ import { useCareStore, mergeEntities } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory, canCreateDirectory, canEditDirectory } from '../../data/directoryPermissions.js';
 import { createReferralSource, updateReferralSource } from '../../api/referralSources.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
@@ -81,8 +81,8 @@ export default function ReferralSources() {
   }, [sources]);
 
   const { can } = usePermissions();
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) {
-    return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'referral_sources')) {
+    return <AccessDenied message="You do not have permission to view the Referral Sources directory." />;
   }
 
   async function handleCreate(fields) {
@@ -120,7 +120,7 @@ export default function ReferralSources() {
               style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }}
             />
           </div>
-          {can(PERMISSION_KEYS.DIRECTORY_CREATE) && (
+          {canCreateDirectory(can, 'referral_sources') && (
             <button
               onClick={() => setModal({ mode: 'create' })}
               style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'transform 0.12s, background 0.12s' }}
@@ -199,7 +199,7 @@ export default function ReferralSources() {
                   resolveMarketer={resolveMarketer}
                   onOpen={() => openReferralSource(src)}
                   onEdit={() => setModal({ mode: 'edit', source: src })}
-                  canEdit={can(PERMISSION_KEYS.DIRECTORY_EDIT)}
+                  canEdit={canEditDirectory(can, 'referral_sources')}
                 />
               ))
             )}

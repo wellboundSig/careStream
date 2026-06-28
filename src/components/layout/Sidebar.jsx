@@ -4,6 +4,7 @@ import { ROLE_MODES, STAGE_SLUGS, STAGE_META } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory } from '../../data/directoryPermissions.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import { useCareStore } from '../../store/careStore.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -26,12 +27,12 @@ const NAV_ITEMS = [
   {
     section: 'DIRECTORY',
     items: [
-      { label: 'Marketers', path: '/directory/marketers', icon: MarketersIcon },
-      { label: 'Facilities', path: '/directory/facilities', icon: FacilitiesIcon },
-      { label: 'Physicians', path: '/directory/physicians', icon: PhysiciansIcon },
-      { label: 'Referral Sources', path: '/directory/referral-sources', icon: SourcesIcon },
-      { label: 'Clinicians', path: '/directory/clinicians', icon: PhysiciansIcon },
-      { label: 'Campaigns', path: '/directory/campaigns', icon: CampaignsIcon },
+      { label: 'Marketers', path: '/directory/marketers', icon: MarketersIcon, dir: 'marketers' },
+      { label: 'Facilities', path: '/directory/facilities', icon: FacilitiesIcon, dir: 'facilities' },
+      { label: 'Physicians', path: '/directory/physicians', icon: PhysiciansIcon, dir: 'physicians' },
+      { label: 'Referral Sources', path: '/directory/referral-sources', icon: SourcesIcon, dir: 'referral_sources' },
+      { label: 'Clinicians', path: '/directory/clinicians', icon: PhysiciansIcon, dir: 'clinicians' },
+      { label: 'Campaigns', path: '/directory/campaigns', icon: CampaignsIcon, dir: 'campaigns' },
     ],
   },
   {
@@ -47,6 +48,7 @@ const NAV_ITEMS = [
       { label: 'Team', path: '/team', icon: UsersIcon },
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
       { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, requiresAdmin: true },
+      { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: PermissionsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
       { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
@@ -214,7 +216,15 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
         )}
 
         {/* Remaining groups (Directory, Work, System) */}
-        {NAV_ITEMS.slice(1).map((group, gi) => (
+        {NAV_ITEMS.slice(1).map((group, gi) => {
+          const visibleItems = group.items.filter(
+            (item) =>
+              (!item.requiresAdmin || isAdmin) &&
+              (!item.dir || canViewDirectory(can, item.dir)) &&
+              (!item.perm || can(item.perm)),
+          );
+          if (visibleItems.length === 0) return null;
+          return (
           <div key={gi} style={{ marginBottom: 4 }}>
             {group.section && !collapsed && (
               <p
@@ -230,7 +240,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
                 {group.section}
               </p>
             )}
-            {group.items.filter((item) => !item.requiresAdmin || isAdmin).map((item) => {
+            {visibleItems.map((item) => {
               const isActive = item.exact
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path) && item.path !== '/';
@@ -275,7 +285,8 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {pinMenu && (

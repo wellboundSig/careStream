@@ -1,8 +1,9 @@
 import { createConflict, updateConflict } from '../api/conflicts.js';
 import { createNote } from '../api/notes.js';
 import { recordActivity } from '../api/activityLog.js';
-import { mergeEntities } from '../store/careStore.js';
+import { mergeEntities, getStore } from '../store/careStore.js';
 import { CONFLICT_SOURCE_MODULE, CONFLICT_REASON_OPTIONS } from '../data/eligibilityEnums.js';
+import { managedConflictCategoryLabel } from '../data/conflictCategories.js';
 
 // Conflict severity (2026-06-12): consolidated from 4 levels (Low/Medium/High/
 // Critical) down to 2 (Low/High). The Airtable column is `multilineText`, so
@@ -51,6 +52,11 @@ export function generateConflictId() {
  */
 export function conflictCategoryLabel(category) {
   if (!category) return 'Conflict';
+  // Prefer an admin-managed category label (so renamed/custom categories show
+  // correctly), then the built-in defaults, then a humanized fallback.
+  let managed = null;
+  try { managed = managedConflictCategoryLabel(category, getStore()); } catch { /* store not ready */ }
+  if (managed) return managed.replace(/\s*\(.*?\)\s*$/, '').trim();
   const opt = CONFLICT_REASON_OPTIONS.find((o) => o.value === category);
   if (opt) return opt.label.replace(/\s*\(.*?\)\s*$/, '').trim();
   return String(category)

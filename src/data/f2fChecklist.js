@@ -34,14 +34,33 @@ export function isF2FChecklistComplete(checked) {
 }
 
 /**
- * Every cursory checkbox is checked — used by the snapshot drawer's green
- * "tab complete" indicator, which represents "this work is fully done," not
- * "this work has met the minimum bar." Hospitalization Review is intentionally
- * out of scope here: it lives in a separate widget below the cursory checklist
- * and is genuinely optional (it may or may not be true for a given patient).
+ * Every cursory checkbox is checked (including the optional items). Retained
+ * for any caller that wants the strict "all boxes" notion; the F2F tab green
+ * check uses the required-only rule via `isF2FTabComplete` below.
  */
 export function isF2FCursoryFullyChecked(checked) {
   return F2F_REVIEW_CHECKLIST.every((item) => checked[item.key]);
+}
+
+/**
+ * SINGLE SOURCE OF TRUTH for the F2F tab's green "complete" check.
+ *
+ * The green check appears when, and only when, ALL THREE hold:
+ *   1. At least one F2F or MD Orders document is uploaded (either one counts).
+ *   2. A date of visit is logged on the referral (`f2f_date`).
+ *   3. The MANDATORY cursory-review items are checked (the two optional items —
+ *      Homebound status, Services/disciplines — and the separate
+ *      Hospitalization Review widget are NOT required).
+ *
+ * This is a pure rule over current data, so it applies uniformly to every
+ * existing and future referral and updates in realtime as files / date /
+ * checklist change in the store.
+ *
+ * @param {{ hasF2FFile?: boolean, hasF2FDate?: boolean, cursoryChecked?: object }} input
+ * @returns {boolean}
+ */
+export function isF2FTabComplete({ hasF2FFile, hasF2FDate, cursoryChecked } = {}) {
+  return !!hasF2FFile && !!hasF2FDate && isF2FChecklistComplete(cursoryChecked || {});
 }
 
 // Convenient lookup tables derived from the checklist.

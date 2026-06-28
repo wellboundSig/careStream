@@ -17,11 +17,17 @@ describe('determineAllowedServicesByDivision', () => {
     expect(blocked.find((b) => b.service === AUTH_SERVICE.HHA)).toBeTruthy();
   });
 
-  it('ALF still permits SN, PT, OT, ST, MSW', () => {
+  it('ALF still permits SN, PT, OT, ST', () => {
     const { allowed } = determineAllowedServicesByDivision({ division: DIVISION.ALF });
     expect(allowed).toEqual(expect.arrayContaining([
-      AUTH_SERVICE.SN, AUTH_SERVICE.PT, AUTH_SERVICE.OT, AUTH_SERVICE.ST, AUTH_SERVICE.MSW,
+      AUTH_SERVICE.SN, AUTH_SERVICE.PT, AUTH_SERVICE.OT, AUTH_SERVICE.ST,
     ]));
+  });
+
+  it('MSW is no longer an auth service (removed 2026-06)', () => {
+    const { allowed } = determineAllowedServicesByDivision({ division: DIVISION.SPECIAL_NEEDS });
+    expect(allowed).not.toContain('MSW');
+    expect(AUTH_SERVICE.MSW).toBeUndefined();
   });
 
   it('Authorization excludes ABA entirely', () => {

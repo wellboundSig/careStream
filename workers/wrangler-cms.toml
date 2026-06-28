@@ -1,0 +1,9 @@
+name = "worker-cms"
+main = "worker-cms.js"
+compatibility_date = "2024-11-01"
+
+# Public, key-less CORS proxy for CMS NPPES + data.cms.gov. No secrets or
+# bindings required. Deploy with:
+#   npx wrangler deploy -c workers/wrangler-cms.toml
+# (a plain `npx wrangler deploy workers/worker-cms.js` also works since there
+#  are no remote bindings to preserve).

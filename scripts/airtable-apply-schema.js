@@ -248,6 +248,22 @@ const EMAIL_LOG_STATUS = ['queued', 'sent', 'failed'];
 // ---------- Desired plan ----------
 const DESIRED_TABLES = [
   {
+    // Admin-managed conflict category list (the structured reasons staff pick
+    // when routing a referral to Conflict). The app falls back to built-in
+    // defaults when this table is empty, so creating it is safe & additive.
+    name: 'ConflictCategories',
+    description: 'Editable list of conflict categories surfaced in the conflict pickers. Managed in Admin → Conflict Categories.',
+    fields: [
+      t.text('id'), // primary — e.g. cc_<timestamp>
+      t.text('value'), // stable snake_case code stored on Conflicts.type
+      t.text('label'), // human-facing label
+      t.int('sort_order'),
+      t.check('is_active'),
+      t.dateTime('created_at'),
+      t.dateTime('updated_at'),
+    ],
+  },
+  {
     name: 'OPWDDEligibilityCases',
     description: 'One row per OPWDD eligibility attempt for a referral.',
     fields: [
@@ -577,6 +593,9 @@ const DESIRED_NEW_FIELDS = {
     t.longText('hha_hours_frequency'),
     t.longText('health_conditions'),
     t.text('pcp_npi_number'),
+    // Link the PCP picked in triage back to the Physicians directory record so
+    // the physician is universalized across referral → triage → snapshot.
+    t.text('pcp_physician_id'),
     t.single('cco_name', CCO_NAMES),
     t.text('cm_fax'),
     t.email('cm_email'),
@@ -599,9 +618,26 @@ const DESIRED_NEW_FIELDS = {
     t.text('has_smoking'),
     t.longText('homecare_hours_days'),
     t.longText('health_conditions'),
+    // Link the PCP picked in triage back to the Physicians directory record.
+    t.text('pcp_physician_id'),
     t.single('cco_name', CCO_NAMES),
     t.text('cm_fax'),
     t.email('cm_email'),
+  ],
+
+  // ── Physician verification (NPI / PECOS / Order & Referring) ─────────────
+  // `npi`, `is_pecos_enrolled`, `is_opra_enrolled`, `pecos_last_checked` already
+  // exist; these add the NPI status, OPRA timestamp, and audit metadata written
+  // in one shot by the one-click verification (see src/api/cms.js).
+  Physicians: [
+    t.single('npi_status', ['active', 'deactivated', 'not_found']),
+    t.dateTime('npi_checked_at'),
+    t.text('npi_provider_name'),
+    t.longText('npi_details'),           // JSON: NPPES basic record (expandable detail panel)
+    t.dateTime('opra_last_checked'),
+    t.longText('order_refer_flags'),     // JSON: { PARTB, DME, HHA, HOSPICE, PMD }
+    t.dateTime('verification_last_run_at'),
+    t.text('verification_checked_by_id'),
   ],
 
   // ── EligibilityVerifications.insurance_id repair (2026-05-27) ────────────
@@ -618,6 +654,23 @@ const DESIRED_NEW_FIELDS = {
   // new writes ignore it.
   EligibilityVerifications: [
     t.link('patient_insurance_id', 'PatientInsurances'),
+  ],
+
+  // ── Authorization redesign (2026-06) ─────────────────────────────────────
+  // One Authorizations row per insurance "response". Per-service decisions and
+  // the follow-up log are stored as JSON so a single row carries multiple
+  // disciplines (PT approved, ST denied) without a child table. The existing
+  // status/unit columns remain for back-compat + the module-queue rollup.
+  Authorizations: [
+    t.longText('service_lines'),          // JSON: [{ service, decision, visit_limit, unit_type, approval_received_date, note }]
+    t.single('coverage_status', ['active', 'inactive']),
+    t.text('payer_type'),                 // staff-confirmed INSURANCE_CATEGORY value
+    t.single('payer_order', ['primary', 'secondary', 'tertiary', 'informational']),
+    t.longText('sources_checked'),        // JSON array of verification source codes
+    t.dateTime('request_initial_date'),   // Initial Date Requested
+    t.text('request_requested_from'),     // Requested from
+    t.check('request_docs_sent'),         // Sent requested documentation to entity
+    t.longText('follow_ups'),             // JSON: [{ date, actions_taken, notes, type }]
   ],
 };
 
@@ -641,9 +694,16 @@ const DESIRED_CHOICE_EXTENSIONS = {
   // New writes default Conflicts.status to "Open"; legacy "Unaddressed" rows
   // are treated as Open in the UI mapping (see conflictFlagging.js).
   Conflicts: { status: ['Open'] },
-  // Adult triage gains HHA in services_needed for the new spec; pediatric
-  // already has ABA + PT/OT/ST and doesn't add HHA (HHA is adult-only).
+  // Adult triage gains HHA in services_needed for the new spec. Pediatric
+  // (ABA + PT/OT/ST) now also offers HHA per the updated requested-services
+  // spec — the careStream write path does NOT send typecast, so the choice
+  // must be registered on the field before the UI can persist it.
   TriageAdult: { services_needed: ADULT_SERVICES_NEEDED_NEW },
+  TriagePediatric: { services_needed: ['HHA'] },
+  // "Informational" payer order added to the Eligibility + Authorization
+  // staff-confirmed order pickers (2026-06 spec).
+  EligibilityVerifications: { staff_confirmed_order_rank: ['informational'] },
+  PatientInsurances: { order_rank: ['informational'] },
 };
 
 const DESIRED_PERMISSIONS = [

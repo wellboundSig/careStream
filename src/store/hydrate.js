@@ -19,6 +19,7 @@ const TABLES = [
   { key: 'files',            table: 'Files' },
   { key: 'insuranceChecks',  table: 'InsuranceChecks' },
   { key: 'conflicts',        table: 'Conflicts' },
+  { key: 'conflictCategories', table: 'ConflictCategories' },
   { key: 'authorizations',   table: 'Authorizations' },
   { key: 'disenrollmentAssistanceFlags', table: 'DisenrollmentAssistanceFlags' },
   { key: 'episodes',         table: 'Episodes' },

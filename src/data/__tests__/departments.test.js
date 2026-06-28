@@ -9,11 +9,12 @@ describe('Department permission keys', () => {
   it('has a catalog entry for ADMIN_DEPARTMENTS', () => {
     const entry = PERMISSION_CATALOG.find((c) => c.key === PERMISSION_KEYS.ADMIN_DEPARTMENTS);
     expect(entry).toBeTruthy();
-    expect(entry.category).toBe('Departments');
+    // Department management now lives under the consolidated Administration group.
+    expect(entry.category).toBe('Administration');
   });
 
-  it('has "Departments" in PERMISSION_CATEGORIES', () => {
-    expect(PERMISSION_CATEGORIES).toContain('Departments');
+  it('has "Administration" in PERMISSION_CATEGORIES', () => {
+    expect(PERMISSION_CATEGORIES).toContain('Administration');
   });
 });
 

@@ -4,7 +4,7 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { REGION_COLORS } from './Facilities.jsx';
 import { SkeletonRect } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory, canCreateDirectory } from '../../data/directoryPermissions.js';
 import { createCampaign } from '../../api/campaigns.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -59,7 +59,7 @@ export default function Campaigns() {
   const [showNewCampaign, setShowNewCampaign] = useState(false);
 
   const { can } = usePermissions();
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'campaigns')) return <AccessDenied message="You do not have permission to view the Campaigns directory." />;
 
   return (
     <>
@@ -73,7 +73,7 @@ export default function Campaigns() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 34, width: 220 }}>
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search campaigns…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
             </div>
-            {can(PERMISSION_KEYS.DIRECTORY_CREATE) && (
+            {canCreateDirectory(can, 'campaigns') && (
               <button onClick={() => setShowNewCampaign(true)} style={{ height: 34, padding: '0 16px', borderRadius: 8, background: palette.accentGreen.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>
                 + Add Campaign
               </button>

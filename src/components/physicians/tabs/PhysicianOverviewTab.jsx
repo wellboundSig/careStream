@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { updatePhysician } from '../../../api/physicians.js';
 import { updatePhysicianInCache } from '../../../hooks/usePhysicians.js';
+import PhysicianVerificationPanel from '../PhysicianVerificationPanel.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function Row({ label, value, color }) {
@@ -109,8 +110,26 @@ export default function PhysicianOverviewTab({ physician, onUpdated }) {
     }
   }
 
+  // After an automated verification, sync this tab's local state, the drawer
+  // header, and the directory cache (the panel already wrote Airtable + store).
+  function handleVerified(fields) {
+    setLocal((prev) => ({
+      ...prev,
+      is_pecos_enrolled: fields.is_pecos_enrolled === true || fields.is_pecos_enrolled === 'true',
+      is_opra_enrolled:  fields.is_opra_enrolled  === true || fields.is_opra_enrolled  === 'true',
+      pecos_last_checked: fields.pecos_last_checked || prev.pecos_last_checked,
+    }));
+    onUpdated?.(fields);
+    updatePhysicianInCache(physician._id, fields);
+  }
+
   return (
     <div style={{ padding: '20px 22px 40px' }}>
+
+      {/* ── One-click NPI / PECOS / OPRA verification (CMS) ──── */}
+      <div style={{ marginBottom: 20 }}>
+        <PhysicianVerificationPanel physician={physician} onUpdated={handleVerified} />
+      </div>
 
       {/* ── Enrollment pills (display) ────────────────────── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>

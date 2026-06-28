@@ -67,13 +67,12 @@ export function useCursoryReview(referralRecordId) {
     })[0];
   }, [matchingRows]);
 
-  // Derived UI-keyed checked map — the UNION of every matching row, so the
-  // completed state is whatever the reviewer ever checked across all rows.
-  const serverChecked = useMemo(() => {
-    const merged = {};
-    for (const row of matchingRows) Object.assign(merged, dbToUiFields(row));
-    return merged;
-  }, [matchingRows]);
+  // Source of truth = the canonical (oldest) row ONLY. We deliberately do NOT
+  // union across duplicate rows: unioning resurrected unchecked boxes (a stale
+  // duplicate still holding `true` would override an uncheck, so removing a
+  // check appeared to "revert" on navigate-away-and-back). Duplicates are
+  // healed by `upsert` and pruned from the store after each save (see flush).
+  const serverChecked = useMemo(() => (existingRow ? dbToUiFields(existingRow) : {}), [existingRow]);
 
   // Local working state — seeded from server. Keyed by UI keys, e.g.
   // { f2f_doc_present: true, patient_name_match: false }
@@ -125,10 +124,17 @@ export function useCursoryReview(referralRecordId) {
         mergeEntities('cursoryReviews', {
           [created.id]: { _id: created.id, ...created.fields },
         });
-        // If we'd been mirroring under a temp id (no existingRow at toggle
-        // time), drop the temp row so the store holds only the canonical one.
-        if (created.id !== pendingId(referralRecordId)) {
-          try { removeEntity('cursoryReviews', pendingId(referralRecordId)); } catch {}
+        // Prune the temp mirror AND any stale duplicate rows for this referral
+        // from the store. `upsert` already deleted the duplicates in Airtable;
+        // dropping them locally too is what makes an uncheck stick — otherwise
+        // the canonical-row read could still see a lingering `true`.
+        const store = useCareStore.getState().cursoryReviews || {};
+        for (const [rid, row] of Object.entries(store)) {
+          if (rid === created.id) continue;
+          const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
+          if (link === referralRecordId || rid === pendingId(referralRecordId)) {
+            try { removeEntity('cursoryReviews', rid); } catch {}
+          }
         }
       }
       triggerDataRefresh();

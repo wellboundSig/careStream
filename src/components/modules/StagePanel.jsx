@@ -27,7 +27,7 @@ import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import HospitalizationReview from './shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import { fileToUrl } from '../../utils/r2Upload.js';
-import { normalizeSeverity } from '../../utils/conflictFlagging.js';
+import { normalizeSeverity, conflictCategoryLabel } from '../../utils/conflictFlagging.js';
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
@@ -542,6 +542,12 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
           {/* Returned from Eligibility — required note becomes a flag here */}
           {selectedReferral.eligibility_returned_to_intake_note && (
             <ReturnedFromEligibilityFlag note={selectedReferral.eligibility_returned_to_intake_note} at={selectedReferral.eligibility_returned_to_intake_at} />
+          )}
+
+          {/* Returned from Clinical RN Review — note is optional, so flag on
+              the boolean (the send-back can happen with nothing filled out). */}
+          {(selectedReferral.returned_from_clinical === 'true' || selectedReferral.returned_from_clinical === true) && (
+            <ReturnedFromClinicalFlag note={selectedReferral.returned_from_clinical_note} />
           )}
 
           {/* F2F section — shown for F2F-stage referrals OR whenever an F2F
@@ -1414,17 +1420,25 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   }
 
   async function handleSendBack() {
-    if (!sendBackNote.trim() || !selectedReferral) return;
+    // Send Back to Intake is always available — it must work regardless of
+    // checklist state or whether a note was typed. The note is optional.
+    if (!selectedReferral) return;
+    const note = sendBackNote.trim();
     const result = attemptTransition({
       referral: selectedReferral,
-      toStage: 'F2F/MD Orders Pending',
+      toStage: 'Intake',
       context: {
-        note: `[Returned from Clinical] ${sendBackNote.trim()}`,
+        // Clinical Intake RN Review is a protectedExit stage and 'Intake' is
+        // not on its declared edge list; this in-panel action is the
+        // sanctioned exit, so bypass the edge allowlist like the Eligibility
+        // → Intake send-back does.
+        system: true,
+        note: note ? `[Returned from Clinical] ${note}` : '[Returned from Clinical]',
         actorUserId: appUserId,
         extraFields: {
           in_clinical_review: false,
           returned_from_clinical: 'true',
-          returned_from_clinical_note: sendBackNote.trim(),
+          returned_from_clinical_note: note,
           returned_from_clinical_at: new Date().toISOString(),
           returned_from_clinical_by: appUserId || 'unknown',
         },
@@ -1473,23 +1487,24 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             locked={decisionLocked}
           />
 
-          {/* Send back to F2F — always available, not gated by clinical permission */}
+          {/* Send back to Intake — always available, not gated by clinical
+              permission, checklist state, or a required note. */}
           <PanelSection title="Send Back">
             {!showSendBack ? (
-              <ActionBtn label="↩ Send Back to F2F / MD Orders" variant="warning" onClick={() => setShowSendBack(true)} />
+              <ActionBtn label="↩ Send Back to Intake" variant="warning" onClick={() => setShowSendBack(true)} />
             ) : (
               <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
-                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>Explain why this patient is being returned to F2F:</p>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>Add an optional note for Intake:</p>
                 <textarea
                   data-testid="send-back-note"
                   value={sendBackNote}
                   onChange={(e) => setSendBackNote(e.target.value)}
-                  placeholder="Required — describe the documentation issue…"
+                  placeholder="Optional — describe why this patient is being returned…"
                   rows={3}
                   style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid ${sendBackNote.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box', marginBottom: 8 }}
                 />
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={handleSendBack} disabled={!sendBackNote.trim()} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: sendBackNote.trim() ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.07), color: sendBackNote.trim() ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 11.5, fontWeight: 650, cursor: sendBackNote.trim() ? 'pointer' : 'not-allowed' }}>
+                  <button onClick={handleSendBack} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
                     Send Back
                   </button>
                   <button onClick={() => { setShowSendBack(false); setSendBackNote(''); }} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
@@ -1654,7 +1669,7 @@ function ConflictPanel({ selectedReferral, onOpenEligibility, onOpenFiles, onIni
                 return (
                   <div key={c._id} style={{ padding: '10px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}`, marginBottom: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{c.type || 'Unknown'}</span>
+                      <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{c.type ? conflictCategoryLabel(c.type) : 'Unknown'}</span>
                       <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>{displaySeverity}</span>
                     </div>
                     {c.description && (

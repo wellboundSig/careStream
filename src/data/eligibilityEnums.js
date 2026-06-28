@@ -37,19 +37,30 @@ export const INSURANCE_CATEGORY_OPTIONS = [
 // Note: Third Party and Commercial are intentionally separate per business
 // requirement — they are not interchangeable in the intake workflow.
 
+// Staff-confirmed Payer Type options (Eligibility + Authorization "Payer Type
+// (staff-confirmed)" selectors). Excludes Unknown and Third Party per the
+// 2026-06 spec — by the time staff confirm a payer they should have a concrete
+// category. Legacy records may still hold those values; we only trim the
+// pickable options, the constants remain for back-compat display.
+export const PAYER_TYPE_STAFF_OPTIONS = INSURANCE_CATEGORY_OPTIONS.filter(
+  (o) => o.value !== INSURANCE_CATEGORY.UNKNOWN && o.value !== INSURANCE_CATEGORY.THIRD_PARTY,
+);
+
 // ── Payer order rank ─────────────────────────────────────────────────────────
 export const ORDER_RANK = Object.freeze({
-  PRIMARY:   'primary',
-  SECONDARY: 'secondary',
-  TERTIARY:  'tertiary',
-  UNKNOWN:   'unknown',
+  PRIMARY:       'primary',
+  SECONDARY:     'secondary',
+  TERTIARY:      'tertiary',
+  INFORMATIONAL: 'informational',
+  UNKNOWN:       'unknown',
 });
 
 export const ORDER_RANK_OPTIONS = [
-  { value: ORDER_RANK.PRIMARY,   label: 'Primary' },
-  { value: ORDER_RANK.SECONDARY, label: 'Secondary' },
-  { value: ORDER_RANK.TERTIARY,  label: 'Tertiary' },
-  { value: ORDER_RANK.UNKNOWN,   label: 'Unknown / Needs Review' },
+  { value: ORDER_RANK.PRIMARY,       label: 'Primary' },
+  { value: ORDER_RANK.SECONDARY,     label: 'Secondary' },
+  { value: ORDER_RANK.TERTIARY,      label: 'Tertiary' },
+  { value: ORDER_RANK.INFORMATIONAL, label: 'Informational' },
+  { value: ORDER_RANK.UNKNOWN,       label: 'Unknown / Needs Review' },
 ];
 
 // ── Verification sources (multi-select) ──────────────────────────────────────
@@ -66,16 +77,16 @@ export const VERIFICATION_SOURCE = Object.freeze({
   OTHER:             'other',
 });
 
+// Pickable sources (2026-06 spec): ePACES and eMedNY are the same NY Medicaid
+// system, so they're collapsed into one option; Optum is dropped (Availity
+// covers those checks); Phone/Fax/Other are dropped (any conflict goes through
+// the Conflict module/flow instead). The removed enum constants are kept for
+// back-compat display of legacy records.
 export const VERIFICATION_SOURCE_OPTIONS = [
-  { value: VERIFICATION_SOURCE.WAYSTAR,           label: 'Waystar',                 hint: 'Typically used for straight Medicare' },
-  { value: VERIFICATION_SOURCE.AVAILITY,          label: 'Availity',                hint: 'Multi-payer clearinghouse' },
-  { value: VERIFICATION_SOURCE.EPACES,            label: 'ePACES',                  hint: 'NY Medicaid eligibility portal' },
-  { value: VERIFICATION_SOURCE.EMEDNY,            label: 'eMedNY',                  hint: 'NY Medicaid' },
-  { value: VERIFICATION_SOURCE.OPTUM,             label: 'Optum',                   hint: '' },
-  { value: VERIFICATION_SOURCE.COMMERCIAL_PORTAL, label: 'Commercial Portal',       hint: 'Plan-specific web portal' },
-  { value: VERIFICATION_SOURCE.PHONE,             label: 'Phone',                   hint: 'Called payer directly' },
-  { value: VERIFICATION_SOURCE.FAX,               label: 'Fax',                     hint: '' },
-  { value: VERIFICATION_SOURCE.OTHER,             label: 'Other',                   hint: 'Document in notes' },
+  { value: VERIFICATION_SOURCE.WAYSTAR,           label: 'Waystar',           hint: 'Typically used for straight Medicare' },
+  { value: VERIFICATION_SOURCE.AVAILITY,          label: 'Availity',          hint: 'Multi-payer clearinghouse' },
+  { value: VERIFICATION_SOURCE.EPACES,            label: 'ePACES / eMedNY',   hint: 'NY Medicaid eligibility portal' },
+  { value: VERIFICATION_SOURCE.COMMERCIAL_PORTAL, label: 'Commercial Portal', hint: 'Plan-specific web portal' },
 ];
 
 // ── Eligibility verification status (per insurance, per event) ───────────────
@@ -159,24 +170,24 @@ export const AUTH_UNIT_TYPE = Object.freeze({
   EPISODE: 'episode',
 });
 
+// Only Visits and Hours are offered (2026-06 spec dropped Days and Episodes).
+// The DAY/EPISODE constants remain for back-compat display of legacy rows.
 export const AUTH_UNIT_TYPE_OPTIONS = [
   { value: AUTH_UNIT_TYPE.VISIT,   label: 'Visits' },
   { value: AUTH_UNIT_TYPE.HOUR,    label: 'Hours' },
-  { value: AUTH_UNIT_TYPE.DAY,     label: 'Days' },
-  { value: AUTH_UNIT_TYPE.EPISODE, label: 'Episodes' },
 ];
 
 // ── Services (canonical list — ABA deliberately excluded for CHHA auth) ──────
 // `ABA` is NOT listed here for the authorization module per business rule.
 // Division rules (see serviceAvailabilityPolicies) further restrict which
 // services are billable per setting.
+// MSW removed per 2026-06 spec — it does not belong on the auth service list.
 export const AUTH_SERVICE = Object.freeze({
   SN:  'SN',
   PT:  'PT',
   OT:  'OT',
   ST:  'ST',
   HHA: 'HHA',
-  MSW: 'MSW',
 });
 
 export const ALL_AUTH_SERVICES = [
@@ -185,7 +196,62 @@ export const ALL_AUTH_SERVICES = [
   AUTH_SERVICE.OT,
   AUTH_SERVICE.ST,
   AUTH_SERVICE.HHA,
-  AUTH_SERVICE.MSW,
+];
+
+// ── Per-service authorization decision (2026-06 redesign) ────────────────────
+// One decision per requested service within a single per-insurance response.
+// Options differ by division.
+export const AUTH_DECISION = Object.freeze({
+  NAR:                  'nar',                   // ALF: No Auth Required
+  APPROVED:             'approved',              // both
+  FOLLOW_UP_NEEDED:     'follow_up_needed',      // ALF: parent for Denied / SCA
+  DENIED:               'denied',                // both
+  SINGLE_CASE_AGREEMENT:'single_case_agreement', // ALF (reached via Follow-up); SPN via denial flow
+  PARTIAL:              'partial',               // SPN: Partial Approval (note required)
+  BALANCE_BILL_MEDICAID:'balance_bill_medicaid', // SPN
+});
+
+export const AUTH_DECISION_OPTIONS_ALF = [
+  { value: AUTH_DECISION.NAR,              label: 'NAR (No Auth Required)' },
+  { value: AUTH_DECISION.FOLLOW_UP_NEEDED, label: 'Follow-up needed' },
+  { value: AUTH_DECISION.APPROVED,         label: 'Approved' },
+];
+
+// Sub-outcomes presented in the ALF "Follow-up needed" popup.
+export const AUTH_FOLLOW_UP_OUTCOME_OPTIONS_ALF = [
+  { value: AUTH_DECISION.DENIED,                label: 'Denied' },
+  { value: AUTH_DECISION.SINGLE_CASE_AGREEMENT, label: 'Single Case Agreement' },
+];
+
+export const AUTH_DECISION_OPTIONS_SPN = [
+  { value: AUTH_DECISION.APPROVED,              label: 'Approved' },
+  { value: AUTH_DECISION.PARTIAL,               label: 'Partial Approval' },
+  { value: AUTH_DECISION.DENIED,                label: 'Denied' },
+  { value: AUTH_DECISION.BALANCE_BILL_MEDICAID, label: 'Balance bill Medicaid' },
+];
+
+export function authDecisionOptionsForDivision(division) {
+  return division === DIVISION.ALF ? AUTH_DECISION_OPTIONS_ALF : AUTH_DECISION_OPTIONS_SPN;
+}
+
+// Coverage status shown on each per-insurance auth response (mirrors the
+// eligibility Active/Inactive concept — nothing else needed since conflict /
+// OPWDD routing is handled by their own modules).
+export const AUTH_COVERAGE_STATUS = Object.freeze({
+  ACTIVE:   'active',
+  INACTIVE: 'inactive',
+});
+
+export const AUTH_COVERAGE_STATUS_OPTIONS = [
+  { value: AUTH_COVERAGE_STATUS.ACTIVE,   label: 'Active' },
+  { value: AUTH_COVERAGE_STATUS.INACTIVE, label: 'Inactive' },
+];
+
+// Follow-up contact type for the auth follow-up log.
+export const AUTH_FOLLOW_UP_TYPE_OPTIONS = [
+  { value: 'phone', label: 'Phone call' },
+  { value: 'email', label: 'Email' },
+  { value: 'other', label: 'Other' },
 ];
 
 // ── Division / facility setting ──────────────────────────────────────────────

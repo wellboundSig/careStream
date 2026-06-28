@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
-import { CONFLICT_REASON_OPTIONS } from '../../data/eligibilityEnums.js';
 import { CONFLICT_SEVERITY_OPTIONS } from '../../utils/conflictFlagging.js';
+import { useConflictCategoryOptions } from '../../hooks/useConflictCategories.js';
 
 export default function TransitionModal({ referral, toStage, onConfirm, onCancel, loading, initialNote }) {
+  const conflictCategoryOptions = useConflictCategoryOptions();
   const [note, setNote] = useState(initialNote || '');
   const [conflictCategory, setConflictCategory] = useState('');
   const [conflictSeverity, setConflictSeverity] = useState('');
@@ -169,7 +170,7 @@ export default function TransitionModal({ referral, toStage, onConfirm, onCancel
                 }}
               >
                 <option value="" disabled>Select a category…</option>
-                {CONFLICT_REASON_OPTIONS.map((o) => (
+                {conflictCategoryOptions.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>

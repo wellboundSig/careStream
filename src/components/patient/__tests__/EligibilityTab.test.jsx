@@ -89,17 +89,26 @@ describe('EligibilityTab — verification form', () => {
     return card;
   }
 
-  // D.2 Verification source supports multi-select
+  // D.2 Verification source supports multi-select. Phone/Fax/Other/eMedNY/Optum
+  // were removed (2026-06 spec); Availity remains as a second selectable source.
   it('allows multi-select of verification sources (with default pre-selection)', async () => {
     const card = await openFirstEdit();
-    const waystar = within(card).getByTestId('source-waystar');
-    const phone   = within(card).getByTestId('source-phone');
+    const waystar  = within(card).getByTestId('source-waystar');
+    const availity = within(card).getByTestId('source-availity');
     // Medicare -> Waystar is suggested; default pre-selected when opening edit with no existing sources.
     expect(waystar.checked).toBe(true);
-    expect(phone.checked).toBe(false);
-    await act(async () => { fireEvent.click(phone); });
+    expect(availity.checked).toBe(false);
+    await act(async () => { fireEvent.click(availity); });
     expect(waystar.checked).toBe(true);
-    expect(phone.checked).toBe(true);
+    expect(availity.checked).toBe(true);
+  });
+
+  it('no longer offers Phone / Fax / eMedNY / Optum as sources (2026-06 spec)', async () => {
+    const card = await openFirstEdit();
+    expect(within(card).queryByTestId('source-phone')).toBeNull();
+    expect(within(card).queryByTestId('source-fax')).toBeNull();
+    expect(within(card).queryByTestId('source-emedny')).toBeNull();
+    expect(within(card).queryByTestId('source-optum')).toBeNull();
   });
 
   // D.3 Insurance type selector distinguishes Medicare vs Medicare Managed
@@ -113,14 +122,14 @@ describe('EligibilityTab — verification form', () => {
     expect(labels).toContain('Medicaid Managed (MCO / MLTC)');
   });
 
-  // D.4 Third Party field and Commercial Plan field remain distinct
-  it('distinguishes Third Party from Commercial Plan in the type selector', async () => {
+  // D.4 Staff-confirmed Payer Type no longer offers Unknown or Third Party
+  // (2026-06 spec) — Commercial Plan remains.
+  it('omits Unknown and Third Party from the staff-confirmed type selector', async () => {
     const card = await openFirstEdit();
     const labels = Array.from(within(card).getByTestId('payer-type-select').querySelectorAll('option')).map((o) => o.textContent);
-    expect(labels).toContain('Third Party');
     expect(labels).toContain('Commercial Plan');
-    // They are two different options.
-    expect(labels.indexOf('Third Party')).not.toBe(labels.indexOf('Commercial Plan'));
+    expect(labels).not.toContain('Third Party');
+    expect(labels.some((l) => /Unknown/i.test(l))).toBe(false);
   });
 
   it('saves verification with expected fields', async () => {

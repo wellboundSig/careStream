@@ -6,7 +6,7 @@ import { useCareStore } from '../../store/careStore.js';
 import PhysicianDrawer from '../../components/physicians/PhysicianDrawer.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { normalizePhone, lookupZip } from '../../utils/validation.js';
@@ -234,7 +234,7 @@ export default function Physicians() {
   }, [physicians, search, sortField, sortDir]);
 
   const { can } = usePermissions();
-  if (!can(PERMISSION_KEYS.DIRECTORY_VIEW)) return <AccessDenied message="You do not have permission to view the directory." />;
+  if (!canViewDirectory(can, 'physicians')) return <AccessDenied message="You do not have permission to view the Physicians directory." />;
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');

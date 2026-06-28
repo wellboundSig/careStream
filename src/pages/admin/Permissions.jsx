@@ -31,6 +31,7 @@ export default function Permissions() {
 
   const [editing, setEditing] = useState(null); // preset object or { _new: true }
   const [toast, setToast] = useState(null);
+  const [duplicatingId, setDuplicatingId] = useState(null);
 
   if (!can(PERMISSION_KEYS.ADMIN_PERMISSIONS)) {
     return (
@@ -49,6 +50,41 @@ export default function Permissions() {
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  }
+
+  // Duplicate a preset into a new, non-system editable copy. The copy keeps the
+  // same permission set so it can serve as a starting point for a tweaked role.
+  async function handleDuplicate(preset) {
+    if (duplicatingId) return;
+    setDuplicatingId(preset._id || preset.id);
+    const now = new Date().toISOString();
+    const baseName = (preset.name || 'Preset').replace(/\s*\(copy(?: \d+)?\)\s*$/i, '');
+    const existingNames = new Set(
+      Object.values(storePresets).map((p) => (p.name || '').toLowerCase()),
+    );
+    let copyName = `${baseName} (Copy)`;
+    let n = 2;
+    while (existingNames.has(copyName.toLowerCase())) copyName = `${baseName} (Copy ${n++})`;
+    try {
+      const fields = {
+        id: `preset_${Date.now()}`,
+        name: copyName,
+        description: preset.description || '',
+        permissions: preset.permissions || '[]',
+        is_system: false,
+        created_at: now,
+        updated_at: now,
+      };
+      const rec = await createPermissionPreset(fields);
+      mergeEntities('permissionPresets', { [rec.id]: { _id: rec.id, ...rec.fields } });
+      showToast(`Duplicated as "${copyName}"`);
+      setEditing({ _id: rec.id, ...rec.fields });
+    } catch (err) {
+      console.error('[Permissions] Duplicate failed:', err);
+      showToast('Duplicate failed', 'error');
+    } finally {
+      setDuplicatingId(null);
+    }
   }
 
   return (
@@ -97,9 +133,20 @@ export default function Permissions() {
                 <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 10, lineHeight: 1.4 }}>
                   {preset.description || 'No description'}
                 </p>
-                <p style={{ fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
-                  {permCount} / {ALL_KEYS.length} permissions
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+                    {permCount} / {ALL_KEYS.length} permissions
+                  </p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDuplicate(preset); }}
+                    disabled={duplicatingId === (preset._id || preset.id)}
+                    title="Duplicate this preset"
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: duplicatingId ? 'wait' : 'pointer' }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><rect x="5.5" y="5.5" width="9" height="9" rx="1.6" stroke="currentColor" strokeWidth="1.4"/><path d="M10.5 5.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                    {duplicatingId === (preset._id || preset.id) ? 'Duplicating…' : 'Duplicate'}
+                  </button>
+                </div>
               </div>
             );
           })}

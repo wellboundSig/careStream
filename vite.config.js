@@ -13,6 +13,20 @@ export default defineConfig({
         secure: true,
         rewrite: (path) => path.replace(/^\/esper-proxy/, ''),
       },
+      // CMS NPPES NPI Registry proxy (no key, blocks browser CORS)
+      '/cms-proxy/npi': {
+        target: 'https://npiregistry.cms.hhs.gov/api',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/cms-proxy\/npi/, ''),
+      },
+      // CMS data.cms.gov dataset API proxy (Order & Referring / PECOS data)
+      '/cms-proxy/data': {
+        target: 'https://data.cms.gov/data-api/v1',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/cms-proxy\/data/, ''),
+      },
       // Zip code lookup proxy
       '/zip-proxy': {
         target: 'https://api.zippopotam.us',

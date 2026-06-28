@@ -55,18 +55,23 @@ export default function AssigneePermissionEditor({ user, onSaved }) {
     } catch { return null; }
   }, [existingRecord]);
 
-  const [mode, setMode] = useState('unrestricted');
+  // Single logical axis: assignment is either unrestricted (can assign to
+  // everyone) or restricted to an explicit set of people. We deliberately do
+  // NOT offer a "Select All" shortcut — selecting everyone is the same as being
+  // unrestricted, and having both was the duplicative, confusing behavior.
+  const [restricted, setRestricted] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [checked, setChecked] = useState(new Set());
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
     if (initialAllowed) {
-      setMode('restricted');
+      setRestricted(true);
       setChecked(new Set(initialAllowed));
     } else {
-      setMode('unrestricted');
-      setChecked(new Set(allUsers.map((u) => u.id)));
+      setRestricted(false);
+      setChecked(new Set());
     }
   }, [user?.id, initialAllowed]);
 
@@ -92,12 +97,11 @@ export default function AssigneePermissionEditor({ user, onSaved }) {
     });
   }
 
-  function selectAll() { setChecked(new Set(allUsers.map((u) => u.id))); }
-  function selectNone() { setChecked(new Set()); }
+  function clearSelection() { setChecked(new Set()); }
 
   async function handleSave() {
     setSaving(true);
-    const allowedJson = mode === 'restricted' ? JSON.stringify([...checked]) : null;
+    const allowedJson = restricted ? JSON.stringify([...checked]) : null;
     const now = new Date().toISOString();
 
     try {
@@ -129,104 +133,131 @@ export default function AssigneePermissionEditor({ user, onSaved }) {
   }
 
   const hasChanges = (() => {
-    if (mode === 'unrestricted' && initialAllowed === null) return false;
-    if (mode === 'unrestricted' && initialAllowed !== null) return true;
-    if (mode === 'restricted' && initialAllowed === null) return true;
-    if (initialAllowed && checked.size !== initialAllowed.size) return true;
-    if (initialAllowed) { for (const k of checked) if (!initialAllowed.has(k)) return true; }
+    if (!restricted) return initialAllowed !== null;
+    if (initialAllowed === null) return true;
+    if (checked.size !== initialAllowed.size) return true;
+    for (const k of checked) if (!initialAllowed.has(k)) return true;
     return false;
   })();
 
+  const summary = !restricted
+    ? 'Everyone'
+    : checked.size === 0
+      ? 'No one'
+      : `${checked.size} ${checked.size === 1 ? 'person' : 'people'}`;
+
   return (
-    <div data-testid="assignee-editor" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+    <div data-testid="assignee-editor" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Collapsible header — keeps the long people list out of the way until needed. */}
+      <div
+        onClick={() => setCollapsed((v) => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
+      >
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <path d="M2 4.5l4 4 4-4" stroke={hexToRgba(palette.backgroundDark.hex, 0.5)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
         <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
           Can Assign To
         </p>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={() => setMode('unrestricted')}
-            style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${mode === 'unrestricted' ? palette.accentGreen.hex : 'var(--color-border)'}`, background: mode === 'unrestricted' ? hexToRgba(palette.accentGreen.hex, 0.1) : 'none', fontSize: 11, fontWeight: 600, color: mode === 'unrestricted' ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}
-          >Everyone</button>
-          <button
-            onClick={() => setMode('restricted')}
-            style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${mode === 'restricted' ? palette.primaryMagenta.hex : 'var(--color-border)'}`, background: mode === 'restricted' ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'none', fontSize: 11, fontWeight: 600, color: mode === 'restricted' ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}
-          >Restricted</button>
-        </div>
+        <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: restricted ? hexToRgba(palette.primaryMagenta.hex, 0.1) : hexToRgba(palette.accentGreen.hex, 0.12), color: restricted ? palette.primaryMagenta.hex : palette.accentGreen.hex }}>
+          {summary}
+        </span>
       </div>
 
-      {mode === 'unrestricted' ? (
-        <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), fontStyle: 'italic', padding: '8px 0' }}>
-          This user can assign tasks and ownership to any active team member.
-        </p>
-      ) : (
+      {!collapsed && (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-            <button onClick={selectAll} style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--color-border)', background: 'none', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>Select All</button>
-            <button onClick={selectNone} style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--color-border)', background: 'none', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>Select None</button>
-            <span style={{ marginLeft: 'auto', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-              {checked.size} of {allUsers.length} selected
+          {/* Single restrict toggle. Off = everyone; on = an explicit list. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', padding: '4px 0' }}>
+            <input
+              type="checkbox"
+              checked={restricted}
+              onChange={(e) => { setRestricted(e.target.checked); if (!e.target.checked) setChecked(new Set()); }}
+              style={{ accentColor: palette.primaryMagenta.hex, width: 15, height: 15, cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>
+              Restrict to specific people
             </span>
-          </div>
+          </label>
 
-          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 8 }}>
-            {groupedByRole.map((group) => {
-              const groupIds = group.users.map((u) => u.id);
-              const allGroupChecked = groupIds.every((id) => checked.has(id));
-              const someGroupChecked = groupIds.some((id) => checked.has(id)) && !allGroupChecked;
+          {!restricted ? (
+            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), fontStyle: 'italic', padding: '2px 0 6px 24px' }}>
+              Can assign tasks and ownership to any active team member.
+            </p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                <button onClick={clearSelection} disabled={checked.size === 0} style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--color-border)', background: 'none', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, checked.size === 0 ? 0.25 : 0.5), cursor: checked.size === 0 ? 'default' : 'pointer' }}>Clear</button>
+                <span style={{ marginLeft: 'auto', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                  {checked.size} of {allUsers.length} selected
+                </span>
+              </div>
 
-              return (
-                <div key={group.roleId} data-testid={`role-group-${group.roleId}`}>
-                  <div
-                    onClick={() => toggleRoleGroup(group.roleId)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: hexToRgba(palette.backgroundDark.hex, 0.03), borderBottom: '1px solid var(--color-border)', cursor: 'pointer', userSelect: 'none' }}
-                  >
-                    <input
-                      type="checkbox" checked={allGroupChecked}
-                      ref={(el) => { if (el) el.indeterminate = someGroupChecked; }}
-                      onChange={() => toggleRoleGroup(group.roleId)}
-                      style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
-                      {group.roleName}
-                    </span>
-                    <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>
-                      {groupIds.filter((id) => checked.has(id)).length}/{groupIds.length}
-                    </span>
-                  </div>
-                  {group.users.map((u) => (
-                    <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 12px 6px 28px', cursor: 'pointer', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
-                      <input
-                        type="checkbox" checked={checked.has(u.id)}
-                        onChange={() => toggleUser(u.id)}
-                        style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>
-                        {u.first_name} {u.last_name}
-                      </span>
-                      {u.email && (
-                        <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginLeft: 'auto' }}>{u.email}</span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              );
-            })}
+              {checked.size === 0 && (
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.accentOrange.hex, background: hexToRgba(palette.accentOrange.hex, 0.08), borderRadius: 6, padding: '7px 10px' }}>
+                  No one selected — this user won&apos;t be able to assign to anyone. To allow everyone, turn off &ldquo;Restrict to specific people&rdquo; instead.
+                </p>
+              )}
+
+              <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                {groupedByRole.map((group) => {
+                  const groupIds = group.users.map((u) => u.id);
+                  const allGroupChecked = groupIds.every((id) => checked.has(id));
+                  const someGroupChecked = groupIds.some((id) => checked.has(id)) && !allGroupChecked;
+
+                  return (
+                    <div key={group.roleId} data-testid={`role-group-${group.roleId}`}>
+                      <div
+                        onClick={() => toggleRoleGroup(group.roleId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: hexToRgba(palette.backgroundDark.hex, 0.03), borderBottom: '1px solid var(--color-border)', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <input
+                          type="checkbox" checked={allGroupChecked}
+                          ref={(el) => { if (el) el.indeterminate = someGroupChecked; }}
+                          onChange={() => toggleRoleGroup(group.roleId)}
+                          style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                          {group.roleName}
+                        </span>
+                        <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>
+                          {groupIds.filter((id) => checked.has(id)).length}/{groupIds.length}
+                        </span>
+                      </div>
+                      {group.users.map((u) => (
+                        <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 12px 6px 28px', cursor: 'pointer', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
+                          <input
+                            type="checkbox" checked={checked.has(u.id)}
+                            onChange={() => toggleUser(u.id)}
+                            style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>
+                            {u.first_name} {u.last_name}
+                          </span>
+                          {u.email && (
+                            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginLeft: 'auto' }}>{u.email}</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            {toast && <span style={{ fontSize: 12, fontWeight: 600, color: toast.startsWith('Error') ? palette.primaryMagenta.hex : palette.accentGreen.hex }}>{toast}</span>}
+            {!toast && <span />}
+            <button
+              onClick={handleSave}
+              disabled={saving || !hasChanges}
+              style={{ padding: '7px 18px', borderRadius: 7, background: (saving || !hasChanges) ? hexToRgba(palette.backgroundDark.hex, 0.07) : palette.accentGreen.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: (saving || !hasChanges) ? hexToRgba(palette.backgroundDark.hex, 0.3) : palette.backgroundLight.hex, cursor: (saving || !hasChanges) ? 'not-allowed' : 'pointer' }}
+            >
+              {saving ? 'Saving…' : 'Save Assignment Permissions'}
+            </button>
           </div>
         </>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-        {toast && <span style={{ fontSize: 12, fontWeight: 600, color: toast.startsWith('Error') ? palette.primaryMagenta.hex : palette.accentGreen.hex }}>{toast}</span>}
-        {!toast && <span />}
-        <button
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-          style={{ padding: '7px 18px', borderRadius: 7, background: (saving || !hasChanges) ? hexToRgba(palette.backgroundDark.hex, 0.07) : palette.accentGreen.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: (saving || !hasChanges) ? hexToRgba(palette.backgroundDark.hex, 0.3) : palette.backgroundLight.hex, cursor: (saving || !hasChanges) ? 'not-allowed' : 'pointer' }}
-        >
-          {saving ? 'Saving…' : 'Save Assignment Permissions'}
-        </button>
-      </div>
     </div>
   );
 }
