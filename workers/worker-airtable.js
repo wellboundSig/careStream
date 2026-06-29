@@ -14,10 +14,18 @@
  *
  * Required Worker Variable (plain text, not secret):
  *   DEFAULT_ROLE_ID       — role_id assigned to new users (e.g. rol_001)
+ *   CLERK_ISSUER          — Clerk Frontend API origin, e.g.
+ *                           https://clerk.wellboundcarestream.com (used to verify
+ *                           session JWTs on the data proxy). Defaults to that.
+ *   REQUIRE_AUTH          — "false" to disable JWT enforcement during rollout.
+ *                           Defaults to ON (fail-closed). DEPLOY ORDER: ship the
+ *                           token-sending frontend FIRST, then this worker.
  *
  * Optional KV Namespace Binding (for webhook cursor persistence):
  *   WEBHOOK_KV            — KV namespace for storing webhook cursors
  */
+
+import { requireClerkAuth, verifyClerkJWT, authRequired } from './clerkAuth.js';
 
 const ALLOWED_ORIGINS = [
   'https://wellboundcarestream.com',
@@ -33,8 +41,9 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
 
@@ -355,14 +364,27 @@ export default {
       return handleWebhookRegister(request, env, origin);
     }
 
-    // SSE endpoint for real-time change notifications
+    // SSE endpoint for real-time change notifications. EventSource can't set
+    // headers, so the Clerk token arrives as ?token=. Verify before streaming.
     if (url.pathname === '/events') {
+      if (authRequired(env)) {
+        const payload = await verifyClerkJWT(url.searchParams.get('token'), env);
+        if (!payload) {
+          return new Response('Unauthorized', { status: 401, headers: corsHeaders(origin) });
+        }
+      }
       return handleSSE(request, origin);
     }
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
+
+    // ── Everything below is the authenticated Airtable data proxy. ──────────
+    // A valid Clerk session JWT is REQUIRED (unless REQUIRE_AUTH=false). This is
+    // what turns the proxy from an open PHI endpoint into an authenticated one.
+    const unauthorized = await requireClerkAuth(request, env, corsHeaders(origin));
+    if (unauthorized) return unauthorized;
 
     const parts = url.pathname.replace(/^\//, '').split('/').filter(Boolean);
 

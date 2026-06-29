@@ -1,36 +1,45 @@
-// Cloudflare R2 upload via Worker
-// The Worker handles auth — no R2 credentials are needed in the browser.
+// Cloudflare R2 access via the (private) worker.
 //
-// Worker endpoint: VITE_R2_WORKER_URL (set in .env)
-//   PUT /upload/{patientId}/{filename}  → stores file, returns { r2Key, r2Url }
+// The bucket is PRIVATE — there are no public object URLs. Uploads require a
+// Clerk session JWT, and reads go through short-lived HMAC-signed URLs minted
+// by the worker's /sign endpoint (which also requires a Clerk JWT). The signed
+// URL works in <img>/<iframe>/window.open without any header.
 //
-// Bucket:  wellbound
-// Folder:  CareStream/files/{patientId}/{timestamp_filename}
-// Public:  https://pub-d7fda00c74254211bfe47adcb51427b0.r2.dev/{key}
+// Worker endpoint: VITE_R2_WORKER_URL
+//   PUT /upload/{patientId}/{filename}   → { r2Key, url }
+//   GET /sign?key={r2Key}[&download=1]   → { url, expiresAt }
 
-const R2_PUBLIC_BASE = 'https://pub-d7fda00c74254211bfe47adcb51427b0.r2.dev';
+async function clerkToken() {
+  try {
+    return (typeof window !== 'undefined' && window.Clerk?.session)
+      ? await window.Clerk.session.getToken()
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function uploadToR2(file, patientId) {
   const workerUrl = import.meta.env.VITE_R2_WORKER_URL;
-
   if (!workerUrl) {
-    throw new Error(
-      'R2 Worker URL is not configured.\n' +
-      'Add VITE_R2_WORKER_URL to your .env file.'
-    );
+    throw new Error('R2 Worker URL is not configured.\nAdd VITE_R2_WORKER_URL to your .env file.');
   }
 
-  const safeName   = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
-  const fileBuffer = await file.arrayBuffer();
+  const safeName    = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
+  const fileBuffer  = await file.arrayBuffer();
   const contentType = file.type || 'application/octet-stream';
+  const token       = await clerkToken();
 
   const response = await fetch(
     `${workerUrl}/upload/${patientId}/${safeName}`,
     {
       method: 'PUT',
-      headers: { 'Content-Type': contentType },
+      headers: {
+        'Content-Type': contentType,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: fileBuffer,
-    }
+    },
   );
 
   if (!response.ok) {
@@ -38,30 +47,36 @@ export async function uploadToR2(file, patientId) {
     throw new Error(err.error || `R2 upload failed (${response.status})`);
   }
 
-  return response.json(); // { r2Key, r2Url }
+  return response.json(); // { r2Key, url }
 }
 
 /**
- * Build a public R2 URL for a stored file row.
+ * Mint a short-lived signed URL for a stored file row. Returns '' when there's
+ * no `r2_key` (legacy rows that only have the dead public `r2_url` can't be
+ * signed and must be re-uploaded).
  *
- * IMPORTANT: the `r2_url` column in Airtable is type `richText`, which means
- * Airtable serialises every write through a markdown round-trip. Underscores,
- * asterisks, and other markdown control chars get backslash-escaped on the
- * way back out (`foo_bar` → `foo\_bar`), which produces 404s when the URL is
- * fetched literally by the browser.
- *
- * The `r2_key` column is `multilineText`, so it stores cleanly. Prefer
- * reconstructing the public URL from the key; only fall back to `r2_url`
- * (with the escapes stripped) when the key is missing on legacy rows.
+ * @param {object} file  a Files row ({ r2_key, file_name, ... })
+ * @param {{ download?: boolean }} [opts]  download=true → Content-Disposition attachment
  */
-export function fileToUrl(file) {
-  if (!file) return '';
-  const key = file.r2_key && String(file.r2_key).trim();
-  if (key) return `${R2_PUBLIC_BASE}/${key}`;
-  // Strip markdown backslash-escapes and any trailing whitespace/newline
-  // from the legacy richText value.
-  return (file.r2_url || '')
-    .replace(/\\([\\_*[\](){}#+\-.!`])/g, '$1')
-    .replace(/[<>\n\r]/g, '')
-    .trim();
+export async function getSignedFileUrl(file, { download = false } = {}) {
+  const key = file?.r2_key && String(file.r2_key).trim();
+  if (!key) return '';
+  const workerUrl = import.meta.env.VITE_R2_WORKER_URL;
+  if (!workerUrl) return '';
+
+  const token = await clerkToken();
+  const res = await fetch(
+    `${workerUrl}/sign?key=${encodeURIComponent(key)}${download ? '&download=1' : ''}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!res.ok) return '';
+  const data = await res.json().catch(() => ({}));
+  return data.url || '';
+}
+
+/** Fetch a signed URL and open/download it (for click handlers). */
+export async function openSignedFile(file, { download = false } = {}) {
+  const url = await getSignedFileUrl(file, { download });
+  if (url) window.open(url, '_blank', 'noopener');
+  return url;
 }

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
-import { fileToUrl } from '../../utils/r2Upload.js';
+import { useSignedFileUrl } from '../../hooks/useSignedFileUrl.js';
 
 // Shared, inline file preview modal. Used by FilesTab and F2FTab so staff can
 // SEE the file (PDF or image) without having to bounce out to a new tab. Other
@@ -26,7 +26,9 @@ function getFileKind(type, name) {
 
 export default function FilePreviewModal({ file, onClose }) {
   const kind = getFileKind(file?.file_type, file?.file_name);
-  const url = fileToUrl(file);
+  // Private R2: resolve short-lived signed URLs (inline view + download variant).
+  const { url } = useSignedFileUrl(file);
+  const { url: downloadUrl } = useSignedFileUrl(file, { download: true });
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose?.(); }
@@ -89,10 +91,9 @@ export default function FilePreviewModal({ file, onClose }) {
                 Open
               </a>
             )}
-            {url && (
+            {downloadUrl && (
               <a
-                href={url}
-                download={file.file_name}
+                href={downloadUrl}
                 style={{
                   padding: '6px 14px', borderRadius: 7,
                   background: hexToRgba(palette.accentBlue.hex, 0.1),
@@ -168,8 +169,7 @@ export default function FilePreviewModal({ file, onClose }) {
                   Open in new tab
                 </a>
                 <a
-                  href={url}
-                  download={file.file_name}
+                  href={downloadUrl}
                   style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex, fontSize: 13, fontWeight: 650, textDecoration: 'none', border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}` }}
                 >
                   Download

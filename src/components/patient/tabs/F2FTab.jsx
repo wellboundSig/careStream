@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
-import { uploadToR2, fileToUrl } from '../../../utils/r2Upload.js';
+import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
 import { mergeEntities } from '../../../store/careStore.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
@@ -284,7 +284,6 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No F2F or MD Order documents uploaded yet.</p>
         ) : (
           files.map((f) => {
-            const cleanUrl = fileToUrl(f);
             return (
               <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /><path d="M14 2v6h6" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /></svg>
@@ -292,37 +291,32 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                   <p style={{ fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
                   <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category} · {fmtDate(f.created_at)}</p>
                 </div>
-                {cleanUrl && (
-                  <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                    <button
-                      onClick={() => setPreview(f)}
-                      title="Preview file"
-                      style={{
-                        padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 650,
-                        background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
-                        border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.18)}`,
-                        color: palette.primaryDeepPlum.hex,
-                      }}
-                    >
-                      Preview
-                    </button>
-                    <a
-                      href={cleanUrl}
-                      download={f.file_name}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Download file"
-                      style={{
-                        padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 650,
-                        background: hexToRgba(palette.accentBlue.hex, 0.1),
-                        border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
-                        color: palette.accentBlue.hex, textDecoration: 'none',
-                      }}
-                    >
-                      Download
-                    </a>
-                  </div>
-                )}
+                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                  <button
+                    onClick={() => setPreview(f)}
+                    title="Preview file"
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 650,
+                      background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
+                      border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.18)}`,
+                      color: palette.primaryDeepPlum.hex,
+                    }}
+                  >
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => openSignedFile(f, { download: true })}
+                    title="Download file"
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 650,
+                      background: hexToRgba(palette.accentBlue.hex, 0.1),
+                      border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
+                      color: palette.accentBlue.hex,
+                    }}
+                  >
+                    Download
+                  </button>
+                </div>
               </div>
             );
           })

@@ -49,11 +49,25 @@ function cleanup() {
   }
 }
 
-function connect() {
+async function connect() {
   if (!WORKER_URL || import.meta.env.DEV) return;
   cleanup();
 
-  const sseUrl = WORKER_URL.replace(/\/$/, '') + '/events';
+  // The worker now requires a Clerk session JWT on /events. EventSource can't
+  // set headers, so pass it as a query param. If there's no session yet, retry
+  // shortly — sync.js polling provides eventual consistency in the meantime.
+  let token = null;
+  try {
+    token = (typeof window !== 'undefined' && window.Clerk?.session)
+      ? await window.Clerk.session.getToken()
+      : null;
+  } catch { /* ignore */ }
+  if (!token) {
+    reconnectTimer = setTimeout(connect, 3000);
+    return;
+  }
+
+  const sseUrl = `${WORKER_URL.replace(/\/$/, '')}/events?token=${encodeURIComponent(token)}`;
   eventSource = new EventSource(sseUrl);
   eventSource.onmessage = onMessage;
   eventSource.onerror = onError;

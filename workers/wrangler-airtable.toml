@@ -1,0 +1,14 @@
+name = "worker-airtable"
+main = "worker-airtable.js"
+compatibility_date = "2024-11-01"
+
+# The Airtable proxy persists webhook cursors in KV. A config-less deploy strips
+# remote bindings, so the binding is declared here. Secrets (AIRTABLE_TOKEN,
+# AIRTABLE_BASE_ID, CLERK_WEBHOOK_SECRET, CLERK_ISSUER, REQUIRE_AUTH) and the
+# DEFAULT_ROLE_ID var stay in the dashboard — deploy with `--keep-vars` so they
+# are preserved:
+#
+#   npx wrangler deploy -c workers/wrangler-airtable.toml --keep-vars
+[[kv_namespaces]]
+binding = "WEBHOOK_KV"
+id = "b77ee316b57e4d7f961e375f6977339c"

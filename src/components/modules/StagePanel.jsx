@@ -26,7 +26,7 @@ import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
 import HospitalizationReview from './shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
-import { fileToUrl } from '../../utils/r2Upload.js';
+import { openSignedFile } from '../../utils/r2Upload.js';
 import { normalizeSeverity, conflictCategoryLabel } from '../../utils/conflictFlagging.js';
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -1183,7 +1183,6 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               </p>
             ) : (
               files.map((f) => {
-                const cleanUrl = fileToUrl(f);
                 return (
                   <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -1194,7 +1193,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                       <p title={f.file_name} style={{ fontSize: 11.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
                       <p style={{ fontSize: 10, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category}{f.created_at ? ` · ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</p>
                     </div>
-                    {cleanUrl && (
+                    {f.r2_key && (
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                         <button
                           onClick={() => setFilePreview(f)}
@@ -1208,21 +1207,18 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                         >
                           Preview
                         </button>
-                        <a
-                          href={cleanUrl}
-                          download={f.file_name}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => openSignedFile(f, { download: true })}
                           title="Download"
                           style={{
-                            padding: '3px 8px', borderRadius: 5, fontSize: 10.5, fontWeight: 650,
+                            padding: '3px 8px', borderRadius: 5, cursor: 'pointer', fontSize: 10.5, fontWeight: 650,
                             background: hexToRgba(palette.accentBlue.hex, 0.1),
                             border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
-                            color: palette.accentBlue.hex, textDecoration: 'none',
+                            color: palette.accentBlue.hex,
                           }}
                         >
                           Download
-                        </a>
+                        </button>
                       </div>
                     )}
                   </div>

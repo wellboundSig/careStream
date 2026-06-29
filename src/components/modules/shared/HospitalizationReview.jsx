@@ -19,7 +19,7 @@ import { useState, useEffect, useRef } from 'react';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
-import { uploadToR2, fileToUrl } from '../../../utils/r2Upload.js';
+import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
@@ -147,12 +147,11 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
           {dischargeFiles.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
               {dischargeFiles.map((f) => {
-                const url = fileToUrl(f);
                 return (
                   <div key={f._id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
                     <span style={{ color: palette.accentGreen.hex, flexShrink: 0 }}>✓</span>
-                    {url ? (
-                      <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: palette.accentBlue.hex, textDecoration: 'none', wordBreak: 'break-word' }}>{f.file_name || 'Discharge document'}</a>
+                    {f.r2_key ? (
+                      <button onClick={() => openSignedFile(f)} style={{ color: palette.accentBlue.hex, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', wordBreak: 'break-word', font: 'inherit' }}>{f.file_name || 'Discharge document'}</button>
                     ) : (
                       <span style={{ color: palette.backgroundDark.hex, wordBreak: 'break-word' }}>{f.file_name || 'Discharge document'}</span>
                     )}

@@ -4,10 +4,21 @@ const BASE_URL = import.meta.env.DEV
   ? `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`
   : import.meta.env.VITE_AIRTABLE_WORKER_URL;
 
-const TOKEN = import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
+const DEV_TOKEN = import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
 
-function authHeader() {
-  return TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
+// Dev hits Airtable directly with the PAT. Prod routes through the Cloudflare
+// worker, which now REQUIRES a valid Clerk session JWT — so attach it on every
+// request. `window.Clerk` is the global the Clerk React SDK installs.
+async function authHeader() {
+  if (DEV_TOKEN) return { Authorization: `Bearer ${DEV_TOKEN}` };
+  try {
+    const token = typeof window !== 'undefined' && window.Clerk?.session
+      ? await window.Clerk.session.getToken()
+      : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
 }
 
 async function fetchWithRetry(url, options, retries = 3) {
@@ -42,7 +53,7 @@ async function fetchAll(tableName, params = {}) {
       params.fields.forEach((f, i) => url.searchParams.set(`fields[${i}]`, f));
     }
 
-    const res = await fetchWithRetry(url.toString(), { headers: authHeader() });
+    const res = await fetchWithRetry(url.toString(), { headers: await authHeader() });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -60,7 +71,7 @@ async function fetchAll(tableName, params = {}) {
 async function fetchOne(tableName, recordId) {
   const res = await fetch(
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
-    { headers: authHeader() }
+    { headers: await authHeader() }
   );
   if (!res.ok) throw new Error(`Record not found: ${recordId}`);
   return res.json();
@@ -69,7 +80,7 @@ async function fetchOne(tableName, recordId) {
 async function create(tableName, fields, { silent = false } = {}) {
   const res = await fetch(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
     method: 'POST',
-    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) {
@@ -102,7 +113,7 @@ async function update(tableName, recordId, fields) {
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
     {
       method: 'PATCH',
-      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields }),
     }
   );
@@ -132,7 +143,7 @@ async function update(tableName, recordId, fields) {
 async function remove(tableName, recordId) {
   const res = await fetch(
     `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
-    { method: 'DELETE', headers: authHeader() }
+    { method: 'DELETE', headers: await authHeader() }
   );
   if (!res.ok) throw new Error('Delete failed');
   return res.json();
@@ -148,7 +159,7 @@ async function createBatch(tableName, recordsFields) {
     const chunk = recordsFields.slice(i, i + BATCH_SIZE);
     const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
       method: 'POST',
-      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ records: chunk.map((fields) => ({ fields })) }),
     });
     if (!res.ok) {
@@ -167,7 +178,7 @@ async function updateBatch(tableName, recordUpdates) {
     const chunk = recordUpdates.slice(i, i + BATCH_SIZE);
     const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
       method: 'PATCH',
-      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ records: chunk.map(({ id, fields }) => ({ id, fields })) }),
     });
     if (!res.ok) {

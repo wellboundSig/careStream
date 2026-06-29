@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getFilesByReferral } from '../../../api/patientFiles.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
-import { fileToUrl } from '../../../utils/r2Upload.js';
+import { openSignedFile } from '../../../utils/r2Upload.js';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
@@ -47,7 +47,6 @@ function FilesSection({ referralId, onClose }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {files.map((f) => {
-            const cleanUrl = fileToUrl(f);
             return (
               <div key={f._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                 <div>
@@ -56,8 +55,8 @@ function FilesSection({ referralId, onClose }) {
                     {f.category} {f.file_size ? `· ${formatBytes(f.file_size)}` : ''} {f.created_at ? `· ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
                   </p>
                 </div>
-                {cleanUrl && (
-                  <a href={cleanUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentBlue.hex, textDecoration: 'none', flexShrink: 0 }}>Open</a>
+                {f.r2_key && (
+                  <button onClick={() => openSignedFile(f)} style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0 }}>Open</button>
                 )}
               </div>
             );
