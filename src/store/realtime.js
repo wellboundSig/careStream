@@ -50,6 +50,11 @@ function cleanup() {
 }
 
 async function connect() {
+  // Post-Aurora-migration (VITE_API_URL set) the Airtable-webhook-driven SSE
+  // stream no longer exists; tiered polling in sync.js carries freshness
+  // (identical effective behavior — see migration plan Phase 7). Real push
+  // returns as a Phase 8 enhancement.
+  if (import.meta.env.VITE_API_URL) return;
   if (!WORKER_URL || import.meta.env.DEV) return;
   cleanup();
 

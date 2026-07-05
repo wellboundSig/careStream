@@ -8,6 +8,10 @@ let _validAuthorIds = null;
 
 async function fetchValidAuthorIds() {
   if (_validAuthorIds) return _validAuthorIds;
+  // Postgres backend (wellbound-api): author_id is a plain text column — there
+  // is no Airtable select-option constraint, so "no constraint" (null) is
+  // correct and callers already treat null as unconstrained.
+  if (import.meta.env.VITE_API_URL) return null;
   // Only callable in dev — production has no direct Airtable credentials (worker handles auth).
   if (!import.meta.env.VITE_AIRTABLE_TOKEN) return null;
   try {

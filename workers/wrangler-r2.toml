@@ -8,3 +8,8 @@ compatibility_date = "2024-11-01"
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "wellbound"
+
+# Fail-closed Clerk-JWT enforcement on /sign and /upload. Post-S3-migration
+# this worker only serves legacy/public reads; new PHI files go to files-api.
+[vars]
+REQUIRE_AUTH = "true"

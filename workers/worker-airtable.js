@@ -21,6 +21,14 @@
  *                           Defaults to ON (fail-closed). DEPLOY ORDER: ship the
  *                           token-sending frontend FIRST, then this worker.
  *
+ * Aurora migration (Clerk-webhook dual-write — staff rows only, no PHI):
+ *   API_URL               — wellbound-api base URL (AWS). When set with
+ *                           INTERNAL_API_KEY, the Clerk webhook upserts Users
+ *                           into Aurora as well as Airtable.
+ *   INTERNAL_API_KEY      — wellbound-api /internal route key (Secret)
+ *   AIRTABLE_DUAL_WRITE   — "false" to stop writing Users to Airtable
+ *                           (post-decommission, Aurora-only)
+ *
  * Optional KV Namespace Binding (for webhook cursor persistence):
  *   WEBHOOK_KV            — KV namespace for storing webhook cursors
  */
@@ -80,14 +88,50 @@ async function verifyClerkSignature(request, rawBody, secret) {
   }
 }
 
-// ── Generate next usr_XXX id ─────────────────────────────────────────────────
+// ── Clerk webhook handler ─────────────────────────────────────────────────────
+// (next-usr_XXX-id allocation now lives in backendNextUserId, which works
+//  against either backend — Airtable today, wellbound-api/Aurora after cutover)
 
-async function getNextUserId(env) {
-  const res = await fetch(
-    `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent('Users')}?fields[]=id`,
-    { headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` } }
-  );
+// ── Users backends (Airtable + wellbound-api/Aurora dual-write) ─────────────
+// Both speak the same wire contract, so one code path serves both. During the
+// migration window the webhook writes to BOTH; after Airtable decommission set
+// AIRTABLE_DUAL_WRITE="false" (or remove AIRTABLE_TOKEN) to go Aurora-only.
+//   API_URL           — wellbound-api base (https://….execute-api…amazonaws.com)
+//   INTERNAL_API_KEY  — wellbound-api internal-route key
+function usersBackends(env) {
+  const out = [];
+  if (env.AIRTABLE_TOKEN && env.AIRTABLE_BASE_ID && env.AIRTABLE_DUAL_WRITE !== 'false') {
+    out.push({
+      name: 'airtable',
+      base: `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}`,
+      headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
+    });
+  }
+  if (env.API_URL && env.INTERNAL_API_KEY) {
+    out.push({
+      name: 'aurora',
+      base: `${env.API_URL.replace(/\/$/, '')}/internal`,
+      headers: { 'x-internal-key': env.INTERNAL_API_KEY, 'x-internal-caller': 'clerk-webhook' },
+    });
+  }
+  return out;
+}
+
+async function backendFindUserByEmail(backend, email) {
+  const url = `${backend.base}/${encodeURIComponent('Users')}` +
+    `?filterByFormula=${encodeURIComponent(`{email} = "${email}"`)}&maxRecords=1`;
+  const res = await fetch(url, { headers: backend.headers });
+  if (!res.ok) return null;
   const data = await res.json();
+  return data.records?.[0] || null;
+}
+
+async function backendNextUserId(backend) {
+  const res = await fetch(
+    `${backend.base}/${encodeURIComponent('Users')}?fields[0]=id`,
+    { headers: backend.headers },
+  );
+  const data = await res.json().catch(() => ({}));
   let max = 0;
   for (const record of data.records || []) {
     const num = parseInt((record.fields?.id || '').replace('usr_', ''), 10);
@@ -95,8 +139,6 @@ async function getNextUserId(env) {
   }
   return `usr_${String(max + 1).padStart(3, '0')}`;
 }
-
-// ── Clerk webhook handler ─────────────────────────────────────────────────────
 
 async function handleClerkWebhook(request, env) {
   const rawBody = await request.text();
@@ -108,71 +150,91 @@ async function handleClerkWebhook(request, env) {
 
   const event = JSON.parse(rawBody);
 
-  // Only handle user lifecycle events
-  if (!['user.created', 'user.updated'].includes(event.type)) {
+  // Full lifecycle: created / updated / deleted.
+  if (!['user.created', 'user.updated', 'user.deleted'].includes(event.type)) {
     return new Response('OK', { status: 200 });
   }
 
   const d = event.data;
+  const clerkId = d.id;
+  const backends = usersBackends(env);
+  if (!backends.length) return new Response('No user backend configured', { status: 500 });
+
+  // ── user.deleted: soft-revoke (never hard-delete — FK/audit integrity) ────
+  if (event.type === 'user.deleted') {
+    for (const backend of backends) {
+      try {
+        const url = `${backend.base}/${encodeURIComponent('Users')}` +
+          `?filterByFormula=${encodeURIComponent(`{clerk_user_id} = "${clerkId}"`)}&maxRecords=1`;
+        const res = await fetch(url, { headers: backend.headers });
+        const data = await res.json().catch(() => ({}));
+        const rec = data.records?.[0];
+        if (rec) {
+          await fetch(`${backend.base}/${encodeURIComponent('Users')}/${rec.id}`, {
+            method: 'PATCH',
+            headers: { ...backend.headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: { status: 'Revoked' } }),
+          });
+        }
+      } catch (err) {
+        console.error(`[clerk-webhook] ${backend.name} revoke failed:`, err.message);
+      }
+    }
+    return new Response('OK', { status: 200 });
+  }
+
   const primaryEmail = d.email_addresses?.find(
     (e) => e.id === d.primary_email_address_id
   )?.email_address;
-
   if (!primaryEmail) return new Response('No primary email', { status: 400 });
 
   const firstName = d.first_name || '';
   const lastName  = d.last_name  || '';
   const imageUrl  = d.image_url  || d.profile_image_url || '';
-  const clerkId   = d.id;
 
-  // Look up existing Airtable user by email
-  const searchUrl = `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent('Users')}` +
-    `?filterByFormula=${encodeURIComponent(`{email} = "${primaryEmail}"`)}&maxRecords=1`;
+  // Business id is allocated ONCE (from the first backend — Airtable while it
+  // exists, Aurora after) so dual-written rows agree.
+  let sharedNextId = null;
 
-  const searchRes = await fetch(searchUrl, {
-    headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}` },
-  });
-  const searchData = await searchRes.json();
-  const existing = searchData.records?.[0] || null;
+  for (const backend of backends) {
+    try {
+      const existing = await backendFindUserByEmail(backend, primaryEmail);
 
-  if (existing) {
-    // Update existing record — fill in any missing fields
-    const updates = { clerk_user_id: clerkId };
-    if (imageUrl)                          updates.clerk_image_url = imageUrl;
-    if (firstName && !existing.fields.first_name) updates.first_name = firstName;
-    if (lastName  && !existing.fields.last_name)  updates.last_name  = lastName;
+      if (existing) {
+        const updates = { clerk_user_id: clerkId };
+        if (imageUrl)                                 updates.clerk_image_url = imageUrl;
+        if (firstName && !existing.fields.first_name) updates.first_name = firstName;
+        if (lastName  && !existing.fields.last_name)  updates.last_name  = lastName;
 
-    await fetch(
-      `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent('Users')}/${existing.id}`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: updates }),
+        await fetch(`${backend.base}/${encodeURIComponent('Users')}/${existing.id}`, {
+          method: 'PATCH',
+          headers: { ...backend.headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: updates }),
+        });
+      } else if (event.type === 'user.created') {
+        if (!sharedNextId) sharedNextId = await backendNextUserId(backend);
+        const fields = {
+          id:              sharedNextId,
+          clerk_user_id:   clerkId,
+          email:           primaryEmail,
+          first_name:      firstName,
+          last_name:       lastName,
+          clerk_image_url: imageUrl,
+          status:          'Active',
+          scope:           'Main',
+          role_id:         env.DEFAULT_ROLE_ID || 'rol_001',
+        };
+        await fetch(`${backend.base}/${encodeURIComponent('Users')}`, {
+          method: 'POST',
+          headers: { ...backend.headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields }),
+        });
       }
-    );
-  } else if (event.type === 'user.created') {
-    // Create a brand-new Airtable record
-    const nextId = await getNextUserId(env);
-    const fields = {
-      id:              nextId,
-      clerk_user_id:   clerkId,
-      email:           primaryEmail,
-      first_name:      firstName,
-      last_name:       lastName,
-      clerk_image_url: imageUrl,
-      status:          'Active',
-      scope:           'Main',
-      role_id:         env.DEFAULT_ROLE_ID || 'rol_001',
-    };
-
-    await fetch(
-      `https://api.airtable.com/v0/${env.AIRTABLE_BASE_ID}/${encodeURIComponent('Users')}`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${env.AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
-      }
-    );
+    } catch (err) {
+      // A single backend failure must not lose the event for the other —
+      // Clerk retries on non-2xx, and upserts keep retries harmless.
+      console.error(`[clerk-webhook] ${backend.name} write failed:`, err.message);
+    }
   }
 
   return new Response('OK', { status: 200 });

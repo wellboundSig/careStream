@@ -44,16 +44,23 @@ loadEnv();
 
 const TOKEN = process.env.AIRTABLE_TOKEN || process.env.VITE_AIRTABLE_TOKEN;
 const BASE_ID = process.env.AIRTABLE_BASE_ID || process.env.VITE_AIRTABLE_BASE_ID;
+// Post-Aurora-migration backend: wellbound-api /internal routes.
+//   WB_API_URL=https://xxx.execute-api.us-east-2.amazonaws.com WB_INTERNAL_KEY=... node scripts/check-invariants.js
+const API_URL = (process.env.WB_API_URL || process.env.VITE_API_URL || '').replace(/\/$/, '');
+const INTERNAL_KEY = process.env.WB_INTERNAL_KEY || '';
 const ERRORS_ONLY = process.argv.includes('--errors-only');
 const AS_JSON = process.argv.includes('--json');
 
-if (!TOKEN || !BASE_ID) {
-  console.error('Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID (set them in env or careStream/.env).');
+if (!(API_URL && INTERNAL_KEY) && !(TOKEN && BASE_ID)) {
+  console.error('Missing backend config: set WB_API_URL + WB_INTERNAL_KEY (Aurora) or AIRTABLE_TOKEN + AIRTABLE_BASE_ID (legacy).');
   process.exit(1);
 }
 
-const DATA = `https://api.airtable.com/v0/${BASE_ID}`;
-const HEADERS = { Authorization: `Bearer ${TOKEN}` };
+const USE_API = !!(API_URL && INTERNAL_KEY);
+const DATA = USE_API ? `${API_URL}/internal` : `https://api.airtable.com/v0/${BASE_ID}`;
+const HEADERS = USE_API
+  ? { 'x-internal-key': INTERNAL_KEY, 'x-internal-caller': 'check-invariants' }
+  : { Authorization: `Bearer ${TOKEN}` };
 
 async function fetchAll(table) {
   const records = [];

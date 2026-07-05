@@ -1,0 +1,15 @@
+{
+  "name": "files-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Patient-document storage API on S3 (presigned URLs), mirroring the worker-r2 contract.",
+  "main": "src/handler.js",
+  "scripts": {
+    "build": "npm install --omit=dev --no-audit --no-fund && mkdir -p dist && rm -f dist/files-api.zip && zip -qr dist/files-api.zip src node_modules package.json && echo 'Built dist/files-api.zip'"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0"
+  }
+}

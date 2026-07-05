@@ -1,0 +1,4463 @@
+{
+  "Roles": {
+    "pgTable": "roles",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Permissions": {
+    "pgTable": "permissions",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "key": {
+        "column": "key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "label": {
+        "column": "label",
+        "pg": "text",
+        "wire": "text"
+      },
+      "category": {
+        "column": "category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "RolePermissions": {
+    "pgTable": "role_permissions",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "role_id": {
+        "column": "role_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "permission_id": {
+        "column": "permission_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "allowed": {
+        "column": "allowed",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "UserPermissionOverrides": {
+    "pgTable": "user_permission_overrides",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "permission_id": {
+        "column": "permission_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "allowed": {
+        "column": "allowed",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Users": {
+    "pgTable": "users",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clerk_user_id": {
+        "column": "clerk_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "role_id": {
+        "column": "role_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "scope": {
+        "column": "scope",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_login_at": {
+        "column": "last_login_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clerk_image_url": {
+        "column": "clerk_image_url",
+        "pg": "text",
+        "wire": "text"
+      },
+      "department_id": {
+        "column": "department_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "EligibilityVerifications": {
+        "column": "eligibility_verifications",
+        "pg": "text",
+        "wire": "text"
+      },
+      "Conflicts": {
+        "column": "conflicts",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_support_staff": {
+        "column": "is_support_staff",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "resolved_tickets": {
+        "column": "resolved_tickets",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      }
+    }
+  },
+  "Marketers": {
+    "pgTable": "marketers",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "region": {
+        "column": "region",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "division": {
+        "column": "division",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "supervising_marketer": {
+        "column": "supervising_marketer",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "ReferralSources": {
+    "pgTable": "referral_sources",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "marketer_id": {
+        "column": "marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "source_entity": {
+        "column": "source_entity",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "MarketerFacilities": {
+    "pgTable": "marketer_facilities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "marketer_id": {
+        "column": "marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "facility_id": {
+        "column": "facility_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_primary": {
+        "column": "is_primary",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "assigned_date": {
+        "column": "assigned_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Campaigns": {
+    "pgTable": "campaigns",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "division": {
+        "column": "division",
+        "pg": "text",
+        "wire": "text"
+      },
+      "region": {
+        "column": "region",
+        "pg": "text",
+        "wire": "text"
+      },
+      "start_date": {
+        "column": "start_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "end_date": {
+        "column": "end_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "CampaignMarketers": {
+    "pgTable": "campaign_marketers",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "campaign_id": {
+        "column": "campaign_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "marketer_id": {
+        "column": "marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Physicians": {
+    "pgTable": "physicians",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "npi": {
+        "column": "npi",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "fax": {
+        "column": "fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_street": {
+        "column": "address_street",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_city": {
+        "column": "address_city",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_state": {
+        "column": "address_state",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_zip": {
+        "column": "address_zip",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_pecos_enrolled": {
+        "column": "is_pecos_enrolled",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "is_opra_enrolled": {
+        "column": "is_opra_enrolled",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "pecos_last_checked": {
+        "column": "pecos_last_checked",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "facility_id": {
+        "column": "facility_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "npi_status": {
+        "column": "npi_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "npi_checked_at": {
+        "column": "npi_checked_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "npi_provider_name": {
+        "column": "npi_provider_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "npi_details": {
+        "column": "npi_details",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "opra_last_checked": {
+        "column": "opra_last_checked",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "order_refer_flags": {
+        "column": "order_refer_flags",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "verification_last_run_at": {
+        "column": "verification_last_run_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "verification_checked_by_id": {
+        "column": "verification_checked_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Patients": {
+    "pgTable": "patients",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "dob": {
+        "column": "dob",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "gender": {
+        "column": "gender",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_street": {
+        "column": "address_street",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_city": {
+        "column": "address_city",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_state": {
+        "column": "address_state",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_zip": {
+        "column": "address_zip",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone_primary": {
+        "column": "phone_primary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone_secondary": {
+        "column": "phone_secondary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicaid_number": {
+        "column": "medicaid_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicare_number": {
+        "column": "medicare_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_plan": {
+        "column": "insurance_plan",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_id": {
+        "column": "insurance_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "division": {
+        "column": "division",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_name": {
+        "column": "emergency_contact_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_phone": {
+        "column": "emergency_contact_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_email": {
+        "column": "emergency_contact_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "county": {
+        "column": "county",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_plans": {
+        "column": "insurance_plans",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "insurance_plan_details": {
+        "column": "insurance_plan_details",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "EligibilityVerifications": {
+        "column": "eligibility_verifications",
+        "pg": "text",
+        "wire": "text"
+      },
+      "Conflicts": {
+        "column": "conflicts",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "Referrals": {
+    "pgTable": "referrals",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_source_id": {
+        "column": "referral_source_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "facility_id": {
+        "column": "facility_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "marketer_id": {
+        "column": "marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "campaign_id": {
+        "column": "campaign_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "intake_owner_id": {
+        "column": "intake_owner_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "division": {
+        "column": "division",
+        "pg": "text",
+        "wire": "text"
+      },
+      "current_stage": {
+        "column": "current_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "services_requested": {
+        "column": "services_requested",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "priority": {
+        "column": "priority",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_date": {
+        "column": "referral_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "f2f_date": {
+        "column": "f2f_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "f2f_expiration": {
+        "column": "f2f_expiration",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "f2f_urgency": {
+        "column": "f2f_urgency",
+        "pg": "text",
+        "wire": "text"
+      },
+      "physician_id": {
+        "column": "physician_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_pecos_verified": {
+        "column": "is_pecos_verified",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_opra_verified": {
+        "column": "is_opra_verified",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "ntuc_reason": {
+        "column": "ntuc_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "ntuc_financial_impact": {
+        "column": "ntuc_financial_impact",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hold_reason": {
+        "column": "hold_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hold_owner_id": {
+        "column": "hold_owner_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hold_expected_resolution": {
+        "column": "hold_expected_resolution",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "hold_return_stage": {
+        "column": "hold_return_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "admitted_date": {
+        "column": "admitted_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "soc_scheduled_date": {
+        "column": "soc_scheduled_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "soc_completed_date": {
+        "column": "soc_completed_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "hchb_entered": {
+        "column": "hchb_entered",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "entity_id": {
+        "column": "entity_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sn_age_group": {
+        "column": "sn_age_group",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discard_reason": {
+        "column": "discard_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discard_explanation": {
+        "column": "discard_explanation",
+        "pg": "text",
+        "wire": "text"
+      },
+      "ntuc_request_origin_stage": {
+        "column": "ntuc_request_origin_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "ntuc_requested_by": {
+        "column": "ntuc_requested_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "ntuc_requested_at": {
+        "column": "ntuc_requested_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "code_95": {
+        "column": "code_95",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_decision": {
+        "column": "clinical_review_decision",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_by": {
+        "column": "clinical_review_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_at": {
+        "column": "clinical_review_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "active_opwdd_case_id": {
+        "column": "active_opwdd_case_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opwdd_route_started_at": {
+        "column": "opwdd_route_started_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "opwdd_route_started_by_id": {
+        "column": "opwdd_route_started_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opwdd_conversion_ready": {
+        "column": "opwdd_conversion_ready",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "opwdd_handoff_status": {
+        "column": "opwdd_handoff_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "in_clinical_review": {
+        "column": "in_clinical_review",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "clinical_review_pushed_at": {
+        "column": "clinical_review_pushed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_review_completed_at": {
+        "column": "clinical_review_completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_review_completed_by_id": {
+        "column": "clinical_review_completed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_completed_at": {
+        "column": "eligibility_completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "eligibility_completed_by_id": {
+        "column": "eligibility_completed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_returned_to_intake_at": {
+        "column": "eligibility_returned_to_intake_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "eligibility_returned_to_intake_note": {
+        "column": "eligibility_returned_to_intake_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_returned_to_intake_by_id": {
+        "column": "eligibility_returned_to_intake_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "requires_urgent_care": {
+        "column": "requires_urgent_care",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "urgent_care_marked_at": {
+        "column": "urgent_care_marked_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "urgent_care_marked_by_id": {
+        "column": "urgent_care_marked_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "urgent_care_note": {
+        "column": "urgent_care_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_recheck_requested_at": {
+        "column": "eligibility_recheck_requested_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_recheck_return_stage": {
+        "column": "eligibility_recheck_return_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emr_onboarded_at": {
+        "column": "emr_onboarded_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emr_onboarded_by_id": {
+        "column": "emr_onboarded_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "recent_hospitalization": {
+        "column": "recent_hospitalization",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "hospitalization_date": {
+        "column": "hospitalization_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_scheduled_at": {
+        "column": "soc_scheduled_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staffing_confirmed_at": {
+        "column": "staffing_confirmed_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staffing_confirmed_by_id": {
+        "column": "staffing_confirmed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_scheduled_by_id": {
+        "column": "soc_scheduled_by_id",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "StageHistory": {
+    "pgTable": "stage_history",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "from_stage": {
+        "column": "from_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "to_stage": {
+        "column": "to_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "changed_by_id": {
+        "column": "changed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reason": {
+        "column": "reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "metadata": {
+        "column": "metadata",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "timestamp": {
+        "column": "timestamp",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Notes": {
+    "pgTable": "notes",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "author_id": {
+        "column": "author_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "content": {
+        "column": "content",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_pinned": {
+        "column": "is_pinned",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Files": {
+    "pgTable": "files",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "uploaded_by_id": {
+        "column": "uploaded_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "file_name": {
+        "column": "file_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "file_type": {
+        "column": "file_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "file_size": {
+        "column": "file_size",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "r2_key": {
+        "column": "r2_key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "r2_url": {
+        "column": "r2_url",
+        "pg": "text",
+        "wire": "text"
+      },
+      "category": {
+        "column": "category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "f2f_visit_date": {
+        "column": "f2f_visit_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opwdd_case_id": {
+        "column": "opwdd_case_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "document_subtype": {
+        "column": "document_subtype",
+        "pg": "text",
+        "wire": "text"
+      },
+      "document_date": {
+        "column": "document_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "document_valid_through": {
+        "column": "document_valid_through",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "verified_current_by_id": {
+        "column": "verified_current_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "verified_current_at": {
+        "column": "verified_current_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "authorization_id": {
+        "column": "authorization_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "InsuranceChecks": {
+    "pgTable": "insurance_checks",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "checked_by_id": {
+        "column": "checked_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "check_source": {
+        "column": "check_source",
+        "pg": "text",
+        "wire": "text"
+      },
+      "check_date": {
+        "column": "check_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "medicare_part_a": {
+        "column": "medicare_part_a",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicare_part_b": {
+        "column": "medicare_part_b",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicaid_active": {
+        "column": "medicaid_active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "managed_care_plan": {
+        "column": "managed_care_plan",
+        "pg": "text",
+        "wire": "text"
+      },
+      "managed_care_id": {
+        "column": "managed_care_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_open_hh_episode": {
+        "column": "has_open_hh_episode",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "open_episode_agency": {
+        "column": "open_episode_agency",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hospice_overlap": {
+        "column": "hospice_overlap",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "snf_present": {
+        "column": "snf_present",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "hospital_present": {
+        "column": "hospital_present",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "qmb_status": {
+        "column": "qmb_status",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "cdpap_active": {
+        "column": "cdpap_active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "auth_required": {
+        "column": "auth_required",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "disenrollment_needed": {
+        "column": "disenrollment_needed",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "result_summary": {
+        "column": "result_summary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "raw_response": {
+        "column": "raw_response",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Conflicts": {
+    "pgTable": "conflicts",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "severity": {
+        "column": "severity",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "flagged_by_id": {
+        "column": "flagged_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "resolved_by_id": {
+        "column": "resolved_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "resolution_note": {
+        "column": "resolution_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "resolved_at": {
+        "column": "resolved_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "source_module": {
+        "column": "source_module",
+        "pg": "text",
+        "wire": "text"
+      },
+      "conflict_reasons": {
+        "column": "conflict_reasons",
+        "pg": "text",
+        "wire": "text"
+      },
+      "details": {
+        "column": "details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "resolution_status": {
+        "column": "resolution_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_by_id": {
+        "column": "created_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "source_stage": {
+        "column": "source_stage",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "Authorizations": {
+    "pgTable": "authorizations",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_check_id": {
+        "column": "insurance_check_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "plan_name": {
+        "column": "plan_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "auth_number": {
+        "column": "auth_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "services_authorized": {
+        "column": "services_authorized",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submitted_date": {
+        "column": "submitted_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "approved_date": {
+        "column": "approved_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "effective_start": {
+        "column": "effective_start",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "effective_end": {
+        "column": "effective_end",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "denial_reason": {
+        "column": "denial_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "denial_document_file_id": {
+        "column": "denial_document_file_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "auth_status": {
+        "column": "auth_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "auth_start_date": {
+        "column": "auth_start_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "auth_end_date": {
+        "column": "auth_end_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "auth_visit_limit": {
+        "column": "auth_visit_limit",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "auth_unit_type": {
+        "column": "auth_unit_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "follow_up_date": {
+        "column": "follow_up_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "sca_requested": {
+        "column": "sca_requested",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "sca_status": {
+        "column": "sca_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "documented_exception": {
+        "column": "documented_exception",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Patients"
+      },
+      "payer_insurance_id": {
+        "column": "payer_insurance_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "PatientInsurances"
+      },
+      "follow_up_owner_user_id": {
+        "column": "follow_up_owner_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "decided_by_user_id": {
+        "column": "decided_by_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "service_lines": {
+        "column": "service_lines",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "coverage_status": {
+        "column": "coverage_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "payer_type": {
+        "column": "payer_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "payer_order": {
+        "column": "payer_order",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sources_checked": {
+        "column": "sources_checked",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "request_initial_date": {
+        "column": "request_initial_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "request_requested_from": {
+        "column": "request_requested_from",
+        "pg": "text",
+        "wire": "text"
+      },
+      "request_docs_sent": {
+        "column": "request_docs_sent",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "follow_ups": {
+        "column": "follow_ups",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      }
+    }
+  },
+  "Tasks": {
+    "pgTable": "tasks",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "route_to_role": {
+        "column": "route_to_role",
+        "pg": "text",
+        "wire": "text"
+      },
+      "assigned_to_id": {
+        "column": "assigned_to_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "priority": {
+        "column": "priority",
+        "pg": "text",
+        "wire": "text"
+      },
+      "due_date": {
+        "column": "due_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "completed_at": {
+        "column": "completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "completed_by_id": {
+        "column": "completed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "blocks_stage_progression": {
+        "column": "blocks_stage_progression",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "source": {
+        "column": "source",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "scheduled_date": {
+        "column": "scheduled_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "opwdd_case_id": {
+        "column": "opwdd_case_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "physician_id": {
+        "column": "physician_id",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "Episodes": {
+    "pgTable": "episodes",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_date": {
+        "column": "soc_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "episode_start": {
+        "column": "episode_start",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "episode_end": {
+        "column": "episode_end",
+        "pg": "text",
+        "wire": "text"
+      },
+      "current_30day_period": {
+        "column": "current_30day_period",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "recert_due_date": {
+        "column": "recert_due_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "auth_window_start": {
+        "column": "auth_window_start",
+        "pg": "text",
+        "wire": "text"
+      },
+      "auth_window_end": {
+        "column": "auth_window_end",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "revenue_risk_flag": {
+        "column": "revenue_risk_flag",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "revenue_risk_reason": {
+        "column": "revenue_risk_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hchb_synced": {
+        "column": "hchb_synced",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "TriageAdult": {
+    "pgTable": "triage_adult",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "filled_by_id": {
+        "column": "filled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caregiver_name": {
+        "column": "caregiver_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caregiver_phone": {
+        "column": "caregiver_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caregiver_email": {
+        "column": "caregiver_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_pets": {
+        "column": "has_pets",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pet_details": {
+        "column": "pet_details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_homecare_services": {
+        "column": "has_homecare_services",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_agency_name": {
+        "column": "homecare_agency_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_hours": {
+        "column": "homecare_hours",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_days": {
+        "column": "homecare_days",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_community_hab": {
+        "column": "has_community_hab",
+        "pg": "text",
+        "wire": "text"
+      },
+      "services_needed": {
+        "column": "services_needed",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "therapy_availability": {
+        "column": "therapy_availability",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_diabetic": {
+        "column": "is_diabetic",
+        "pg": "text",
+        "wire": "text"
+      },
+      "diabetes_monitor_by": {
+        "column": "diabetes_monitor_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_name": {
+        "column": "pcp_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_last_visit": {
+        "column": "pcp_last_visit",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "pcp_phone": {
+        "column": "pcp_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_fax": {
+        "column": "pcp_fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_address": {
+        "column": "pcp_address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_name": {
+        "column": "cm_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_company": {
+        "column": "cm_company",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_phone": {
+        "column": "cm_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_fax_or_email": {
+        "column": "cm_fax_or_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "opwdd_status": {
+        "column": "opwdd_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_plan_name": {
+        "column": "insurance_plan_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicaid_number": {
+        "column": "medicaid_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_name": {
+        "column": "patient_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "dob": {
+        "column": "dob",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "address": {
+        "column": "address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "add_secondary_caregiver": {
+        "column": "add_secondary_caregiver",
+        "pg": "text",
+        "wire": "text"
+      },
+      "secondary_caregiver_name": {
+        "column": "secondary_caregiver_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "secondary_caregiver_phone": {
+        "column": "secondary_caregiver_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_smoking": {
+        "column": "has_smoking",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_hours_days": {
+        "column": "homecare_hours_days",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_in_home_therapies": {
+        "column": "has_in_home_therapies",
+        "pg": "text",
+        "wire": "text"
+      },
+      "current_therapy_services": {
+        "column": "current_therapy_services",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hha_hours_frequency": {
+        "column": "hha_hours_frequency",
+        "pg": "text",
+        "wire": "text"
+      },
+      "health_conditions": {
+        "column": "health_conditions",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_npi_number": {
+        "column": "pcp_npi_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cco_name": {
+        "column": "cco_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_fax": {
+        "column": "cm_fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_email": {
+        "column": "cm_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_physician_id": {
+        "column": "pcp_physician_id",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "TriagePediatric": {
+    "pgTable": "triage_pediatric",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "filled_by_id": {
+        "column": "filled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone_call_made_to": {
+        "column": "phone_call_made_to",
+        "pg": "text",
+        "wire": "text"
+      },
+      "household_description": {
+        "column": "household_description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_pets": {
+        "column": "has_pets",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pet_details": {
+        "column": "pet_details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_homecare_services": {
+        "column": "has_homecare_services",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_agency_name": {
+        "column": "homecare_agency_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_hours": {
+        "column": "homecare_hours",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_days": {
+        "column": "homecare_days",
+        "pg": "text",
+        "wire": "text"
+      },
+      "boe_services": {
+        "column": "boe_services",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_community_hab": {
+        "column": "has_community_hab",
+        "pg": "text",
+        "wire": "text"
+      },
+      "services_needed": {
+        "column": "services_needed",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "therapy_availability": {
+        "column": "therapy_availability",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hha_hours_frequency": {
+        "column": "hha_hours_frequency",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_diabetic": {
+        "column": "is_diabetic",
+        "pg": "text",
+        "wire": "text"
+      },
+      "diabetes_monitor_by": {
+        "column": "diabetes_monitor_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "immunizations_up_to_date": {
+        "column": "immunizations_up_to_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "school_bus_time": {
+        "column": "school_bus_time",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hospitalization_note": {
+        "column": "hospitalization_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_name": {
+        "column": "pcp_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_last_visit": {
+        "column": "pcp_last_visit",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "pcp_phone": {
+        "column": "pcp_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_fax": {
+        "column": "pcp_fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_address": {
+        "column": "pcp_address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_name": {
+        "column": "cm_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_company": {
+        "column": "cm_company",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_phone": {
+        "column": "cm_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "potential_soc_date": {
+        "column": "potential_soc_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "has_recent_hospitalization": {
+        "column": "has_recent_hospitalization",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_boe_services": {
+        "column": "has_boe_services",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opwdd_status": {
+        "column": "opwdd_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "medicaid_number": {
+        "column": "medicaid_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_caregiver_name": {
+        "column": "primary_caregiver_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_caregiver_phone": {
+        "column": "primary_caregiver_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "add_secondary_caregiver": {
+        "column": "add_secondary_caregiver",
+        "pg": "text",
+        "wire": "text"
+      },
+      "secondary_caregiver_name": {
+        "column": "secondary_caregiver_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "secondary_caregiver_phone": {
+        "column": "secondary_caregiver_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_same_as_primary": {
+        "column": "emergency_same_as_primary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_name": {
+        "column": "emergency_contact_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_phone": {
+        "column": "emergency_contact_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_name": {
+        "column": "patient_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "dob": {
+        "column": "dob",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "address": {
+        "column": "address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "has_smoking": {
+        "column": "has_smoking",
+        "pg": "text",
+        "wire": "text"
+      },
+      "homecare_hours_days": {
+        "column": "homecare_hours_days",
+        "pg": "text",
+        "wire": "text"
+      },
+      "health_conditions": {
+        "column": "health_conditions",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cco_name": {
+        "column": "cco_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_fax": {
+        "column": "cm_fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cm_email": {
+        "column": "cm_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcp_physician_id": {
+        "column": "pcp_physician_id",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "ActivityLog": {
+    "pgTable": "activity_log",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "actor_id": {
+        "column": "actor_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "action": {
+        "column": "action",
+        "pg": "text",
+        "wire": "text"
+      },
+      "detail": {
+        "column": "detail",
+        "pg": "text",
+        "wire": "text"
+      },
+      "metadata": {
+        "column": "metadata",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "timestamp": {
+        "column": "timestamp",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "opwdd_case_id": {
+        "column": "opwdd_case_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "UserPreferences": {
+    "pgTable": "user_preferences",
+    "fields": {
+      "clerk_user_id": {
+        "column": "clerk_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "subnav_enabled": {
+        "column": "subnav_enabled",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "pinned_pages": {
+        "column": "pinned_pages",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "split_screen_enabled": {
+        "column": "split_screen_enabled",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "dashboard_mode": {
+        "column": "dashboard_mode",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "PermissionPresets": {
+    "pgTable": "permission_presets",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "permissions": {
+        "column": "permissions",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "is_system": {
+        "column": "is_system",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "UserPermissions": {
+    "pgTable": "user_permissions",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "permissions": {
+        "column": "permissions",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "last_preset_id": {
+        "column": "last_preset_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_by": {
+        "column": "updated_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "allowed_assignees": {
+        "column": "allowed_assignees",
+        "pg": "jsonb",
+        "wire": "jsonString"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "TriageALF": {
+    "pgTable": "triage_alf",
+    "fields": {
+      "Name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "Notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "Assignee": {
+        "column": "assignee",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "Status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "Attachments": {
+        "column": "attachments",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "Attachment Summary": {
+        "column": "attachment_summary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Departments": {
+    "pgTable": "departments",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "supervisor": {
+        "column": "supervisor",
+        "pg": "text",
+        "wire": "text"
+      },
+      "division": {
+        "column": "division",
+        "pg": "text",
+        "wire": "text"
+      },
+      "department_scope_id": {
+        "column": "department_scope_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "DepartmentScopes": {
+    "pgTable": "department_scopes",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "stage_access": {
+        "column": "stage_access",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Calls": {
+    "pgTable": "calls",
+    "fields": {
+      "call_id": {
+        "column": "call_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caller_usr_id": {
+        "column": "caller_usr_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "related_patient_id": {
+        "column": "related_patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "conflict_id": {
+        "column": "conflict_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "date_of_call": {
+        "column": "date_of_call",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "topic": {
+        "column": "topic",
+        "pg": "text",
+        "wire": "text"
+      },
+      "call_answered": {
+        "column": "call_answered",
+        "pg": "text",
+        "wire": "text"
+      },
+      "call_description": {
+        "column": "call_description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Facilities": {
+    "pgTable": "facilities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_street": {
+        "column": "address_street",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_city": {
+        "column": "address_city",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_state": {
+        "column": "address_state",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_zip": {
+        "column": "address_zip",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "fax": {
+        "column": "fax",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_name": {
+        "column": "primary_contact_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_phone": {
+        "column": "primary_contact_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_email": {
+        "column": "primary_contact_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "region": {
+        "column": "region",
+        "pg": "text",
+        "wire": "text"
+      },
+      "services_provided_internally": {
+        "column": "services_provided_internally",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "NetworkFacilities": {
+    "pgTable": "network_facilities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "region": {
+        "column": "region",
+        "pg": "text",
+        "wire": "text"
+      },
+      "marketer_id": {
+        "column": "marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "case_manager": {
+        "column": "case_manager",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address_street": {
+        "column": "address_street",
+        "pg": "text",
+        "wire": "text"
+      },
+      "zipcode": {
+        "column": "zipcode",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_id": {
+        "column": "entity_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "PatientInsurancePlans": {
+    "pgTable": "patient_insurance_plans",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "plan_name": {
+        "column": "plan_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "plan_id": {
+        "column": "plan_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "plan_type": {
+        "column": "plan_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_primary": {
+        "column": "is_primary",
+        "pg": "text",
+        "wire": "text"
+      },
+      "effective_start": {
+        "column": "effective_start",
+        "pg": "text",
+        "wire": "text"
+      },
+      "effective_end": {
+        "column": "effective_end",
+        "pg": "text",
+        "wire": "text"
+      },
+      "EligibilityVerifications": {
+        "column": "eligibility_verifications",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "PatientInsurances": {
+    "pgTable": "patient_insurances",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Patients"
+      },
+      "payer_display_name": {
+        "column": "payer_display_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_category": {
+        "column": "insurance_category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "plan_name": {
+        "column": "plan_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "commercial_plan_name": {
+        "column": "commercial_plan_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "third_party_descriptor": {
+        "column": "third_party_descriptor",
+        "pg": "text",
+        "wire": "text"
+      },
+      "member_id": {
+        "column": "member_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "group_number": {
+        "column": "group_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "subscriber_name": {
+        "column": "subscriber_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "subscriber_relationship": {
+        "column": "subscriber_relationship",
+        "pg": "text",
+        "wire": "text"
+      },
+      "effective_date": {
+        "column": "effective_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "termination_date": {
+        "column": "termination_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "order_rank": {
+        "column": "order_rank",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entered_from": {
+        "column": "entered_from",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active_raw": {
+        "column": "is_active_raw",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "EligibilityVerifications": {
+        "column": "eligibility_verifications",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "EligibilityVerifications": {
+    "pgTable": "eligibility_verifications",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "insurance_id": {
+        "column": "insurance_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "verification_status": {
+        "column": "verification_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_confirmed_payer_type": {
+        "column": "staff_confirmed_payer_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_confirmed_order_rank": {
+        "column": "staff_confirmed_order_rank",
+        "pg": "text",
+        "wire": "text"
+      },
+      "suggested_payer_type": {
+        "column": "suggested_payer_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "suggested_billing_model": {
+        "column": "suggested_billing_model",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_confirmed_billing_model": {
+        "column": "staff_confirmed_billing_model",
+        "pg": "text",
+        "wire": "text"
+      },
+      "verification_sources": {
+        "column": "verification_sources",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "verification_date_time": {
+        "column": "verification_date_time",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "verified_by_user_id": {
+        "column": "verified_by_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "note_category": {
+        "column": "note_category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "note_text": {
+        "column": "note_text",
+        "pg": "text",
+        "wire": "text"
+      },
+      "potential_conflict_detected": {
+        "column": "potential_conflict_detected",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "requires_human_review": {
+        "column": "requires_human_review",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "synced_from_demographics_snapshot": {
+        "column": "synced_from_demographics_snapshot",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "patient_insurance_id": {
+        "column": "patient_insurance_id",
+        "pg": "text",
+        "wire": "text"
+      }
+    }
+  },
+  "DisenrollmentAssistanceFlags": {
+    "pgTable": "disenrollment_assistance_flags",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Patients"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Referrals"
+      },
+      "flag_type": {
+        "column": "flag_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "note": {
+        "column": "note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "follow_up_date": {
+        "column": "follow_up_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "follow_up_owner_user_id": {
+        "column": "follow_up_owner_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_by_user_id": {
+        "column": "created_by_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "resolved_by_user_id": {
+        "column": "resolved_by_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "resolution_note": {
+        "column": "resolution_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "CursoryReview": {
+    "pgTable": "cursory_review",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reviewed_by": {
+        "column": "reviewed_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Referrals"
+      },
+      "face_to_face_document_present": {
+        "column": "face_to_face_document_present",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "physician_certification_present": {
+        "column": "physician_certification_present",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "patient_name_matches_referral": {
+        "column": "patient_name_matches_referral",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "dates_valid_within_90_days": {
+        "column": "dates_valid_within_90_days",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "physician_signature_present": {
+        "column": "physician_signature_present",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "diagnosis_icd_codes_listed": {
+        "column": "diagnosis_icd_codes_listed",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "homebound_status_documented": {
+        "column": "homebound_status_documented",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "services_disciplines_specified": {
+        "column": "services_disciplines_specified",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "OPWDDEligibilityCases": {
+    "pgTable": "opwdd_eligibility_cases",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sub_status": {
+        "column": "sub_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "assigned_enrollment_specialist_id": {
+        "column": "assigned_enrollment_specialist_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opened_at": {
+        "column": "opened_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "closed_at": {
+        "column": "closed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "closed_reason": {
+        "column": "closed_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcg_contact_name": {
+        "column": "pcg_contact_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcg_contact_phone": {
+        "column": "pcg_contact_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcg_contact_email": {
+        "column": "pcg_contact_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcg_relationship_to_patient": {
+        "column": "pcg_relationship_to_patient",
+        "pg": "text",
+        "wire": "text"
+      },
+      "pcg_willing_to_apply": {
+        "column": "pcg_willing_to_apply",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "pcg_interested_in_wellbound_services": {
+        "column": "pcg_interested_in_wellbound_services",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "interested_services": {
+        "column": "interested_services",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "aba_only_referral": {
+        "column": "aba_only_referral",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "article16_clinic_name": {
+        "column": "article16_clinic_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "psychological_eval_required": {
+        "column": "psychological_eval_required",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "psychological_eval_status": {
+        "column": "psychological_eval_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "psychological_eval_scheduled_for": {
+        "column": "psychological_eval_scheduled_for",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychological_eval_received_at": {
+        "column": "psychological_eval_received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychological_eval_valid_through": {
+        "column": "psychological_eval_valid_through",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychosocial_required": {
+        "column": "psychosocial_required",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "psychosocial_status": {
+        "column": "psychosocial_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "psychosocial_scheduled_for": {
+        "column": "psychosocial_scheduled_for",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychosocial_received_at": {
+        "column": "psychosocial_received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychosocial_valid_through": {
+        "column": "psychosocial_valid_through",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "cco_id": {
+        "column": "cco_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cco_name_snapshot": {
+        "column": "cco_name_snapshot",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_sent_at": {
+        "column": "submission_sent_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "submission_sent_by_id": {
+        "column": "submission_sent_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_method": {
+        "column": "submission_method",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_confirmation_number": {
+        "column": "submission_confirmation_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_determination": {
+        "column": "eligibility_determination",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_determined_at": {
+        "column": "eligibility_determined_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "notice_received_at": {
+        "column": "notice_received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "notice_received_method": {
+        "column": "notice_received_method",
+        "pg": "text",
+        "wire": "text"
+      },
+      "code_95_monitoring_started_at": {
+        "column": "code_95_monitoring_started_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "expected_code_95_window_start": {
+        "column": "expected_code_95_window_start",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "expected_code_95_window_end": {
+        "column": "expected_code_95_window_end",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "code_95_received_at": {
+        "column": "code_95_received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "converted_to_intake_at": {
+        "column": "converted_to_intake_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "converted_by_id": {
+        "column": "converted_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "intake_handoff_note": {
+        "column": "intake_handoff_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "latest_blocker": {
+        "column": "latest_blocker",
+        "pg": "text",
+        "wire": "text"
+      },
+      "latest_blocker_note": {
+        "column": "latest_blocker_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "OPWDDCaseChecklistItems": {
+    "pgTable": "opwdd_case_checklist_items",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opwdd_case_id": {
+        "column": "opwdd_case_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "requirement_key": {
+        "column": "requirement_key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "requirement_label": {
+        "column": "requirement_label",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_required": {
+        "column": "is_required",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "requested_at": {
+        "column": "requested_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "requested_by_id": {
+        "column": "requested_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "received_at": {
+        "column": "received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "received_by_id": {
+        "column": "received_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reviewed_at": {
+        "column": "reviewed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "reviewed_by_id": {
+        "column": "reviewed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "expires_at": {
+        "column": "expires_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "is_current": {
+        "column": "is_current",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "satisfying_file_id": {
+        "column": "satisfying_file_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Entities": {
+    "pgTable": "entities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_name": {
+        "column": "entity_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "ClinicalReview": {
+    "pgTable": "clinical_review",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Referrals"
+      },
+      "reviewed_by": {
+        "column": "reviewed_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "decision": {
+        "column": "decision",
+        "pg": "text",
+        "wire": "text"
+      },
+      "auth_required": {
+        "column": "auth_required",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "dx_reviewed": {
+        "column": "dx_reviewed",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "comorbidities": {
+        "column": "comorbidities",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "hospitalization": {
+        "column": "hospitalization",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "skilled_need": {
+        "column": "skilled_need",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "homebound": {
+        "column": "homebound",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "physician_cert": {
+        "column": "physician_cert",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "medical_necessity": {
+        "column": "medical_necessity",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "med_list": {
+        "column": "med_list",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "high_risk_meds": {
+        "column": "high_risk_meds",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "allergies": {
+        "column": "allergies",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "safety_risks": {
+        "column": "safety_risks",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "loc_sn": {
+        "column": "loc_sn",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "loc_pt": {
+        "column": "loc_pt",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "loc_ot": {
+        "column": "loc_ot",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "loc_st": {
+        "column": "loc_st",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "loc_hha": {
+        "column": "loc_hha",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "risk_high": {
+        "column": "risk_high",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "risk_moderate": {
+        "column": "risk_moderate",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "risk_low": {
+        "column": "risk_low",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "soc_timeframe": {
+        "column": "soc_timeframe",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "scheduling_needs": {
+        "column": "scheduling_needs",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "clinician_match": {
+        "column": "clinician_match",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "System": {
+    "pgTable": "system",
+    "fields": {
+      "live": {
+        "column": "live",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Teams": {
+    "pgTable": "teams",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_email": {
+        "column": "primary_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cc_support": {
+        "column": "cc_support",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Categories": {
+    "pgTable": "categories",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "team_id": {
+        "column": "team_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Teams"
+      },
+      "field_topic": {
+        "column": "field_topic",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Tickets": {
+    "pgTable": "tickets",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "ticket_number": {
+        "column": "ticket_number",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "requester_id": {
+        "column": "requester_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "details": {
+        "column": "details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "contact_number": {
+        "column": "contact_number",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "resolved_at": {
+        "column": "resolved_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "last_activity_at": {
+        "column": "last_activity_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "category_id": {
+        "column": "category_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Categories"
+      },
+      "resolution_note": {
+        "column": "resolution_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "resolved_by_id": {
+        "column": "resolved_by_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "internal_override": {
+        "column": "internal_override",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "source": {
+        "column": "source",
+        "pg": "text",
+        "wire": "text"
+      },
+      "wifi_connected": {
+        "column": "wifi_connected",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "facility_id": {
+        "column": "facility_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "NetworkFacilities"
+      },
+      "clinician_id": {
+        "column": "clinician_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Clinicians"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "TicketParticipants": {
+    "pgTable": "ticket_participants",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "relationship": {
+        "column": "relationship",
+        "pg": "text",
+        "wire": "text"
+      },
+      "added_by_id": {
+        "column": "added_by_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "added_at": {
+        "column": "added_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "TicketAssignments": {
+    "pgTable": "ticket_assignments",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "assigned_at": {
+        "column": "assigned_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Posts": {
+    "pgTable": "posts",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "author_id": {
+        "column": "author_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "body": {
+        "column": "body",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Attachments": {
+    "pgTable": "attachments",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "r2_object_key": {
+        "column": "r2_object_key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "file_name": {
+        "column": "file_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "content_type": {
+        "column": "content_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "size_bytes": {
+        "column": "size_bytes",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "uploaded_by_id": {
+        "column": "uploaded_by_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Users"
+      },
+      "uploaded_at": {
+        "column": "uploaded_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      },
+      "post_id": {
+        "column": "post_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Posts"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "EmailLog": {
+    "pgTable": "email_log",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "to_addrs": {
+        "column": "to_addrs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cc_addrs": {
+        "column": "cc_addrs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "subject": {
+        "column": "subject",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "provider_message_id": {
+        "column": "provider_message_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Tickets"
+      },
+      "post_id": {
+        "column": "post_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "Posts"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "ConflictCategories": {
+    "pgTable": "conflict_categories",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "value": {
+        "column": "value",
+        "pg": "text",
+        "wire": "text"
+      },
+      "label": {
+        "column": "label",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Clinicians": {
+    "pgTable": "clinicians",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "esper_id": {
+        "column": "esper_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discipline": {
+        "column": "discipline",
+        "pg": "text",
+        "wire": "text"
+      },
+      "worker_id": {
+        "column": "worker_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "device_serial": {
+        "column": "device_serial",
+        "pg": "text",
+        "wire": "text"
+      },
+      "device_name": {
+        "column": "device_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_seen_at": {
+        "column": "last_seen_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  }
+}

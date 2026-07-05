@@ -3,6 +3,14 @@ dist/
 .env
 .env.local
 .env.*.local
+# Airtable → Aurora migration artifacts (live data — never commit)
+db/export/
+services/wellbound-api/registry.json
+# AWS credentials — NEVER commit
+*accessKeys*.csv
+*credentials*.csv
+"S3 BUCKET.txt"
+S3 BUCKET.txt
 *.md
 .DS_Store
 .vite/

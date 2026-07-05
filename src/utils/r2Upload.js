@@ -1,13 +1,21 @@
-// Cloudflare R2 access via the (private) worker.
+// Private file storage access (uploads + short-lived signed read URLs).
 //
-// The bucket is PRIVATE — there are no public object URLs. Uploads require a
-// Clerk session JWT, and reads go through short-lived HMAC-signed URLs minted
-// by the worker's /sign endpoint (which also requires a Clerk JWT). The signed
-// URL works in <img>/<iframe>/window.open without any header.
+// Backend selection (migration cutover flag):
+//   VITE_FILES_API_URL set   → files-api on AWS (S3 presigned URLs; same
+//                              wire contract as worker-r2). Preferred.
+//   VITE_FILES_API_URL unset → legacy Cloudflare worker-r2 (VITE_R2_WORKER_URL).
 //
-// Worker endpoint: VITE_R2_WORKER_URL
+// Either way the store is PRIVATE — no public object URLs. Uploads require a
+// Clerk session JWT; reads go through short-lived signed URLs minted by /sign
+// (also JWT-gated). Signed URLs work in <img>/<iframe>/window.open unheadered.
+//
+// Contract (identical on both backends):
 //   PUT /upload/{patientId}/{filename}   → { r2Key, url }
 //   GET /sign?key={r2Key}[&download=1]   → { url, expiresAt }
+
+function filesBase() {
+  return import.meta.env.VITE_FILES_API_URL || import.meta.env.VITE_R2_WORKER_URL;
+}
 
 async function clerkToken() {
   try {
@@ -20,9 +28,9 @@ async function clerkToken() {
 }
 
 export async function uploadToR2(file, patientId) {
-  const workerUrl = import.meta.env.VITE_R2_WORKER_URL;
+  const workerUrl = filesBase();
   if (!workerUrl) {
-    throw new Error('R2 Worker URL is not configured.\nAdd VITE_R2_WORKER_URL to your .env file.');
+    throw new Error('File storage URL is not configured.\nAdd VITE_FILES_API_URL (AWS) or VITE_R2_WORKER_URL to your .env file.');
   }
 
   const safeName    = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
@@ -61,7 +69,7 @@ export async function uploadToR2(file, patientId) {
 export async function getSignedFileUrl(file, { download = false } = {}) {
   const key = file?.r2_key && String(file.r2_key).trim();
   if (!key) return '';
-  const workerUrl = import.meta.env.VITE_R2_WORKER_URL;
+  const workerUrl = filesBase();
   if (!workerUrl) return '';
 
   const token = await clerkToken();

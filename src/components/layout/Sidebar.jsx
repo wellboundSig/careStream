@@ -51,6 +51,7 @@ const NAV_ITEMS = [
       { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: PermissionsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
       { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
+      { label: 'Developer Tools', path: '/developer/tools', icon: DataToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS] },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
   },
@@ -221,7 +222,8 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
             (item) =>
               (!item.requiresAdmin || isAdmin) &&
               (!item.dir || canViewDirectory(can, item.dir)) &&
-              (!item.perm || can(item.perm)),
+              (!item.perm || can(item.perm)) &&
+              (!item.permAny || item.permAny.some((p) => can(p))),
           );
           if (visibleItems.length === 0) return null;
           return (

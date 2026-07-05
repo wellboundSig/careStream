@@ -28,6 +28,7 @@ import ReferralSources from '../../pages/directory/ReferralSources.jsx';
 import Team from '../../pages/Team.jsx';
 import UserManagement from '../../pages/admin/UserManagement.jsx';
 import ConflictCategories from '../../pages/admin/ConflictCategories.jsx';
+import DeveloperTools from '../../pages/developer/DeveloperTools.jsx';
 import Settings from '../../pages/Settings.jsx';
 import DataTools from '../../pages/DataTools.jsx';
 
@@ -118,6 +119,7 @@ export default function SplitView({ children, division, roleMode, onClose }) {
                     <Route path="team" element={<Team />} />
                     <Route path="admin/users" element={<UserManagement />} />
                     <Route path="admin/conflict-categories" element={<ConflictCategories />} />
+                    <Route path="developer/tools" element={<DeveloperTools />} />
                     <Route path="admin/settings" element={<Settings />} />
                     <Route path="admin/data-tools" element={<DataTools />} />
                   </Route>

@@ -1,14 +1,21 @@
-// Dev:  calls Airtable directly (fast, uses token from .env)
-// Prod: routes through Cloudflare Worker (no token exposed in browser)
-const BASE_URL = import.meta.env.DEV
-  ? `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`
-  : import.meta.env.VITE_AIRTABLE_WORKER_URL;
+// Backend selection (migration cutover flag — see the Airtable→Aurora plan):
+//   VITE_API_URL set   → wellbound-api on AWS (Airtable-wire-compatible, backed
+//                        by Aurora PostgreSQL). Used in BOTH dev and prod — no
+//                        Airtable PAT ever ships in any bundle.
+//   VITE_API_URL unset → legacy path: dev hits Airtable directly with the .env
+//                        PAT; prod routes through the Cloudflare worker.
+// Rollback = unset VITE_API_URL and rebuild.
+const API_URL = import.meta.env.VITE_API_URL || null;
 
-const DEV_TOKEN = import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
+const BASE_URL = API_URL
+  || (import.meta.env.DEV
+    ? `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`
+    : import.meta.env.VITE_AIRTABLE_WORKER_URL);
 
-// Dev hits Airtable directly with the PAT. Prod routes through the Cloudflare
-// worker, which now REQUIRES a valid Clerk session JWT — so attach it on every
-// request. `window.Clerk` is the global the Clerk React SDK installs.
+const DEV_TOKEN = !API_URL && import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
+
+// Both wellbound-api and the Cloudflare worker require a Clerk session JWT.
+// `window.Clerk` is the global the Clerk React SDK installs.
 async function authHeader() {
   if (DEV_TOKEN) return { Authorization: `Bearer ${DEV_TOKEN}` };
   try {

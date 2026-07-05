@@ -151,6 +151,9 @@ export const PERMISSION_KEYS = {
   ADMIN_PERMISSIONS: 'admin.permissions',
   ADMIN_DATA_TOOLS: 'admin.data_tools',
   ADMIN_SETTINGS: 'admin.settings',
+
+  // Developer (raw database access — engineering, not office administration)
+  DEVELOPER_TOOLS: 'developer.tools',
 };
 
 const K = PERMISSION_KEYS;
@@ -175,6 +178,7 @@ export const PERMISSION_CATEGORIES = [
   'Directory',
   'Reports',
   'Administration',
+  'Developer',
 ];
 
 // ── Full catalog (UI labels, help text, ordering) ───────────────────────────
@@ -301,6 +305,9 @@ export const PERMISSION_CATALOG = [
   { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions', category: 'Administration', description: 'Open permission modals and edit presets', sort: 172 },
   { key: K.ADMIN_DATA_TOOLS,      label: 'Access Data Tools',       category: 'Administration', description: 'Use raw data inspection and admin utilities', sort: 173 },
   { key: K.ADMIN_SETTINGS,        label: 'Access system Settings',  category: 'Administration', description: 'Modify app-wide settings and preferences', sort: 174 },
+
+  // ── Developer ─────────────────────────────────────────────────────────────
+  { key: K.DEVELOPER_TOOLS, label: 'Access Developer Tools', category: 'Developer', description: 'Raw database grid: browse, search, and edit any table directly. Engineering use only — every change is audit-logged.', sort: 180 },
 ];
 
 // ── Default presets (seeded into PermissionPresets table) ────────────────────

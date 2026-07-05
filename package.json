@@ -15,7 +15,13 @@
     "schema": "node scripts/airtable-schema.js",
     "schema:apply": "node scripts/airtable-apply-schema.js",
     "schema:apply:dry": "node scripts/airtable-apply-schema.js --dry-run",
-    "invariants": "node scripts/check-invariants.js"
+    "invariants": "node scripts/check-invariants.js",
+    "db:ddl": "node db/generate-ddl.js",
+    "db:migrate": "node db/migrate.js",
+    "db:export": "node db/export-airtable.js",
+    "db:import": "node db/import-postgres.js",
+    "db:reconcile": "node db/reconcile.js",
+    "api:build": "node services/wellbound-api/build.js && npm run build --prefix services/files-api"
   },
   "dependencies": {
     "@clerk/react": "latest",
@@ -33,6 +39,14 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@aws-sdk/client-apigatewayv2": "^3.1079.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1079.0",
+    "@aws-sdk/client-iam": "^3.1079.0",
+    "@aws-sdk/client-lambda": "^3.1079.0",
+    "@aws-sdk/client-rds": "^3.1079.0",
+    "@aws-sdk/client-rds-data": "^3.1079.0",
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/client-sts": "^3.1079.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.4",

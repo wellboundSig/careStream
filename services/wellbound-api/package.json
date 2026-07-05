@@ -1,0 +1,14 @@
+{
+  "name": "wellbound-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Airtable-wire-compatible data API for CareStream + Support, backed by Aurora PostgreSQL (RDS Data API).",
+  "main": "src/handler.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-rds-data": "^3.600.0"
+  }
+}

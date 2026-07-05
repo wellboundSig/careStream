@@ -12,3 +12,13 @@ compatibility_date = "2024-11-01"
 [[kv_namespaces]]
 binding = "WEBHOOK_KV"
 id = "b77ee316b57e4d7f961e375f6977339c"
+
+# Aurora migration: the Clerk webhook dual-writes Users to wellbound-api (AWS).
+# INTERNAL_API_KEY is a Secret (wrangler secret put INTERNAL_API_KEY -c …).
+# Set AIRTABLE_DUAL_WRITE = "false" after Airtable decommission (Phase 7).
+[vars]
+API_URL = "https://wzfb4i68yh.execute-api.us-east-2.amazonaws.com"
+# Fail-closed JWT enforcement on the (legacy) data proxy + SSE. The frontend
+# now talks to wellbound-api directly, so nothing legitimate hits these paths
+# without a Clerk token anyway.
+REQUIRE_AUTH = "true"

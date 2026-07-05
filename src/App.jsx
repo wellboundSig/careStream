@@ -25,6 +25,7 @@ import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
 import ConflictCategories from './pages/admin/ConflictCategories.jsx';
+import DeveloperTools from './pages/developer/DeveloperTools.jsx';
 import DepartmentManagement from './pages/admin/DepartmentManagement.jsx';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
@@ -94,6 +95,7 @@ export default function App() {
         <Route path="admin/users" element={<UserManagement />} />
         <Route path="admin/permissions" element={<Permissions />} />
         <Route path="admin/conflict-categories" element={<ConflictCategories />} />
+        <Route path="developer/tools" element={<DeveloperTools />} />
         <Route path="admin/departments" element={<DepartmentManagement />} />
         <Route path="admin/settings" element={<Settings />} />
         <Route path="admin/data-tools" element={<DataTools />} />
