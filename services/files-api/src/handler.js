@@ -60,6 +60,9 @@ async function isAuthorized(event) {
 }
 
 export async function handler(event) {
+  // EventBridge warmer ping — keeps a container (and its JWKS cache) hot.
+  if (event?.warmer) return { statusCode: 200, body: 'warm' };
+
   const origin = event.headers?.origin || event.headers?.Origin || '';
   const method = event.requestContext?.http?.method || 'GET';
   const rawPath = (event.rawPath || '/').replace(/^\/files/, ''); // optional mount prefix

@@ -41,7 +41,58 @@ async function fetchWithRetry(url, options, retries = 3) {
   throw new Error('Airtable rate limit exceeded after retries');
 }
 
+// ── Short-TTL read cache + in-flight de-duplication ──────────────────────────
+// Kills the "navigate away, come back, watch it click in again" flicker:
+// identical reads within the TTL return instantly (and concurrent identical
+// reads share ONE request). Any write to a table invalidates that table's
+// cached reads, and the store's optimistic updates + tiered polling (45s+,
+// longer than the TTL) keep cross-user freshness — so worst-case staleness
+// is bounded at TTL seconds, which this workflow already tolerated on
+// Airtable (45s polling).
+const READ_CACHE_TTL_MS = 20_000;
+const READ_CACHE_MAX = 300;
+const readCache = new Map(); // key -> { at, promise }
+
+function cacheGet(key) {
+  const entry = readCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.at > READ_CACHE_TTL_MS) { readCache.delete(key); return null; }
+  return entry.promise;
+}
+
+function cacheSet(key, promise) {
+  if (readCache.size >= READ_CACHE_MAX) {
+    const now = Date.now();
+    for (const [k, v] of readCache) {
+      if (now - v.at > READ_CACHE_TTL_MS) readCache.delete(k);
+    }
+    // Still over? Drop oldest entries.
+    while (readCache.size >= READ_CACHE_MAX) {
+      readCache.delete(readCache.keys().next().value);
+    }
+  }
+  readCache.set(key, { at: Date.now(), promise });
+  // A failed fetch must not poison the cache for TTL seconds.
+  promise.catch(() => readCache.delete(key));
+}
+
+function invalidateTable(tableName) {
+  const prefix = `${tableName}|`;
+  for (const k of readCache.keys()) {
+    if (k.startsWith(prefix)) readCache.delete(k);
+  }
+}
+
 async function fetchAll(tableName, params = {}) {
+  const key = `${tableName}|all|${JSON.stringify(params)}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  const promise = fetchAllUncached(tableName, params);
+  cacheSet(key, promise);
+  return promise;
+}
+
+async function fetchAllUncached(tableName, params = {}) {
   const records = [];
   let offset = null;
 
@@ -76,12 +127,19 @@ async function fetchAll(tableName, params = {}) {
 }
 
 async function fetchOne(tableName, recordId) {
-  const res = await fetch(
-    `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
-    { headers: await authHeader() }
-  );
-  if (!res.ok) throw new Error(`Record not found: ${recordId}`);
-  return res.json();
+  const key = `${tableName}|one|${recordId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  const promise = (async () => {
+    const res = await fetch(
+      `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
+      { headers: await authHeader() }
+    );
+    if (!res.ok) throw new Error(`Record not found: ${recordId}`);
+    return res.json();
+  })();
+  cacheSet(key, promise);
+  return promise;
 }
 
 async function create(tableName, fields, { silent = false } = {}) {
@@ -112,6 +170,7 @@ async function create(tableName, fields, { silent = false } = {}) {
     error.fields = fields;
     throw error;
   }
+  invalidateTable(tableName);
   return res.json();
 }
 
@@ -144,6 +203,7 @@ async function update(tableName, recordId, fields) {
     error.fields = fields;
     throw error;
   }
+  invalidateTable(tableName);
   return res.json();
 }
 
@@ -153,6 +213,7 @@ async function remove(tableName, recordId) {
     { method: 'DELETE', headers: await authHeader() }
   );
   if (!res.ok) throw new Error('Delete failed');
+  invalidateTable(tableName);
   return res.json();
 }
 
@@ -176,6 +237,7 @@ async function createBatch(tableName, recordsFields) {
     const data = await res.json();
     results.push(...data.records);
   }
+  invalidateTable(tableName);
   return results;
 }
 
@@ -195,6 +257,7 @@ async function updateBatch(tableName, recordUpdates) {
     const data = await res.json();
     results.push(...data.records);
   }
+  invalidateTable(tableName);
   return results;
 }
 

@@ -29,7 +29,9 @@ function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.has(origin) ? origin : 'https://wellboundcarestream.com';
   return {
     'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    // PUT included because OPTIONS preflights for /files/upload/* can land on
+    // this Lambda (API GW routes OPTIONS via the ANY catch-all).
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Key',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
@@ -44,20 +46,32 @@ function json(statusCode, body, origin) {
   };
 }
 
-async function logAccess({ actorSub, actorUserId, method, table, rowRecId, rowCount, querySummary, status }) {
-  try {
-    await query(
-      `INSERT INTO api_access_log (actor_sub, actor_user_id, method, table_name, row_rec_id, row_count, query_summary, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [actorSub || null, actorUserId || null, method, table, rowRecId || null,
-       rowCount ?? null, querySummary ? String(querySummary).slice(0, 500) : null, status],
-    );
-  } catch (err) {
-    console.error('[access-log] write failed:', err.message);
-  }
+// Access accounting. The CloudWatch line (synchronous stdout, always flushed)
+// is the authoritative audit record; the api_access_log DB row is the
+// queryable copy and is written WITHOUT await so responses don't pay the
+// ~80-120ms Data API insert on every call. Unawaited inserts complete while
+// the container handles subsequent requests (steady traffic) — worst case a
+// final insert is lost at container teardown, which the CloudWatch line covers.
+function logAccess({ actorSub, actorUserId, method, table, rowRecId, rowCount, querySummary, status }) {
+  const entry = {
+    actorSub: actorSub || null, method, table, rowRecId: rowRecId || null,
+    rowCount: rowCount ?? null, status,
+    query: querySummary ? String(querySummary).slice(0, 500) : null,
+  };
+  console.log('[access]', JSON.stringify(entry));
+  query(
+    `INSERT INTO api_access_log (actor_sub, actor_user_id, method, table_name, row_rec_id, row_count, query_summary, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [entry.actorSub, actorUserId || null, method, table, entry.rowRecId,
+     entry.rowCount, entry.query, status],
+  ).catch((err) => console.error('[access-log] db write failed:', err.message));
 }
 
 export async function handler(event) {
+  // EventBridge warmer ping — keeps a container (and its JWKS cache) hot so
+  // real users don't pay cold-start latency.
+  if (event?.warmer) return { statusCode: 200, body: 'warm' };
+
   const origin = event.headers?.origin || event.headers?.Origin || '';
   const method = event.requestContext?.http?.method || 'GET';
 
@@ -98,7 +112,7 @@ export async function handler(event) {
     catch { return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin); }
     try {
       const result = await hydrateTables(hydrateBody?.tables);
-      await logAccess({
+      logAccess({
         actorSub, method, table: '(hydrate)', rowCount: hydrateBody?.tables?.length, status: 200,
       });
       return json(200, result, origin);
@@ -142,14 +156,14 @@ export async function handler(event) {
     status = err instanceof ApiError ? err.status : 500;
     const type = err instanceof ApiError ? err.type : 'SERVER_ERROR';
     if (status === 500) console.error('[wellbound-api]', err);
-    await logAccess({
+    logAccess({
       actorSub, method, table: tableName, rowRecId: recId,
       querySummary: qs.filterByFormula, status,
     });
     return json(status, { error: { type, message: err.message } }, origin);
   }
 
-  await logAccess({
+  logAccess({
     actorSub, method, table: tableName, rowRecId: recId,
     rowCount: result?.records?.length ?? (result?.id ? 1 : null),
     querySummary: qs.filterByFormula, status,

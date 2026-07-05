@@ -48,6 +48,13 @@ const reject = (reason, extra = '') => {
   return null;
 };
 
+// Prefetch JWKS for every allowed issuer during cold start so the first real
+// request doesn't pay the fetch (~200-400ms). Fire-and-forget: failures fall
+// back to on-demand fetching inside verifyClerkJWT.
+for (const iss of allowedIssuers()) {
+  getJwks(`${iss}/.well-known/jwks.json`).catch(() => {});
+}
+
 /** Verify a Clerk session JWT. Returns the payload or null (reason logged). */
 export async function verifyClerkJWT(token) {
   if (!token || typeof token !== 'string') return reject('missing token');
