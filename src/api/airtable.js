@@ -76,7 +76,9 @@ function cacheSet(key, promise) {
   promise.catch(() => readCache.delete(key));
 }
 
-function invalidateTable(tableName) {
+// Exported for the realtime layer: a push event for a table means our cached
+// reads for it are stale RIGHT NOW, ahead of the TTL.
+export function invalidateTable(tableName) {
   const prefix = `${tableName}|`;
   for (const k of readCache.keys()) {
     if (k.startsWith(prefix)) readCache.delete(k);

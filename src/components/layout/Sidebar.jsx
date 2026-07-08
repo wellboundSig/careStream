@@ -48,10 +48,10 @@ const NAV_ITEMS = [
       { label: 'Team', path: '/team', icon: UsersIcon },
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
       { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, requiresAdmin: true },
-      { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: PermissionsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
+      { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: ConflictsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
       { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
-      { label: 'Developer Tools', path: '/developer/tools', icon: DataToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS] },
+      { label: 'Developer Tools', path: '/developer/tools', icon: DeveloperToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS] },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
   },
@@ -736,6 +736,29 @@ function DataToolsIcon({ size = 16, color }) {
       <ellipse cx="12" cy="6" rx="8" ry="3" stroke={color} strokeWidth="1.6" />
       <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke={color} strokeWidth="1.6" />
       <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" stroke={color} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function ConflictsIcon({ size = 16, color }) {
+  // Warning triangle — conflicts/flags.
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 9v4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M12 17h.01" stroke={color} strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function DeveloperToolsIcon({ size = 16, color }) {
+  // Code brackets in a terminal window — engineering tools.
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="2.5" y="4" width="19" height="16" rx="2" stroke={color} strokeWidth="1.6"/>
+      <path d="M9 9.5L6.5 12L9 14.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15 9.5L17.5 12L15 14.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M13 8.5l-2 7" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
     </svg>
   );
 }

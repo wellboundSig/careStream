@@ -66,10 +66,44 @@ export function setStore(partial) {
   useCareStore.setState(partial);
 }
 
+// Cheap deep-enough equality for store records: field values are primitives,
+// strings, or small arrays — JSON comparison is exact for all of them.
+function recordsEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    const av = a[k];
+    const bv = b[k];
+    if (av === bv) continue;
+    if (typeof av === 'object' || typeof bv === 'object') {
+      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+    } else if (av !== bv) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Identity-preserving merge: records that haven't actually changed keep their
+// EXACT object reference, and if nothing changed at all the setState is
+// skipped entirely — so realtime echoes, polling passes, and re-hydrates with
+// identical data cause ZERO re-renders (no more UI "snapping" on every write).
 export function mergeEntities(key, normalized) {
-  useCareStore.setState((s) => ({
-    [key]: { ...s[key], ...normalized },
-  }));
+  useCareStore.setState((s) => {
+    const current = s[key] || {};
+    let changed = false;
+    const updates = {};
+    for (const [id, record] of Object.entries(normalized)) {
+      if (recordsEqual(current[id], record)) continue;
+      updates[id] = record;
+      changed = true;
+    }
+    if (!changed) return {}; // no-op — preserves all identities
+    return { [key]: { ...current, ...updates } };
+  });
 }
 
 export function updateEntity(key, recordId, fields) {

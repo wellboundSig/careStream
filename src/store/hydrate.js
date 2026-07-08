@@ -1,5 +1,5 @@
 import airtable from '../api/airtable.js';
-import { useCareStore } from './careStore.js';
+import { useCareStore, mergeEntities } from './careStore.js';
 
 function normalize(records) {
   const map = {};
@@ -53,6 +53,9 @@ const TABLES = [
   { key: 'departmentScopes',   table: 'DepartmentScopes' },
   { key: 'activityLog',        table: 'ActivityLog' },
 ];
+
+/** table name → store key, used by the realtime layer for targeted merges. */
+export const TABLE_TO_STORE_KEY = Object.fromEntries(TABLES.map((t) => [t.table, t.key]));
 
 /**
  * Batched hydrate (wellbound-api only): all tables in ONE round trip via
@@ -159,12 +162,14 @@ export async function silentRehydrate() {
       );
     }
 
-    const batch = { lastSyncAt: Date.now() };
+    // Merge per table (identity-preserving) instead of wholesale replacement:
+    // unchanged records keep their references, so a background re-hydrate with
+    // no actual changes causes zero re-renders. Rows deleted by other users
+    // are removed live by the realtime layer; a full reset happens at boot.
     for (const result of results) {
-      if (result) batch[result.key] = result.data;
+      if (result) mergeEntities(result.key, result.data);
     }
-
-    useCareStore.setState(batch);
+    useCareStore.setState({ lastSyncAt: Date.now() });
   } catch {
     // Silent failure — background sync should never disrupt the UI
   }

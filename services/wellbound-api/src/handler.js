@@ -14,7 +14,8 @@
 
 import { query } from './db.js';
 import { authenticate } from './clerkJwt.js';
-import { listRecords, getRecord, createRecords, updateRecords, deleteRecord, metaTables, hydrateTables, ApiError } from './records.js';
+import { publishChanges } from './events.js';
+import { listRecords, getRecord, createRecords, updateRecords, deleteRecord, metaTables, hydrateTables, invalidateHotCache, ApiError } from './records.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://wellboundcarestream.com',
@@ -151,6 +152,14 @@ export async function handler(event) {
       result = await deleteRecord(tableName, recId);
     } else {
       throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Unsupported ${method}`);
+    }
+
+    // Realtime push + hot-cache invalidation on every successful write.
+    if (method === 'POST' || method === 'PATCH' || method === 'DELETE') {
+      invalidateHotCache(tableName);
+      const action = method === 'POST' ? 'created' : method === 'PATCH' ? 'updated' : 'deleted';
+      const ids = result?.records ? result.records.map((r) => r.id) : [result?.id || recId];
+      await publishChanges(ids.map((id) => ({ table: tableName, recId: id, action, actorSub })));
     }
   } catch (err) {
     status = err instanceof ApiError ? err.status : 500;

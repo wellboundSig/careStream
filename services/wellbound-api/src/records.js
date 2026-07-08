@@ -44,11 +44,16 @@ function tableDef(tableName) {
   return { ...def, registry: REGISTRY };
 }
 
-// Data API JSON returns timestamptz WITHOUT a zone suffix, in the session
-// timezone (UTC). Parse explicitly as UTC regardless of process TZ.
+// Normalize Postgres timestamp text to a reliably-parseable ISO form.
+// Data API JSON emits 'YYYY-MM-DD HH:MM:SS' (no zone, session TZ = UTC);
+// native pg emits 'YYYY-MM-DD HH:MM:SS.mmm+00'. Handle both explicitly —
+// V8's Date parser is unreliable for space-separated/short-offset forms.
 function parsePgTimestamp(v) {
-  if (typeof v === 'string' && !/([zZ]|[+-]\d\d(:?\d\d)?)$/.test(v.trim())) {
-    return new Date(v.trim().replace(' ', 'T') + 'Z');
+  if (typeof v === 'string') {
+    let s = v.trim().replace(' ', 'T');
+    if (/[+-]\d\d$/.test(s)) s += ':00';               // '+00' → '+00:00'
+    else if (!/([zZ]|[+-]\d\d:?\d\d)$/.test(s)) s += 'Z'; // no zone → UTC
+    return new Date(s);
   }
   return new Date(v);
 }
@@ -211,8 +216,38 @@ export function metaTables() {
   };
 }
 
+// ── Hot-table micro-cache ─────────────────────────────────────────────────────
+// Reference tables that everyone reads constantly and nobody edits often.
+// Unfiltered list results are cached in container memory for 30s; any write
+// to the table clears this container's copy immediately, and other containers
+// age out within the TTL. Turns the hottest reads into ~1ms.
+const HOT_TABLES = new Set([
+  'Roles', 'Permissions', 'RolePermissions', 'PermissionPresets',
+  'Departments', 'DepartmentScopes', 'ConflictCategories',
+  'Teams', 'Categories', 'Entities', 'NetworkFacilities',
+]);
+const HOT_TTL_MS = 30_000;
+const hotCache = new Map(); // key -> { at, result }
+
+function hotCacheKey(tableName, qs) {
+  // Only cache simple full-table reads (no formula) — the common shape.
+  if (!HOT_TABLES.has(tableName) || qs.filterByFormula) return null;
+  return `${tableName}|${qs.maxRecords || ''}|${qs['sort[0][field]'] || ''}|${qs['sort[0][direction]'] || ''}`;
+}
+
+export function invalidateHotCache(tableName) {
+  for (const k of hotCache.keys()) {
+    if (k.startsWith(`${tableName}|`)) hotCache.delete(k);
+  }
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 export async function listRecords(tableName, qs) {
+  const hotKey = hotCacheKey(tableName, qs);
+  if (hotKey) {
+    const hit = hotCache.get(hotKey);
+    if (hit && Date.now() - hit.at < HOT_TTL_MS) return hit.result;
+  }
   const def = tableDef(tableName);
   const params = [];
   let where = '';
@@ -234,7 +269,9 @@ export async function listRecords(tableName, qs) {
   const projection = parseProjection(qs, def);
 
   const { rows } = await query(`SELECT * FROM "${def.pgTable}"${where}${orderBy}${limit}`, params);
-  return { records: rows.map((r) => rowToRecord(r, def, projection)) };
+  const result = { records: rows.map((r) => rowToRecord(r, def, projection)) };
+  if (hotKey) hotCache.set(hotKey, { at: Date.now(), result });
+  return result;
 }
 
 export async function getRecord(tableName, recId) {

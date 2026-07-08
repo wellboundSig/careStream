@@ -7,6 +7,7 @@ import SplitView from './SplitView.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import HydrationScreen from '../common/HydrationScreen.jsx';
+import RealtimeToasts from '../common/RealtimeToasts.jsx';
 import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { useTheme } from '../../utils/ThemeContext.jsx';
@@ -119,6 +120,9 @@ export default function AppShell() {
     />
   );
 
+  // Realtime in-app notifications (task assignments etc.) — main window only.
+  const realtimeToasts = !isPopOut && <RealtimeToasts />;
+
   // ── Mobile layout ─────────────────────────────────────────────────────────
   if (isMobile) {
     return (
@@ -198,6 +202,7 @@ export default function AppShell() {
         </div>
 
         {newReferralModal}
+        {realtimeToasts}
       </div>
     );
   }
@@ -249,6 +254,7 @@ export default function AppShell() {
 
         <PatientDrawer />
         {newReferralModal}
+        {realtimeToasts}
       </div>
     );
   }
@@ -297,6 +303,7 @@ export default function AppShell() {
 
       <PatientDrawer />
       {newReferralModal}
+        {realtimeToasts}
     </div>
   );
 }

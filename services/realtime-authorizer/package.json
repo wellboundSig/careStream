@@ -1,0 +1,1 @@
+{ "name": "realtime-authorizer", "private": true, "type": "module", "main": "src/handler.js" }
