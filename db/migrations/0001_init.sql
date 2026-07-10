@@ -1303,6 +1303,7 @@ CREATE TABLE IF NOT EXISTS "tickets" (
   "resolution_note" text,
   "resolved_by_id" text,
   "internal_override" boolean,
+  "routed_to_idtech_at" timestamptz,
   "source" text,
   "wifi_connected" boolean,
   "facility_id" text,

@@ -4079,6 +4079,11 @@
         "pg": "boolean",
         "wire": "checkbox"
       },
+      "routed_to_idtech_at": {
+        "column": "routed_to_idtech_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
       "source": {
         "column": "source",
         "pg": "text",
