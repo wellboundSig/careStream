@@ -44,6 +44,13 @@ const TABLES = [
   { key: 'permissions',        table: 'Permissions' },
   { key: 'permissionPresets',  table: 'PermissionPresets' },
   { key: 'userPermissions',    table: 'UserPermissions' },
+  { key: 'languages',          table: 'Languages' },
+  { key: 'userLanguages',      table: 'UserLanguages' },
+
+  // Inbound Submissions
+  { key: 'inboundSubmissions',            table: 'InboundSubmissions' },
+  { key: 'inboundSubmissionAttachments',  table: 'InboundSubmissionAttachments' },
+  { key: 'inboundSubmissionEvents',       table: 'InboundSubmissionEvents' },
 
   // Network facilities
   { key: 'networkFacilities',  table: 'NetworkFacilities' },

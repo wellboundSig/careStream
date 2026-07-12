@@ -19,6 +19,7 @@ import {
 } from '../../../utils/validation.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import { LANGUAGE_OPTIONS, languageName, DEFAULT_LANGUAGE_CODE } from '../../../data/languages.js';
 
 const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
@@ -219,11 +220,15 @@ function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnl
 
 // ── Patient select field (dropdown for patient data) ──────────────────────────
 
-function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
+function EditablePatientSelect({ label, value, displayValue, fieldKey, patientId, patientRecordId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const { can } = usePermissions();
+
+  const normalizedOptions = options.map((o) => (
+    typeof o === 'string' ? { value: o, label: o } : o
+  ));
 
   async function handleChange(e) {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
@@ -247,6 +252,7 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
   }
 
   const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+  const shown = displayValue || value;
 
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
@@ -255,7 +261,7 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
         <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)}
           style={{ ...ei(), cursor: 'pointer' }}>
           <option value="" disabled>Select…</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          {normalizedOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
         <p onClick={() => !forceReadOnly && setEditing(true)} title={forceReadOnly ? undefined : 'Click to edit'}
@@ -263,7 +269,7 @@ function EditablePatientSelect({ label, value, fieldKey, patientId, patientRecor
           onMouseEnter={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { if (forceReadOnly) return; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
         >
-          {saving ? 'Saving…' : (value || empty)}
+          {saving ? 'Saving…' : (shown || empty)}
         </p>
       )}
       {error && <p style={ve()}>{error}</p>}
@@ -1060,6 +1066,17 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
         <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <DobField patient={patient} patientId={patientId} onSave={handlePatientSave} referral={referral} readOnly={readOnly} />
         <EditablePatientSelect label="Gender"    fieldKey="gender"           value={patient.gender}           patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} options={GENDER_OPTIONS} readOnly={readOnly} />
+        <EditablePatientSelect
+          label="Language"
+          fieldKey="preferred_language"
+          value={patient.preferred_language || DEFAULT_LANGUAGE_CODE}
+          displayValue={languageName(patient.preferred_language || DEFAULT_LANGUAGE_CODE)}
+          patientId={patientId}
+          patientRecordId={patientId}
+          onSave={handlePatientSave}
+          options={LANGUAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          readOnly={readOnly}
+        />
         <PhoneField label="Primary Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EmailField label="Email"                fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />

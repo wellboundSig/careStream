@@ -12,4 +12,5 @@ compatibility_date = "2024-09-23"
 [vars]
 API_URL = "https://wzfb4i68yh.execute-api.us-east-2.amazonaws.com"
 FILES_API_URL = "https://wzfb4i68yh.execute-api.us-east-2.amazonaws.com/files"
-INBOUND_TO_ADDRESS = "referral@wellboundcarestream.com"
+# Match any address on the Resend receiving subdomain (MX only on this host).
+INBOUND_TO_ADDRESS = "inbound.wellboundcarestream.com"

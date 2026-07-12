@@ -39,6 +39,7 @@ const NAV_ITEMS = [
     section: 'WORK',
     items: [
       { label: 'Calendar', path: '/calendar', icon: CalendarIcon },
+      { label: 'Inbound', path: '/inbound-submissions', icon: MailIcon, permAny: [PERMISSION_KEYS.MODULE_INBOUND, PERMISSION_KEYS.INBOUND_VIEW] },
       { label: 'Reports', path: '/reports', icon: ReportsIcon },
     ],
   },
@@ -679,6 +680,15 @@ function CalendarIcon({ size = 16, color }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <rect x="3" y="4" width="18" height="18" rx="2" stroke={color} strokeWidth="1.6" />
       <path d="M16 2v4M8 2v4M3 10h18" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MailIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke={color} strokeWidth="1.6" />
+      <path d="M3 7l9 7 9-7" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

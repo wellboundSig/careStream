@@ -17,6 +17,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "default_preset_id": {
+        "column": "default_preset_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",
@@ -625,6 +630,11 @@
       },
       "gender": {
         "column": "gender",
+        "pg": "text",
+        "wire": "text"
+      },
+      "preferred_language": {
+        "column": "preferred_language",
         "pg": "text",
         "wire": "text"
       },
@@ -4463,6 +4473,93 @@
         "pg": "timestamptz",
         "wire": "timestamp"
       }
+    }
+  },
+  "InboundSubmissions": {
+    "pgTable": "inbound_submissions",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "submission_number": { "column": "submission_number", "pg": "bigint", "wire": "int" },
+      "from_email": { "column": "from_email", "pg": "text", "wire": "text" },
+      "from_name": { "column": "from_name", "pg": "text", "wire": "text" },
+      "to_addrs": { "column": "to_addrs", "pg": "text", "wire": "text" },
+      "cc_addrs": { "column": "cc_addrs", "pg": "text", "wire": "text" },
+      "subject": { "column": "subject", "pg": "text", "wire": "text" },
+      "body_text": { "column": "body_text", "pg": "text", "wire": "text" },
+      "body_html": { "column": "body_html", "pg": "text", "wire": "text" },
+      "message_id": { "column": "message_id", "pg": "text", "wire": "text" },
+      "in_reply_to": { "column": "in_reply_to", "pg": "text", "wire": "text" },
+      "received_at": { "column": "received_at", "pg": "timestamptz", "wire": "timestamp" },
+      "provider": { "column": "provider", "pg": "text", "wire": "text" },
+      "provider_email_id": { "column": "provider_email_id", "pg": "text", "wire": "text" },
+      "raw_headers": { "column": "raw_headers", "pg": "jsonb", "wire": "jsonRaw" },
+      "status": { "column": "status", "pg": "text", "wire": "text" },
+      "opened_by_id": { "column": "opened_by_id", "pg": "text", "wire": "text" },
+      "opened_at": { "column": "opened_at", "pg": "timestamptz", "wire": "timestamp" },
+      "assigned_to_id": { "column": "assigned_to_id", "pg": "text", "wire": "text" },
+      "parsed": { "column": "parsed", "pg": "jsonb", "wire": "jsonRaw" },
+      "convert_mode": { "column": "convert_mode", "pg": "text", "wire": "text" },
+      "converted_patient_id": { "column": "converted_patient_id", "pg": "text", "wire": "text" },
+      "converted_referral_id": { "column": "converted_referral_id", "pg": "text", "wire": "text" },
+      "converted_by_id": { "column": "converted_by_id", "pg": "text", "wire": "text" },
+      "converted_at": { "column": "converted_at", "pg": "timestamptz", "wire": "timestamp" },
+      "discard_reason": { "column": "discard_reason", "pg": "text", "wire": "text" },
+      "discard_explanation": { "column": "discard_explanation", "pg": "text", "wire": "text" },
+      "discarded_by_id": { "column": "discarded_by_id", "pg": "text", "wire": "text" },
+      "discarded_at": { "column": "discarded_at", "pg": "timestamptz", "wire": "timestamp" },
+      "source": { "column": "source", "pg": "text", "wire": "text" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+    }
+  },
+  "InboundSubmissionAttachments": {
+    "pgTable": "inbound_submission_attachments",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "inbound_submission_id": { "column": "inbound_submission_id", "pg": "text", "wire": "text" },
+      "file_name": { "column": "file_name", "pg": "text", "wire": "text" },
+      "content_type": { "column": "content_type", "pg": "text", "wire": "text" },
+      "size_bytes": { "column": "size_bytes", "pg": "bigint", "wire": "int" },
+      "storage_key": { "column": "storage_key", "pg": "text", "wire": "text" },
+      "provider_attachment_id": { "column": "provider_attachment_id", "pg": "text", "wire": "text" },
+      "uploaded_at": { "column": "uploaded_at", "pg": "timestamptz", "wire": "timestamp" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+    }
+  },
+  "InboundSubmissionEvents": {
+    "pgTable": "inbound_submission_events",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "inbound_submission_id": { "column": "inbound_submission_id", "pg": "text", "wire": "text" },
+      "actor_id": { "column": "actor_id", "pg": "text", "wire": "text" },
+      "action": { "column": "action", "pg": "text", "wire": "text" },
+      "detail": { "column": "detail", "pg": "text", "wire": "text" },
+      "metadata": { "column": "metadata", "pg": "jsonb", "wire": "jsonRaw" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+    }
+  },
+  "Languages": {
+    "pgTable": "languages",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "code": { "column": "code", "pg": "text", "wire": "text" },
+      "name": { "column": "name", "pg": "text", "wire": "text" },
+      "sort_order": { "column": "sort_order", "pg": "bigint", "wire": "int" },
+      "is_active": { "column": "is_active", "pg": "boolean", "wire": "checkbox" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+    }
+  },
+  "UserLanguages": {
+    "pgTable": "user_languages",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "user_id": { "column": "user_id", "pg": "text", "wire": "text" },
+      "language_id": { "column": "language_id", "pg": "text", "wire": "text" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
     }
   }
 }

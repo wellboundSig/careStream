@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS "roles" (
   "id" text,
   "name" text,
   "description" text,
+  "default_preset_id" text,
   "created_at" timestamptz DEFAULT now(),
   "updated_at" timestamptz DEFAULT now()
 );

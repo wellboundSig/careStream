@@ -1,7 +1,7 @@
 /**
  * worker-inbound-email
  *
- * Receives Resend `email.received` webhooks for referral@wellboundcarestream.com,
+ * Receives Resend `email.received` webhooks for *@inbound.wellboundcarestream.com,
  * fetches full body + attachments via the Receiving API, and creates
  * InboundSubmissions rows in wellbound-api (Aurora).
  *
@@ -11,10 +11,10 @@
  *   API_URL                  — wellbound-api base (e.g. https://….amazonaws.com)
  *   INTERNAL_API_KEY         — x-internal-key for /internal routes
  *   FILES_API_URL            — optional files-api base for attachment upload
- *   INBOUND_TO_ADDRESS       — default referral@wellboundcarestream.com
+ *   INBOUND_TO_ADDRESS       — substring match; default inbound.wellboundcarestream.com
  */
 
-const TARGET_DEFAULT = 'referral@wellboundcarestream.com';
+const TARGET_DEFAULT = 'inbound.wellboundcarestream.com';
 
 export default {
   async fetch(request, env) {

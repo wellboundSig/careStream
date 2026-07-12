@@ -125,6 +125,16 @@ export const PERMISSION_KEYS = {
   MODULE_AUTHORIZATION: 'module.authorization',
   MODULE_SCHEDULING: 'module.scheduling',
   MODULE_ADMIN: 'module.admin',
+  MODULE_INBOUND: 'module.inbound',
+
+  // Inbound Submissions (email → ticket queue)
+  INBOUND_VIEW: 'inbound.view',
+  INBOUND_CREATE: 'inbound.create',
+  INBOUND_ASSIGN: 'inbound.assign',
+  INBOUND_CONVERT_LEAD: 'inbound.convert_lead',
+  INBOUND_CONVERT_REFERRAL: 'inbound.convert_referral',
+  INBOUND_DISCARD: 'inbound.discard',
+  INBOUND_MANAGE: 'inbound.manage',
 
   // Dashboard
   DASHBOARD_MODE_TOGGLE: 'dashboard.mode_toggle',
@@ -167,6 +177,7 @@ const ALL_KEYS = Object.values(K);
 export const PERMISSION_CATEGORIES = [
   'Access & Modules',
   'Leads & Intake',
+  'Inbound Submissions',
   'Eligibility & Authorization',
   'Clinical Review',
   'F2F / MD Orders',
@@ -192,8 +203,18 @@ export const PERMISSION_CATALOG = [
   { key: K.MODULE_AUTHORIZATION, label: 'Open Authorization module pages', category: 'Access & Modules', description: 'Access Authorization Pending module page', sort: 5 },
   { key: K.MODULE_SCHEDULING,    label: 'Open Scheduling module pages',    category: 'Access & Modules', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 6 },
   { key: K.MODULE_ADMIN,         label: 'Open Admin module pages',         category: 'Access & Modules', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 7 },
+  { key: K.MODULE_INBOUND,       label: 'Open Inbound Submissions',        category: 'Access & Modules', description: 'Access the inbound email submissions queue', sort: 7.5 },
   { key: K.CALENDAR_VIEW,        label: 'View calendar',                   category: 'Access & Modules', description: 'Access the Calendar page with tasks and F2F dates', sort: 8 },
   { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',          category: 'Access & Modules', description: 'Switch between executive and caseload dashboard views', sort: 9 },
+
+  // ── Inbound Submissions ───────────────────────────────────────────────────
+  { key: K.INBOUND_VIEW,              label: 'View inbound submissions',       category: 'Inbound Submissions', description: 'List and open inbound email tickets', sort: 9.1 },
+  { key: K.INBOUND_CREATE,            label: 'Create inbound submissions',     category: 'Inbound Submissions', description: 'Manually add a submission (testing / non-email intake)', sort: 9.2 },
+  { key: K.INBOUND_ASSIGN,            label: 'Assign inbound submissions',     category: 'Inbound Submissions', description: 'Assign tickets to staff', sort: 9.3 },
+  { key: K.INBOUND_CONVERT_LEAD,      label: 'Convert inbound to Lead',        category: 'Inbound Submissions', description: 'Create a Lead Entry referral from an inbound ticket', sort: 9.4 },
+  { key: K.INBOUND_CONVERT_REFERRAL,  label: 'Convert inbound to Referral',    category: 'Inbound Submissions', description: 'Create an Intake referral from an inbound ticket', sort: 9.5 },
+  { key: K.INBOUND_DISCARD,           label: 'Discard inbound submissions',    category: 'Inbound Submissions', description: 'Discard or mark inbound tickets as spam', sort: 9.6 },
+  { key: K.INBOUND_MANAGE,            label: 'Manage all inbound submissions', category: 'Inbound Submissions', description: 'See all tickets (not only assigned), reassign, edit parse suggestions', sort: 9.7 },
 
   // ── Leads & Intake ────────────────────────────────────────────────────────
   { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads & Intake', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
@@ -348,6 +369,9 @@ export const DEFAULT_PRESETS = [
       K.DIRECTORY_PHYSICIANS_VIEW, K.DIRECTORY_REFERRAL_SOURCES_VIEW,
       K.DIRECTORY_FACILITIES_VIEW, K.DIRECTORY_MARKETERS_VIEW, K.DIRECTORY_CAMPAIGNS_VIEW,
       K.MODULE_INTAKE,
+      K.MODULE_INBOUND,
+      K.INBOUND_VIEW, K.INBOUND_CREATE, K.INBOUND_ASSIGN,
+      K.INBOUND_CONVERT_LEAD, K.INBOUND_CONVERT_REFERRAL, K.INBOUND_DISCARD, K.INBOUND_MANAGE,
       K.SNAPSHOT_EDIT_REFERRAL, K.SNAPSHOT_EDIT_DEMOGRAPHICS, K.SNAPSHOT_EDIT_ELIGIBILITY,
       K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES, K.SNAPSHOT_EDIT_TASKS,
       K.SNAPSHOT_EDIT_PHYSICIAN,
@@ -389,6 +413,7 @@ export const DEFAULT_PRESETS = [
       K.TASK_VIEW,
       K.NOTE_CREATE,
       K.FILE_UPLOAD,
+      K.MODULE_INBOUND, K.INBOUND_VIEW, K.INBOUND_CONVERT_LEAD, K.INBOUND_CONVERT_REFERRAL,
       K.DIRECTORY_MARKETERS_VIEW, K.DIRECTORY_FACILITIES_VIEW,
       K.DIRECTORY_CAMPAIGNS_VIEW, K.DIRECTORY_REFERRAL_SOURCES_VIEW, K.DIRECTORY_PHYSICIANS_VIEW,
       K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,

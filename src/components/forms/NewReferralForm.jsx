@@ -21,6 +21,7 @@ import {
   validateDobForAgeGroup,
   inferAgeGroupFromDob,
 } from '../../utils/validation.js';
+import { DEFAULT_LANGUAGE_CODE, LANGUAGE_OPTIONS } from '../../data/languages.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -495,7 +496,7 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
-export default function NewReferralForm({ onClose, onSuccess }) {
+export default function NewReferralForm({ onClose, onSuccess, initialForm = null, forceStage = null, embedded = false, title = null, subtitle = null }) {
   const { appUser, appUserId } = useCurrentAppUser();
   const { can } = usePermissions();
   const { resolveEntity } = useLookups();
@@ -557,7 +558,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
   const [errors, setErrors] = useState({});
   const [selectedPhysician, setSelectedPhysician] = useState(null);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     first_name: '',
     last_name: '',
     phone_primary: '',
@@ -567,12 +568,9 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     marketer_other: '',
     dob: '',
     gender: '',
+    preferred_language: DEFAULT_LANGUAGE_CODE,
     phone_secondary: '',
     email: '',
-    // Per-plan member IDs are captured inside `insurance_plan_details`
-    // (one entry per selected insurance). The legacy Patients columns
-    // `medicaid_number`, `medicare_number`, and `insurance_id` are no
-    // longer written on new referrals — see INSURANCE_CONSOLIDATION_PLAN.md.
     address_street: '',
     address_city: '',
     address_state: 'NY',
@@ -583,15 +581,14 @@ export default function NewReferralForm({ onClose, onSuccess }) {
     emergency_contact_phone: '',
     services_requested: [],
     initial_notes: '',
-    // Multi-insurance
     insurance_plans: [],
     insurance_plan_details: {},
-    // Special Needs specifics
     sn_age_group: '',
     county: '',
     entity_id: '',
     code_95: '',
-  });
+    ...(initialForm || {}),
+  }));
 
   function setField(key, value) {
     setForm((prev) => {
@@ -820,6 +817,7 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         ...(form.county && { county: form.county }),
         ...(form.dob && { dob: form.dob }),
         ...(form.gender && { gender: form.gender }),
+        preferred_language: form.preferred_language || DEFAULT_LANGUAGE_CODE,
         ...(form.phone_secondary && { phone_secondary: form.phone_secondary }),
         ...(form.email && { email: form.email }),
         // DEPRECATED: Patients.medicaid_number / medicare_number / insurance_id
@@ -858,12 +856,19 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         : form.referral_source_id;
 
       const referralDate = new Date().toISOString();
+      let stage = (form.division === 'Special Needs' && form.code_95 === 'no') ? 'OPWDD Enrollment' : 'Lead Entry';
+      if (forceStage === 'Lead Entry' || forceStage === 'Intake') {
+        // Inbound convert: honor explicit mode unless SN+no Code 95 forces OPWDD.
+        if (!(form.division === 'Special Needs' && form.code_95 === 'no')) {
+          stage = forceStage;
+        }
+      }
       const referralFields = {
         id: referralCustomId,
         patient_id: createdPatientId,
         marketer_id: resolvedMarketer,
         referral_source_id: resolvedSource,
-        current_stage: (form.division === 'Special Needs' && form.code_95 === 'no') ? 'OPWDD Enrollment' : 'Lead Entry',
+        current_stage: stage,
         division: form.division,
         priority: 'Normal',
         referral_date: referralDate,
@@ -964,27 +969,25 @@ export default function NewReferralForm({ onClose, onSuccess }) {
 
   const servicesForDivision = getServicesForDivision(form.division);
 
-  return (
-    <div
-      onClick={(e) => !isMobile && e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9990,
-        background: isMobile ? 'transparent' : hexToRgba(palette.backgroundDark.hex, 0.5),
-        display: 'flex',
-        alignItems: isMobile ? 'flex-end' : 'center',
-        justifyContent: 'center',
-        padding: isMobile ? 0 : 24,
-      }}
-    >
+  const headerTitle = title || (forceStage === 'Intake' ? 'Convert to Referral' : forceStage === 'Lead Entry' ? 'Convert to Lead' : 'New Referral');
+  const headerSub = subtitle || (
+    forceStage === 'Intake'
+      ? 'Creates a patient and an Intake referral'
+      : forceStage === 'Lead Entry'
+        ? 'Creates a patient and a Lead Entry referral'
+        : 'Creates a patient record and initiates a Leads referral'
+  );
+
+  const formCard = (
       <div style={{
         background: palette.backgroundLight.hex,
-        borderRadius: isMobile ? '16px 16px 0 0' : 16,
+        borderRadius: embedded ? 0 : (isMobile ? '16px 16px 0 0' : 16),
         width: '100%',
-        maxWidth: isMobile ? '100%' : 680,
-        maxHeight: isMobile ? '95vh' : '90vh',
-        height: isMobile ? '95vh' : undefined,
+        maxWidth: embedded ? '100%' : (isMobile ? '100%' : 680),
+        maxHeight: embedded ? '100%' : (isMobile ? '95vh' : '90vh'),
+        height: embedded ? '100%' : (isMobile ? '95vh' : undefined),
         display: 'flex', flexDirection: 'column',
-        boxShadow: `0 -4px 40px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+        boxShadow: embedded ? 'none' : `0 -4px 40px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
         overflow: 'hidden',
         '--form-cols': isMobile ? '1' : undefined,
       }}>
@@ -992,16 +995,18 @@ export default function NewReferralForm({ onClose, onSuccess }) {
         <div style={{ padding: '20px 24px 16px', flexShrink: 0, background: palette.primaryDeepPlum.hex }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>New Referral</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>{headerTitle}</h2>
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.55) }}>
-                Creates a patient record and initiates a Leads referral
+                {headerSub}
               </p>
             </div>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </button>
+            {onClose && (
+              <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1226,6 +1231,14 @@ export default function NewReferralForm({ onClose, onSuccess }) {
                 );
               })()}
             </FieldBox>
+            <FieldBox label="Language">
+              <Select
+                value={form.preferred_language || DEFAULT_LANGUAGE_CODE}
+                onChange={(v) => setField('preferred_language', v)}
+                options={LANGUAGE_OPTIONS}
+                placeholder="Select…"
+              />
+            </FieldBox>
           </FieldGroup>
 
           {/* ── 4. Insurance + Physician side by side ── */}
@@ -1355,6 +1368,25 @@ export default function NewReferralForm({ onClose, onSuccess }) {
           </div>
         </div>
       </div>
+  );
+
+  if (embedded) {
+    return formCard;
+  }
+
+  return (
+    <div
+      onClick={(e) => !isMobile && e.target === e.currentTarget && onClose?.()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9990,
+        background: isMobile ? 'transparent' : hexToRgba(palette.backgroundDark.hex, 0.5),
+        display: 'flex',
+        alignItems: isMobile ? 'flex-end' : 'center',
+        justifyContent: 'center',
+        padding: isMobile ? 0 : 24,
+      }}
+    >
+      {formCard}
     </div>
   );
 }

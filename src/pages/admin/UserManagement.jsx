@@ -2,26 +2,13 @@ import { useState, useMemo } from 'react';
 import { useCareStore, updateEntity, mergeEntities } from '../../store/careStore.js';
 import airtable from '../../api/airtable.js';
 import { useLookups } from '../../hooks/useLookups.js';
-import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
-import { updateUserPermission, createUserPermission } from '../../api/userPermissions.js';
 import { updateReferralSource } from '../../api/referralSources.js';
-import UserProfileDrawer from '../../components/users/UserProfileDrawer.jsx';
-import PermissionModal from '../../components/users/PermissionModal.jsx';
+import { languageById } from '../../data/languages.js';
+import UserSettingsSheet from '../../components/users/UserSettingsSheet.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
-
-const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
-
-// Role colors cycle for any number of roles — no hardcoded role IDs needed.
-const ROLE_COLOR_CYCLE = [
-  '#D91E75', '#450931', '#06D4FF', '#6EC72B', '#DB8640', '#F0C424', '#9B59B6',
-];
-function roleColor(roleId) {
-  const num = parseInt((roleId || '').replace(/\D/g, ''), 10);
-  return ROLE_COLOR_CYCLE[isNaN(num) ? 0 : (num - 1) % ROLE_COLOR_CYCLE.length];
-}
 
 const STATUS_COLORS = {
   Active:    { bg: hexToRgba(palette.accentGreen.hex, 0.18),      text: palette.accentGreen.hex },
@@ -29,6 +16,14 @@ const STATUS_COLORS = {
   Suspended: { bg: hexToRgba(palette.accentOrange.hex, 0.2),      text: palette.accentOrange.hex },
   Revoked:   { bg: hexToRgba(palette.backgroundDark.hex, 0.1),    text: hexToRgba(palette.backgroundDark.hex, 0.45) },
 };
+
+const ROLE_COLOR_CYCLE = [
+  '#D91E75', '#450931', '#06D4FF', '#6EC72B', '#DB8640', '#F0C424', '#9B59B6',
+];
+function roleColor(roleId) {
+  const num = parseInt((roleId || '').replace(/\D/g, ''), 10);
+  return ROLE_COLOR_CYCLE[isNaN(num) ? 0 : (num - 1) % ROLE_COLOR_CYCLE.length];
+}
 
 function initials(first, last) {
   return `${(first || '?')[0]}${(last || '')[0] || ''}`.toUpperCase();
@@ -45,10 +40,16 @@ function timeAgo(dateStr) {
 }
 
 export default function UserManagement() {
-  const { appUser } = useCurrentAppUser();
   const { roleMap } = useLookups();
   const storeUsers = useCareStore((s) => s.users);
-  const hydrated   = useCareStore((s) => s.hydrated);
+  const storeUserLanguages = useCareStore((s) => s.userLanguages);
+  const storeLanguages = useCareStore((s) => s.languages);
+  const hydrated = useCareStore((s) => s.hydrated);
+  const storeMarketers = useCareStore((s) => s.marketers);
+
+  const { can } = usePermissions();
+  const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT);
+  const canEditPerms = can(PERMISSION_KEYS.ADMIN_PERMISSIONS);
 
   const roles = Object.entries(roleMap)
     .map(([id, label]) => ({ id, label }))
@@ -58,47 +59,27 @@ export default function UserManagement() {
     Object.values(storeUsers).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')),
   [storeUsers]);
 
+  const langsByUser = useMemo(() => {
+    const map = {};
+    Object.values(storeUserLanguages || {}).forEach((ul) => {
+      if (!ul.user_id) return;
+      if (!map[ul.user_id]) map[ul.user_id] = [];
+      const fromStore = Object.values(storeLanguages || {}).find((l) => l.id === ul.language_id);
+      const name = fromStore?.name || languageById(ul.language_id)?.name || ul.language_id;
+      map[ul.user_id].push(name);
+    });
+    return map;
+  }, [storeUserLanguages, storeLanguages]);
+
   const [saving, setSaving] = useState({});
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [permUser, setPermUser] = useState(null);
+  const [settingsUser, setSettingsUser] = useState(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
   const [reassignData, setReassignData] = useState(null);
-  const storeMarketers = useCareStore((s) => s.marketers);
 
-  const { can } = usePermissions();
-  const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT);
-  const canEditPerms = can(PERMISSION_KEYS.ADMIN_PERMISSIONS);
-
-  const storePresets   = useCareStore((s) => s.permissionPresets);
-  const storeUserPerms = useCareStore((s) => s.userPermissions);
-  const storeRoles     = useCareStore((s) => s.roles);
-
-  function findPresetForRole(roleId) {
-    const role = Object.values(storeRoles).find((r) => r.id === roleId);
-    if (!role?.name) return null;
-    const roleLower = role.name.toLowerCase();
-    return Object.values(storePresets).find((p) => {
-      const presetLower = (p.name || '').toLowerCase();
-      return presetLower.includes(roleLower) || roleLower.includes(presetLower.split('/')[0].trim());
-    }) || null;
-  }
-
-  async function applyPresetToUser(userId, preset) {
-    if (!preset?.permissions) return;
-    const now = new Date().toISOString();
-    const existingRec = Object.values(storeUserPerms).find((up) => up.user_id === userId);
-    try {
-      if (existingRec?._id) {
-        const fields = { permissions: preset.permissions, last_preset_id: preset.id, updated_at: now, updated_by: appUserId || '' };
-        await updateUserPermission(existingRec._id, fields);
-        mergeEntities('userPermissions', { [existingRec._id]: { ...existingRec, ...fields } });
-      } else {
-        const fields = { id: `up_${userId}`, user_id: userId, permissions: preset.permissions, last_preset_id: preset.id, updated_at: now, updated_by: appUserId || '' };
-        const rec = await createUserPermission(fields);
-        mergeEntities('userPermissions', { [rec.id]: { _id: rec.id, ...rec.fields } });
-      }
-    } catch { /* best-effort — role change still succeeds */ }
+  function showToast(msg, type = 'success') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
   }
 
   async function updateUser(userId, airtableId, field, value) {
@@ -107,16 +88,7 @@ export default function UserManagement() {
     try {
       await airtable.update('Users', airtableId, { [field]: value });
 
-      if (field === 'role_id') {
-        const matchedPreset = findPresetForRole(value);
-        if (matchedPreset) {
-          await applyPresetToUser(userId, matchedPreset);
-          showToast(`Role updated → permissions synced to "${matchedPreset.name}"`);
-        } else {
-          showToast(`Role updated (no matching preset found)`);
-        }
-      } else if (field === 'status' && (value === 'Suspended' || value === 'Revoked')) {
-        // Check if this user is a marketer with assigned referral sources
+      if (field === 'status' && (value === 'Suspended' || value === 'Revoked')) {
         const isMarketer = Object.values(storeMarketers || {}).some((m) => m.user_id === userId || m.id === userId);
         if (isMarketer) {
           const storeSources = useCareStore.getState().referralSources;
@@ -125,10 +97,8 @@ export default function UserManagement() {
             setReassignData({ userId, sources: assignedSources });
           }
         }
-        showToast(`Updated ${field} for ${userId}`);
-      } else {
-        showToast(`Updated ${field} for ${userId}`);
       }
+      showToast(`Updated ${field}`);
     } catch (err) {
       showToast(`Failed: ${err.message}`, 'error');
     } finally {
@@ -136,16 +106,19 @@ export default function UserManagement() {
     }
   }
 
-  function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }
-
   const filtered = users.filter((u) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+    const langHay = (langsByUser[u.id] || []).join(' ').toLowerCase();
+    return `${u.first_name} ${u.last_name}`.toLowerCase().includes(q)
+      || (u.email || '').toLowerCase().includes(q)
+      || langHay.includes(q);
   });
+
+  // Keep sheet user in sync with store edits
+  const sheetUser = settingsUser
+    ? (Object.values(storeUsers).find((u) => u._id === settingsUser._id || u.id === settingsUser.id) || settingsUser)
+    : null;
 
   if (!isAdmin) {
     return (
@@ -164,66 +137,63 @@ export default function UserManagement() {
   return (
     <>
       <div style={{ padding: '24px 28px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>User Management</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-              {users.length} users in system — edit roles, status, and permissions below
+              {users.length} people — click a row to open settings
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 36, width: 240 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 36, width: 260 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
               <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8"/>
               <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, language…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }} />
           </div>
         </div>
 
-        {/* Clerk notice */}
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: hexToRgba(palette.accentBlue.hex, 0.08), marginBottom: 22, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: hexToRgba(palette.accentBlue.hex, 0.07), marginBottom: 18, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
             <circle cx="12" cy="12" r="10" stroke={palette.accentBlue.hex} strokeWidth="1.8"/>
             <path d="M12 8v4M12 16h.01" stroke={palette.accentBlue.hex} strokeWidth="2" strokeLinecap="round"/>
           </svg>
-          <div>
-            <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.accentBlue.hex, marginBottom: 3 }}>
-              Account creation, invitations, and deletion are managed in Clerk Dashboard
-            </p>
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55 }}>
-              Use this page to manage roles, status, and permissions for existing accounts.
-              To invite a new user or revoke credentials, visit{' '}
-              <a href="https://dashboard.clerk.com" target="_blank" rel="noopener noreferrer" style={{ color: palette.accentBlue.hex, fontWeight: 600 }}>
-                dashboard.clerk.com
-              </a>.
-            </p>
-          </div>
+          <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), lineHeight: 1.5, margin: 0 }}>
+            Invites and account deletion live in{' '}
+            <a href="https://dashboard.clerk.com" target="_blank" rel="noopener noreferrer" style={{ color: palette.accentBlue.hex, fontWeight: 600 }}>
+              Clerk
+            </a>
+            . Here you manage role, status, languages, permissions, and assignment.
+          </p>
         </div>
 
-        {/* Table */}
         <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: 'hidden', boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                {['User', 'Role', 'Status', 'Last Login', ''].map((h) => (
-                  <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>{h}</th>
+                {['User', 'Role', 'Status', 'Languages', 'Last login', ''].map((h, i) => (
+                  <th key={i} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {!hydrated ? (
-                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)
+                Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: 32, textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                    No users match your search
+                  </td>
+                </tr>
               ) : filtered.map((user) => (
                 <UserRow
                   key={user._id}
                   user={user}
-                  roles={roles}
+                  roleLabel={roleMap[user.role_id] || user.role_id || '—'}
+                  languages={langsByUser[user.id] || []}
                   isSaving={!!saving[user.id]}
-                  canEditPerms={canEditPerms}
-                  onUpdate={(field, value) => updateUser(user.id, user._id, field, value)}
-                  onOpenProfile={() => setSelectedUser(user)}
-                  onOpenPermissions={() => setPermUser(user)}
+                  selected={sheetUser?.id === user.id}
+                  onOpen={() => setSettingsUser(user)}
                 />
               ))}
             </tbody>
@@ -231,8 +201,17 @@ export default function UserManagement() {
         </div>
       </div>
 
-      <UserProfileDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
-      {permUser && <PermissionModal user={permUser} onClose={() => setPermUser(null)} />}
+      {sheetUser && (
+        <UserSettingsSheet
+          user={sheetUser}
+          roles={roles}
+          canEditPerms={canEditPerms}
+          onClose={() => setSettingsUser(null)}
+          onToast={showToast}
+          onStatusChange={(value) => updateUser(sheetUser.id, sheetUser._id, 'status', value)}
+          onRoleApplied={() => { /* store already updated */ }}
+        />
+      )}
 
       {reassignData && (
         <ReassignSourcesModal
@@ -258,26 +237,32 @@ export default function UserManagement() {
   );
 }
 
-function UserRow({ user, roles, isSaving, canEditPerms, onUpdate, onOpenProfile, onOpenPermissions }) {
+function UserRow({ user, roleLabel, languages, isSaving, selected, onOpen }) {
   const [hovered, setHovered] = useState(false);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
-  const color       = roleColor(user.role_id);
-
-  const selectStyle = {
-    padding: '5px 8px', borderRadius: 6, border: `1px solid var(--color-border)`,
-    background: palette.backgroundLight.hex, fontSize: 12.5, color: palette.backgroundDark.hex,
-    cursor: 'pointer', outline: 'none', fontFamily: 'inherit', opacity: isSaving ? 0.5 : 1,
-  };
+  const color = roleColor(user.role_id);
+  const shownLangs = languages.slice(0, 3);
+  const extra = languages.length - shownLangs.length;
 
   return (
     <tr
+      onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.025) : 'transparent', transition: 'background 0.1s' }}
+      style={{
+        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
+        background: selected
+          ? hexToRgba(palette.primaryMagenta.hex, 0.06)
+          : hovered
+            ? hexToRgba(palette.primaryDeepPlum.hex, 0.03)
+            : 'transparent',
+        transition: 'background 0.1s',
+        cursor: 'pointer',
+      }}
     >
-      <td style={{ padding: '11px 14px' }}>
+      <td style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: hexToRgba(color, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: hexToRgba(color, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color }}>
             {initials(user.first_name, user.last_name)}
           </div>
           <div>
@@ -287,40 +272,70 @@ function UserRow({ user, roles, isSaving, canEditPerms, onUpdate, onOpenProfile,
         </div>
       </td>
 
-      <td style={{ padding: '11px 14px' }}>
-        <select value={user.role_id || ''} onChange={(e) => onUpdate('role_id', e.target.value)} disabled={isSaving || !roles.length} style={selectStyle}>
-          {!user.role_id && <option value="">— select role —</option>}
-          {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-        </select>
+      <td style={{ padding: '12px 14px' }}>
+        <span style={{
+          fontSize: 12, fontWeight: 650, padding: '4px 9px', borderRadius: 6,
+          background: hexToRgba(color, 0.1), color,
+        }}>
+          {roleLabel}
+        </span>
       </td>
 
-      <td style={{ padding: '11px 14px' }}>
-        <select value={user.status || 'Active'} onChange={(e) => onUpdate('status', e.target.value)} disabled={isSaving} style={{ ...selectStyle, background: statusStyle.bg, color: statusStyle.text, border: 'none', fontWeight: 650 }}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+      <td style={{ padding: '12px 14px' }}>
+        <span style={{
+          fontSize: 12, fontWeight: 650, padding: '4px 9px', borderRadius: 6,
+          background: statusStyle.bg, color: statusStyle.text,
+        }}>
+          {user.status || 'Active'}
+        </span>
       </td>
 
-      <td style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+      <td style={{ padding: '12px 14px', maxWidth: 220 }}>
+        {languages.length === 0 ? (
+          <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>—</span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {shownLangs.map((name) => (
+              <span key={name} style={{
+                fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 12,
+                background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex,
+              }}>
+                {name}
+              </span>
+            ))}
+            {extra > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 650, padding: '3px 8px', color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+                +{extra}
+              </span>
+            )}
+          </div>
+        )}
+      </td>
+
+      <td style={{ padding: '12px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>
         {timeAgo(user.last_login_at)}
         {isSaving && <span style={{ marginLeft: 8, color: palette.accentBlue.hex }}>Saving…</span>}
       </td>
 
-      <td style={{ padding: '11px 14px' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {canEditPerms && (
-            <button
-              onClick={onOpenPermissions}
-              style={{ padding: '5px 12px', borderRadius: 6, background: hexToRgba(palette.primaryMagenta.hex, 0.1), border: 'none', fontSize: 12, fontWeight: 650, color: palette.primaryMagenta.hex, cursor: 'pointer' }}
-            >
-              Permissions
-            </button>
-          )}
-          <button
-            onClick={onOpenProfile}
-            style={{ padding: '5px 12px', borderRadius: 6, background: hexToRgba(palette.primaryDeepPlum.hex, 0.07), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(palette.primaryDeepPlum.hex, 0.8), cursor: 'pointer' }}
-          >
-            Profile
-          </button>
+      <td style={{ padding: '12px 14px', width: 44 }}>
+        <div
+          aria-label={`Open settings for ${user.first_name} ${user.last_name}`}
+          title="User settings"
+          style={{
+            width: 30, height: 30, borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: hovered ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent',
+            color: hovered ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.3),
+            transition: 'background 0.12s, color 0.12s',
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
+              stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+            />
+          </svg>
         </div>
       </td>
     </tr>
@@ -341,32 +356,39 @@ function ReassignSourcesModal({ sources, marketers, onClose, onReassign }) {
   }
 
   return (
-    <div onClick={(e) => e.target === e.currentTarget && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--color-border)' }}>
-          <p style={{ fontSize: 15, fontWeight: 700, color: palette.accentOrange.hex }}>Reassign Referral Sources</p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginTop: 4 }}>
-            This marketer has {sources.length} referral source{sources.length !== 1 ? 's' : ''}. Reassign them or leave as unassigned.
-          </p>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px' }}>
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.55), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+    >
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 480, padding: 22, boxShadow: `0 8px 40px ${hexToRgba(palette.backgroundDark.hex, 0.25)}` }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 6 }}>Reassign referral sources</h3>
+        <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 16, lineHeight: 1.45 }}>
+          This marketer has {sources.length} source{sources.length === 1 ? '' : 's'}. Reassign before suspending.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18, maxHeight: 280, overflowY: 'auto' }}>
           {sources.map((src) => (
-            <div key={src.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex }}>{src.name}</p>
-                {src.type && <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{src.type}</p>}
-              </div>
-              <select value={assignments[src.id] || ''} onChange={(e) => setAssignments((p) => ({ ...p, [src.id]: e.target.value }))}
-                style={{ padding: '6px 10px', borderRadius: 7, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, color: palette.backgroundDark.hex, cursor: 'pointer', minWidth: 160 }}>
-                <option value="">Leave unassigned</option>
-                {marketers.map((m) => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
+            <div key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{src.name || src.id}</span>
+              <select
+                value={assignments[src.id] || ''}
+                onChange={(e) => setAssignments((prev) => ({ ...prev, [src.id]: e.target.value }))}
+                style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 12.5, minWidth: 160 }}
+              >
+                <option value="">— unassigned —</option>
+                {marketers.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                ))}
               </select>
             </div>
           ))}
         </div>
-        <div style={{ padding: '14px 22px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}>Skip for now</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 22px', borderRadius: 8, background: palette.primaryDeepPlum.hex, border: 'none', fontSize: 13, fontWeight: 650, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>{saving ? 'Saving…' : 'Save Assignments'}</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Skip
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex, fontSize: 13, fontWeight: 650, cursor: 'pointer' }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </div>
     </div>

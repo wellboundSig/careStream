@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useCareStore, mergeEntities, removeEntity } from '../../store/careStore.js';
+import { useCareStore, mergeEntities, removeEntity, updateEntity } from '../../store/careStore.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import {
   PERMISSION_CATALOG,
@@ -11,6 +11,7 @@ import {
   updatePermissionPreset,
   deletePermissionPreset,
 } from '../../api/permissionPresets.js';
+import { updateRole } from '../../api/roles.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const ALL_KEYS = Object.values(PERMISSION_KEYS);
@@ -106,6 +107,12 @@ export default function Permissions() {
           </button>
         </div>
 
+        <RoleDefaultsPanel onToast={showToast} />
+
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 12, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          Preset library
+        </h2>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {presets.map((preset) => {
             let permCount = 0;
@@ -168,6 +175,111 @@ export default function Permissions() {
         </div>
       )}
     </>
+  );
+}
+
+function firstId(v) {
+  if (Array.isArray(v)) return v[0] || '';
+  return v || '';
+}
+
+/** Link each Role to an optional default PermissionPreset (or leave name-only). */
+function RoleDefaultsPanel({ onToast }) {
+  const storeRoles = useCareStore((s) => s.roles);
+  const storePresets = useCareStore((s) => s.permissionPresets);
+  const [savingId, setSavingId] = useState(null);
+
+  const roles = useMemo(
+    () => Object.values(storeRoles || {}).sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [storeRoles],
+  );
+  const presets = useMemo(
+    () => Object.values(storePresets || {}).sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [storePresets],
+  );
+
+  async function setDefault(role, presetId) {
+    if (!role?._id) return;
+    setSavingId(role.id);
+    const prev = firstId(role.default_preset_id);
+    updateEntity('roles', role._id, { default_preset_id: presetId || '' });
+    try {
+      await updateRole(role._id, { default_preset_id: presetId || '' });
+      onToast?.(
+        presetId
+          ? `“${role.name}” default → ${presets.find((p) => p.id === presetId)?.name || presetId}`
+          : `“${role.name}” is now name-only (no default permissions)`,
+      );
+    } catch (err) {
+      updateEntity('roles', role._id, { default_preset_id: prev });
+      onToast?.(`Failed: ${err.message}`, 'error');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <div style={{
+      marginBottom: 28, padding: '18px 20px', borderRadius: 12,
+      background: palette.backgroundLight.hex, border: '1px solid var(--color-border)',
+      boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}`,
+    }}>
+      <div style={{ marginBottom: 14 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+          Role defaults
+        </h2>
+        <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, maxWidth: 640 }}>
+          Choose the default permission preset for each role — or leave blank for a name-only role.
+          When you assign a role in User Management, you&apos;ll be asked whether to apply this default or keep the user&apos;s current permissions.
+        </p>
+      </div>
+
+      {roles.length === 0 ? (
+        <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>No roles loaded yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {roles.map((role) => {
+            const current = firstId(role.default_preset_id);
+            return (
+              <div
+                key={role._id || role.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                  padding: '10px 12px', borderRadius: 8,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.025),
+                }}
+              >
+                <div style={{ minWidth: 160, flex: '1 1 160px' }}>
+                  <p style={{ fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{role.name}</p>
+                  {role.description && (
+                    <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 2 }}>{role.description}</p>
+                  )}
+                </div>
+                <select
+                  value={current}
+                  disabled={savingId === role.id}
+                  onChange={(e) => setDefault(role, e.target.value)}
+                  style={{
+                    minWidth: 220, padding: '7px 10px', borderRadius: 7,
+                    border: '1px solid var(--color-border)', background: palette.backgroundLight.hex,
+                    fontSize: 12.5, color: palette.backgroundDark.hex, cursor: 'pointer', fontFamily: 'inherit',
+                    opacity: savingId === role.id ? 0.5 : 1,
+                  }}
+                >
+                  <option value="">— name only (no default) —</option>
+                  {presets.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {savingId === role.id && (
+                  <span style={{ fontSize: 11.5, color: palette.accentBlue.hex }}>Saving…</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

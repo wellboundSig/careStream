@@ -28,6 +28,9 @@ import ConflictCategories from './pages/admin/ConflictCategories.jsx';
 import DeveloperTools from './pages/developer/DeveloperTools.jsx';
 import DepartmentManagement from './pages/admin/DepartmentManagement.jsx';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage.jsx';
+import InboundSubmissions from './pages/inbound/InboundSubmissions.jsx';
+import InboundSubmissionDetail from './pages/inbound/InboundSubmissionDetail.jsx';
+import InboundConvertWorkspace from './pages/inbound/InboundConvertWorkspace.jsx';
 import SignInPage from './pages/auth/SignIn.jsx';
 import Training from './pages/Training.jsx';
 import NotFound from './pages/NotFound.jsx';
@@ -83,6 +86,9 @@ export default function App() {
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 
         <Route path="tasks" element={<Tasks />} />
+        <Route path="inbound-submissions" element={<InboundSubmissions />} />
+        <Route path="inbound-submissions/:id/convert" element={<InboundConvertWorkspace />} />
+        <Route path="inbound-submissions/:id" element={<InboundSubmissionDetail />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="reports" element={<Reports />} />
         <Route path="directory/marketers" element={<Marketers />} />
