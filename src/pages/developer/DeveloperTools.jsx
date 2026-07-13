@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import airtable from '../../api/airtable.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import IssueReportsPanel from '../../components/developer/IssueReportsPanel.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import registry from '../../../db/registry.json';
 
@@ -52,6 +54,21 @@ function parseDraft(draft, fieldDef) {
 
 export default function DeveloperTools() {
   const { can } = usePermissions();
+  const { appUser } = useCurrentAppUser();
+  const isSupportStaff = !!(
+    appUser?.is_support_staff === true
+    || appUser?.is_support_staff === 'true'
+    || appUser?.is_support_staff === 'TRUE'
+    || appUser?.is_support_staff === 1
+  );
+  const canUseGrid = can(PERMISSION_KEYS.DEVELOPER_TOOLS) || can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
+
+  const [view, setView] = useState(() => (isSupportStaff ? 'reports' : 'grid'));
+
+  useEffect(() => {
+    if (isSupportStaff && !canUseGrid) setView('reports');
+  }, [isSupportStaff, canUseGrid]);
+
   const [unlocked, setUnlocked] = useState(() => {
     try { return sessionStorage.getItem(UNLOCK_KEY) === '1'; } catch { return false; }
   });
@@ -136,14 +153,15 @@ export default function DeveloperTools() {
   }
 
   // ── Gates ──────────────────────────────────────────────────────────────────
-  // Legacy admin.data_tools also grants access so existing admin permission
-  // records (snapshotted before developer.tools existed) keep working.
-  if (!can(PERMISSION_KEYS.DEVELOPER_TOOLS) && !can(PERMISSION_KEYS.ADMIN_DATA_TOOLS)) {
+  // Support staff can open this page for Issue Reports even without the
+  // developer-tools permission. The raw database grid still requires both
+  // permission and the session password.
+  if (!canUseGrid && !isSupportStaff) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12, padding: 48 }}>
         <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex }}>Access Restricted</p>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5), maxWidth: 340, textAlign: 'center' }}>
-          You need the “Developer Tools” permission to access the raw database grid.
+          You need the “Developer Tools” permission or support-staff access to open this page.
         </p>
       </div>
     );
@@ -160,49 +178,102 @@ export default function DeveloperTools() {
     }
   }
 
-  if (!unlocked) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 48 }}>
-        <div style={{
-          background: '#fff', border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-          borderRadius: 14, padding: '32px 36px', maxWidth: 380, width: '100%',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 14,
-        }}>
-          <div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>Developer Tools</p>
-            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '6px 0 0', lineHeight: 1.5 }}>
-              This is direct, unguarded access to the live database. Enter the
-              developer password to continue — edits here bypass all app rules.
-            </p>
-          </div>
-          <input
-            type="password"
-            autoFocus
-            value={passwordDraft}
-            placeholder="Developer password"
-            onChange={(e) => { setPasswordDraft(e.target.value); setPasswordError(false); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') tryUnlock(); }}
-            style={{
-              fontSize: 13.5, padding: '10px 12px', borderRadius: 8,
-              border: `1.5px solid ${passwordError ? '#dc2626' : hexToRgba(palette.backgroundDark.hex, 0.2)}`,
-              outline: 'none',
-            }}
-          />
-          {passwordError && (
-            <p style={{ fontSize: 12, color: '#dc2626', margin: '-6px 0 0' }}>Incorrect password.</p>
-          )}
+  const showReports = isSupportStaff && (view === 'reports' || !canUseGrid);
+  const showGridGate = canUseGrid && view === 'grid' && !unlocked;
+  const showGrid = canUseGrid && view === 'grid' && unlocked;
+
+  // Tab chrome when the user can see both surfaces
+  const tabBar = (isSupportStaff && canUseGrid) ? (
+    <div style={{
+      display: 'flex', gap: 4, padding: '10px 14px 0',
+      borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+      background: palette.backgroundLight.hex, flexShrink: 0,
+    }}>
+      {[
+        { id: 'reports', label: 'Issue Reports' },
+        { id: 'grid', label: 'Database Grid' },
+      ].map((t) => {
+        const active = view === t.id;
+        return (
           <button
-            onClick={tryUnlock}
+            key={t.id}
+            type="button"
+            onClick={() => setView(t.id)}
             style={{
-              fontSize: 13.5, fontWeight: 650, padding: '10px 12px', borderRadius: 8,
-              border: 'none', background: palette.backgroundDark.hex, color: '#fff', cursor: 'pointer',
+              padding: '9px 14px', border: 'none', cursor: 'pointer',
+              borderBottom: `2px solid ${active ? palette.primaryMagenta.hex : 'transparent'}`,
+              background: 'none',
+              fontSize: 12.5, fontWeight: active ? 650 : 450,
+              color: active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
             }}
           >
-            Unlock
+            {t.label}
           </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  if (showReports) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: palette.backgroundLight.hex }}>
+        {tabBar}
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <IssueReportsPanel />
         </div>
       </div>
     );
+  }
+
+  if (showGridGate) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {tabBar}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 48 }}>
+          <div style={{
+            background: '#fff', border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+            borderRadius: 14, padding: '32px 36px', maxWidth: 380, width: '100%',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 14,
+          }}>
+            <div>
+              <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>Developer Tools</p>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '6px 0 0', lineHeight: 1.5 }}>
+                This is direct, unguarded access to the live database.
+              </p>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              value={passwordDraft}
+              placeholder="Developer password"
+              onChange={(e) => { setPasswordDraft(e.target.value); setPasswordError(false); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') tryUnlock(); }}
+              style={{
+                fontSize: 13.5, padding: '10px 12px', borderRadius: 8,
+                border: `1.5px solid ${passwordError ? '#dc2626' : hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+                outline: 'none',
+              }}
+            />
+            {passwordError && (
+              <p style={{ fontSize: 12, color: '#dc2626', margin: '-6px 0 0' }}>Incorrect password.</p>
+            )}
+            <button
+              onClick={tryUnlock}
+              style={{
+                fontSize: 13.5, fontWeight: 650, padding: '10px 12px', borderRadius: 8,
+                border: 'none', background: palette.backgroundDark.hex, color: '#fff', cursor: 'pointer',
+              }}
+            >
+              Unlock
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!showGrid) {
+    return null;
   }
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -357,7 +428,9 @@ export default function DeveloperTools() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 28px', height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {tabBar}
+      <div style={{ padding: '24px 28px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>Developer Tools</h1>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0' }}>
@@ -633,6 +706,7 @@ export default function DeveloperTools() {
           {toast.msg}
         </div>
       )}
+      </div>
     </div>
   );
 }

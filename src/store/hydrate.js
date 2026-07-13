@@ -46,6 +46,7 @@ const TABLES = [
   { key: 'userPermissions',    table: 'UserPermissions' },
   { key: 'languages',          table: 'Languages' },
   { key: 'userLanguages',      table: 'UserLanguages' },
+  { key: 'issueReports',       table: 'IssueReports' },
 
   // Inbound Submissions
   { key: 'inboundSubmissions',            table: 'InboundSubmissions' },

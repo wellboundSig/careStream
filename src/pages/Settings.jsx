@@ -8,6 +8,7 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
+import ReportIssueSection from '../components/settings/ReportIssueSection.jsx';
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 function Section({ title, description, children }) {
@@ -177,6 +178,9 @@ export default function Settings() {
           Manage your preferences for CareStream
         </p>
       </div>
+
+      {/* ── Report an issue (top) ── */}
+      <ReportIssueSection />
 
       {/* ── Appearance ── */}
       <Section

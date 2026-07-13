@@ -179,9 +179,10 @@ export default function TaskComposer({
     if (!canAssign) return [];
     return Object.values(storeUsers)
       .filter((u) => u.status === 'Active')
+      .filter((u) => u.id !== appUserId) // "Myself" is a dedicated top option
       .filter((u) => (canAssignTo ? canAssignTo(u.id) : true))
       .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || ''));
-  }, [storeUsers, canAssign, canAssignTo]);
+  }, [storeUsers, canAssign, canAssignTo, appUserId]);
 
   const patientResults = useMemo(() => {
     if (patient) return [];
@@ -489,12 +490,22 @@ export default function TaskComposer({
             onChange={(e) => setAssigneeId(e.target.value)}
             style={inputStyle}
           >
-            <option value="">— Select team member —</option>
-            {assignableUsers.map((u) => (
-              <option key={u._id || u.id} value={u.id}>
-                {u.first_name} {u.last_name}{u.id === appUserId ? ' (you)' : ''}
+            {appUserId ? (
+              <option value={appUserId}>
+                Myself{appUser ? ` — ${appUser.first_name || ''} ${appUser.last_name || ''}`.trimEnd() : ''}
               </option>
-            ))}
+            ) : (
+              <option value="">— Select team member —</option>
+            )}
+            {assignableUsers.length > 0 && (
+              <optgroup label="Team">
+                {assignableUsers.map((u) => (
+                  <option key={u._id || u.id} value={u.id}>
+                    {u.first_name} {u.last_name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         ) : (
           <div

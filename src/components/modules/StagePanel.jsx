@@ -19,6 +19,7 @@ import OpwddWorkspace from './shared/OpwddWorkspace.jsx';
 import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
 import { DISCARD_REASONS } from '../../data/stageConfig.js';
+import { languageName, languageByCode } from '../../data/languages.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
@@ -275,31 +276,164 @@ function DiscardModal({ referral, onConfirm, onCancel }) {
 function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   const { canAssignTo } = usePermissions();
   const storeUsers = useCareStore((s) => s.users);
-  const users = Object.values(storeUsers)
-    .filter((u) => u.status === 'Active' || !u.status)
-    .filter((u) => canAssignTo(u.id));
+  const storePatients = useCareStore((s) => s.patients);
+  const storeUserLanguages = useCareStore((s) => s.userLanguages);
+  const storeLanguages = useCareStore((s) => s.languages);
+
+  const patient = useMemo(() => {
+    const pid = referral?.patient_id;
+    if (!pid) return null;
+    return Object.values(storePatients || {}).find((p) => p.id === pid) || null;
+  }, [referral?.patient_id, storePatients]);
+
+  const preferredCode = patient?.preferred_language || '';
+  const preferredLang = preferredCode ? (languageByCode(preferredCode) || { code: preferredCode, name: languageName(preferredCode) || preferredCode }) : null;
+  // Soft language match is most useful when a preferred language is set.
+  // English is the default — still show the hint, but keep filter optional either way.
+  const hasPreferredLanguage = !!preferredLang?.name;
+
+  const speakersOfPreferred = useMemo(() => {
+    if (!preferredLang?.code) return new Set();
+    const matchedLangIds = new Set(
+      Object.values(storeLanguages || {})
+        .filter((l) => l.code === preferredLang.code)
+        .map((l) => l.id),
+    );
+    if (preferredLang.id) matchedLangIds.add(preferredLang.id);
+    // Fallback when languages table isn't hydrated yet
+    if (matchedLangIds.size === 0) matchedLangIds.add(`lang_${preferredLang.code}`);
+
+    const set = new Set();
+    Object.values(storeUserLanguages || {}).forEach((ul) => {
+      if (matchedLangIds.has(ul.language_id)) set.add(ul.user_id);
+    });
+    return set;
+  }, [preferredLang, storeUserLanguages, storeLanguages]);
+
+  const allUsers = useMemo(() => (
+    Object.values(storeUsers)
+      .filter((u) => u.status === 'Active' || !u.status)
+      .filter((u) => canAssignTo(u.id))
+      .sort((a, b) => {
+        // Speakers of the preferred language float to the top (informational)
+        const aSpeak = speakersOfPreferred.has(a.id) ? 0 : 1;
+        const bSpeak = speakersOfPreferred.has(b.id) ? 0 : 1;
+        if (aSpeak !== bSpeak) return aSpeak - bSpeak;
+        return `${a.last_name || ''} ${a.first_name || ''}`.localeCompare(`${b.last_name || ''} ${b.first_name || ''}`);
+      })
+  ), [storeUsers, canAssignTo, speakersOfPreferred]);
+
   const [ownerId, setOwnerId] = useState('');
+  const [onlySpeakers, setOnlySpeakers] = useState(false);
   const canSubmit = !!ownerId;
+
+  const visibleUsers = useMemo(() => {
+    if (!onlySpeakers || !hasPreferredLanguage) return allUsers;
+    return allUsers.filter((u) => speakersOfPreferred.has(u.id));
+  }, [allUsers, onlySpeakers, hasPreferredLanguage, speakersOfPreferred]);
+
+  const langLabel = preferredLang?.name || '';
 
   return (
     <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)` }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 460, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'min(560px, 90vh)' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex }}>Move to Intake</p>
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
             Assign an intake owner for {referral.patientName || referral.patient_id}.
           </p>
         </div>
-        <div style={{ padding: '18px 22px' }}>
-          <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Assign Owner *</p>
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} data-testid="owner-select" style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${ownerId ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex }}>
-            <option value="">Select staff member…</option>
-            {users.map((u) => (
-              <option key={u.id || u._id} value={u.id}>{u.first_name} {u.last_name}</option>
-            ))}
-          </select>
+
+        <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
+          {hasPreferredLanguage && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 9,
+              background: hexToRgba(palette.accentBlue.hex, 0.08),
+              border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.18)}`,
+            }}>
+              <p style={{ fontSize: 12.5, color: palette.backgroundDark.hex, lineHeight: 1.45, margin: 0 }}>
+                The primary language of this referral is{' '}
+                <strong style={{ fontWeight: 700 }}>{langLabel}</strong>.
+              </p>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, cursor: 'pointer',
+                fontSize: 12, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.65),
+              }}>
+                <input
+                  type="checkbox"
+                  checked={onlySpeakers}
+                  onChange={(e) => setOnlySpeakers(e.target.checked)}
+                  style={{ accentColor: palette.accentBlue.hex, width: 14, height: 14, cursor: 'pointer' }}
+                />
+                Only show users who speak {langLabel}
+              </label>
+            </div>
+          )}
+
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 6 }}>
+              Assign Owner *
+            </p>
+            <div
+              data-testid="owner-select"
+              style={{
+                flex: 1, overflowY: 'auto', borderRadius: 8,
+                border: `1px solid ${ownerId ? palette.accentGreen.hex : 'var(--color-border)'}`,
+                minHeight: 160, maxHeight: 260,
+              }}
+            >
+              {visibleUsers.length === 0 ? (
+                <p style={{ padding: 16, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+                  {onlySpeakers
+                    ? `No assignable users marked as speaking ${langLabel}. Uncheck the filter to see everyone.`
+                    : 'No assignable users found.'}
+                </p>
+              ) : visibleUsers.map((u) => {
+                const speaks = hasPreferredLanguage && speakersOfPreferred.has(u.id);
+                const selected = ownerId === u.id;
+                return (
+                  <button
+                    key={u.id || u._id}
+                    type="button"
+                    onClick={() => setOwnerId(u.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      width: '100%', padding: '10px 12px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                      background: selected ? hexToRgba(palette.accentGreen.hex, 0.1) : 'transparent',
+                      borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 13, fontWeight: selected ? 650 : 500,
+                      color: palette.backgroundDark.hex,
+                    }}>
+                      {u.first_name} {u.last_name}
+                    </span>
+                    {speaks && (
+                      <span style={{
+                        flexShrink: 0, fontSize: 10.5, fontWeight: 650,
+                        padding: '2px 8px', borderRadius: 20,
+                        background: hexToRgba(palette.accentBlue.hex, 0.12),
+                        color: palette.accentBlue.hex,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        Speaks {langLabel}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {hasPreferredLanguage && !onlySpeakers && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 6, marginBottom: 0 }}>
+                Assign owner.
+              </p>
+            )}
+          </div>
         </div>
-        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+
+        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => canSubmit && onConfirm(ownerId)} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
             Move to Intake

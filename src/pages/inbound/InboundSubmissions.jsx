@@ -108,7 +108,7 @@ export default function InboundSubmissions() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Inbound Submissions</h1>
           <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-            Emails to referral@inbound.wellboundcarestream.com — convert to leads or referrals
+            Emails to referral@inbound.wellboundcarestream.com
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

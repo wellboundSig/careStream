@@ -44,6 +44,7 @@ export const useCareStore = create((set, get) => ({
   userPermissions: {},
   languages: {},
   userLanguages: {},
+  issueReports: {},
 
   // ── Inbound Submissions ────────────────────────────────────────────────
   inboundSubmissions: {},

@@ -4561,5 +4561,20 @@
       "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
       "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
     }
+  },
+  "IssueReports": {
+    "pgTable": "issue_reports",
+    "fields": {
+      "id": { "column": "id", "pg": "text", "wire": "text" },
+      "user_id": { "column": "user_id", "pg": "text", "wire": "text" },
+      "report_type": { "column": "report_type", "pg": "text", "wire": "text" },
+      "description": { "column": "description", "pg": "text", "wire": "text" },
+      "screenshot_r2_key": { "column": "screenshot_r2_key", "pg": "text", "wire": "text" },
+      "screenshot_file_name": { "column": "screenshot_file_name", "pg": "text", "wire": "text" },
+      "screenshot_content_type": { "column": "screenshot_content_type", "pg": "text", "wire": "text" },
+      "status": { "column": "status", "pg": "text", "wire": "text" },
+      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
+      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+    }
   }
 }

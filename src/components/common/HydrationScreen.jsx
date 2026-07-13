@@ -1,3 +1,4 @@
+import { useUser } from '@clerk/react';
 import { useCareStore } from '../../store/careStore.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -5,6 +6,10 @@ export default function HydrationScreen() {
   const { done, total } = useCareStore((s) => s.hydrationProgress);
   const error = useCareStore((s) => s.hydrationError);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // Clerk resolves before store hydration, so the name is usually ready.
+  const { user, isLoaded } = useUser();
+  const firstName = isLoaded ? (user?.firstName || '').trim() : '';
 
   return (
     <div
@@ -23,6 +28,21 @@ export default function HydrationScreen() {
         alt="CareStream"
         style={{ height: 44, objectFit: 'contain' }}
       />
+
+      {firstName && (
+        <p
+          style={{
+            color: hexToRgba('#ffffff', 0.85),
+            fontSize: 15,
+            fontWeight: 550,
+            letterSpacing: '0.01em',
+            margin: 0,
+            animation: 'hydration-greet 0.6s ease-out both',
+          }}
+        >
+          Hi {firstName}
+        </p>
+      )}
 
       {/* Progress bar */}
       <div
@@ -62,6 +82,10 @@ export default function HydrationScreen() {
         @keyframes hydration-pulse {
           0%, 100% { opacity: 0.45; }
           50% { opacity: 0.7; }
+        }
+        @keyframes hydration-greet {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

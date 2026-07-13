@@ -52,7 +52,7 @@ const NAV_ITEMS = [
       { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: ConflictsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
       { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
-      { label: 'Developer Tools', path: '/developer/tools', icon: DeveloperToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS] },
+      { label: 'Developer Tools', path: '/developer/tools', icon: DeveloperToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS], allowSupportStaff: true },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
   },
@@ -67,6 +67,12 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
   const { prefs, pinPage, unpinPage, MAX_PINS } = usePreferences();
   const { can, hasDivision } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT) || can(PERMISSION_KEYS.ADMIN_PERMISSIONS) || can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
+  const isSupportStaff = !!(
+    appUser?.is_support_staff === true
+    || appUser?.is_support_staff === 'true'
+    || appUser?.is_support_staff === 'TRUE'
+    || appUser?.is_support_staff === 1
+  );
 
   const storeDepts = useCareStore((s) => s.departments);
   const appUserId = appUser?.id;
@@ -95,6 +101,20 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
 
   const sidebarWidth = collapsed ? 60 : 220;
 
+  useEffect(() => {
+    function onKey(e) {
+      if (!(e.shiftKey && (e.key === 'M' || e.key === 'm'))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      const editable = document.activeElement?.isContentEditable;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || editable) return;
+      e.preventDefault();
+      setCollapsed((v) => !v);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <aside
       style={{
@@ -110,46 +130,66 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
         position: 'relative',
       }}
     >
-      <button
-        onClick={() => setCollapsed(!collapsed)}
+      {/* Solid chrome strip — keeps the collapse control out of the scroll layer */}
+      <div
         style={{
-          position: 'absolute',
-          top: 12,
-          right: collapsed ? '50%' : 10,
-          transform: collapsed ? 'translateX(50%)' : 'none',
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          background: hexToRgba(NAV_TEXT, 0.08),
-          border: 'none',
+          flexShrink: 0,
+          height: 40,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          color: hexToRgba(NAV_TEXT, 0.5),
-          cursor: 'pointer',
-          zIndex: 10,
-          flexShrink: 0,
-          transition: 'all 0.2s',
+          justifyContent: collapsed ? 'center' : 'flex-end',
+          padding: collapsed ? 0 : '0 10px',
+          background: palette.primaryDeepPlum.hex,
+          borderBottom: `1px solid ${hexToRgba(NAV_TEXT, 0.06)}`,
+          zIndex: 2,
         }}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
-          style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            background: hexToRgba(NAV_TEXT, 0.08),
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: hexToRgba(NAV_TEXT, 0.55),
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          title={collapsed ? 'Expand sidebar (⇧M)' : 'Collapse sidebar (⇧M)'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.14);
+            e.currentTarget.style.color = hexToRgba(NAV_TEXT, 0.85);
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = hexToRgba(NAV_TEXT, 0.08);
+            e.currentTarget.style.color = hexToRgba(NAV_TEXT, 0.55);
+          }}
         >
-          <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+          >
+            <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
 
       <nav
         style={{
           flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '50px 0 8px',
+          padding: '6px 0 8px',
         }}
       >
         {/* First group (Dashboard + Pipeline) renders before Modules */}
@@ -224,7 +264,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
               (!item.requiresAdmin || isAdmin) &&
               (!item.dir || canViewDirectory(can, item.dir)) &&
               (!item.perm || can(item.perm)) &&
-              (!item.permAny || item.permAny.some((p) => can(p))),
+              (!item.permAny || item.permAny.some((p) => can(p)) || (item.allowSupportStaff && isSupportStaff)),
           );
           if (visibleItems.length === 0) return null;
           return (
