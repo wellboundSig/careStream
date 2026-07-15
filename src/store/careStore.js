@@ -45,6 +45,7 @@ export const useCareStore = create((set, get) => ({
   languages: {},
   userLanguages: {},
   issueReports: {},
+  cocNurseFacilities: {},
 
   // ── Inbound Submissions ────────────────────────────────────────────────
   inboundSubmissions: {},
@@ -142,6 +143,7 @@ const SYNC_KEYS = [
   'marketers', 'users', 'referralSources',
   'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',
   'campaignMarketers', 'permissions', 'permissionPresets', 'userPermissions',
+  'languages', 'userLanguages', 'issueReports', 'cocNurseFacilities',
   'inboundSubmissions', 'inboundSubmissionAttachments', 'inboundSubmissionEvents',
   'networkFacilities',
   'departments', 'departmentScopes', 'activityLog',

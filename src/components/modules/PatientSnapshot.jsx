@@ -80,8 +80,10 @@ export function computeSnapshotFlags(patient, referral, triageData /*, _legacyIn
   const f2f = !!r.f2f_date;
   const f2fDate = r.f2f_date || null;
   const insurance = hasInsuranceDetails(p);
+  const initialEmr = !!r.emr_initial_onboarded_at;
+  const initialEmrDate = r.emr_initial_onboarded_at || null;
 
-  return { demographics, triage, f2f, f2fDate, insurance };
+  return { demographics, triage, f2f, f2fDate, insurance, initialEmr, initialEmrDate };
 }
 
 // Each flag row knows which patient-drawer tab to jump to when clicked. The
@@ -95,6 +97,8 @@ const FLAGS_META = [
   // the Eligibility tab (eligibility verification is a separate workflow,
   // and the readiness dot tracks data capture only).
   { key: 'insurance',    label: 'Insurance Details', tab: 'demographics' },
+  // ALF-only companion milestone (Intake early HCHB chart). Hidden for SN.
+  { key: 'initialEmr',   label: 'Initial EMR',       tab: null, alfOnly: true },
 ];
 
 function StatusDot({ complete }) {
@@ -202,7 +206,7 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
 
       {/* Snapshot flag rows — each is a button that opens the matching tab
           in the patient drawer (when an onOpenTab callback is wired). */}
-      {FLAGS_META.map(({ key, label, tab }) => {
+      {FLAGS_META.filter((m) => !m.alfOnly || referral?.division === 'ALF').map(({ key, label, tab }) => {
         const clickable = !!onOpenTab && !!tab;
         const complete = !!flags[key];
         // The F2F row doubles as a quick read-out of the recorded visit date,
@@ -215,6 +219,11 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
           try {
             secondary = new Date(flags.f2fDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           } catch { /* malformed date → omit */ }
+        }
+        if (key === 'initialEmr' && flags.initialEmrDate) {
+          try {
+            secondary = new Date(flags.initialEmrDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          } catch { /* omit */ }
         }
         return (
           <button

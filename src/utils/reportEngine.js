@@ -6,6 +6,7 @@
  */
 
 import airtable from '../api/airtable.js';
+import { getSignedFileUrl } from './r2Upload.js';
 import * as XLSX from 'xlsx';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
@@ -727,6 +728,180 @@ export async function runSourceAttribution({ dateFrom, dateTo, division }) {
   return { rows: outputRows, columns };
 }
 
+/** First linked-record id from Airtable-style link fields (array or scalar). */
+function firstLink(v) {
+  if (Array.isArray(v) && v.length) return v[0];
+  return v || null;
+}
+
+function formatPersonName(f) {
+  if (!f) return '—';
+  if (f.name) return String(f.name).trim() || '—';
+  return `${f.first_name || ''} ${f.last_name || ''}`.trim() || f.email || '—';
+}
+
+function formatTicketTag(num) {
+  return num != null ? `WB-${String(num).padStart(5, '0')}` : '—';
+}
+
+/** Human-readable duration between two ISO timestamps (or "—" / "Still open"). */
+function formatResolveDuration(createdAt, resolvedAt) {
+  if (!createdAt) return '—';
+  const start = new Date(createdAt).getTime();
+  if (!Number.isFinite(start)) return '—';
+  if (!resolvedAt) return 'Still open';
+  const end = new Date(resolvedAt).getTime();
+  if (!Number.isFinite(end) || end < start) return '—';
+  const mins = Math.floor((end - start) / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h ${mins % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+// Mirrors Support/support/src/lib/schema.js — ID Tech vs in-house ownership.
+const ID_TECH_EMAIL = 'support@idtechsolutions.com';
+
+function isIdTechTeam(team) {
+  return !!team && String(team.primary_email || '').trim().toLowerCase() === ID_TECH_EMAIL;
+}
+
+/**
+ * Effective ID Tech check (same rules as the Support app):
+ *  - native ID Tech category (unless internal_override), OR
+ *  - staff escalated via "Route to ID Tech" (routed_to_idtech_at set).
+ * internal_override always wins (forces in-house handling).
+ */
+function effectiveIsIdTech(team, ticketFields) {
+  if (ticketFields?.internal_override) return false;
+  return isIdTechTeam(team) || !!ticketFields?.routed_to_idtech_at;
+}
+
+/**
+ * Support Tickets — full ticket log from the IT Support app (Tickets table).
+ * Sender, topic, description, attachments, managed-by (ID Tech vs Internal),
+ * time-to-resolve, resolver, notes.
+ */
+export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }) {
+  const filters = [];
+  if (ticketStatus) filters.push({ field: 'status', operator: 'eq', value: ticketStatus });
+  if (dateFrom && dateTo) filters.push({ field: 'created_at', operator: 'between', value: dateFrom, value2: dateTo });
+  else if (dateFrom) filters.push({ field: 'created_at', operator: 'after', value: dateFrom });
+  else if (dateTo)   filters.push({ field: 'created_at', operator: 'before', value: dateTo });
+
+  const formula = buildFormula(filters);
+  const ticketParams = { sort: [{ field: 'created_at', direction: 'desc' }] };
+  if (formula) ticketParams.filterByFormula = formula;
+
+  const [ticketRecs, categoryMap, teamMap, userMap, clinicianMap, attachmentRecs] = await Promise.all([
+    airtable.fetchAll('Tickets', ticketParams),
+    getLookupMap('Categories'),
+    getLookupMap('Teams'),
+    getLookupMap('Users'),
+    getLookupMap('Clinicians'),
+    airtable.fetchAll('Attachments').catch(() => []),
+  ]);
+
+  // Group attachments by ticket record id / primary id
+  const attsByTicket = {};
+  for (const rec of attachmentRecs) {
+    const f = rec.fields || {};
+    const tid = firstLink(f.ticket_id);
+    if (!tid) continue;
+    if (!attsByTicket[tid]) attsByTicket[tid] = [];
+    attsByTicket[tid].push({
+      _id: rec.id,
+      file_name: f.file_name || (f.r2_object_key ? String(f.r2_object_key).split('/').pop() : 'file'),
+      r2_object_key: f.r2_object_key || '',
+    });
+  }
+
+  // Collect unique keys to sign (avoid duplicate /sign calls)
+  const keysToSign = new Set();
+  for (const list of Object.values(attsByTicket)) {
+    for (const a of list) {
+      if (a.r2_object_key) keysToSign.add(a.r2_object_key);
+    }
+  }
+  const signedByKey = {};
+  await Promise.all(
+    [...keysToSign].map(async (key) => {
+      try {
+        const url = await getSignedFileUrl({ r2_key: key });
+        if (url) signedByKey[key] = url;
+      } catch {
+        /* best-effort — export still lists file names */
+      }
+    }),
+  );
+
+  const rows = ticketRecs.map((rec) => {
+    const f = rec.fields || {};
+    const categoryId = firstLink(f.category_id);
+    const category = categoryMap[categoryId] || {};
+    const team = teamMap[firstLink(category.team_id)] || {};
+    const managedBy = effectiveIsIdTech(team, f) ? 'Managed by ID Tech' : 'Managed Internally';
+    const isField = (f.source || 'clerk') === 'field';
+    const sender = isField
+      ? formatPersonName(clinicianMap[firstLink(f.clinician_id)])
+      : formatPersonName(userMap[firstLink(f.requester_id)]);
+    const resolver = formatPersonName(userMap[firstLink(f.resolved_by_id)]);
+
+    const rawAtts = [
+      ...(attsByTicket[rec.id] || []),
+      ...(f.id && f.id !== rec.id ? (attsByTicket[f.id] || []) : []),
+    ];
+    const seen = new Set();
+    const atts = rawAtts.filter((a) => {
+      if (seen.has(a._id)) return false;
+      seen.add(a._id);
+      return true;
+    });
+
+    const attachmentLinks = atts.length
+      ? atts.map((a) => {
+          const url = a.r2_object_key ? signedByKey[a.r2_object_key] : '';
+          return url ? `${a.file_name}: ${url}` : a.file_name;
+        }).join('\n')
+      : '—';
+
+    return {
+      ticket_number: formatTicketTag(f.ticket_number),
+      status: f.status || '—',
+      managed_by: managedBy,
+      sender,
+      topic: category.name || '—',
+      details: f.details || '',
+      attachments: attachmentLinks,
+      created_at: f.created_at || '',
+      resolved_at: f.resolved_at || '',
+      time_to_resolve: formatResolveDuration(f.created_at, f.resolved_at),
+      resolved_by: resolver,
+      resolution_note: f.resolution_note || '',
+      source: isField ? 'Field' : 'Clerk',
+    };
+  });
+
+  const columns = [
+    { key: 'ticket_number',    label: 'Ticket #' },
+    { key: 'status',           label: 'Status' },
+    { key: 'managed_by',       label: 'Managed By' },
+    { key: 'sender',           label: 'Sender' },
+    { key: 'topic',            label: 'Topic' },
+    { key: 'details',          label: 'Description' },
+    { key: 'attachments',      label: 'Attachments' },
+    { key: 'created_at',       label: 'Created' },
+    { key: 'resolved_at',      label: 'Resolved' },
+    { key: 'time_to_resolve',  label: 'Time to Resolve' },
+    { key: 'resolved_by',      label: 'Resolved By' },
+    { key: 'resolution_note',  label: 'Resolution Notes' },
+    { key: 'source',           label: 'Source' },
+  ];
+
+  return { rows, columns };
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
@@ -1012,5 +1187,12 @@ export const PRESETS = [
     description: 'Total referrals, SOC rate, NTUC rate. Track which channels convert.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runSourceAttribution(params); },
+  },
+  {
+    id: 'support_tickets',
+    title: 'Support Tickets',
+    description: 'IT support tickets with sender, topic, ID Tech vs internal ownership, attachments, time to resolve, and resolution details.',
+    paramControls: ['dateRange', 'ticketStatus'],
+    async run(params) { return runSupportTicketsReport(params); },
   },
 ];

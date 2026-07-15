@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getReferrals } from '../../api/referrals.js';
 import { createUserPermission, updateUserPermission } from '../../api/userPermissions.js';
 import { syncUserLanguages } from '../../api/userLanguages.js';
+import { syncCocNurseFacilities } from '../../api/cocNurseFacilities.js';
 import airtable from '../../api/airtable.js';
 import { useCareStore, mergeEntities, removeEntity, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
@@ -24,6 +25,7 @@ const SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'access', label: 'Access' },
   { id: 'languages', label: 'Languages' },
+  { id: 'coc', label: 'COC Facilities' },
   { id: 'permissions', label: 'Permissions' },
   { id: 'assignment', label: 'Assignment' },
 ];
@@ -85,6 +87,8 @@ export default function UserSettingsSheet({
   const storeUserLanguages = useCareStore((s) => s.userLanguages);
   const storePresets = useCareStore((s) => s.permissionPresets);
   const storeLanguages = useCareStore((s) => s.languages);
+  const storeCocNurseFacs = useCareStore((s) => s.cocNurseFacilities);
+  const storeNetFacs = useCareStore((s) => s.networkFacilities);
 
   const [section, setSection] = useState('overview');
   const [roleChange, setRoleChange] = useState(null);
@@ -147,6 +151,18 @@ export default function UserSettingsSheet({
   const userLangRecords = useMemo(
     () => Object.values(storeUserLanguages || {}).filter((r) => r.user_id === user?.id),
     [storeUserLanguages, user?.id],
+  );
+
+  const userCocRecords = useMemo(
+    () => Object.values(storeCocNurseFacs || {}).filter((r) => r.user_id === user?.id),
+    [storeCocNurseFacs, user?.id],
+  );
+
+  const networkFacilityList = useMemo(
+    () => Object.values(storeNetFacs || {})
+      .filter((f) => f.id && f.name)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    [storeNetFacs],
   );
 
   const existingPerm = useMemo(() => {
@@ -303,6 +319,10 @@ export default function UserSettingsSheet({
               ntuc={ntuc}
               resolvePatient={resolvePatient}
               languageNames={userLangRecords.map((r) => languageById(r.language_id)?.name || r.language_id).filter(Boolean)}
+              cocFacilityNames={userCocRecords.map((r) => {
+                const fac = networkFacilityList.find((f) => f.id === r.facility_id);
+                return fac?.name || r.facility_id;
+              }).filter(Boolean)}
             />
           )}
           {section === 'access' && (
@@ -322,6 +342,14 @@ export default function UserSettingsSheet({
               user={user}
               catalog={languageCatalog}
               existing={userLangRecords}
+              onToast={onToast}
+            />
+          )}
+          {section === 'coc' && (
+            <CocFacilitiesSection
+              user={user}
+              facilities={networkFacilityList}
+              existing={userCocRecords}
               onToast={onToast}
             />
           )}
@@ -374,7 +402,7 @@ function SectionTitle({ title, hint }) {
   );
 }
 
-function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, resolvePatient, languageNames }) {
+function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, resolvePatient, languageNames, cocFacilityNames = [] }) {
   return (
     <div>
       <SectionTitle title="Overview" hint="At-a-glance account info. Edit details in the other tabs." />
@@ -410,6 +438,24 @@ function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, reso
               <span key={n} style={{
                 fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20,
                 background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex,
+              }}>{n}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <p style={{ fontSize: 11, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.4), textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+          COC facilities
+        </p>
+        {cocFacilityNames.length === 0 ? (
+          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>None — assign in COC Facilities</p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {cocFacilityNames.map((n) => (
+              <span key={n} style={{
+                fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20,
+                background: hexToRgba(palette.primaryDeepPlum.hex, 0.1), color: palette.primaryDeepPlum.hex,
               }}>{n}</span>
             ))}
           </div>
@@ -586,6 +632,149 @@ function LanguagesSection({ user, catalog, existing, onToast }) {
           }}
         >
           {saving ? 'Saving…' : 'Save languages'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CocFacilitiesSection({ user, facilities, existing, onToast }) {
+  const [selected, setSelected] = useState(() => new Set(existing.map((r) => r.facility_id)));
+  const [query, setQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const synced = useRef(null);
+
+  useEffect(() => {
+    if (synced.current === user.id) return;
+    synced.current = user.id;
+    setSelected(new Set(existing.map((r) => r.facility_id)));
+    setQuery('');
+  }, [user.id, existing]);
+
+  const initial = useMemo(() => new Set(existing.map((r) => r.facility_id)), [existing]);
+  const dirty = (() => {
+    if (selected.size !== initial.size) return true;
+    for (const id of selected) if (!initial.has(id)) return true;
+    return false;
+  })();
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return facilities;
+    return facilities.filter((f) => String(f.name || '').toLowerCase().includes(q)
+      || String(f.id || '').toLowerCase().includes(q));
+  }, [facilities, query]);
+
+  function toggle(facId) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(facId)) next.delete(facId); else next.add(facId);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const { created, removed } = await syncCocNurseFacilities(user.id, [...selected], existing);
+      removed.forEach((id) => removeEntity('cocNurseFacilities', id));
+      if (created.length) {
+        const map = {};
+        created.forEach((r) => { map[r._id] = r; });
+        mergeEntities('cocNurseFacilities', map);
+      }
+      onToast?.('COC facilities saved');
+      synced.current = null;
+    } catch (err) {
+      onToast?.(`Failed: ${err.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <SectionTitle
+        title="COC Facilities"
+        hint="Facilities where this person is the Continuity of Care (COC) nurse. On Lead Entry, choosing one of these facilities will auto-assign them (or prompt to pick if several nurses share the facility)."
+      />
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search facilities…"
+        style={{
+          width: '100%', boxSizing: 'border-box', marginBottom: 12,
+          padding: '8px 11px', borderRadius: 8, border: '1px solid var(--color-border)',
+          fontSize: 13, fontFamily: 'inherit', outline: 'none',
+          background: hexToRgba(palette.backgroundDark.hex, 0.03),
+          color: palette.backgroundDark.hex,
+        }}
+      />
+      {facilities.length === 0 ? (
+        <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', marginBottom: 16 }}>
+          No network facilities loaded.
+        </p>
+      ) : (
+        <div style={{
+          maxHeight: 320, overflowY: 'auto', marginBottom: 16,
+          border: '1px solid var(--color-border)', borderRadius: 10,
+        }}>
+          {filtered.length === 0 ? (
+            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: 14, margin: 0 }}>
+              No matches for “{query}”
+            </p>
+          ) : filtered.map((fac, idx) => {
+            const on = selected.has(fac.id);
+            return (
+              <button
+                key={fac.id}
+                type="button"
+                onClick={() => toggle(fac.id)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 12px', textAlign: 'left', cursor: 'pointer',
+                  border: 'none',
+                  borderBottom: idx === filtered.length - 1 ? 'none' : '1px solid var(--color-border)',
+                  background: on ? hexToRgba(palette.primaryMagenta.hex, 0.06) : 'transparent',
+                  color: palette.backgroundDark.hex, fontFamily: 'inherit',
+                }}
+              >
+                <span style={{
+                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                  border: on ? `1.5px solid ${palette.primaryMagenta.hex}` : '1.5px solid var(--color-border)',
+                  background: on ? palette.primaryMagenta.hex : 'transparent',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {on && (
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6.5l2.5 2.5L10 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: on ? 650 : 500 }}>{fac.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+          {selected.size === 0 ? 'No facilities assigned' : `${selected.size} ${selected.size === 1 ? 'facility' : 'facilities'}`}
+          {dirty && <span style={{ color: palette.primaryMagenta.hex, fontWeight: 600, marginLeft: 8 }}>Unsaved</span>}
+        </p>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !dirty}
+          style={{
+            padding: '8px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 650,
+            background: (saving || !dirty) ? hexToRgba(palette.primaryMagenta.hex, 0.3) : palette.primaryMagenta.hex,
+            color: palette.backgroundLight.hex,
+            cursor: (saving || !dirty) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {saving ? 'Saving…' : 'Save COC facilities'}
         </button>
       </div>
     </div>

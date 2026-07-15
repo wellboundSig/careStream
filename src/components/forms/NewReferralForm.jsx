@@ -519,6 +519,8 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
   const storeRoles          = useCareStore((s) => s.roles);
   const storeFacilities     = useCareStore((s) => s.facilities);
   const storeMarketerFacs   = useCareStore((s) => s.marketerFacilities);
+  const storeCocNurseFacs   = useCareStore((s) => s.cocNurseFacilities);
+  const storeUsers          = useCareStore((s) => s.users);
   const storeEntities       = useCareStore((s) => s.entities);
   const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
   const sources   = useMemo(() => Object.values(storeSources),   [storeSources]);
@@ -577,6 +579,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
     address_zip: '',
     division: '',
     facility_id: '',
+    coc_nurse_id: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
     services_requested: [],
@@ -595,6 +598,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
       const next = { ...prev, [key]: value };
       if (key === 'division') {
         if (value !== 'ALF') next.facility_id = '';
+        if (value !== 'ALF') next.coc_nurse_id = '';
         if (value !== 'Special Needs') {
           next.sn_age_group = '';
           next.county = '';
@@ -646,6 +650,20 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
           next.marketer_id = prev.marketer_id;
         }
 
+        // COC nurse: 1 → auto-assign, many → leave for picker (clear stale),
+        // none → clear and continue normally.
+        const cocLinks = Object.values(storeCocNurseFacs || {}).filter(
+          (r) => r.facility_id === value
+        );
+        if (cocLinks.length === 1) {
+          next.coc_nurse_id = cocLinks[0].user_id;
+        } else if (cocLinks.length === 0) {
+          next.coc_nurse_id = '';
+        } else {
+          const stillValid = cocLinks.some((l) => l.user_id === prev.coc_nurse_id);
+          next.coc_nurse_id = stillValid ? prev.coc_nurse_id : '';
+        }
+
         // Auto-derive entity_id from the selected facility. NetworkFacilities
         // has an `entity_id` column linking to Entities — use it directly so
         // ALF referrals carry the same entity badge as Special Needs ones.
@@ -685,6 +703,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
       }
       if (key === 'facility_id' && !value) {
         next.marketer_id = '';
+        next.coc_nurse_id = '';
         // Clear the derived entity when facility is unset (ALF flow only —
         // SPN entity is driven by county which has its own setter).
         if (prev.division === 'ALF') next.entity_id = '';
@@ -754,6 +773,12 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
     if (!form.marketer_id) errs.marketer_id = 'Required';
     if (form.marketer_id === 'other' && !form.marketer_other.trim()) errs.marketer_other = 'Required';
     if (form.division === 'ALF' && !form.facility_id) errs.facility_id = 'Required for ALF referrals';
+    if (form.division === 'ALF' && form.facility_id) {
+      const cocCount = Object.values(storeCocNurseFacs || {}).filter(
+        (r) => r.facility_id === form.facility_id
+      ).length;
+      if (cocCount > 1 && !form.coc_nurse_id) errs.coc_nurse_id = 'Select a COC nurse for this facility';
+    }
     if (form.division === 'Special Needs') {
       if (!form.sn_age_group) errs.sn_age_group = 'Required for Special Needs';
       if (!form.county) errs.county = 'Required for Special Needs';
@@ -876,6 +901,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
         updated_at: referralDate,
         ...(form.services_requested.length && { services_requested: form.services_requested }),
         ...(form.facility_id && { facility_id: form.facility_id }),
+        ...(form.coc_nurse_id && { coc_nurse_id: form.coc_nurse_id }),
         ...(appUserId && { intake_owner_id: appUserId }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
         ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
@@ -938,6 +964,26 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
     if (links.length === 0) return null;
     return links;
   }, [form.facility_id, form.division, storeMarketerFacs]);
+
+  const facilityCocNurseLinks = useMemo(() => {
+    if (!form.facility_id || form.division !== 'ALF') return [];
+    return Object.values(storeCocNurseFacs || {}).filter(
+      (r) => r.facility_id === form.facility_id
+    );
+  }, [form.facility_id, form.division, storeCocNurseFacs]);
+
+  const cocNurseOptions = useMemo(() => {
+    const users = Object.values(storeUsers || {});
+    return facilityCocNurseLinks
+      .map((link) => {
+        const u = users.find((usr) => usr.id === link.user_id);
+        if (!u) return null;
+        const name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || u.id;
+        return { value: u.id, label: name };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [facilityCocNurseLinks, storeUsers]);
 
   const marketerOptions = useMemo(() => {
     if (facilityMarketerLinks) {
@@ -1054,6 +1100,34 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
                     </p>
                   );
                 })()}
+
+                {facilityCocNurseLinks.length > 1 && (
+                  <div style={{ marginTop: 12 }}>
+                    <Label required>COC Nurse</Label>
+                    <Select
+                      value={form.coc_nurse_id}
+                      onChange={(v) => setField('coc_nurse_id', v)}
+                      options={cocNurseOptions}
+                      placeholder="Select COC nurse…"
+                      hasError={!!errors.coc_nurse_id}
+                    />
+                    {errors.coc_nurse_id && (
+                      <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.coc_nurse_id}</p>
+                    )}
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>
+                      {facilityCocNurseLinks.length} COC nurses assigned to this facility
+                    </p>
+                  </div>
+                )}
+                {facilityCocNurseLinks.length === 1 && form.coc_nurse_id && (
+                  <p style={{ fontSize: 12, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginTop: 8 }}>
+                    COC Nurse:{' '}
+                    <strong style={{ color: palette.backgroundDark.hex }}>
+                      {cocNurseOptions[0]?.label || form.coc_nurse_id}
+                    </strong>
+                    <span style={{ fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}> (auto-assigned)</span>
+                  </p>
+                )}
               </div>
             )}
 

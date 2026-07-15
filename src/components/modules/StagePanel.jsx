@@ -585,12 +585,14 @@ const INTAKE_DEMO_FIELDS = [
   { key: 'medicaid_number', label: 'Medicaid number' },
 ];
 
-function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
+function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
+  const { resolveMarketer } = useLookups();
   const p = selectedReferral?.patient;
   const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [key, !!(p?.[key])]));
   const isSN = selectedReferral?.division === 'Special Needs';
+  const isALF = selectedReferral?.division === 'ALF';
   const isF2F = selectedReferral?.current_stage === 'F2F/MD Orders Pending';
 
   const triageAdultStore = useCareStore((s) => s.triageAdult);
@@ -616,6 +618,11 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+  const [initialEmrSaving, setInitialEmrSaving] = useState(false);
+  const [initialEmrError, setInitialEmrError] = useState(null);
+  const [confirmInitialEmr, setConfirmInitialEmr] = useState(false);
 
   // Cursory review is persisted via the shared CursoryReview hook (same one
   // the F2F module panel + drawer F2F tab use), so the checklist reflects
@@ -626,6 +633,9 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
   useEffect(() => {
     setShowDatePicker(false);
     setReceivedDate('');
+    setPdfError(null);
+    setInitialEmrError(null);
+    setConfirmInitialEmr(false);
   }, [selectedReferral?._id]);
 
   const reviewComplete = isF2FChecklistComplete(reviewChecked);
@@ -650,6 +660,38 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
       triggerDataRefresh();
       setShowDatePicker(false); setReceivedDate('');
     } catch {} finally { setSaving(false); }
+  }
+
+  const canStampInitialEmr = canPerm(PERMISSION_KEYS.INTAKE_EMR_INITIAL);
+  const initialEmrDone = !!selectedReferral?.emr_initial_onboarded_at;
+
+  async function handleDownloadEmrPacket() {
+    if (!selectedReferral) return;
+    setPdfLoading(true); setPdfError(null);
+    try {
+      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
+    } catch (err) {
+      setPdfError(err.message || 'Failed to generate PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
+  async function handleConfirmInitialEmr() {
+    if (!selectedReferral || !canStampInitialEmr || initialEmrDone) return;
+    setInitialEmrSaving(true); setInitialEmrError(null);
+    try {
+      await updateReferralOptimistic(selectedReferral._id, {
+        emr_initial_onboarded_at: new Date().toISOString(),
+        emr_initial_onboarded_by_id: appUserId || 'unknown',
+      });
+      triggerDataRefresh();
+      setConfirmInitialEmr(false);
+    } catch (err) {
+      setInitialEmrError(err.message || 'Failed to save');
+    } finally {
+      setInitialEmrSaving(false);
+    }
   }
 
   const days = selectedReferral ? daysLeft(selectedReferral.f2f_expiration) : null;
@@ -682,6 +724,114 @@ function IntakePanel({ referrals, selectedReferral, onOpenTriage, onOpenFiles, o
               the boolean (the send-back can happen with nothing filled out). */}
           {(selectedReferral.returned_from_clinical === 'true' || selectedReferral.returned_from_clinical === true) && (
             <ReturnedFromClinicalFlag note={selectedReferral.returned_from_clinical_note} />
+          )}
+
+          {/* ALF-only: early HCHB chart creation during Intake. Companion
+              milestone — does NOT advance stage. Full EMR Onboarding later
+              still stamps emr_onboarded_at and moves to Staffing. */}
+          {isALF && (
+            <PanelSection title="Initial EMR Onboarding">
+              {initialEmrDone ? (
+                <div style={{
+                  borderRadius: 8,
+                  border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                  background: hexToRgba(palette.accentGreen.hex, 0.06),
+                  padding: '10px 11px',
+                  marginBottom: 8,
+                }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 4 }}>
+                    Initial EMR onboarding complete
+                  </p>
+                  <InfoRow
+                    label="Completed"
+                    value={new Date(selectedReferral.emr_initial_onboarded_at).toLocaleString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+                    })}
+                    highlight={palette.accentGreen.hex}
+                  />
+                  {selectedReferral.emr_initial_onboarded_by_id && (
+                    <InfoRow
+                      label="By"
+                      value={resolveUser?.(selectedReferral.emr_initial_onboarded_by_id) || selectedReferral.emr_initial_onboarded_by_id}
+                    />
+                  )}
+                </div>
+              ) : (
+                <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
+                  Create the patient chart in HCHB early. Download the packet, enter the patient in the EMR, then confirm. This does not leave Intake — full EMR Onboarding still happens later before Staffing.
+                </p>
+              )}
+
+              <ActionBtn
+                label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'}
+                variant="default"
+                onClick={handleDownloadEmrPacket}
+                disabled={pdfLoading}
+              />
+              {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
+
+              {!initialEmrDone && canStampInitialEmr && (
+                <div style={{ marginTop: 10 }}>
+                  {!confirmInitialEmr ? (
+                    <ActionBtn
+                      label="Complete initial EMR onboarding"
+                      variant="success"
+                      onClick={() => setConfirmInitialEmr(true)}
+                    />
+                  ) : (
+                    <div style={{
+                      borderRadius: 8,
+                      border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                      background: hexToRgba(palette.accentGreen.hex, 0.05),
+                      padding: '10px 11px',
+                    }}>
+                      <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>
+                        Confirm chart created in HCHB?
+                      </p>
+                      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
+                        This logs that initial EMR onboarding is done. The patient stays in Intake; scheduling still completes full EMR Onboarding later.
+                      </p>
+                      {initialEmrError && (
+                        <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{initialEmrError}</p>
+                      )}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={handleConfirmInitialEmr}
+                          disabled={initialEmrSaving}
+                          style={{
+                            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                            background: initialEmrSaving ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
+                            color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650,
+                            cursor: initialEmrSaving ? 'wait' : 'pointer',
+                          }}
+                        >
+                          {initialEmrSaving ? 'Saving…' : 'Confirm'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setConfirmInitialEmr(false); setInitialEmrError(null); }}
+                          disabled={initialEmrSaving}
+                          style={{
+                            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                            background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                            color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                            fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!initialEmrDone && !canStampInitialEmr && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 8, fontStyle: 'italic' }}>
+                  You need the “Complete initial EMR onboarding” permission to stamp this.
+                </p>
+              )}
+            </PanelSection>
           )}
 
           {/* F2F section — shown for F2F-stage referrals OR whenever an F2F
@@ -1934,9 +2084,10 @@ function CollapsibleSection({ title, children, defaultOpen = false }) {
 // must be onboarded into the external EMR (HCHB) before scheduling can plot a
 // SOC. Staff download the EMR Onboarding Packet, complete onboarding in the
 // EMR, then mark the patient onboarded — which advances them to Staffing.
-function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferralLeftModule }) {
+function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
+  const { resolveMarketer } = useLookups();
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [onboarding, setOnboarding] = useState(false);
@@ -1954,9 +2105,13 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferra
   async function handleDownloadPdf() {
     if (!selectedReferral) return;
     setPdfLoading(true); setPdfError(null);
-    try { await generateEmrPacket(selectedReferral, resolveSource); }
-    catch (err) { setPdfError(err.message || 'Failed to generate PDF'); }
-    finally { setPdfLoading(false); }
+    try {
+      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
+    } catch (err) {
+      setPdfError(err.message || 'Failed to generate PDF');
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   async function handleMarkOnboarded() {
@@ -1994,8 +2149,33 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferra
           </PanelSection>
 
           <PanelSection title="EMR Onboarding">
+            {selectedReferral.emr_initial_onboarded_at && (
+              <div style={{
+                borderRadius: 8,
+                border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.3)}`,
+                background: hexToRgba(palette.accentBlue.hex, 0.06),
+                padding: '10px 11px',
+                marginBottom: 10,
+              }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: palette.accentBlue.hex, marginBottom: 4 }}>
+                  Initial EMR already completed in Intake
+                </p>
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.5, margin: 0 }}>
+                  Chart created{' '}
+                  {new Date(selectedReferral.emr_initial_onboarded_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                  })}
+                  {selectedReferral.emr_initial_onboarded_by_id
+                    ? ` by ${resolveUser?.(selectedReferral.emr_initial_onboarded_by_id) || selectedReferral.emr_initial_onboarded_by_id}`
+                    : ''}
+                  . Finish any remaining HCHB fields, then mark full EMR onboarded to advance to Staffing.
+                </p>
+              </div>
+            )}
             <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-              Download the onboarding packet and enter the patient into the EMR (HCHB). Scheduling can&apos;t plot a SOC until the patient exists in the EMR. Mark onboarded once complete to advance to Staffing.
+              {selectedReferral.emr_initial_onboarded_at
+                ? 'Download the packet if needed for reference. Mark onboarded once HCHB onboarding is fully complete to advance to Staffing.'
+                : 'Download the onboarding packet and enter the patient into the EMR (HCHB). Scheduling can\'t plot a SOC until the patient exists in the EMR. Mark onboarded once complete to advance to Staffing.'}
             </p>
             <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
             {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
@@ -2011,9 +2191,18 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, onSelectedReferra
             </div>
           </PanelSection>
 
-          {alreadyOnboarded && (
+          {(alreadyOnboarded || selectedReferral.emr_initial_onboarded_at) && (
             <PanelSection title="Status">
-              <InfoRow label="EMR Onboarded" value={new Date(selectedReferral.emr_onboarded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} highlight={palette.accentGreen.hex} />
+              {selectedReferral.emr_initial_onboarded_at && (
+                <InfoRow
+                  label="Initial EMR"
+                  value={new Date(selectedReferral.emr_initial_onboarded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  highlight={palette.accentBlue.hex}
+                />
+              )}
+              {alreadyOnboarded && (
+                <InfoRow label="EMR Onboarded" value={new Date(selectedReferral.emr_onboarded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} highlight={palette.accentGreen.hex} />
+              )}
             </PanelSection>
           )}
         </>
@@ -2248,9 +2437,10 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 }
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
-function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
+function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
+  const { resolveMarketer } = useLookups();
   const actualStage = selectedReferral?.current_stage;
   const today = new Date().toISOString().split('T')[0];
 
@@ -2307,9 +2497,13 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, on
   async function handleDownloadPdf() {
     if (!selectedReferral) return;
     setPdfLoading(true); setPdfError(null);
-    try { await generateEmrPacket(selectedReferral, resolveSource); }
-    catch (err) { setPdfError(err.message || 'Failed to generate PDF'); }
-    finally { setPdfLoading(false); }
+    try {
+      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
+    } catch (err) {
+      setPdfError(err.message || 'Failed to generate PDF');
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   async function handleOnboarded() {
@@ -2453,9 +2647,10 @@ function PreSocPanel({ selectedReferral, resolveSource, onInitiateTransition, on
 }
 
 // ── 12. SOC Scheduled ─────────────────────────────────────────────────────────
-function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransition, onSelectedReferralLeftModule }) {
+function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
+  const { resolveMarketer } = useLookups();
   const [pdfLoading, setPdfLoading]       = useState(false);
   const [pdfError, setPdfError]           = useState(null);
   const [confirming, setConfirming]       = useState(false);
@@ -2474,7 +2669,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, onInitiateTransiti
     setPdfLoading(true);
     setPdfError(null);
     try {
-      await generateEmrPacket(selectedReferral, resolveSource);
+      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
     } catch (err) {
       setPdfError(err.message || 'Failed to generate PDF');
     } finally {

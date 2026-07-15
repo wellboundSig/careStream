@@ -94,6 +94,9 @@ export default function DeveloperTools() {
   const [selectedRowId, setSelectedRowId] = useState(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteText, setDeleteText] = useState('');
+  const [addingRow, setAddingRow] = useState(false);
+  const [addDraft, setAddDraft] = useState({});
+  const [adding, setAdding] = useState(false);
   const [colWidths, setColWidths] = useState({});  // field -> px (drag header edge)
   const [expandedRows, setExpandedRows] = useState(() => new Set()); // row ids with wrapped cells
 
@@ -370,6 +373,53 @@ export default function DeveloperTools() {
     setDeleteText('');
   }
 
+  // ── Row creation (blank form → POST; works for every registry table) ──────
+  function openAddRow() {
+    const initial = {};
+    const now = new Date().toISOString();
+    for (const f of fieldNames) {
+      if (f === 'created_at' || f === 'updated_at') initial[f] = now;
+      else initial[f] = '';
+    }
+    setAddDraft(initial);
+    setAddingRow(true);
+  }
+
+  function buildCreateFields() {
+    const fields = {};
+    for (const f of fieldNames) {
+      const raw = addDraft[f];
+      if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+      fields[f] = parseDraft(String(raw), tableDef.fields[f]);
+    }
+    return fields;
+  }
+
+  async function createRow() {
+    const fields = buildCreateFields();
+    if (Object.keys(fields).length === 0) {
+      showToast('Enter at least one field value', 'error');
+      return;
+    }
+    setAdding(true);
+    try {
+      const rec = await airtable.create(tableName, fields);
+      const row = { _id: rec.id, ...rec.fields };
+      setRows((prev) => [row, ...prev]);
+      setAddingRow(false);
+      setAddDraft({});
+      setSelectedRowId(rec.id);
+      setSearch('');
+      setVisibleCount(SCROLL_CHUNK);
+      showToast('Row created');
+    } catch (err) {
+      console.error('[DeveloperTools] create failed:', err);
+      showToast(err.message || 'Create failed', 'error');
+    } finally {
+      setAdding(false);
+    }
+  }
+
   // ── Column resize (drag the right edge of a header, Excel-style) ──────────
   function startColResize(e, field) {
     e.preventDefault();
@@ -435,7 +485,7 @@ export default function DeveloperTools() {
         <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>Developer Tools</h1>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0' }}>
           Raw database grid. Click a cell, Enter or double-click to edit, drag the corner handle to copy down.
-          Drag a column edge to resize. Click a row number to select; double-click it to expand the row. All changes are audit-logged.
+          Drag a column edge to resize. Use <strong>+ Add row</strong> to insert. Click a row number to select; double-click it to expand. All changes are audit-logged.
         </p>
       </div>
 
@@ -490,6 +540,15 @@ export default function DeveloperTools() {
             ? 'Loading…'
             : `${filtered.length} record${filtered.length === 1 ? '' : 's'}${pageRows.length < filtered.length ? ` · showing ${pageRows.length} — scroll for more` : ''}`}
         </span>
+
+        <button
+          type="button"
+          onClick={openAddRow}
+          disabled={loading || !fieldNames.length}
+          style={{ ...btn, fontWeight: 650, borderColor: palette.accentGreen.hex, color: palette.accentGreen.hex }}
+        >
+          + Add row
+        </button>
 
         {selectedRowId && (
           <button
@@ -661,6 +720,67 @@ export default function DeveloperTools() {
           </tbody>
         </table>
       </div>
+
+      {/* Add-row modal */}
+      {addingRow && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000 }}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '22px 26px', maxWidth: 560, width: '100%',
+            maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 12,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          }}>
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>
+                Add row to {tableName}
+              </p>
+              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '6px 0 0', lineHeight: 1.45 }}>
+                Fill any fields you need. Leave blanks empty — they won&apos;t be sent. Arrays/JSON can be comma-separated or JSON.
+                After create, edit cells in the grid as usual. Writes are audit-logged.
+              </p>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 4 }}>
+              {fieldNames.map((f) => (
+                <label key={f} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 10, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65), overflow: 'hidden', textOverflow: 'ellipsis' }} title={f}>
+                    {f}
+                  </span>
+                  <input
+                    value={addDraft[f] ?? ''}
+                    onChange={(e) => setAddDraft((prev) => ({ ...prev, [f]: e.target.value }))}
+                    placeholder={tableDef.fields[f]?.wire || 'text'}
+                    style={{
+                      fontSize: 12.5, padding: '7px 10px', borderRadius: 7,
+                      border: `1px solid ${GRID_LINE}`, outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setAddingRow(false); setAddDraft({}); }}
+                disabled={adding}
+                style={{ ...btn, padding: '8px 14px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createRow}
+                disabled={adding}
+                style={{
+                  ...btn, padding: '8px 14px', fontWeight: 650, border: 'none',
+                  background: adding ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
+                  color: '#fff', cursor: adding ? 'wait' : 'pointer',
+                }}
+              >
+                {adding ? 'Creating…' : 'Create row'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {confirmingDelete && selectedRowId && (

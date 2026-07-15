@@ -46,6 +46,7 @@ const Icon = {
   Pills:     () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10.5 20H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3"/><path d="m17 17 5 5"/><path d="m22 17-5 5"/></svg>,
   Warning:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   Link:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
+  Ticket:    () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>,
 };
 
 const PRESET_ICONS = {
@@ -59,6 +60,7 @@ const PRESET_ICONS = {
   active_episodes:       Icon.Pills,
   conflict_log:          Icon.Warning,
   source_attribution:    Icon.Link,
+  support_tickets:       Icon.Ticket,
 };
 
 // ── Style tokens ───────────────────────────────────────────────────────────────
@@ -252,6 +254,19 @@ function ParamControls({ controls, params, onChange }) {
           <Select value={params.conflictStatus || ''} onChange={(e) => set('conflictStatus', e.target.value)} style={{ width: 180 }}>
             <option value="">All Statuses</option>
             {['Open','In Progress','Resolved','Waived'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('ticketStatus')) {
+    rows.push(
+      <tr key="ticketStatus">
+        <td style={labelCell}>Ticket Status</td>
+        <td style={valueCell}>
+          <Select value={params.ticketStatus || ''} onChange={(e) => set('ticketStatus', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Statuses</option>
+            {['Unaddressed', 'In Progress', 'Resolved'].map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
         </td>
       </tr>

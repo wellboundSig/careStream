@@ -11,6 +11,7 @@ export const PERMISSION_KEYS = {
   // Leads
   LEADS_PROMOTE_TO_INTAKE: 'leads.promote_to_intake',
   LEADS_DISCARD: 'leads.discard',
+  INTAKE_EMR_INITIAL: 'intake.emr_initial',
 
   // Referrals
   REFERRAL_CREATE: 'referral.create',
@@ -219,6 +220,7 @@ export const PERMISSION_CATALOG = [
   // ── Leads & Intake ────────────────────────────────────────────────────────
   { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads & Intake', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads & Intake', description: 'Discard a lead with a reason and explanation', sort: 11 },
+  { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads & Intake', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals',             category: 'Leads & Intake', description: 'Open the New Referral form and submit', sort: 12 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Leads & Intake', description: 'See referral cards, drawers, and detail panels', sort: 13 },
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Leads & Intake', description: 'Modify referral data in the overview tab', sort: 14 },
@@ -349,7 +351,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD,
+      K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
