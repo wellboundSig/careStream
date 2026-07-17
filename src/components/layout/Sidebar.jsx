@@ -449,11 +449,11 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
         Modules
       </p>
 
-      {/* Role mode pill */}
+      {/* Module-group pill — click cycles groups; arrow opens the picker */}
       <div ref={dropRef} style={{ position: 'relative', marginBottom: 6 }}>
         <div
           onClick={cycleMode}
-          title="Click to cycle mode — use arrow to pick"
+          title="Click to toggle module groups"
           style={{
             borderRadius: 8, background: hexToRgba(currentMode.color, 0.22),
             padding: '8px 12px', cursor: 'pointer', position: 'relative',
@@ -467,7 +467,7 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
           <span style={{ fontSize: 12.5, fontWeight: 700, color: NAV_TEXT, flex: 1 }}>{currentMode.label}</span>
           <button
             onClick={(e) => { e.stopPropagation(); setDropdownOpen((o) => !o); }}
-            title="Select mode"
+            title="Click to toggle module groups"
             style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
               color: hexToRgba(NAV_TEXT, 0.6),

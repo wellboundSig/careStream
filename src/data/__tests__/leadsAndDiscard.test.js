@@ -57,9 +57,9 @@ describe('Discarded Leads stage definition', () => {
     expect(StageRules.stages['Lead Entry'].canMoveTo).toContain('Discarded Leads');
   });
 
-  it('is in the intake role mode stages for sidebar visibility', () => {
-    const intakeMode = ROLE_MODES.find((m) => m.id === 'intake');
-    expect(intakeMode.stages).toContain('Discarded Leads');
+  it('is in the admin role mode stages for sidebar visibility', () => {
+    const adminMode = ROLE_MODES.find((m) => m.id === 'admin');
+    expect(adminMode.stages).toContain('Discarded Leads');
   });
 
   it('is NOT in the pipeline board ROW_GROUPS or STATUS_GROUP stages', () => {

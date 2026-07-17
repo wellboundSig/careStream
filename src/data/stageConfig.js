@@ -43,37 +43,54 @@ export const SLUG_TO_STAGE = Object.fromEntries(
 
 export const ALL_STAGES = Object.keys(STAGE_SLUGS);
 
-// ── Role modes ────────────────────────────────────────────────────────────────
+// ── Role modes (sidebar module groups) ────────────────────────────────────────
+// The group pill cycles these lists. Label "Intake Modules" (not "Intake") so
+// it is not confused with the Intake stage/module link below it.
 export const ROLE_MODES = [
   {
     id: 'intake',
-    label: 'Intake',
+    label: 'Intake Modules',
     color: palette.accentBlue.hex,
-    stages: ['Lead Entry', 'Intake', 'Eligibility Verification', 'OPWDD Enrollment', 'Disenrollment Required', 'Discarded Leads'],
-  },
-  {
-    id: 'clinical',
-    label: 'Clinical RN',
-    color: palette.primaryMagenta.hex,
-    stages: ['F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Conflict'],
+    // OPWDD stays with intake but last in the list.
+    stages: [
+      'Lead Entry',
+      'Intake',
+      'Disenrollment Required',
+      'EMR Onboarding',
+      'Pre-SOC',
+      'OPWDD Enrollment',
+    ],
   },
   {
     id: 'authorization',
     label: 'Authorization',
     color: palette.accentOrange.hex,
-    stages: ['Eligibility Verification', 'Authorization Pending', 'Conflict'],
+    stages: ['Eligibility Verification', 'Authorization Pending'],
+  },
+  {
+    id: 'clinical',
+    label: 'Clinical',
+    color: palette.primaryMagenta.hex,
+    stages: ['Clinical Intake RN Review'],
   },
   {
     id: 'scheduler',
     label: 'Scheduler',
     color: palette.accentGreen.hex,
-    stages: ['EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Completed'],
+    stages: ['Staffing Feasibility', 'Pre-SOC', 'SOC Completed'],
   },
   {
     id: 'admin',
     label: 'Admin',
     color: palette.highlightYellow.hex,
-    stages: ['Admin Confirmation', 'Conflict', 'NTUC', 'Discarded Leads'],
+    stages: [
+      'Conflict',
+      'Discarded Leads',
+      'NTUC',
+      'SOC Completed',
+      'Admin Confirmation',
+      'Hold',
+    ],
   },
   {
     id: 'all',

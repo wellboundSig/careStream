@@ -807,14 +807,12 @@ describe('FLOW 15: Config and navigation consistency', () => {
     expect(opwddIdx).toBe(eligIdx + 1);
   });
 
-  it('OPWDD comes after Eligibility in intake role mode', () => {
+  it('OPWDD is last in the Intake Modules role group', () => {
     const intakeMode = ROLE_MODES.find((m) => m.id === 'intake');
     const stages = intakeMode.stages;
-    const eligIdx = stages.indexOf('Eligibility Verification');
-    const opwddIdx = stages.indexOf('OPWDD Enrollment');
-    expect(eligIdx).toBeGreaterThan(-1);
-    expect(opwddIdx).toBeGreaterThan(-1);
-    expect(opwddIdx).toBe(eligIdx + 1);
+    expect(intakeMode.label).toBe('Intake Modules');
+    expect(stages).not.toContain('Eligibility Verification');
+    expect(stages[stages.length - 1]).toBe('OPWDD Enrollment');
   });
 
   it('every stage in STAGE_SLUGS has a corresponding STAGE_META entry', () => {

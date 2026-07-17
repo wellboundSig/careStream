@@ -55,11 +55,13 @@ describe('SOC consolidation — UI changes', () => {
     expect(STAGE_META['SOC Completed'].displayName).toBe('Completed');
   });
 
-  it('scheduler role mode shows Pre-SOC and SOC Completed but NOT SOC Scheduled', () => {
+  it('scheduler role mode shows Staffing, Pre-SOC and SOC Completed but NOT SOC Scheduled', () => {
     const schedulerMode = ROLE_MODES.find((m) => m.id === 'scheduler');
+    expect(schedulerMode.stages).toContain('Staffing Feasibility');
     expect(schedulerMode.stages).toContain('Pre-SOC');
     expect(schedulerMode.stages).toContain('SOC Completed');
     expect(schedulerMode.stages).not.toContain('SOC Scheduled');
+    expect(schedulerMode.stages).not.toContain('EMR Onboarding');
   });
 
   it('pane nav shows Pre-SOC and Completed but NOT SOC Scheduled', () => {
