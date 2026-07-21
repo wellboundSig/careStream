@@ -59,6 +59,7 @@ function referralMilestones(referral) {
   }
 
   push('ms-elig-done', r.eligibility_completed_at, 'Eligibility completed', null, r.eligibility_completed_by_id || null);
+  push('ms-auth-obtained', r.auth_obtained_at, 'Authorization obtained', null, r.auth_obtained_by_id || null);
   push('ms-emr-initial', r.emr_initial_onboarded_at, 'Initial EMR onboarding completed', 'HCHB chart created during Intake', r.emr_initial_onboarded_by_id || null);
   push('ms-emr', r.emr_onboarded_at, 'EMR onboarding completed', null, r.emr_onboarded_by_id || null);
   push('ms-staffing', r.staffing_confirmed_at, 'Staffing confirmed — clinician matched', 'Sent to Pre-SOC', r.staffing_confirmed_by_id || null);

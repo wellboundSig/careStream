@@ -109,5 +109,5 @@ export const CLINICAL_DB_TO_UI = Object.fromEntries(ALL_CHECKLIST_ITEMS.map((i) 
 // is still readable for legacy records.
 export const CLINICAL_DECISIONS = [
   { key: 'accept', label: 'Accept', color: 'green' },
-  { key: 'conditional', label: 'Conditional Accept', color: 'yellow' },
+  { key: 'conditional', label: 'Conditional', color: 'yellow' },
 ];

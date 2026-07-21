@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
+import JSZip from 'jszip';
 import { getPhysician } from '../api/physicians.js';
 import { getFilesByPatient } from '../api/patientFiles.js';
 import { getNotesByPatient } from '../api/notes.js';
@@ -9,9 +10,21 @@ import { getTriageAdult, getTriagePediatric } from '../api/triage.js';
 import { getSignedFileUrl } from './r2Upload.js';
 import { conflictCategoryLabel, normalizeSeverity } from './conflictFlagging.js';
 
+// Neutral print palette — clean, readable, no brand pink washes.
+const INK = {
+  headerBg: [30, 41, 59],       // slate
+  headerFg: [255, 255, 255],
+  section: [30, 41, 59],
+  label: [100, 116, 139],
+  value: [15, 23, 42],
+  muted: [100, 116, 139],
+  rule: [226, 232, 240],
+  body: [30, 41, 59],
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt     = (v)  => (v != null && v !== '') ? String(v) : '—';
-const fmtDate = (v)  => {
+const fmt = (v) => (v != null && v !== '') ? String(v) : '—';
+const fmtDate = (v) => {
   if (!v) return '—';
   const d = new Date(v);
   return isNaN(d) ? String(v) : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -50,20 +63,39 @@ function resolveName(id, resolveUser, resolveMarketer) {
   return id;
 }
 
-function fileKind(file) {
-  const name = (file.file_name || '').toLowerCase();
-  const type = (file.file_type || '').toLowerCase();
-  const ext = name.split('.').pop();
-  if (ext === 'pdf' || type.includes('pdf')) return 'pdf';
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || type.startsWith('image/')) {
-    if (ext === 'png' || type.includes('png')) return 'png';
-    return 'jpg';
-  }
-  return 'other';
+function safeFilePart(value, fallback = 'Patient') {
+  return String(value || fallback)
+    .trim()
+    .replace(/[^\w\s.-]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    || fallback;
 }
 
-function downloadBlob(bytes, filename) {
-  const blob = new Blob([bytes], { type: 'application/pdf' });
+function patientNameParts(patient = {}) {
+  const last = safeFilePart(patient.last_name, 'Patient');
+  const first = safeFilePart(patient.first_name, '');
+  return { last, first };
+}
+
+function uniqueZipName(used, rawName) {
+  const base = safeFilePart(rawName || 'file', 'file');
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  let candidate = `${stem}${ext}`;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${stem}_${n}${ext}`;
+    n += 1;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+function downloadBlob(bytes, filename, mime = 'application/pdf') {
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -74,44 +106,52 @@ function downloadBlob(bytes, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+async function fetchFileBytes(file) {
+  const url = await getSignedFileUrl(file, { download: true });
+  if (!url) throw new Error('No signed URL');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.arrayBuffer();
+}
+
 // ── jsPDF section document builder ────────────────────────────────────────────
 
 function createSectionDoc(title) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageW = 215.9;
   const pageH = 279.4;
-  const marginL = 20;
-  const marginR = 20;
+  const marginL = 18;
+  const marginR = 18;
   const contentW = pageW - marginL - marginR;
   let y = 0;
 
   function paintHeader() {
-    doc.setFillColor(196, 30, 110);
-    doc.rect(0, 0, pageW, 16, 'F');
+    doc.setFillColor(...INK.headerBg);
+    doc.rect(0, 0, pageW, 14, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text('WELLBOUND CARESTREAM', marginL, 10.5);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...INK.headerFg);
+    doc.text('WELLBOUND CARESTREAM', marginL, 9);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(title, pageW - marginR, 10.5, { align: 'right' });
-    y = 24;
+    doc.setFontSize(8.5);
+    doc.text(title, pageW - marginR, 9, { align: 'right' });
+    y = 22;
   }
 
   function paintFooter() {
-    doc.setDrawColor(229, 231, 235);
-    doc.line(marginL, pageH - 16, pageW - marginR, pageH - 16);
+    doc.setDrawColor(...INK.rule);
+    doc.line(marginL, pageH - 14, pageW - marginR, pageH - 14);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(156, 163, 175);
+    doc.setFontSize(7);
+    doc.setTextColor(...INK.muted);
     doc.text(
       'Wellbound CareStream  ·  Confidential — for internal EMR onboarding use only.',
-      pageW / 2, pageH - 10, { align: 'center' },
+      pageW / 2, pageH - 9, { align: 'center' },
     );
   }
 
   function ensureSpace(needed = 12) {
-    if (y + needed > pageH - 22) {
+    if (y + needed > pageH - 20) {
       paintFooter();
       doc.addPage();
       paintHeader();
@@ -119,45 +159,46 @@ function createSectionDoc(title) {
   }
 
   function sectionHeader(label) {
-    ensureSpace(14);
-    doc.setFillColor(252, 245, 249);
-    doc.rect(marginL, y - 1.5, contentW, 8, 'F');
-    doc.setDrawColor(234, 179, 208);
-    doc.line(marginL, y + 6.5, pageW - marginR, y + 6.5);
+    ensureSpace(12);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(196, 30, 110);
-    doc.text(label.toUpperCase(), marginL + 3, y + 4.5);
-    y += 11;
+    doc.setFontSize(9);
+    doc.setTextColor(...INK.section);
+    doc.text(label.toUpperCase(), marginL, y + 3);
+    y += 5;
+    doc.setDrawColor(...INK.headerBg);
+    doc.setLineWidth(0.4);
+    doc.line(marginL, y, pageW - marginR, y);
+    doc.setLineWidth(0.2);
+    y += 6;
   }
 
   function row(label, value) {
     ensureSpace(8);
-    const colBreak = 58;
+    const colBreak = 52;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(107, 114, 128);
-    doc.text(label, marginL + 3, y);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 26, 46);
-    const lines = doc.splitTextToSize(fmt(value), contentW - colBreak - 6);
-    doc.text(lines, marginL + 3 + colBreak, y);
-    y += Math.max(6, lines.length * 4.5);
+    doc.setTextColor(...INK.label);
+    doc.text(label, marginL, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...INK.value);
+    const lines = doc.splitTextToSize(fmt(value), contentW - colBreak);
+    doc.text(lines, marginL + colBreak, y);
+    y += Math.max(5.5, lines.length * 4.2);
   }
 
-  function bodyText(text, { bold = false, size = 9, color = [26, 26, 46] } = {}) {
-    const lines = doc.splitTextToSize(String(text || ''), contentW - 6);
+  function bodyText(text, { bold = false, size = 9, color = INK.body } = {}) {
+    const lines = doc.splitTextToSize(String(text || ''), contentW);
     for (const line of lines) {
       ensureSpace(6);
       doc.setFont('helvetica', bold ? 'bold' : 'normal');
       doc.setFontSize(size);
       doc.setTextColor(...color);
-      doc.text(line, marginL + 3, y);
-      y += size * 0.45 + 1.5;
+      doc.text(line, marginL, y);
+      y += size * 0.42 + 1.4;
     }
   }
 
-  function gap(n = 5) { y += n; }
+  function gap(n = 4) { y += n; }
 
   paintHeader();
 
@@ -171,7 +212,7 @@ function createSectionDoc(title) {
 
 // ── Cover / demographics sheet ────────────────────────────────────────────────
 
-async function buildCoverPdf(referral, resolveSource) {
+async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
   const p = referral.patient || {};
   const isSN = referral.division === 'Special Needs';
   const isALF = referral.division === 'ALF';
@@ -187,16 +228,33 @@ async function buildCoverPdf(referral, resolveSource) {
   const sourceName = resolveSource ? resolveSource(referral.referral_source_id) : '—';
   const s = createSectionDoc('EMR Onboarding Packet');
 
+  const patientName = [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Patient';
+  s.doc.setFont('helvetica', 'bold');
+  s.doc.setFontSize(14);
+  s.doc.setTextColor(...INK.value);
+  s.doc.text(patientName, s.marginL, s.y);
+  s.y += 6;
+
+  s.doc.setFont('helvetica', 'normal');
   s.doc.setFontSize(8);
-  s.doc.setTextColor(107, 114, 128);
-  s.doc.text(`Generated: ${fmtDate(new Date())}`, s.marginL, s.y);
-  s.doc.text(`SOC Date: ${fmtDate(referral.soc_scheduled_date)}`, s.pageW - s.marginR, s.y, { align: 'right' });
-  s.y += 5;
-  s.doc.setDrawColor(229, 231, 235);
+  s.doc.setTextColor(...INK.muted);
+  s.doc.text(`Generated ${fmtDate(new Date())}`, s.marginL, s.y);
+  s.doc.text(`SOC: ${fmtDate(referral.soc_scheduled_date)}`, s.pageW - s.marginR, s.y, { align: 'right' });
+  s.y += 4;
+  s.doc.setDrawColor(...INK.rule);
   s.doc.line(s.marginL, s.y, s.pageW - s.marginR, s.y);
-  s.y += 7;
+  s.y += 6;
+
+  if (fileCount > 0) {
+    s.bodyText(
+      `${fileCount} patient file${fileCount === 1 ? '' : 's'} are included separately in this ZIP download (folder: Patient_Files).`,
+      { size: 8, color: INK.muted },
+    );
+    s.gap(3);
+  }
 
   s.sectionHeader('Basic Info');
+  s.row('Division', referral.division || '—');
   s.row('Branch(es)', isSN ? 'S01, S02, WSI' : isALF ? 'A01, WA1' : '—');
   s.row('Patient Last Name', p.last_name);
   s.row('Patient First Name', p.first_name);
@@ -207,8 +265,8 @@ async function buildCoverPdf(referral, resolveSource) {
   s.row('Date of Birth', fmtDate(p.dob));
   s.row('Phone', p.phone_primary);
   if (p.phone_secondary) s.row('Phone (Alt)', p.phone_secondary);
-  if (p.address_street) {
-    s.row('Address', [p.address_street, p.address_city].filter(Boolean).join(', '));
+  if (p.address_street || p.address_city) {
+    s.row('Address', [p.address_street, p.address_city, p.address_state, p.address_zip].filter(Boolean).join(', '));
   }
   s.gap();
 
@@ -253,6 +311,12 @@ async function buildCoverPdf(referral, resolveSource) {
   s.row('Phone', p.emergency_contact_phone);
   s.row('Email', p.emergency_contact_email);
 
+  if (fileCount > 0) {
+    s.gap();
+    s.sectionHeader('Patient Files in This ZIP');
+    s.bodyText('See the Patient_Files folder for original uploads.', { size: 8, color: INK.muted });
+  }
+
   s.paintFooter();
   return s.doc.output('arraybuffer');
 }
@@ -266,9 +330,9 @@ function buildNotesPdf(notes, resolveUser) {
     notes.length
       ? `${notes.length} note${notes.length === 1 ? '' : 's'} · newest first`
       : 'No patient notes on file.',
-    { size: 8, color: [107, 114, 128] },
+    { size: 8, color: INK.muted },
   );
-  s.gap(4);
+  s.gap(3);
 
   if (!notes.length) {
     s.paintFooter();
@@ -276,17 +340,17 @@ function buildNotesPdf(notes, resolveUser) {
   }
 
   for (const n of notes) {
-    s.ensureSpace(20);
+    s.ensureSpace(18);
     const author = resolveName(n.author_id, resolveUser) || 'Unknown';
     const when = fmtDateTime(n.created_at);
-    s.bodyText(`${when}  ·  ${author}`, { bold: true, size: 8, color: [196, 30, 110] });
+    s.bodyText(`${when}  ·  ${author}`, { bold: true, size: 8, color: INK.label });
     s.gap(1);
     const content = humanizeUserIds(n.content || '(empty note)', resolveUser);
     s.bodyText(content, { size: 9 });
     s.gap(2);
-    s.doc.setDrawColor(229, 231, 235);
+    s.doc.setDrawColor(...INK.rule);
     s.doc.line(s.marginL, s.y, s.pageW - s.marginR, s.y);
-    s.gap(5);
+    s.gap(4);
   }
 
   s.paintFooter();
@@ -318,6 +382,7 @@ function referralMilestones(referral) {
   }
 
   push('ms-elig-done', r.eligibility_completed_at, 'Eligibility completed', null, r.eligibility_completed_by_id || null);
+  push('ms-auth-obtained', r.auth_obtained_at, 'Authorization obtained', null, r.auth_obtained_by_id || null);
   push('ms-emr-initial', r.emr_initial_onboarded_at, 'Initial EMR onboarding completed', 'HCHB chart created during Intake', r.emr_initial_onboarded_by_id || null);
   push('ms-emr', r.emr_onboarded_at, 'EMR onboarding completed', null, r.emr_onboarded_by_id || null);
   push('ms-staffing', r.staffing_confirmed_at, 'Staffing confirmed — clinician matched', 'Sent to Pre-SOC', r.staffing_confirmed_by_id || null);
@@ -447,51 +512,59 @@ function buildTimelinePdf(entries, resolveUser, resolveMarketer) {
     entries.length
       ? `${entries.length} event${entries.length === 1 ? '' : 's'} · oldest first`
       : 'No timeline events yet.',
-    { size: 8, color: [107, 114, 128] },
+    { size: 8, color: INK.muted },
   );
-  s.gap(4);
+  s.gap(3);
 
   for (const entry of entries) {
-    s.ensureSpace(18);
+    s.ensureSpace(16);
     const actor = entry.actorResolved
       || resolveName(entry.actor, resolveUser, resolveMarketer)
       || null;
-    s.bodyText(fmtDateTime(entry.timestamp), { size: 7.5, color: [107, 114, 128] });
+    s.bodyText(fmtDateTime(entry.timestamp), { size: 7.5, color: INK.muted });
     s.bodyText(entry.title || 'Event', { bold: true, size: 9 });
-    if (entry.detail) s.bodyText(entry.detail, { size: 8, color: [75, 85, 99] });
-    if (actor) s.bodyText(`By: ${actor}`, { size: 8, color: [107, 114, 128] });
+    if (entry.detail) s.bodyText(entry.detail, { size: 8, color: INK.label });
+    if (actor) s.bodyText(`By: ${actor}`, { size: 8, color: INK.muted });
     if (entry.noteContent) {
       s.gap(1);
-      s.bodyText(humanizeUserIds(entry.noteContent, resolveUser), { size: 8.5, color: [55, 65, 81] });
+      s.bodyText(humanizeUserIds(entry.noteContent, resolveUser), { size: 8.5, color: INK.body });
     }
     s.gap(2);
-    s.doc.setDrawColor(229, 231, 235);
+    s.doc.setDrawColor(...INK.rule);
     s.doc.line(s.marginL, s.y, s.pageW - s.marginR, s.y);
-    s.gap(4);
+    s.gap(3.5);
   }
 
   s.paintFooter();
   return s.doc.output('arraybuffer');
 }
 
-// ── File divider / placeholder pages ──────────────────────────────────────────
+function buildFileManifestPdf(files) {
+  const s = createSectionDoc('File Manifest');
+  s.sectionHeader('Patient Files Included');
+  s.bodyText(
+    files.length
+      ? `${files.length} file${files.length === 1 ? '' : 's'} in Patient_Files/`
+      : 'No patient files.',
+    { size: 8, color: INK.muted },
+  );
+  s.gap(3);
 
-function buildFileDividerPdf(file, { status = 'Included below', detail = '' } = {}) {
-  const s = createSectionDoc('Patient File');
-  s.sectionHeader('Attached Patient File');
-  s.row('File Name', file.file_name || '—');
-  s.row('Category', file.category || '—');
-  s.row('Uploaded', fmtDateTime(file.created_at));
-  s.row('Status', status);
-  if (detail) {
+  for (const file of files) {
+    s.ensureSpace(12);
+    s.bodyText(file.file_name || 'Untitled file', { bold: true, size: 9 });
+    const meta = [
+      file.category || null,
+      file.created_at ? `Uploaded ${fmtDateTime(file.created_at)}` : null,
+      file.file_type || null,
+    ].filter(Boolean).join(' · ');
+    if (meta) s.bodyText(meta, { size: 8, color: INK.muted });
     s.gap(3);
-    s.bodyText(detail, { size: 9, color: [107, 114, 128] });
   }
+
   s.paintFooter();
   return s.doc.output('arraybuffer');
 }
-
-// ── pdf-lib merge helpers ─────────────────────────────────────────────────────
 
 async function appendPdfBytes(merged, bytes) {
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -499,44 +572,31 @@ async function appendPdfBytes(merged, bytes) {
   for (const page of pages) merged.addPage(page);
 }
 
-async function appendImageFile(merged, bytes, kind) {
-  const page = merged.addPage([612, 792]); // letter points
-  let image;
-  try {
-    image = kind === 'png'
-      ? await merged.embedPng(bytes)
-      : await merged.embedJpg(bytes);
-  } catch {
-    try {
-      image = kind === 'png'
-        ? await merged.embedJpg(bytes)
-        : await merged.embedPng(bytes);
-    } catch {
-      return false;
-    }
+/**
+ * Build the house-made EMR onboarding PDF (cover + optional file list + notes + timeline).
+ * Patient uploads are NOT embedded — they ship as original files in the ZIP.
+ */
+async function buildHousePacketPdf({
+  referral,
+  resolveSource,
+  resolveUser,
+  resolveMarketer,
+  notes,
+  timelineEntries,
+  files,
+}) {
+  const coverBytes = await buildCoverPdf(referral, resolveSource, { fileCount: files.length });
+  const notesBytes = buildNotesPdf(notes, resolveUser);
+  const timelineBytes = buildTimelinePdf(timelineEntries, resolveUser, resolveMarketer);
+
+  const merged = await PDFDocument.create();
+  await appendPdfBytes(merged, coverBytes);
+  if (files.length > 0) {
+    await appendPdfBytes(merged, buildFileManifestPdf(files));
   }
-
-  const { width, height } = image.scale(1);
-  const maxW = 552;
-  const maxH = 700;
-  const scale = Math.min(maxW / width, maxH / height, 1);
-  const w = width * scale;
-  const h = height * scale;
-  page.drawImage(image, {
-    x: (612 - w) / 2,
-    y: (792 - h) / 2,
-    width: w,
-    height: h,
-  });
-  return true;
-}
-
-async function fetchFileBytes(file) {
-  const url = await getSignedFileUrl(file);
-  if (!url) throw new Error('No signed URL');
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.arrayBuffer();
+  await appendPdfBytes(merged, notesBytes);
+  await appendPdfBytes(merged, timelineBytes);
+  return merged.save();
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -544,11 +604,10 @@ async function fetchFileBytes(file) {
 /**
  * Generate and download the EMR Onboarding Packet.
  *
- * Packet order:
- *   1. Cover / demographics
- *   2. Every patient file (PDF pages or images embedded; others listed)
- *   3. All patient notes
- *   4. Full referral timeline (last)
+ * - Always builds a clean house-made PDF (demographics, notes, timeline).
+ * - If the patient has ANY uploaded files, downloads a ZIP named with the
+ *   patient name containing that PDF + every original patient file.
+ * - If there are no files, downloads the PDF alone.
  *
  * @param {object} referral
  * @param {Function|object} resolveSourceOrOpts  legacy resolveSource fn, or opts bag
@@ -569,7 +628,6 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   const referralId = referral.id || referral._id;
   const patient = referral.patient || {};
 
-  // Parallel fetch of packet data
   const [fileRecs, noteRecs, historyRecs, conflictRecs] = await Promise.all([
     patientId ? getFilesByPatient(patientId).catch(() => []) : Promise.resolve([]),
     patientId ? getNotesByPatient(patientId).catch(() => []) : Promise.resolve([]),
@@ -588,7 +646,6 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   const history = historyRecs.map((r) => ({ _id: r.id, ...r.fields }));
   const conflicts = conflictRecs.map((r) => ({ _id: r.id, ...r.fields }));
 
-  // Triage (Special Needs only)
   let triage = null;
   const isSN = (patient.division || referral.division) === 'Special Needs';
   let isPediatric = false;
@@ -607,62 +664,54 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     referral, history, notes, conflicts, triage, resolveUser, resolveMarketer, isPediatric,
   });
 
-  // Build text sections
-  const coverBytes = await buildCoverPdf(referral, resolveSource);
-  const notesBytes = buildNotesPdf(notes, resolveUser);
-  const timelineBytes = buildTimelinePdf(timelineEntries, resolveUser, resolveMarketer);
+  const packetBytes = await buildHousePacketPdf({
+    referral,
+    resolveSource,
+    resolveUser,
+    resolveMarketer,
+    notes,
+    timelineEntries,
+    files,
+  });
 
-  // Merge into final packet
-  const merged = await PDFDocument.create();
-  await appendPdfBytes(merged, coverBytes);
+  const { last, first } = patientNameParts(patient);
+  const nameStem = first ? `${last}_${first}` : last;
+  const dateStr = new Date().toISOString().split('T')[0];
 
-  // Patient files
+  // No uploads → clean PDF only.
   if (files.length === 0) {
-    const emptyDivider = buildFileDividerPdf(
-      { file_name: '(none)', category: '—', created_at: null },
-      { status: 'No files on file', detail: 'This patient has no uploaded documents in CareStream.' },
-    );
-    await appendPdfBytes(merged, emptyDivider);
-  } else {
-    for (const file of files) {
-      const kind = fileKind(file);
-      try {
-        const bytes = await fetchFileBytes(file);
-        if (kind === 'pdf') {
-          await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
-          await appendPdfBytes(merged, bytes);
-        } else if (kind === 'png' || kind === 'jpg') {
-          await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
-          const ok = await appendImageFile(merged, bytes, kind);
-          if (!ok) {
-            await appendPdfBytes(merged, buildFileDividerPdf(file, {
-              status: 'Could not embed image',
-              detail: 'Open this file from the patient Files tab in CareStream.',
-            }));
-          }
-        } else {
-          await appendPdfBytes(merged, buildFileDividerPdf(file, {
-            status: 'Not embeddable in PDF',
-            detail: `File type “${file.file_type || file.file_name || 'unknown'}” cannot be rendered inline. Open it from the patient Files tab in CareStream.`,
-          }));
-        }
-      } catch (err) {
-        await appendPdfBytes(merged, buildFileDividerPdf(file, {
-          status: 'Could not include file',
-          detail: err?.message || 'Download failed. Open this file from the patient Files tab in CareStream.',
-        }));
-      }
-    }
+    downloadBlob(packetBytes, `${nameStem}_EMR_Onboarding_${dateStr}.pdf`, 'application/pdf');
+    return;
   }
 
-  await appendPdfBytes(merged, notesBytes);
-  await appendPdfBytes(merged, timelineBytes);
+  // Any patient files → ZIP with house packet + every original upload.
+  const zip = new JSZip();
+  zip.file('EMR_Onboarding_Packet.pdf', packetBytes);
 
-  const lastName = (patient.last_name || 'Patient').replace(/\s+/g, '_');
-  const firstName = (patient.first_name || '').replace(/\s+/g, '_');
-  const dateStr = new Date().toISOString().split('T')[0];
-  const filename = `EMR_Onboarding_${lastName}_${firstName}_${dateStr}.pdf`;
+  const filesFolder = zip.folder('Patient_Files');
+  const usedNames = new Set();
+  const failed = [];
 
-  const out = await merged.save();
-  downloadBlob(out, filename);
+  await Promise.all(files.map(async (file) => {
+    const zipName = uniqueZipName(usedNames, file.file_name || `file_${file._id || 'unknown'}`);
+    try {
+      const bytes = await fetchFileBytes(file);
+      filesFolder.file(zipName, bytes);
+    } catch (err) {
+      failed.push({ name: zipName, reason: err?.message || 'Download failed' });
+    }
+  }));
+
+  if (failed.length > 0) {
+    const lines = [
+      'Some patient files could not be downloaded into this ZIP.',
+      'Open them from the CareStream patient Files tab.',
+      '',
+      ...failed.map((f) => `- ${f.name}: ${f.reason}`),
+    ];
+    zip.file('MISSING_FILES.txt', lines.join('\n'));
+  }
+
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  downloadBlob(zipBlob, `${nameStem}_EMR_Onboarding_${dateStr}.zip`, 'application/zip');
 }

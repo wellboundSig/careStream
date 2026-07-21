@@ -27,9 +27,9 @@ import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { createAuthorization, updateAuthorization } from '../../../api/authorizations.js';
 import { recordActivity } from '../../../api/activityLog.js';
-import { createNoteOptimistic, createTaskOptimistic } from '../../../store/mutations.js';
+import { createNoteOptimistic, createTaskOptimistic, updateReferralOptimistic } from '../../../store/mutations.js';
 import { flagConflict } from '../../../utils/conflictFlagging.js';
-import palette from '../../../utils/colors.js';
+import palette, { hexToRgba } from '../../../utils/colors.js';
 import {
   DIVISION,
   AUDIT_ACTION,
@@ -92,8 +92,27 @@ function legacyStatusFromRollup(rollup) {
   return 'Pending';
 }
 
+function userDisplayName(usersById, userId) {
+  if (!userId) return null;
+  const list = Object.values(usersById || {});
+  const u = list.find((x) => x.id === userId || x._id === userId);
+  if (!u) return userId;
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+  return name || u.email || userId;
+}
+
+function fmtRequestStamp(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  } catch { return String(iso); }
+}
+
 export default function AuthorizationWorkspace({
-  patient, referral, readOnly = false, variant = 'drawer', onInitiateTransition,
+  patient, referral, readOnly = false, variant = 'drawer',
+  onInitiateTransition, onSelectedReferralLeftModule,
 }) {
   const t = tokens(variant);
   const { can } = usePermissions();
@@ -102,6 +121,8 @@ export default function AuthorizationWorkspace({
   const storeUsers = useCareStore((s) => s.users);
   const patientRecordId = patient?._id || null;
   const verifierRecordId = appUser?._id || null;
+  const [obtaining, setObtaining] = useState(false);
+  const [obtainError, setObtainError] = useState(null);
 
   const division = referral?.division === DIVISION.ALF ? DIVISION.ALF : DIVISION.SPECIAL_NEEDS;
   const { allowed: AUTH_SERVICES } = determineAllowedServicesByDivision({ division });
@@ -111,6 +132,7 @@ export default function AuthorizationWorkspace({
   });
 
   const canEdit = !readOnly && can(PERMISSION_KEYS.AUTH_DECIDE);
+  const alreadyObtained = !!referral?.auth_obtained_at;
 
   // Latest auth response per insurance (rows are pre-sorted newest-first).
   const responseByInsurance = useMemo(() => {
@@ -131,6 +153,78 @@ export default function AuthorizationWorkspace({
     return dept?.supervisor || null;
   }
 
+  async function handleAuthorizationObtained() {
+    if (!canEdit || !referral?._id || obtaining || alreadyObtained) return;
+    setObtaining(true);
+    setObtainError(null);
+    const now = new Date().toISOString();
+    const ownerId = referral.intake_owner_id || null;
+    const patientName = patient
+      ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
+      : (referral.patientName || referral.patient_id || 'Patient');
+
+    try {
+      // 1) Stamp referral — drives the row icon + drops Auth Pending membership.
+      await updateReferralOptimistic(referral._id, {
+        auth_obtained_at: now,
+        auth_obtained_by_id: appUserId || 'unknown',
+      });
+
+      // 2) Notify intake owner (task → realtime toast + Tasks page).
+      if (ownerId) {
+        createTaskOptimistic({
+          id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          title: `Authorization obtained — ${patientName}`,
+          type: 'Auth Needed',
+          status: 'Pending',
+          priority: 'Normal',
+          source: 'System',
+          route_to_role: 'Intake',
+          assigned_to_id: ownerId,
+          patient_id: patient?.id,
+          referral_id: referral.id,
+          description: `Authorization has been obtained for ${patientName}. Review the Auth tab / files if needed.`,
+          created_at: now,
+          updated_at: now,
+        }).catch(() => {});
+      }
+
+      // 3) Audit trail
+      createNoteOptimistic({
+        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        patient_id: patient?.id,
+        author_id: appUserId,
+        content: `✅ Authorization obtained${ownerId ? ' — intake owner notified' : ''}`,
+        created_at: now,
+        updated_at: now,
+        referral_id: referral.id,
+      }).catch(() => {});
+
+      await recordActivity({
+        actorUserId: appUserId,
+        action: 'Authorization Obtained',
+        patientId: patient?.id,
+        referralId: referral?.id,
+        detail: ownerId
+          ? `Authorization obtained — notification sent to intake owner ${ownerId}.`
+          : 'Authorization obtained — no intake owner assigned to notify.',
+      });
+
+      // Legacy Authorization Pending stage → return to Eligibility Verification.
+      if (referral.current_stage === 'Authorization Pending') {
+        onInitiateTransition?.(referral, 'Eligibility Verification');
+      }
+
+      onSelectedReferralLeftModule?.();
+      triggerDataRefresh();
+    } catch (err) {
+      console.error('[Authorization] Authorization Obtained failed', err);
+      setObtainError(err?.message || 'Failed to mark authorization obtained');
+    } finally {
+      setObtaining(false);
+    }
+  }
+
   if (!referral) {
     return <p style={{ padding: 16, fontSize: t.fontBase, color: '#888' }}>No referral selected.</p>;
   }
@@ -138,6 +232,22 @@ export default function AuthorizationWorkspace({
   return (
     <div data-testid="authorization-workspace" data-variant={variant} style={{ padding: variant === 'panel' ? '14px 12px' : '18px 20px 40px' }}>
       <p style={sectionHeading(t)}>Authorizations — per insurance</p>
+
+      {alreadyObtained && (
+        <div style={{
+          marginBottom: t.gap, padding: '8px 10px', borderRadius: 8,
+          background: hexToRgba(palette.accentGreen.hex, 0.1),
+          border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.25)}`,
+          fontSize: t.fontMuted, color: palette.accentGreen.hex, fontWeight: 600,
+        }}>
+          Authorization obtained {fmtRequestStamp(referral.auth_obtained_at)
+            ? `on ${fmtRequestStamp(referral.auth_obtained_at)}`
+            : ''}
+          {referral.auth_obtained_by_id
+            ? ` · by ${userDisplayName(storeUsers, referral.auth_obtained_by_id)}`
+            : ''}
+        </div>
+      )}
 
       {loading && insurances.length === 0 && (
         <p style={{ fontSize: t.fontMuted, color: '#888' }}>Loading…</p>
@@ -164,35 +274,70 @@ export default function AuthorizationWorkspace({
             verifierRecordId={verifierRecordId}
             appUserId={appUserId}
             findSupervisorUserId={findSupervisorUserId}
+            storeUsers={storeUsers}
           />
         ))}
       </div>
 
-      {/* Hand back to Eligibility (kept from prior behavior; no stage change
-          unless the legacy Authorization Pending stage is still set). */}
-      {authorizations.length > 0 && (
+      {/* Pending auth rows created via Get Auth before an insurance was linked */}
+      {authorizations.filter((a) => {
+        const insId = Array.isArray(a.payer_insurance_id) ? a.payer_insurance_id[0] : a.payer_insurance_id;
+        return !insId;
+      }).map((orphan) => (
+        <PendingAuthBanner
+          key={orphan._id}
+          t={t}
+          response={orphan}
+          storeUsers={storeUsers}
+        />
+      ))}
+
+      {authorizations.length > 0 && canEdit && !alreadyObtained && (
         <div style={{ marginTop: t.sectionGap }}>
+          <p style={{ fontSize: t.fontMuted, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8, lineHeight: 1.45 }}>
+            When responses are recorded and any required files are uploaded, mark authorization obtained. This notifies the intake owner and clears the patient from Auth Pending.
+          </p>
+          {obtainError && (
+            <p style={{ fontSize: t.fontMuted, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{obtainError}</p>
+          )}
           <button
-            data-testid="auth-send-to-eligibility"
-            onClick={async () => {
-              if (referral.current_stage === 'Authorization Pending') {
-                onInitiateTransition?.(referral, 'Eligibility Verification');
-              }
-              await recordActivity({
-                actorUserId: appUserId,
-                action: 'Authorization Returned to Eligibility',
-                patientId: patient?.id,
-                referralId: referral?.id,
-                detail: 'Authorization workflow handed back to Eligibility.',
-              });
-              triggerDataRefresh();
+            type="button"
+            data-testid="auth-obtained"
+            disabled={obtaining}
+            onClick={handleAuthorizationObtained}
+            style={{
+              width: '100%', padding: `${t.btnPadY}px ${t.inputPadX + 4}px`, borderRadius: t.radius - 1,
+              border: 'none', background: obtaining ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
+              color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 700,
+              cursor: obtaining ? 'wait' : 'pointer',
             }}
-            style={{ padding: `${t.btnPadY - 2}px ${t.inputPadX + 4}px`, borderRadius: t.radius - 1, border: '1px solid var(--color-border)', background: palette.backgroundLight.hex, color: palette.accentBlue.hex, fontSize: t.fontMuted, fontWeight: 700, cursor: 'pointer' }}
           >
-            → Send to Eligibility
+            {obtaining ? 'Saving…' : 'Authorization obtained'}
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function PendingAuthBanner({ t, response, storeUsers }) {
+  const status = (response?.auth_status || response?.status || 'pending').toString().toLowerCase();
+  const isPending = status === 'pending' || status === 'follow_up_needed' || status === '';
+  if (!isPending) return null;
+  const when = fmtRequestStamp(response?.request_initial_date || response?.created_at);
+  const who = userDisplayName(storeUsers, response?.requested_by_user_id);
+  return (
+    <div style={{
+      marginTop: t.gap, padding: '10px 12px', borderRadius: 8,
+      background: hexToRgba(palette.accentOrange.hex, 0.08),
+      border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.22)}`,
+    }}>
+      <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
+        Pending — awaiting response
+      </p>
+      <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+        {[when ? `Requested ${when}` : null, who ? `by ${who}` : null].filter(Boolean).join(' · ') || 'Authorization requested'}
+      </p>
     </div>
   );
 }
@@ -202,6 +347,7 @@ export default function AuthorizationWorkspace({
 function InsuranceAuthCard({
   t, division, authServices, insurance, response, readOnly,
   patient, referral, patientRecordId, verifierRecordId, appUserId, findSupervisorUserId,
+  storeUsers,
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -218,6 +364,16 @@ function InsuranceAuthCard({
     lines: safeParse(response?.service_lines, []),
     note: '',
   }), [response, insurance]);
+
+  const rollupStatus = (response?.auth_status || response?.status || '').toString().toLowerCase();
+  const storedLinesPreview = safeParse(response?.service_lines, []);
+  const isAwaitingResponse = !!response && (
+    rollupStatus === 'pending'
+    || rollupStatus === 'follow_up_needed'
+    || storedLinesPreview.length === 0
+  );
+  const requestedWhen = fmtRequestStamp(response?.request_initial_date || response?.created_at);
+  const requestedWho = userDisplayName(storeUsers, response?.requested_by_user_id);
 
   const [form, setForm] = useState(initial);
   const [followUps, setFollowUps] = useState(() => safeParse(response?.follow_ups, []));
@@ -276,6 +432,10 @@ function InsuranceAuthCard({
       ...(String(l.note || '').trim() ? { note: l.note.trim() } : {}),
     }));
 
+    const prevReq = response?.request_initial_date
+      ? String(response.request_initial_date).split('T')[0]
+      : '';
+    const nextReq = form.request_initial_date || '';
     const fields = {
       referral_id: referral.id,
       patient_id: patientRecordId || undefined,
@@ -294,6 +454,12 @@ function InsuranceAuthCard({
       status: legacyStatusFromRollup(rollup),
       ...(String(form.note || '').trim() ? { notes: form.note.trim() } : {}),
       decided_by_user_id: verifierRecordId || undefined,
+      // Stamp requester when the request date is first set or changed.
+      ...(nextReq && nextReq !== prevReq
+        ? { requested_by_user_id: appUserId || undefined }
+        : (response?.requested_by_user_id
+          ? { requested_by_user_id: response.requested_by_user_id }
+          : {})),
       updated_at: new Date().toISOString(),
     };
 
@@ -400,17 +566,36 @@ function InsuranceAuthCard({
               {[insurance.insurance_category, insurance.order_rank, insurance.member_id && `Member ${insurance.member_id}`].filter(Boolean).join(' · ')}
             </p>
           </div>
-          {response && (
-            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
-              {response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? 'Inactive' : 'Active'}
+          {isAwaitingResponse ? (
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, flexShrink: 0 }}>
+              Pending
             </span>
-          )}
+          ) : response ? (
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
+              {response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? 'Inactive' : (rollupStatus === 'approved' || rollupStatus === 'nar' ? 'Responded' : 'Active')}
+            </span>
+          ) : null}
         </div>
       </div>
 
       {/* Collapsed summary */}
       {!editing && (
         <div style={{ padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, fontSize: t.fontMuted }}>
+          {isAwaitingResponse && (
+            <div style={{
+              marginBottom: storedLines.length ? 8 : 0, padding: '8px 10px', borderRadius: 7,
+              background: hexToRgba(palette.accentOrange.hex, 0.08),
+              border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.2)}`,
+            }}>
+              <p style={{ fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
+                Pending — awaiting response
+              </p>
+              <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+                {[requestedWhen ? `Last requested ${requestedWhen}` : null, requestedWho ? `by ${requestedWho}` : null].filter(Boolean).join(' · ')
+                  || 'Awaiting payer response'}
+              </p>
+            </div>
+          )}
           {storedLines.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {storedLines.map((l, i) => (
@@ -424,9 +609,9 @@ function InsuranceAuthCard({
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isAwaitingResponse ? (
             <p style={{ color: '#888' }}>No auth response recorded yet.</p>
-          )}
+          ) : null}
           {storedFollowUps.length > 0 && (
             <p style={{ color: '#888', marginTop: 6 }}>{storedFollowUps.length} follow-up{storedFollowUps.length === 1 ? '' : 's'} logged</p>
           )}

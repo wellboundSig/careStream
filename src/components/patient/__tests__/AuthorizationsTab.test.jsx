@@ -22,6 +22,7 @@ vi.mock('../../../store/careStore.js', () => ({
 vi.mock('../../../store/mutations.js', () => ({
   createNoteOptimistic: vi.fn().mockResolvedValue({}),
   createTaskOptimistic: vi.fn(),
+  updateReferralOptimistic: vi.fn().mockResolvedValue({}),
 }));
 vi.mock('../../../utils/conflictFlagging.js', () => ({
   flagConflict: vi.fn().mockResolvedValue({}),

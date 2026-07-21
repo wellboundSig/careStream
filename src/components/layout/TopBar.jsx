@@ -232,7 +232,7 @@ function NotificationBell() {
   const { tasks, patientNames } = useMemo(() => {
     if (!appUserId) return { tasks: [], patientNames: {} };
     const myTasks = Object.values(storeTasks)
-      .filter((t) => t.assigned_to === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled')
+      .filter((t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled')
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
       .slice(0, 5);
 

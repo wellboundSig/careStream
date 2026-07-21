@@ -45,10 +45,8 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const {
     checked,
     decision: workingDecision,
-    authRequired,
     toggle: toggleItem,
     setDecision: setLocalDecision,
-    setAuthRequired,
   } = useClinicalReview(referral?._id);
 
   return (
@@ -95,8 +93,6 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         onToggle={readOnly ? () => {} : toggleItem}
         decision={workingDecision}
         onDecisionChange={readOnly ? () => {} : setLocalDecision}
-        authRequired={authRequired}
-        onAuthRequiredChange={readOnly ? () => {} : setAuthRequired}
         locked={workingDecision === 'accept' || workingDecision === 'conditional'}
       />
     </div>

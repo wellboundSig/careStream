@@ -32,13 +32,18 @@ const DECISION_SELECTED_LABELS = {
  *  - onToggle: (key) => void
  *  - decision: string | null — 'accept' | 'conditional' | 'decline'
  *  - onDecisionChange: (decision) => void
- *  - authRequired: boolean
- *  - onAuthRequiredChange: (bool) => void
- *  - compact: boolean — smaller rendering for drawer tab
+ *  - compact: boolean — smaller rendering for module panel
  *  - locked: boolean — true once a decision is set; locks the checklist and
  *    the risk dropdown so the review can't be silently edited after Accept.
  */
-export default function ClinicalChecklistUI({ checked, onToggle, decision, onDecisionChange, authRequired, onAuthRequiredChange, compact, locked = false }) {
+export default function ClinicalChecklistUI({
+  checked,
+  onToggle,
+  decision,
+  onDecisionChange,
+  compact,
+  locked = false,
+}) {
   const completedRequired = REQUIRED_ITEMS.filter((i) => checked[i.key]).length;
   const totalRequired = REQUIRED_ITEMS.length;
   const pct = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
@@ -143,44 +148,69 @@ export default function ClinicalChecklistUI({ checked, onToggle, decision, onDec
         );
       })}
 
-      {/* Clinical Validation — the decision buttons remain interactive even
-          when locked, so the reviewer can switch Accept↔Conditional or
-          deselect entirely (which unlocks the checklist for further edits). */}
-      <div style={{ marginBottom: compact ? 10 : 14 }}>
-        <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 6 }}>
+      {/* Clinical Validation — decision buttons stay interactive when locked so
+          the reviewer can switch Accept↔Conditional or deselect to unlock. */}
+      <div style={{ marginBottom: compact ? 4 : 6 }}>
+        <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 8 }}>
           Clinical Validation
         </p>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           {CLINICAL_DECISIONS.map((d) => {
             const sel = decision === d.key;
             const c = DECISION_COLORS[d.key] || palette.backgroundDark.hex;
+            const isConditional = d.key === 'conditional';
             // Clicking the SELECTED decision again deselects it — that's how
             // the reviewer "unlocks" the checklist to make a correction.
             const onClick = () => onDecisionChange(sel ? null : d.key);
             return (
-              <button key={d.key} type="button" data-testid={`decision-${d.key}`} onClick={onClick} style={{
-                flex: 1, padding: compact ? '7px 6px' : '9px 8px', borderRadius: 7, cursor: 'pointer',
-                background: sel ? c : hexToRgba(palette.backgroundDark.hex, 0.04),
-                border: `1.5px solid ${sel ? c : hexToRgba(palette.backgroundDark.hex, 0.1)}`,
-                color: sel ? (d.key === 'conditional' ? palette.backgroundDark.hex : palette.backgroundLight.hex) : hexToRgba(palette.backgroundDark.hex, 0.6),
-                fontSize: compact ? 11 : 12, fontWeight: 650, transition: 'all 0.12s', textAlign: 'center',
-              }}>
+              <button
+                key={d.key}
+                type="button"
+                data-testid={`decision-${d.key}`}
+                onClick={onClick}
+                style={{
+                  flex: 1,
+                  padding: compact ? '10px 8px' : '12px 10px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  // Unselected: tinted fill + strong accent border so Accept
+                  // reads as a primary action, not a disabled grey chip.
+                  background: sel
+                    ? c
+                    : hexToRgba(c, isConditional ? 0.22 : 0.14),
+                  border: `1.5px solid ${sel ? c : hexToRgba(c, isConditional ? 0.75 : 0.55)}`,
+                  color: sel
+                    ? (isConditional ? palette.backgroundDark.hex : palette.backgroundLight.hex)
+                    : (isConditional ? palette.backgroundDark.hex : c),
+                  fontSize: compact ? 12 : 13,
+                  fontWeight: 700,
+                  transition: 'filter 0.12s, transform 0.12s, box-shadow 0.12s',
+                  textAlign: 'center',
+                  boxShadow: sel
+                    ? `0 1px 3px ${hexToRgba(c, 0.35)}`
+                    : 'none',
+                  letterSpacing: '-0.01em',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = 'brightness(1.05)';
+                  if (!sel) e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = 'none';
+                  e.currentTarget.style.transform = 'none';
+                }}
+              >
                 {sel ? (DECISION_SELECTED_LABELS[d.key] || d.label) : d.label}
               </button>
             );
           })}
         </div>
+        {!decision && (
+          <p style={{ marginTop: 8, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.4 }}>
+            Choose Accept or Conditional to continue.
+          </p>
+        )}
       </div>
-
-      {/* Authorization required toggle */}
-      {(decision === 'accept' || decision === 'conditional') && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 7, background: authRequired ? hexToRgba(palette.accentOrange.hex, 0.08) : hexToRgba(palette.backgroundDark.hex, 0.03), cursor: 'pointer', marginBottom: compact ? 8 : 12 }}>
-          <input type="checkbox" checked={authRequired} onChange={(e) => onAuthRequiredChange(e.target.checked)} style={{ accentColor: palette.accentOrange.hex, width: 14, height: 14 }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>
-            Managed care authorization required
-          </span>
-        </label>
-      )}
     </div>
   );
 }

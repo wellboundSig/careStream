@@ -4,7 +4,9 @@ import { getConflictsByReferral } from '../../api/conflicts.js';
 import { getFilesByPatient } from '../../api/patientFiles.js';
 import { updateReferral } from '../../api/referrals.js';
 import { updateDisenrollmentFlag } from '../../api/disenrollmentFlags.js';
-import { updateReferralOptimistic } from '../../store/mutations.js';
+import { createNoteOptimistic, updateReferralOptimistic } from '../../store/mutations.js';
+import { createSocRescheduleLog } from '../../api/socRescheduleLog.js';
+import { updateEpisode } from '../../api/episodes.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
@@ -37,6 +39,18 @@ const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
   'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
   'Conflict', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled',
+];
+
+/** Categories stored on `soc_reschedule_log.reason_category` for reporting. */
+const SOC_RESCHEDULE_REASONS = [
+  { value: 'parent_availability', label: 'Parent / caregiver availability' },
+  { value: 'staffing_changes', label: 'Staffing changes' },
+  { value: 'clinician_unavailable', label: 'Clinician unavailable / call-out' },
+  { value: 'patient_medical', label: 'Patient medical / hospitalization' },
+  { value: 'transportation_weather', label: 'Transportation / weather' },
+  { value: 'insurance_auth', label: 'Insurance / authorization delay' },
+  { value: 'family_request', label: 'Family request' },
+  { value: 'other', label: 'Other' },
 ];
 
 // Format a calendar date WITHOUT timezone shift. A value like '2026-06-01'
@@ -1761,8 +1775,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             onToggle={toggleItem}
             decision={decision}
             onDecisionChange={setDecision}
-            authRequired={false}
-            onAuthRequiredChange={() => {}}
             compact
             locked={decisionLocked}
           />
@@ -1842,7 +1854,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 // The drawer tab (AuthorizationsTab.jsx) wraps the same workspace with
 // variant="drawer". Writes in either surface call triggerDataRefresh() so
 // both re-fetch in lockstep.
-function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
+function AuthorizationPanel({ selectedReferral, onInitiateTransition, onSelectedReferralLeftModule }) {
   if (!selectedReferral) {
     return (
       <Panel>
@@ -1860,6 +1872,7 @@ function AuthorizationPanel({ selectedReferral, onInitiateTransition }) {
         referral={selectedReferral}
         variant="panel"
         onInitiateTransition={onInitiateTransition}
+        onSelectedReferralLeftModule={onSelectedReferralLeftModule}
       />
     </Panel>
   );
@@ -2437,6 +2450,224 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 }
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
+function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [open, setOpen] = useState(false);
+  const [newDate, setNewDate] = useState('');
+  const [reasonCategory, setReasonCategory] = useState('');
+  const [reasonDetail, setReasonDetail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setOpen(false);
+    setNewDate('');
+    setReasonCategory('');
+    setReasonDetail('');
+    setError(null);
+  }, [referral?._id]);
+
+  if (!canSchedule) return null;
+
+  async function handleSave() {
+    if (!referral?._id) return;
+    const detail = reasonDetail.trim();
+    if (!newDate) { setError('Enter the new SOC date.'); return; }
+    if (!reasonCategory) { setError('Choose a reason category.'); return; }
+    if (!detail) { setError('Explain what happened (required).'); return; }
+    if (newDate === String(referral.soc_scheduled_date || '').split('T')[0]) {
+      setError('New date must be different from the current SOC date.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    const now = new Date().toISOString();
+    const previous = referral.soc_scheduled_date
+      ? String(referral.soc_scheduled_date).split('T')[0]
+      : null;
+    const reasonLabel = SOC_RESCHEDULE_REASONS.find((r) => r.value === reasonCategory)?.label || reasonCategory;
+
+    try {
+      await createSocRescheduleLog({
+        id: `socrs_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        referral_id: referral.id,
+        patient_id: referral.patient_id,
+        previous_soc_date: previous,
+        new_soc_date: newDate,
+        reason_category: reasonCategory,
+        reason_detail: detail,
+        rescheduled_by_id: appUserId || 'unknown',
+        created_at: now,
+        updated_at: now,
+      });
+
+      await updateReferralOptimistic(referral._id, {
+        soc_scheduled_date: newDate,
+        soc_scheduled_at: now,
+        soc_scheduled_by_id: appUserId || 'unknown',
+        updated_at: now,
+      });
+
+      // Keep the linked episode in sync when one exists.
+      try {
+        const episodes = useCareStore.getState().episodes || {};
+        const episode = Object.values(episodes).find((e) => {
+          const link = e.referral_id;
+          if (Array.isArray(link)) return link.includes(referral._id) || link.includes(referral.id);
+          return link === referral._id || link === referral.id;
+        });
+        if (episode?._id) {
+          await updateEpisode(episode._id, {
+            soc_date: newDate,
+            episode_start: newDate,
+            updated_at: now,
+          });
+        }
+      } catch (epErr) {
+        console.warn('[Pre-SOC] episode date sync failed (non-fatal)', epErr);
+      }
+
+      createNoteOptimistic({
+        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        patient_id: referral.patient_id,
+        author_id: appUserId,
+        content: `SOC rescheduled: ${fmtCalendarDate(previous) || '—'} → ${fmtCalendarDate(newDate)} · ${reasonLabel}. ${detail}`,
+        created_at: now,
+        updated_at: now,
+        referral_id: referral.id,
+      }).catch(() => {});
+
+      setOpen(false);
+      setNewDate('');
+      setReasonCategory('');
+      setReasonDetail('');
+      triggerDataRefresh();
+      onDone?.();
+    } catch (err) {
+      console.error('[Pre-SOC] SOC reschedule failed', err);
+      setError(err?.message || 'Failed to reschedule SOC');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div data-testid="reschedule-soc-open">
+        <ActionBtn
+          label="Reschedule SOC"
+          variant="warning"
+          onClick={() => setOpen(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="reschedule-soc-form"
+      style={{
+        borderRadius: 8,
+        border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`,
+        background: hexToRgba(palette.accentOrange.hex, 0.05),
+        padding: '10px 11px',
+      }}
+    >
+      <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 8 }}>
+        Reschedule SOC
+      </p>
+      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 8, lineHeight: 1.45 }}>
+        Current date: <strong>{fmtCalendarDate(referral.soc_scheduled_date) || '—'}</strong>
+      </p>
+
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
+        New SOC date
+      </label>
+      <input
+        type="date"
+        value={newDate}
+        min={today}
+        onChange={(e) => setNewDate(e.target.value)}
+        data-testid="reschedule-soc-date"
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, marginBottom: 8,
+          border: `1px solid ${newDate ? palette.accentOrange.hex : 'var(--color-border)'}`,
+          fontSize: 13, fontFamily: 'inherit', outline: 'none',
+          background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
+        }}
+      />
+
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
+        Reason category
+      </label>
+      <select
+        value={reasonCategory}
+        onChange={(e) => setReasonCategory(e.target.value)}
+        data-testid="reschedule-soc-reason"
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, marginBottom: 8,
+          border: '1px solid var(--color-border)', fontSize: 12.5, fontFamily: 'inherit',
+          background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
+        }}
+      >
+        <option value="">Select…</option>
+        {SOC_RESCHEDULE_REASONS.map((r) => (
+          <option key={r.value} value={r.value}>{r.label}</option>
+        ))}
+      </select>
+
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
+        What happened <span style={{ color: palette.primaryMagenta.hex }}>*</span>
+      </label>
+      <textarea
+        value={reasonDetail}
+        onChange={(e) => setReasonDetail(e.target.value)}
+        rows={3}
+        placeholder="Required — brief explanation for the reschedule"
+        data-testid="reschedule-soc-detail"
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, marginBottom: 8,
+          border: '1px solid var(--color-border)', fontSize: 12.5, fontFamily: 'inherit',
+          background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, resize: 'vertical',
+        }}
+      />
+
+      {error && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
+
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          data-testid="reschedule-soc-save"
+          style={{
+            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+            background: saving ? hexToRgba(palette.accentOrange.hex, 0.5) : palette.accentOrange.hex,
+            color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650,
+            cursor: saving ? 'wait' : 'pointer',
+          }}
+        >
+          {saving ? 'Saving…' : 'Save reschedule'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); setError(null); }}
+          disabled={saving}
+          style={{
+            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+            background: hexToRgba(palette.backgroundDark.hex, 0.07),
+            color: hexToRgba(palette.backgroundDark.hex, 0.55),
+            fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
@@ -2635,8 +2866,13 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
                 )}
               </div>
 
-              <div style={{ marginTop: 8 }}>
-                <ActionBtn label="Reschedule / Hold" variant="warning" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <RescheduleSocForm
+                  referral={selectedReferral}
+                  appUserId={appUserId}
+                  canSchedule={canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)}
+                />
+                <ActionBtn label="Place on Hold" variant="default" onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')} />
               </div>
             </PanelSection>
           )}
@@ -2806,10 +3042,14 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
               </div>
             )}
 
-            {/* ── Reschedule / Hold ── */}
+            <RescheduleSocForm
+              referral={selectedReferral}
+              appUserId={appUserId}
+              canSchedule={canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)}
+            />
             <ActionBtn
-              label="Reschedule / Hold"
-              variant="warning"
+              label="Place on Hold"
+              variant="default"
               onClick={() => onInitiateTransition?.(selectedReferral, 'Hold')}
             />
           </PanelSection>

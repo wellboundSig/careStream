@@ -182,8 +182,11 @@ export const STAGE_META = {
     isGlobal: false,
     isTerminal: false,
     color: palette.accentOrange.hex,
-    // Decorated by ModulePage: `_hasActiveAuthorization` = boolean
-    matchReferral: (r) => r.current_stage === 'Authorization Pending' || r._hasActiveAuthorization === true,
+    // Decorated by ModulePage: `_hasActiveAuthorization` = boolean.
+    // Leaves the queue once Authorization Obtained stamps `auth_obtained_at`.
+    matchReferral: (r) =>
+      !r.auth_obtained_at
+      && (r.current_stage === 'Authorization Pending' || r._hasActiveAuthorization === true),
   },
   'Conflict': {
     description: 'Regulatory or service overlap conflict requiring resolution',

@@ -25,11 +25,15 @@ import StageBadge from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
+import AuthObtainedIcon from '../common/AuthObtainedIcon.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+
+/** Uniform queue row height — every module table row is this tall. */
+const QUEUE_ROW_HEIGHT = 48;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -144,13 +148,16 @@ export default function ModulePage({ stage }) {
   const disenStore = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
   const decoratedReferrals = useMemo(() => {
     if (!allReferrals?.length) return allReferrals || [];
+    // Pending-ish statuses always qualify. Rows with a request stamp also stay
+    // in Auth Pending after a response is recorded — until Authorization Obtained.
     const ACTIVE_AUTH = new Set(['nar', 'pending', 'follow_up_needed']);
     const OPEN_DISEN = new Set(['open', 'in_review']);
     const refIdsWithAuth = new Set();
     Object.values(authStore).forEach((a) => {
       if (!a?.referral_id) return;
       const status = (a.auth_status || a.status || '').toString().toLowerCase();
-      if (ACTIVE_AUTH.has(status)) refIdsWithAuth.add(a.referral_id);
+      const requested = !!(a.request_initial_date || a.requested_by_user_id);
+      if (ACTIVE_AUTH.has(status) || requested) refIdsWithAuth.add(a.referral_id);
     });
     const refRecIdsWithDisen = new Set();
     const refCustomIdsWithDisen = new Set();
@@ -163,7 +170,7 @@ export default function ModulePage({ stage }) {
     });
     return allReferrals.map((r) => ({
       ...r,
-      _hasActiveAuthorization: refIdsWithAuth.has(r.id),
+      _hasActiveAuthorization: refIdsWithAuth.has(r.id) && !r.auth_obtained_at,
       _hasOpenDisenrollmentFlag: refRecIdsWithDisen.has(r._id) || refCustomIdsWithDisen.has(r.id),
     }));
   }, [allReferrals, authStore, disenStore]);
@@ -448,36 +455,68 @@ export default function ModulePage({ stage }) {
     const totalDays  = daysInPipeline(referral);
     const isSN = referral.division === 'Special Needs';
     const urgent = isUrgentCare(referral);
+    const td = (extra = {}) => ({
+      padding: '0 14px',
+      height: QUEUE_ROW_HEIGHT,
+      verticalAlign: 'middle',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      maxWidth: 280,
+      ...extra,
+    });
     switch (col.key) {
       case 'urgent':
         return (
-          <td key="urgent" style={{ padding: '11px 10px', textAlign: 'center', width: 40 }}>
+          <td key="urgent" style={td({ padding: '0 10px', textAlign: 'center', width: 40, maxWidth: 40 })}>
             {urgent ? <UrgentCareIcon size={14} title="Urgent care required" /> : <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.2), fontSize: 11 }}>—</span>}
           </td>
         );
-      case 'patient':
+      case 'patient': {
+        const hasFile = fileUploadFlags.has(referral.patient_id);
+        const name = referral.patientName || referral.patient_id || '—';
+        const authObtainedAt = referral.auth_obtained_at;
+        let authObtainedTitle = null;
+        if (authObtainedAt) {
+          try {
+            const d = new Date(authObtainedAt);
+            authObtainedTitle = `Authorization obtained on ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+          } catch {
+            authObtainedTitle = `Authorization obtained on ${authObtainedAt}`;
+          }
+        }
         return (
-          <td key="patient" style={{ padding: '11px 14px' }}>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <td key="patient" style={td({ maxWidth: 220 })}>
+            <span
+              title={[name, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
+              style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden' }}
+            >
               {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
-              {referral.patientName || referral.patient_id || '—'}
-            </p>
-            {fileUploadFlags.has(referral.patient_id) && (
-              <p style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                File uploaded
-              </p>
-            )}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+              {authObtainedAt && (
+                <span title={authObtainedTitle} style={{ display: 'inline-flex', flexShrink: 0 }}>
+                  <AuthObtainedIcon size={13} title={authObtainedTitle} />
+                </span>
+              )}
+              {hasFile && (
+                <span title="File uploaded" style={{ display: 'inline-flex', flexShrink: 0 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              )}
+            </span>
           </td>
         );
+      }
       case 'division':
-        return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={referral.division} size="small" /></td>;
+        return <td key="division" style={td({ maxWidth: 90 })}><DivisionBadge division={referral.division} size="small" /></td>;
       case 'licence': {
         const label = resolveEntity(referral.entity_id);
-        if (!referral.entity_id || !label || label === '—') return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        if (!referral.entity_id || !label || label === '—') return <td key="licence" style={td({ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25), maxWidth: 120 })}>—</td>;
         const isWBII = /WBII|WELLBOUND II/i.test(label);
         return (
-          <td key="licence" style={{ padding: '11px 14px' }}>
+          <td key="licence" style={td({ maxWidth: 140 })}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
               fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
@@ -491,20 +530,20 @@ export default function ModulePage({ stage }) {
       }
       case 'source':
         return (
-          <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+          <td key="source" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), maxWidth: 160 })} title={resolveSource(referral.referral_source_id) || ''}>
             {resolveSource(referral.referral_source_id) || '—'}
           </td>
         );
       case 'marketer':
         return (
-          <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+          <td key="marketer" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 140 })}>
             {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
           </td>
         );
       case 'stage': {
         const isOnTrackRow = referral.current_stage === 'Staffing Feasibility';
         return (
-          <td key="stage" style={{ padding: '11px 14px' }}>
+          <td key="stage" style={td({ maxWidth: 200 })}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <StageBadge stage={referral.current_stage} size="small" />
               {isOnTrackRow && <img src="/feasibility-badge.png" alt="On Track" title="On Track" style={{ width: 16, height: 16 }} />}
@@ -515,7 +554,7 @@ export default function ModulePage({ stage }) {
       }
       case 'triage':
         return (
-          <td key="triage" style={{ padding: '11px 14px' }}>
+          <td key="triage" style={td({ maxWidth: 100 })}>
             {isSN ? (
               triageStatus[referral.id] ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex, background: hexToRgba(palette.accentGreen.hex, 0.1), padding: '2px 8px', borderRadius: 20 }}>
@@ -539,7 +578,7 @@ export default function ModulePage({ stage }) {
           : days > 7 ? palette.accentOrange.hex
           : hexToRgba(palette.backgroundDark.hex, 0.7);
         return (
-          <td key="days_in_stage" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+          <td key="days_in_stage" style={td({ maxWidth: 220 })}>
             <span
               title={`${days} day${days === 1 ? '' : 's'} in ${stageName} stage — resets on every stage change`}
               style={{ fontSize: 12, color, fontWeight: days > 7 ? 650 : 500 }}
@@ -554,7 +593,7 @@ export default function ModulePage({ stage }) {
       }
       case 'days_in_pipeline': {
         return (
-          <td key="days_in_pipeline" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+          <td key="days_in_pipeline" style={td({ maxWidth: 180 })}>
             <span
               title={`${totalDays} day${totalDays === 1 ? '' : 's'} in pipeline — since referral was created`}
               style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), fontWeight: 500 }}
@@ -568,33 +607,40 @@ export default function ModulePage({ stage }) {
         );
       }
       case 'f2f':
-        return <td key="f2f" style={{ padding: '11px 14px' }}><F2FCountdown referral={referral} /></td>;
-      case 'owner':
+        return <td key="f2f" style={td({ maxWidth: 100 })}><F2FCountdown referral={referral} /></td>;
+      case 'owner': {
+        const n = resolveUser(referral.intake_owner_id);
+        const label = n !== referral.intake_owner_id ? n : (n || '—');
         return (
-          <td key="owner" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {(() => { const n = resolveUser(referral.intake_owner_id); return n !== referral.intake_owner_id ? n : (n || '—'); })()}
+          <td key="owner" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 140 })} title={label}>
+            {label}
           </td>
         );
-      case 'insurance':
+      }
+      case 'insurance': {
+        const plan = referral.patient?.insurance_plan || '—';
         return (
-          <td key="insurance" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
-            {referral.patient?.insurance_plan || '—'}
+          <td key="insurance" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), maxWidth: 160 })} title={plan}>
+            {plan}
           </td>
         );
-      case 'facility':
+      }
+      case 'facility': {
+        const fac = referral.facility_id ? resolveFacility(referral.facility_id) : '—';
         return (
-          <td key="facility" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
-            {referral.facility_id ? resolveFacility(referral.facility_id) : '—'}
+          <td key="facility" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), maxWidth: 160 })} title={fac}>
+            {fac}
           </td>
         );
+      }
       case 'activity':
         return (
-          <td key="activity" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+          <td key="activity" style={td({ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), maxWidth: 100 })}>
             {relativeTime(referral.updated_at)}
           </td>
         );
       default:
-        return <td key={col.key} />;
+        return <td key={col.key} style={td()} />;
     }
   }
 
@@ -764,53 +810,55 @@ export default function ModulePage({ stage }) {
 
         {/* Body: queue + panel */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {/* Queue */}
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          {/* Queue — horizontal scroll with sticky L/R controls for non-trackpad users */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {stageReferrals.length === 0 ? (
               <EmptyState title={`No patients in ${meta.displayName || stage}`} subtitle={hasAnyFilter ? 'Try clearing filters or search.' : 'Patients will appear here when they reach this stage.'} />
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
-                <thead>
-                  <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                    {activeColumns.map((col) => (
-                      <th key={col.key} title={col.tooltip || undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default' }}>
-                        {col.label}
-                        {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
-                      </th>
-                    ))}
-                  </tr>
-                  {showFilters && (
-                    <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
+              <QueueScrollFrame>
+                <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
+                  <thead>
+                    <tr style={{ height: 40, background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
                       {activeColumns.map((col) => (
-                        <th key={col.key} style={{ padding: '4px 8px' }}>
-                          {col.filterable ? (
-                            <FilterInput
-                              value={colFilters[col.key] || ''}
-                              onChange={(v) => setColFilter(col.key, v)}
-                              placeholder={col.label}
-                              options={colOptions[col.key] || []}
-                            />
-                          ) : null}
+                        <th key={col.key} title={col.tooltip || undefined} style={{ padding: '0 14px', height: 40, textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default', verticalAlign: 'middle' }}>
+                          {col.label}
+                          {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
                         </th>
                       ))}
                     </tr>
-                  )}
-                </thead>
-                <tbody>
-                  {stageReferrals.map((ref) => (
-                    <QueueRow
-                      key={ref._id}
-                      referral={ref}
-                      activeColumns={activeColumns}
-                      renderCell={renderCell}
-                      isSelected={selectedReferral?._id === ref._id}
-                      onClick={() => handleRowSelect(ref)}
-                      onDoubleClick={() => handleRowOpen(ref)}
-                      onContextMenu={(e) => handleRowContextMenu(e, ref)}
-                    />
-                  ))}
-                </tbody>
-              </table>
+                    {showFilters && (
+                      <tr style={{ height: 40, background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
+                        {activeColumns.map((col) => (
+                          <th key={col.key} style={{ padding: '0 8px', height: 40, verticalAlign: 'middle' }}>
+                            {col.filterable ? (
+                              <FilterInput
+                                value={colFilters[col.key] || ''}
+                                onChange={(v) => setColFilter(col.key, v)}
+                                placeholder={col.label}
+                                options={colOptions[col.key] || []}
+                              />
+                            ) : null}
+                          </th>
+                        ))}
+                      </tr>
+                    )}
+                  </thead>
+                  <tbody>
+                    {stageReferrals.map((ref) => (
+                      <QueueRow
+                        key={ref._id}
+                        referral={ref}
+                        activeColumns={activeColumns}
+                        renderCell={renderCell}
+                        isSelected={selectedReferral?._id === ref._id}
+                        onClick={() => handleRowSelect(ref)}
+                        onDoubleClick={() => handleRowOpen(ref)}
+                        onContextMenu={(e) => handleRowContextMenu(e, ref)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </QueueScrollFrame>
             )}
           </div>
 
@@ -834,6 +882,192 @@ export default function ModulePage({ stage }) {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
+/**
+ * Queue table scroll shell: sticky left/right chevron controls + a clean
+ * bottom track so Windows / mouse users can pan wide column sets without a
+ * trackpad. Vertical scroll stays on the same pane.
+ */
+function QueueScrollFrame({ children }) {
+  const scrollerRef = useRef(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+  const [metrics, setMetrics] = useState({ scrollLeft: 0, maxScroll: 0, viewW: 0 });
+
+  const update = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    const scrollLeft = el.scrollLeft;
+    setCanLeft(scrollLeft > 2);
+    setCanRight(scrollLeft < maxScroll - 2);
+    setMetrics({ scrollLeft, maxScroll, viewW: el.clientWidth });
+  }, []);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    // Table width can change when columns toggle — observe first child too.
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => { el.removeEventListener('scroll', update); ro.disconnect(); };
+  }, [update, children]);
+
+  function scrollBy(delta) {
+    scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  }
+
+  function seekFromClientX(clientX, trackEl) {
+    const el = scrollerRef.current;
+    if (!el || !trackEl) return;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    if (maxScroll <= 0) return;
+    const rect = trackEl.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    el.scrollLeft = ratio * maxScroll;
+  }
+
+  function onTrackPointerDown(e) {
+    const el = scrollerRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth + 2) return;
+    const track = e.currentTarget;
+    seekFromClientX(e.clientX, track);
+    function onMove(ev) { seekFromClientX(ev.clientX, track); }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  const thumbW = metrics.maxScroll > 0
+    ? Math.max(28, (metrics.viewW / (metrics.viewW + metrics.maxScroll)) * 100)
+    : 100;
+  const thumbLeft = metrics.maxScroll > 0
+    ? (metrics.scrollLeft / metrics.maxScroll) * (100 - thumbW)
+    : 0;
+  const showControls = canLeft || canRight;
+
+  const chevronBtn = (side) => {
+    const enabled = side === 'left' ? canLeft : canRight;
+    return (
+      <button
+        type="button"
+        aria-label={side === 'left' ? 'Scroll columns left' : 'Scroll columns right'}
+        title={side === 'left' ? 'Scroll left' : 'Scroll right'}
+        disabled={!enabled}
+        onClick={() => scrollBy(side === 'left' ? -240 : 240)}
+        style={{
+          position: 'absolute',
+          [side]: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          zIndex: 3,
+          width: 32,
+          height: 32,
+          borderRadius: 999,
+          border: `1px solid ${hexToRgba(palette.backgroundDark.hex, enabled ? 0.12 : 0.06)}`,
+          background: enabled ? palette.backgroundLight.hex : hexToRgba(palette.backgroundLight.hex, 0.7),
+          color: hexToRgba(palette.backgroundDark.hex, enabled ? 0.65 : 0.25),
+          boxShadow: enabled ? `0 2px 10px ${hexToRgba(palette.backgroundDark.hex, 0.1)}` : 'none',
+          cursor: enabled ? 'pointer' : 'default',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: showControls ? 1 : 0,
+          pointerEvents: showControls && enabled ? 'auto' : showControls ? 'none' : 'none',
+          transition: 'opacity 0.15s, background 0.12s, color 0.12s, box-shadow 0.12s',
+        }}
+        onMouseEnter={(e) => {
+          if (!enabled) return;
+          e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.06);
+          e.currentTarget.style.color = palette.primaryMagenta.hex;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = palette.backgroundLight.hex;
+          e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.65);
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          {side === 'left'
+            ? <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            : <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />}
+        </svg>
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {canLeft && (
+          <div aria-hidden style={{
+            position: 'absolute', left: 0, top: 0, bottom: 0, width: 36, zIndex: 2, pointerEvents: 'none',
+            background: `linear-gradient(to right, ${palette.backgroundLight.hex} 30%, transparent)`,
+          }} />
+        )}
+        {canRight && (
+          <div aria-hidden style={{
+            position: 'absolute', right: 0, top: 0, bottom: 0, width: 36, zIndex: 2, pointerEvents: 'none',
+            background: `linear-gradient(to left, ${palette.backgroundLight.hex} 30%, transparent)`,
+          }} />
+        )}
+        {chevronBtn('left')}
+        {chevronBtn('right')}
+        <div
+          ref={scrollerRef}
+          data-testid="queue-h-scroll"
+          style={{
+            height: '100%',
+            overflow: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: `${hexToRgba(palette.backgroundDark.hex, 0.22)} transparent`,
+          }}
+        >
+          {children}
+        </div>
+      </div>
+
+      {/* Bottom track — always-available horizontal slider for mouse users */}
+      <div
+        data-testid="queue-h-track"
+        onPointerDown={onTrackPointerDown}
+        title="Drag or click to scroll columns"
+        style={{
+          flexShrink: 0,
+          height: 14,
+          margin: '0 10px 8px',
+          borderRadius: 999,
+          background: hexToRgba(palette.backgroundDark.hex, showControls ? 0.06 : 0.03),
+          position: 'relative',
+          cursor: showControls ? 'pointer' : 'default',
+          transition: 'background 0.15s',
+          touchAction: 'none',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 2,
+            bottom: 2,
+            left: `${thumbLeft}%`,
+            width: `${thumbW}%`,
+            borderRadius: 999,
+            background: showControls
+              ? hexToRgba(palette.backgroundDark.hex, 0.28)
+              : hexToRgba(palette.backgroundDark.hex, 0.1),
+            transition: 'background 0.15s',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, onDoubleClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -841,6 +1075,7 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
       onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
+        height: QUEUE_ROW_HEIGHT,
         borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
         background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.06) : hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent',
         cursor: 'pointer', transition: 'background 0.1s',

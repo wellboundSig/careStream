@@ -1117,6 +1117,16 @@
         "column": "soc_scheduled_by_id",
         "pg": "text",
         "wire": "text"
+      },
+      "auth_obtained_at": {
+        "column": "auth_obtained_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "auth_obtained_by_id": {
+        "column": "auth_obtained_by_id",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -1746,6 +1756,11 @@
         "column": "follow_ups",
         "pg": "jsonb",
         "wire": "jsonString"
+      },
+      "requested_by_user_id": {
+        "column": "requested_by_user_id",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -4493,113 +4508,478 @@
   "InboundSubmissions": {
     "pgTable": "inbound_submissions",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "submission_number": { "column": "submission_number", "pg": "bigint", "wire": "int" },
-      "from_email": { "column": "from_email", "pg": "text", "wire": "text" },
-      "from_name": { "column": "from_name", "pg": "text", "wire": "text" },
-      "to_addrs": { "column": "to_addrs", "pg": "text", "wire": "text" },
-      "cc_addrs": { "column": "cc_addrs", "pg": "text", "wire": "text" },
-      "subject": { "column": "subject", "pg": "text", "wire": "text" },
-      "body_text": { "column": "body_text", "pg": "text", "wire": "text" },
-      "body_html": { "column": "body_html", "pg": "text", "wire": "text" },
-      "message_id": { "column": "message_id", "pg": "text", "wire": "text" },
-      "in_reply_to": { "column": "in_reply_to", "pg": "text", "wire": "text" },
-      "received_at": { "column": "received_at", "pg": "timestamptz", "wire": "timestamp" },
-      "provider": { "column": "provider", "pg": "text", "wire": "text" },
-      "provider_email_id": { "column": "provider_email_id", "pg": "text", "wire": "text" },
-      "raw_headers": { "column": "raw_headers", "pg": "jsonb", "wire": "jsonRaw" },
-      "status": { "column": "status", "pg": "text", "wire": "text" },
-      "opened_by_id": { "column": "opened_by_id", "pg": "text", "wire": "text" },
-      "opened_at": { "column": "opened_at", "pg": "timestamptz", "wire": "timestamp" },
-      "assigned_to_id": { "column": "assigned_to_id", "pg": "text", "wire": "text" },
-      "parsed": { "column": "parsed", "pg": "jsonb", "wire": "jsonRaw" },
-      "convert_mode": { "column": "convert_mode", "pg": "text", "wire": "text" },
-      "converted_patient_id": { "column": "converted_patient_id", "pg": "text", "wire": "text" },
-      "converted_referral_id": { "column": "converted_referral_id", "pg": "text", "wire": "text" },
-      "converted_by_id": { "column": "converted_by_id", "pg": "text", "wire": "text" },
-      "converted_at": { "column": "converted_at", "pg": "timestamptz", "wire": "timestamp" },
-      "discard_reason": { "column": "discard_reason", "pg": "text", "wire": "text" },
-      "discard_explanation": { "column": "discard_explanation", "pg": "text", "wire": "text" },
-      "discarded_by_id": { "column": "discarded_by_id", "pg": "text", "wire": "text" },
-      "discarded_at": { "column": "discarded_at", "pg": "timestamptz", "wire": "timestamp" },
-      "source": { "column": "source", "pg": "text", "wire": "text" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_number": {
+        "column": "submission_number",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "from_email": {
+        "column": "from_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "from_name": {
+        "column": "from_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "to_addrs": {
+        "column": "to_addrs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "cc_addrs": {
+        "column": "cc_addrs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "subject": {
+        "column": "subject",
+        "pg": "text",
+        "wire": "text"
+      },
+      "body_text": {
+        "column": "body_text",
+        "pg": "text",
+        "wire": "text"
+      },
+      "body_html": {
+        "column": "body_html",
+        "pg": "text",
+        "wire": "text"
+      },
+      "message_id": {
+        "column": "message_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "in_reply_to": {
+        "column": "in_reply_to",
+        "pg": "text",
+        "wire": "text"
+      },
+      "received_at": {
+        "column": "received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "provider": {
+        "column": "provider",
+        "pg": "text",
+        "wire": "text"
+      },
+      "provider_email_id": {
+        "column": "provider_email_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "raw_headers": {
+        "column": "raw_headers",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opened_by_id": {
+        "column": "opened_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "opened_at": {
+        "column": "opened_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "assigned_to_id": {
+        "column": "assigned_to_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "parsed": {
+        "column": "parsed",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "convert_mode": {
+        "column": "convert_mode",
+        "pg": "text",
+        "wire": "text"
+      },
+      "converted_patient_id": {
+        "column": "converted_patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "converted_referral_id": {
+        "column": "converted_referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "converted_by_id": {
+        "column": "converted_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "converted_at": {
+        "column": "converted_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "discard_reason": {
+        "column": "discard_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discard_explanation": {
+        "column": "discard_explanation",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discarded_by_id": {
+        "column": "discarded_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discarded_at": {
+        "column": "discarded_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "source": {
+        "column": "source",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "InboundSubmissionAttachments": {
     "pgTable": "inbound_submission_attachments",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "inbound_submission_id": { "column": "inbound_submission_id", "pg": "text", "wire": "text" },
-      "file_name": { "column": "file_name", "pg": "text", "wire": "text" },
-      "content_type": { "column": "content_type", "pg": "text", "wire": "text" },
-      "size_bytes": { "column": "size_bytes", "pg": "bigint", "wire": "int" },
-      "storage_key": { "column": "storage_key", "pg": "text", "wire": "text" },
-      "provider_attachment_id": { "column": "provider_attachment_id", "pg": "text", "wire": "text" },
-      "uploaded_at": { "column": "uploaded_at", "pg": "timestamptz", "wire": "timestamp" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "inbound_submission_id": {
+        "column": "inbound_submission_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "file_name": {
+        "column": "file_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "content_type": {
+        "column": "content_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "size_bytes": {
+        "column": "size_bytes",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "storage_key": {
+        "column": "storage_key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "provider_attachment_id": {
+        "column": "provider_attachment_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "uploaded_at": {
+        "column": "uploaded_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "InboundSubmissionEvents": {
     "pgTable": "inbound_submission_events",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "inbound_submission_id": { "column": "inbound_submission_id", "pg": "text", "wire": "text" },
-      "actor_id": { "column": "actor_id", "pg": "text", "wire": "text" },
-      "action": { "column": "action", "pg": "text", "wire": "text" },
-      "detail": { "column": "detail", "pg": "text", "wire": "text" },
-      "metadata": { "column": "metadata", "pg": "jsonb", "wire": "jsonRaw" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "inbound_submission_id": {
+        "column": "inbound_submission_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "actor_id": {
+        "column": "actor_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "action": {
+        "column": "action",
+        "pg": "text",
+        "wire": "text"
+      },
+      "detail": {
+        "column": "detail",
+        "pg": "text",
+        "wire": "text"
+      },
+      "metadata": {
+        "column": "metadata",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "Languages": {
     "pgTable": "languages",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "code": { "column": "code", "pg": "text", "wire": "text" },
-      "name": { "column": "name", "pg": "text", "wire": "text" },
-      "sort_order": { "column": "sort_order", "pg": "bigint", "wire": "int" },
-      "is_active": { "column": "is_active", "pg": "boolean", "wire": "checkbox" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "code": {
+        "column": "code",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "UserLanguages": {
     "pgTable": "user_languages",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "user_id": { "column": "user_id", "pg": "text", "wire": "text" },
-      "language_id": { "column": "language_id", "pg": "text", "wire": "text" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "language_id": {
+        "column": "language_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "IssueReports": {
     "pgTable": "issue_reports",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "user_id": { "column": "user_id", "pg": "text", "wire": "text" },
-      "report_type": { "column": "report_type", "pg": "text", "wire": "text" },
-      "description": { "column": "description", "pg": "text", "wire": "text" },
-      "screenshot_r2_key": { "column": "screenshot_r2_key", "pg": "text", "wire": "text" },
-      "screenshot_file_name": { "column": "screenshot_file_name", "pg": "text", "wire": "text" },
-      "screenshot_content_type": { "column": "screenshot_content_type", "pg": "text", "wire": "text" },
-      "status": { "column": "status", "pg": "text", "wire": "text" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "report_type": {
+        "column": "report_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "screenshot_r2_key": {
+        "column": "screenshot_r2_key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "screenshot_file_name": {
+        "column": "screenshot_file_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "screenshot_content_type": {
+        "column": "screenshot_content_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   },
   "CocNurseFacilities": {
     "pgTable": "coc_nurse_facilities",
     "fields": {
-      "id": { "column": "id", "pg": "text", "wire": "text" },
-      "user_id": { "column": "user_id", "pg": "text", "wire": "text", "linkTable": "Users" },
-      "facility_id": { "column": "facility_id", "pg": "text", "wire": "text", "linkTable": "NetworkFacilities" },
-      "created_at": { "column": "created_at", "pg": "timestamptz", "wire": "timestamp" },
-      "updated_at": { "column": "updated_at", "pg": "timestamptz", "wire": "timestamp" }
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text",
+        "linkTable": "Users"
+      },
+      "facility_id": {
+        "column": "facility_id",
+        "pg": "text",
+        "wire": "text",
+        "linkTable": "NetworkFacilities"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "SocRescheduleLog": {
+    "pgTable": "soc_reschedule_log",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "previous_soc_date": {
+        "column": "previous_soc_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "new_soc_date": {
+        "column": "new_soc_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reason_category": {
+        "column": "reason_category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reason_detail": {
+        "column": "reason_detail",
+        "pg": "text",
+        "wire": "text"
+      },
+      "rescheduled_by_id": {
+        "column": "rescheduled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
     }
   }
 }

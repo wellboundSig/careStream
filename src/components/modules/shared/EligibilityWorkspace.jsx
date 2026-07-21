@@ -10,7 +10,7 @@
  * the new tables are migrated.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCurrentAppUser }   from '../../../hooks/useCurrentAppUser.js';
 import { useLookups }          from '../../../hooks/useLookups.js';
 import { usePermissions }      from '../../../hooks/usePermissions.js';
@@ -23,10 +23,9 @@ import { createAuthorization } from '../../../api/authorizations.js';
 import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
 import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
-import { updateReferralOptimistic } from '../../../store/mutations.js';
+import { updateReferralOptimistic, createNoteOptimistic } from '../../../store/mutations.js';
 import { useCareStore, mergeEntities } from '../../../store/careStore.js';
-import { createNoteOptimistic } from '../../../store/mutations.js';
-import palette                 from '../../../utils/colors.js';
+import palette, { hexToRgba }  from '../../../utils/colors.js';
 
 import {
   INSURANCE_CATEGORY,
@@ -67,9 +66,20 @@ import { tokens, inputStyle, primaryBtn, secondaryBtn, smallActionBtn, sectionHe
  * @param {function} [props.onInitiateTransition]
  * @param {function} [props.onAdvanceToAuthorization]
  */
+function fmtCompletedWhen(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+  } catch {
+    return String(iso);
+  }
+}
+
 export default function EligibilityWorkspace({
   patient,
-  referral,
+  referral: referralProp,
   readOnly = false,
   variant = 'drawer',
   onAdvanceToAuthorization,
@@ -80,6 +90,13 @@ export default function EligibilityWorkspace({
   const verifierRecordId = appUser?._id || null; // Users link fields need Airtable rec id
   const { resolveUser } = useLookups();
   const { can } = usePermissions();
+
+  // Prefer the live store row so Eligibility Complete stamps show immediately
+  // (drawer context / panel props can lag a full refresh cycle).
+  const storeReferral = useCareStore((s) => (
+    referralProp?._id ? s.referrals?.[referralProp._id] : null
+  ));
+  const referral = storeReferral || referralProp;
 
   const {
     loading,
@@ -100,6 +117,33 @@ export default function EligibilityWorkspace({
   const [disenrollModal, setDisenrollModal] = useState(null);
   const [editingInsuranceId, setEditingInsuranceId] = useState(null);
   const [sendBackModal,  setSendBackModal]  = useState(null);
+  const [completingElig, setCompletingElig] = useState(false);
+  const [completeError, setCompleteError] = useState(null);
+  // Sticky local stamp so the completed card paints on the same click tick —
+  // before (or even if) a background sync briefly returns a stale referral.
+  const [localComplete, setLocalComplete] = useState(null);
+
+  useEffect(() => {
+    setLocalComplete(null);
+    setCompleteError(null);
+    setCompletingElig(false);
+  }, [referralProp?._id]);
+
+  useEffect(() => {
+    if (referral?.eligibility_completed_at) {
+      setLocalComplete({
+        at: referral.eligibility_completed_at,
+        byId: referral.eligibility_completed_by_id || null,
+      });
+    } else if (referral?.eligibility_recheck_requested_at) {
+      // Genuine re-check clears prior completion — drop sticky local stamp.
+      setLocalComplete(null);
+    }
+  }, [
+    referral?.eligibility_completed_at,
+    referral?.eligibility_completed_by_id,
+    referral?.eligibility_recheck_requested_at,
+  ]);
 
   // The drawer already gates edit access via the SNAPSHOT_EDIT_ELIGIBILITY
   // permission (passed in as `readOnly`). The module-page panel doesn't pass
@@ -125,7 +169,13 @@ export default function EligibilityWorkspace({
     [authorizations],
   );
   const clinicalReviewDone = !!referral?.clinical_review_completed_at;
-  const eligibilityCompleted = !!referral?.eligibility_completed_at;
+  const completedAt = localComplete?.at || referral?.eligibility_completed_at || null;
+  const completedById = localComplete?.byId || referral?.eligibility_completed_by_id || null;
+  const eligibilityCompleted = !!completedAt;
+  const completedByName = completedById
+    ? (resolveUser(completedById) || (completedById === appUserId ? appUserName : null) || completedById)
+    : null;
+  const completedWhen = fmtCompletedWhen(completedAt);
 
   // ── Policy helpers (pure) ────────────────────────────────────────────────
   const warnings = useMemo(() => determineEligibilityWarnings(
@@ -255,70 +305,124 @@ export default function EligibilityWorkspace({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {/* Primary forward — Eligibility Complete. Sets the completion
                 timestamp; if Clinical RN already finished, the LIFO trigger
-                flips the patient to Staffing Feasibility automatically. */}
-            <WsBtn
-              variant="forward"
-              label={eligibilityCompleted ? '✓ Eligibility complete' : 'Eligibility Complete'}
-              disabled={eligibilityCompleted || activeInsurances.length === 0}
-              onClick={async () => {
-                if (eligibilityCompleted || !referral?._id) return;
-                const now = new Date().toISOString();
-                const fromStage = referral.current_stage;
-                const isRecheck = fromStage === 'Eligibility Verification';
-                const returnStage = referral.eligibility_recheck_return_stage || 'Clinical Intake RN Review';
-                const fields = {
-                  eligibility_completed_at: now,
-                  eligibility_completed_by_id: appUserId || 'unknown',
-                  // Resolving a re-check clears its markers so the gate releases.
-                  ...(isRecheck ? { eligibility_recheck_requested_at: '', eligibility_recheck_return_stage: '' } : {}),
-                };
-                try {
-                  if (clinicalReviewDone) {
-                    // Both eligibility + clinical complete — LIFO advance to EMR
-                    // Onboarding. Routed through the engine as a `system` move
-                    // (the patient may be sitting in Clinical Intake RN Review, a
-                    // protectedExit stage; this system-driven LIFO move must not
-                    // pop a generic move modal).
-                    const result = attemptTransition({
-                      referral,
-                      toStage: 'EMR Onboarding',
-                      context: { system: true, actorUserId: appUserId, note: '[Eligibility complete — clinical already done → EMR Onboarding]', extraFields: fields },
-                    });
-                    if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } });
-                  } else if (isRecheck) {
-                    // Re-check completed but clinical not yet done — return the
-                    // patient to the stage they came from when the re-check was
-                    // requested (system move; bypasses the edge list by design).
-                    const result = attemptTransition({
-                      referral,
-                      toStage: returnStage,
-                      context: { system: true, actorUserId: appUserId, note: '[Eligibility re-check completed]', extraFields: fields },
-                    });
-                    if (result.allowed) await applyTransition({ referral, result, context: { actorUserId: appUserId } });
-                  } else {
-                    // No stage change — just stamp completion. The LIFO flip to
-                    // EMR Onboarding happens when Clinical RN confirms. (Not a
-                    // transition, so it stays a direct field write.)
-                    await updateReferralOptimistic(referral._id, fields);
-                  }
-                  await recordActivity({
-                    actorUserId: appUserId,
-                    action: 'Eligibility Completed',
-                    patientId: patient.id,
-                    referralId: referral?.id,
-                    detail: clinicalReviewDone
-                      ? 'Eligibility completed — patient advanced to EMR Onboarding (LIFO trigger).'
-                      : isRecheck
-                        ? `Eligibility re-check completed — returned to ${returnStage}.`
-                        : 'Eligibility completed — awaiting Clinical RN completion.',
-                  });
-                  triggerDataRefresh();
-                } catch (err) {
-                  console.error('Eligibility Completed save failed', err);
-                }
-              }}
-              testId="action-eligibility-complete"
-            />
+                flips the patient to EMR Onboarding automatically. */}
+            {eligibilityCompleted ? (
+              <div
+                data-testid="eligibility-complete-banner"
+                style={{
+                  borderRadius: 8,
+                  padding: '11px 12px',
+                  background: hexToRgba(palette.accentGreen.hex, 0.1),
+                  border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.28)}`,
+                }}
+              >
+                <p style={{
+                  fontSize: t.fontMuted + 0.5, fontWeight: 700, color: palette.accentGreen.hex,
+                  marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span aria-hidden="true" style={{
+                    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                    background: palette.accentGreen.hex, color: '#fff',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11,
+                  }}>✓</span>
+                  Eligibility completed
+                </p>
+                <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.45 }}>
+                  {[completedByName ? `by ${completedByName}` : null, completedWhen ? `on ${completedWhen}` : null]
+                    .filter(Boolean)
+                    .join(' · ') || 'Saved'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <WsBtn
+                  variant="forward"
+                  label={completingElig ? 'Saving…' : 'Eligibility Complete'}
+                  disabled={completingElig || activeInsurances.length === 0}
+                  onClick={async () => {
+                    if (eligibilityCompleted || completingElig || !referral?._id) return;
+                    setCompletingElig(true);
+                    setCompleteError(null);
+                    const now = new Date().toISOString();
+                    // Re-check is ONLY when a re-check was explicitly requested —
+                    // not merely because the patient currently sits in Eligibility.
+                    const isRecheck = !!referral.eligibility_recheck_requested_at;
+                    const returnStage = referral.eligibility_recheck_return_stage || 'Clinical Intake RN Review';
+                    const fields = {
+                      eligibility_completed_at: now,
+                      eligibility_completed_by_id: appUserId || 'unknown',
+                      updated_at: now,
+                      ...(isRecheck ? {
+                        eligibility_recheck_requested_at: '',
+                        eligibility_recheck_return_stage: '',
+                      } : {}),
+                    };
+
+                    // Paint completed UI on this click (before network settles).
+                    setLocalComplete({ at: now, byId: appUserId || 'unknown' });
+
+                    try {
+                      // Always stamp first so the store (and this banner) update
+                      // even if a follow-on LIFO / re-check transition is skipped.
+                      await updateReferralOptimistic(referral._id, fields);
+
+                      if (clinicalReviewDone) {
+                        const result = attemptTransition({
+                          referral: { ...referral, ...fields },
+                          toStage: 'EMR Onboarding',
+                          context: {
+                            system: true,
+                            actorUserId: appUserId,
+                            note: '[Eligibility complete — clinical already done → EMR Onboarding]',
+                            extraFields: fields,
+                          },
+                        });
+                        if (result.allowed) {
+                          await applyTransition({ referral: { ...referral, ...fields }, result, context: { actorUserId: appUserId } });
+                        }
+                      } else if (isRecheck) {
+                        const result = attemptTransition({
+                          referral: { ...referral, ...fields },
+                          toStage: returnStage,
+                          context: {
+                            system: true,
+                            actorUserId: appUserId,
+                            note: '[Eligibility re-check completed]',
+                            extraFields: fields,
+                          },
+                        });
+                        if (result.allowed) {
+                          await applyTransition({ referral: { ...referral, ...fields }, result, context: { actorUserId: appUserId } });
+                        }
+                      }
+
+                      await recordActivity({
+                        actorUserId: appUserId,
+                        action: 'Eligibility Completed',
+                        patientId: patient.id,
+                        referralId: referral?.id,
+                        detail: clinicalReviewDone
+                          ? 'Eligibility completed — patient advanced to EMR Onboarding (LIFO trigger).'
+                          : isRecheck
+                            ? `Eligibility re-check completed — returned to ${returnStage}.`
+                            : 'Eligibility completed — awaiting Clinical RN completion.',
+                      });
+                      triggerDataRefresh();
+                    } catch (err) {
+                      console.error('Eligibility Completed save failed', err);
+                      setLocalComplete(null);
+                      setCompleteError(err?.message || 'Failed to mark eligibility complete');
+                    } finally {
+                      setCompletingElig(false);
+                    }
+                  }}
+                  testId="action-eligibility-complete"
+                />
+                {completeError && (
+                  <p style={{ fontSize: t.fontMuted - 0.5, color: palette.primaryMagenta.hex }}>{completeError}</p>
+                )}
+              </>
+            )}
 
             {/* Supportive: Get Auth — creates a pending Authorizations row.
                 Patient stays in Eligibility; the Authorization Pending module
@@ -328,12 +432,16 @@ export default function EligibilityWorkspace({
               label={hasOpenAuth ? 'Add another auth request' : 'Get Auth'}
               onClick={async () => {
                 try {
+                  const nowIso = new Date().toISOString();
                   const createdAuth = await createAuthorization({
                     id: `auth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                     referral_id: referral?.id || '',
                     auth_status: 'pending',
                     status: 'Pending',
-                    created_at: new Date().toISOString(),
+                    // Pending stamp — shown in Auth Pending as "awaiting response".
+                    request_initial_date: nowIso,
+                    requested_by_user_id: appUserId || undefined,
+                    created_at: nowIso,
                   });
                   // Merge into the store immediately so the Authorization
                   // module queue (which reads careStore.authorizations) lists

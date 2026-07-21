@@ -461,7 +461,10 @@ describe('Authorization Pending as a supportive sub-module of Eligibility (post-
     expect(canMoveFromTo('Clinical Intake RN Review', 'EMR Onboarding')).toBe(true);
   });
 
-  it('Authorization Pending → Eligibility Verification is the canonical exit (Send to Eligibility)', () => {
+  it('Authorization Pending → Eligibility Verification remains allowed for legacy stage exit', () => {
+    // Modern exit is Authorization Obtained (auth_obtained_at) without a stage
+    // change. Legacy rows still on current_stage Authorization Pending can return
+    // to Eligibility Verification via that transition edge.
     expect(canMoveFromTo('Authorization Pending', 'Eligibility Verification')).toBe(true);
   });
 
