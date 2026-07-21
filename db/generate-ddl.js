@@ -75,7 +75,12 @@ const DRIFT_TABLES = [
 ];
 
 const DRIFT_FIELDS = {
-  Users: [['is_support_staff', 'checkbox']],
+  Users: [
+    ['is_support_staff', 'checkbox'],
+    ['ooo_active', 'checkbox'],
+    ['ooo_starts_on', 'date'],
+    ['ooo_ends_on', 'date'],
+  ],
   // IT-ticketing fields created live after the snapshot (see Meta API diff).
   Categories: [['field_topic', 'checkbox']],
   Tickets: [
@@ -92,6 +97,8 @@ const DRIFT_FIELDS = {
     ['clinical_review_completed_by_id', 'singleLineText'], ['eligibility_completed_at', 'dateTime'],
     ['eligibility_completed_by_id', 'singleLineText'], ['eligibility_returned_to_intake_at', 'dateTime'],
     ['eligibility_returned_to_intake_note', 'multilineText'], ['eligibility_returned_to_intake_by_id', 'singleLineText'],
+    ['returned_from_clinical', 'checkbox'], ['returned_from_clinical_note', 'multilineText'],
+    ['returned_from_clinical_at', 'dateTime'], ['returned_from_clinical_by', 'singleLineText'],
     ['requires_urgent_care', 'checkbox'], ['urgent_care_marked_at', 'dateTime'],
     ['urgent_care_marked_by_id', 'singleLineText'], ['urgent_care_note', 'multilineText'],
   ],

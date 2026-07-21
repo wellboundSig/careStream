@@ -6,6 +6,12 @@ import airtable from '../api/airtable.js';
 let _appUserCache = null;
 let _validAuthorIds = null;
 
+/** Merge fields into the session app-user cache (e.g. after self-serve Settings saves). */
+export function patchAppUserCache(fields) {
+  if (!_appUserCache || !fields) return;
+  Object.assign(_appUserCache, fields);
+}
+
 async function fetchValidAuthorIds() {
   if (_validAuthorIds) return _validAuthorIds;
   // Postgres backend (wellbound-api): author_id is a plain text column — there

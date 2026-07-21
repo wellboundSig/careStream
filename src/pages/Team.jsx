@@ -7,6 +7,7 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import UserProfileDrawer from '../components/users/UserProfileDrawer.jsx';
 import TaskComposer from '../components/tasks/TaskComposer.jsx';
+import OooBadge from '../components/common/OooBadge.jsx';
 import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
@@ -349,6 +350,7 @@ function UserCard({ user, roleName, accentColor, photo, isMe, canAssign, onOpen,
             {user.first_name} {user.last_name}
             {isMe && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: hexToRgba(palette.primaryMagenta.hex, 0.7) }}>you</span>}
           </p>
+          <OooBadge user={user} />
         </div>
         <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 6 }}>
           {user.email}

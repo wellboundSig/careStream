@@ -23,6 +23,7 @@ import { useCareStore }       from '../../../store/careStore.js';
 import { PERMISSION_KEYS }    from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { oooOptionSuffix } from '../../../utils/outOfOffice.js';
 
 import {
   OPWDD_CASE_STATUS,
@@ -391,7 +392,7 @@ export default function OpwddWorkspace({
                 <option value="">Unassigned</option>
                 {Object.values(users).map((u) => (
                   <option key={u.id} value={u.id}>
-                    {[u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || u.id}
+                    {([u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || u.id) + oooOptionSuffix(u)}
                   </option>
                 ))}
               </select>

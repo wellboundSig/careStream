@@ -112,6 +112,7 @@
       "gridRow": 1,
       "gridCol": 0,
       "canMoveTo": [
+        "Intake",
         "F2F/MD Orders Pending",
         "EMR Onboarding",
         "Conflict",
@@ -123,7 +124,7 @@
       "requiresPermission": "clinical.rn_review",
       "protectedExit": true,
       "protectedExitMessage": "Only the clinical intake RN can move a patient out of Clinical RN Review. Issues should be escalated to Conflict — there is no Decline action.",
-      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to EMR Onboarding (LIFO with Eligibility). Send Back to F2F is also available; Decline does not exist — escalate to Conflict instead."
+      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to EMR Onboarding. Send Back to Intake (with flag + note) is available even after Accept when more paperwork is needed. Decline does not exist — escalate to Conflict instead."
     },
 
     "Authorization Pending": {
@@ -170,13 +171,13 @@
       "displayName": "EMR Onboarding",
       "gridRow": 1,
       "gridCol": 3,
-      "canMoveTo": ["Staffing Feasibility", "Conflict", "Hold"],
+      "canMoveTo": ["Staffing Feasibility", "Intake", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Patient is onboarded into the external EMR (HCHB) before scheduling. Staff download the EMR Onboarding Packet, complete onboarding, then mark the patient onboarded to advance to Staffing Feasibility. Scheduling cannot plot a SOC until the patient exists in the EMR, so this gates the downstream flow."
+      "description": "Patient is onboarded into the external EMR (HCHB) before scheduling. Staff download the EMR Onboarding Packet, complete onboarding, then mark the patient onboarded to advance to Staffing Feasibility. Clinical RNs may Send Back to Intake for more paperwork even after Confirm."
     },
 
     "Staffing Feasibility": {

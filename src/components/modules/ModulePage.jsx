@@ -26,6 +26,7 @@ import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import AuthObtainedIcon from '../common/AuthObtainedIcon.jsx';
+import OooBadge from '../common/OooBadge.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
@@ -146,6 +147,7 @@ export default function ModulePage({ stage }) {
   // (array of Airtable record IDs), so we match on both shapes.
   const authStore = useCareStore((s) => s.authorizations) || {};
   const disenStore = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
+  const storeUsers = useCareStore((s) => s.users) || {};
   const decoratedReferrals = useMemo(() => {
     if (!allReferrals?.length) return allReferrals || [];
     // Pending-ish statuses always qualify. Rows with a request stamp also stay
@@ -611,9 +613,15 @@ export default function ModulePage({ stage }) {
       case 'owner': {
         const n = resolveUser(referral.intake_owner_id);
         const label = n !== referral.intake_owner_id ? n : (n || '—');
+        const ownerUser = referral.intake_owner_id
+          ? Object.values(storeUsers).find((u) => u.id === referral.intake_owner_id)
+          : null;
         return (
-          <td key="owner" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 140 })} title={label}>
-            {label}
+          <td key="owner" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 160 })} title={label}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+              <OooBadge user={ownerUser} />
+            </span>
           </td>
         );
       }

@@ -237,6 +237,21 @@
         "pg": "text",
         "wire": "linkArray",
         "linkTable": "Tickets"
+      },
+      "ooo_active": {
+        "column": "ooo_active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "ooo_starts_on": {
+        "column": "ooo_starts_on",
+        "pg": "date",
+        "wire": "date"
+      },
+      "ooo_ends_on": {
+        "column": "ooo_ends_on",
+        "pg": "date",
+        "wire": "date"
       }
     }
   },
@@ -340,6 +355,16 @@
       },
       "source_entity": {
         "column": "source_entity",
+        "pg": "text",
+        "wire": "text"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
         "pg": "text",
         "wire": "text"
       },
@@ -1035,6 +1060,26 @@
       },
       "eligibility_returned_to_intake_by_id": {
         "column": "eligibility_returned_to_intake_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "returned_from_clinical": {
+        "column": "returned_from_clinical",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "returned_from_clinical_note": {
+        "column": "returned_from_clinical_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "returned_from_clinical_at": {
+        "column": "returned_from_clinical_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "returned_from_clinical_by": {
+        "column": "returned_from_clinical_by",
         "pg": "text",
         "wire": "text"
       },

@@ -163,9 +163,10 @@ function Select({ value, onChange, options, placeholder, hasError, disabled }) {
 }
 
 // Searchable select: behaves like Select but lets the user filter the
-// options by typing. Used for the ALF facility picker where the list of
-// network facilities is long enough that scrolling is painful.
-function SearchSelect({ value, onChange, options, placeholder, hasError }) {
+// Searchable select. Options may be strings or
+// { value, label, sublabel?, searchText? }. Used for facilities and
+// referral sources (people + entity/type).
+function SearchSelect({ value, onChange, options, placeholder, searchPlaceholder, hasError }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef(null);
@@ -177,6 +178,7 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
   const selectedLabel = selected
     ? (typeof selected === 'string' ? selected : selected.label)
     : '';
+  const selectedSub = selected && typeof selected !== 'string' ? (selected.sublabel || '') : '';
 
   useEffect(() => {
     if (!open) return;
@@ -194,8 +196,9 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((o) => {
-      const label = typeof o === 'string' ? o : o.label;
-      return label.toLowerCase().includes(q);
+      if (typeof o === 'string') return o.toLowerCase().includes(q);
+      const hay = `${o.label || ''} ${o.sublabel || ''} ${o.searchText || ''}`.toLowerCase();
+      return hay.includes(q);
     });
   }, [options, query]);
 
@@ -208,12 +211,24 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
           ...inputBase,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           cursor: 'pointer', textAlign: 'left',
+          minHeight: selectedSub ? 46 : undefined,
           color: selectedLabel ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
           boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none',
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selectedLabel || placeholder || 'Select...'}
+        <span style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedLabel || placeholder || 'Select...'}
+          </span>
+          {selectedSub && (
+            <span style={{
+              display: 'block', fontSize: 11, fontWeight: 500, marginTop: 1,
+              color: hexToRgba(palette.backgroundDark.hex, 0.45),
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {selectedSub}
+            </span>
+          )}
         </span>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
           <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -233,7 +248,7 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search facilities…"
+              placeholder={searchPlaceholder || 'Search…'}
               style={{
                 width: '100%', padding: '7px 9px', borderRadius: 7, border: 'none',
                 background: hexToRgba(palette.backgroundDark.hex, 0.05),
@@ -242,7 +257,7 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
               }}
             />
           </div>
-          <div style={{ maxHeight: 220, overflowY: 'auto', padding: '4px 0' }}>
+          <div style={{ maxHeight: 260, overflowY: 'auto', padding: '4px 0' }}>
             {filtered.length === 0 ? (
               <p style={{ padding: '10px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), fontStyle: 'italic' }}>
                 No matches
@@ -250,6 +265,7 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
             ) : filtered.map((opt) => {
               const val = typeof opt === 'string' ? opt : opt.value;
               const label = typeof opt === 'string' ? opt : opt.label;
+              const sublabel = typeof opt === 'string' ? '' : (opt.sublabel || '');
               const isSelected = val === value;
               return (
                 <button
@@ -257,7 +273,7 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
                   type="button"
                   onClick={() => { onChange(val); setOpen(false); setQuery(''); }}
                   style={{
-                    width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
+                    width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 8,
                     background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'none',
                     border: 'none', cursor: 'pointer', textAlign: 'left',
                     fontSize: 12.5, color: palette.backgroundDark.hex, transition: 'background 0.08s',
@@ -265,9 +281,22 @@ function SearchSelect({ value, onChange, options, placeholder, hasError }) {
                   onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04); }}
                   onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'none'; }}
                 >
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: isSelected ? 650 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {label}
+                    </span>
+                    {sublabel && (
+                      <span style={{
+                        display: 'block', fontSize: 11, marginTop: 2,
+                        color: hexToRgba(palette.backgroundDark.hex, 0.45),
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {sublabel}
+                      </span>
+                    )}
+                  </span>
                   {isSelected && (
-                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, marginTop: 3 }}>
                       <path d="M2.5 6l2.5 2.5L9.5 3.5" stroke={palette.primaryMagenta.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
@@ -1009,8 +1038,23 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
   }, [facilityMarketerLinks, marketers]);
 
   const sourceOptions = [
-    ...sources.map((s) => ({ value: s.id, label: s.name })),
-    { value: 'other', label: 'Other' },
+    ...sources
+      .filter((s) => s.is_active === undefined || s.is_active === null
+        || String(s.is_active).toUpperCase() === 'TRUE' || s.is_active === true)
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+      .map((s) => {
+        const entity = (s.source_entity || '').trim();
+        const type = (s.type || '').trim();
+        const meta = [type, entity].filter(Boolean).join(' · ');
+        return {
+          value: s.id,
+          label: s.name || s.id,
+          sublabel: meta || undefined,
+          searchText: [s.name, type, entity, s.email, s.phone].filter(Boolean).join(' '),
+        };
+      }),
+    { value: 'other', label: 'Other', sublabel: 'Free-text lead source', searchText: 'other' },
   ];
 
   const servicesForDivision = getServicesForDivision(form.division);
@@ -1084,7 +1128,8 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
                   value={form.facility_id}
                   onChange={(v) => setField('facility_id', v)}
                   options={availableFacilities.map((f) => ({ value: f.id, label: f.name }))}
-                  placeholder="Search facilities…"
+                  placeholder="Select facility…"
+                  searchPlaceholder="Search facilities…"
                   hasError={!!errors.facility_id}
                 />
                 {errors.facility_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.facility_id}</p>}
@@ -1199,14 +1244,21 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
             </p>
             <FieldGroup>
               <FieldBox label="Lead Source" required>
-                <Select value={form.referral_source_id} onChange={(v) => setField('referral_source_id', v)} options={sourceOptions} placeholder="Select lead source…" hasError={!!errors.referral_source_id} />
+                <SearchSelect
+                  value={form.referral_source_id}
+                  onChange={(v) => setField('referral_source_id', v)}
+                  options={sourceOptions}
+                  placeholder="Search by person, organization, or type…"
+                  searchPlaceholder="Search name, entity, or type…"
+                  hasError={!!errors.referral_source_id}
+                />
                 {errors.referral_source_id && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_id}</p>}
                 {form.referral_source_id && form.referral_source_id !== 'other' && (() => {
                   const src = sources.find((s) => s.id === form.referral_source_id);
                   if (!src) return null;
                   const hasType = !!src.type;
                   const hasEntity = !!(src.source_entity && src.source_entity.trim());
-                  if (!hasType && !hasEntity) return null;
+                  if (!hasType && !hasEntity && !src.email && !src.phone) return null;
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                       {hasType && (
@@ -1223,6 +1275,12 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
                         <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
                           · <strong style={{ color: hexToRgba(palette.backgroundDark.hex, 0.75), fontWeight: 600 }}>{src.source_entity}</strong>
                         </span>
+                      )}
+                      {src.email && (
+                        <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{src.email}</span>
+                      )}
+                      {src.phone && (
+                        <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{src.phone}</span>
                       )}
                     </div>
                   );

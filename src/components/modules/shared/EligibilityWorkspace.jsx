@@ -26,6 +26,7 @@ import { openCaseForReferral }  from '../../../store/opwddOrchestration.js';
 import { updateReferralOptimistic, createNoteOptimistic } from '../../../store/mutations.js';
 import { useCareStore, mergeEntities } from '../../../store/careStore.js';
 import palette, { hexToRgba }  from '../../../utils/colors.js';
+import { oooOptionSuffix } from '../../../utils/outOfOffice.js';
 
 import {
   INSURANCE_CATEGORY,
@@ -1034,7 +1035,10 @@ function DisenrollmentAssistModal({ t, state, onChange, onCancel, onConfirm }) {
   const usersById = useCareStore((s) => s.users) || {};
   const userOptions = useMemo(() => Object.values(usersById)
     .filter((u) => u && u.id && (u.status === 'Active' || !u.status))
-    .map((u) => ({ value: u.id, label: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || u.id }))
+    .map((u) => {
+      const base = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || u.id;
+      return { value: u.id, label: `${base}${oooOptionSuffix(u)}` };
+    })
     .sort((a, b) => a.label.localeCompare(b.label)),
     [usersById]);
   const disabled = !(note && note.trim() && followUpDate && followUpOwnerUserId);

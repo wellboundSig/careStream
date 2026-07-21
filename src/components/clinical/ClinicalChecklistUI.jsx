@@ -159,6 +159,9 @@ export default function ClinicalChecklistUI({
             const sel = decision === d.key;
             const c = DECISION_COLORS[d.key] || palette.backgroundDark.hex;
             const isConditional = d.key === 'conditional';
+            // Solid fills only — no rgba washes (those read as disabled).
+            const idleBg = isConditional ? palette.highlightYellow.hex : '#E8F6EE';
+            const idleFg = isConditional ? palette.backgroundDark.hex : palette.accentGreen.hex;
             // Clicking the SELECTED decision again deselects it — that's how
             // the reviewer "unlocks" the checklist to make a correction.
             const onClick = () => onDecisionChange(sel ? null : d.key);
@@ -173,27 +176,20 @@ export default function ClinicalChecklistUI({
                   padding: compact ? '10px 8px' : '12px 10px',
                   borderRadius: 8,
                   cursor: 'pointer',
-                  // Unselected: tinted fill + strong accent border so Accept
-                  // reads as a primary action, not a disabled grey chip.
-                  background: sel
-                    ? c
-                    : hexToRgba(c, isConditional ? 0.22 : 0.14),
-                  border: `1.5px solid ${sel ? c : hexToRgba(c, isConditional ? 0.75 : 0.55)}`,
+                  background: sel ? c : idleBg,
+                  border: `2px solid ${c}`,
                   color: sel
                     ? (isConditional ? palette.backgroundDark.hex : palette.backgroundLight.hex)
-                    : (isConditional ? palette.backgroundDark.hex : c),
+                    : idleFg,
                   fontSize: compact ? 12 : 13,
                   fontWeight: 700,
-                  transition: 'filter 0.12s, transform 0.12s, box-shadow 0.12s',
+                  transition: 'filter 0.12s, transform 0.12s',
                   textAlign: 'center',
-                  boxShadow: sel
-                    ? `0 1px 3px ${hexToRgba(c, 0.35)}`
-                    : 'none',
                   letterSpacing: '-0.01em',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.filter = 'brightness(1.05)';
-                  if (!sel) e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.filter = 'brightness(0.97)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.filter = 'none';

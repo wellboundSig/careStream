@@ -147,7 +147,9 @@ export function useClinicalReview(referralRecordId) {
         ...(existingRow || {}),
         referral_id: [referralRecordId],
         ...uiToDbFields(next.checked),
-        ...(next.decision === 'accept' || next.decision === 'conditional' ? { decision: next.decision } : {}),
+        decision: (next.decision === 'accept' || next.decision === 'conditional')
+          ? next.decision
+          : null,
         auth_required: next.authRequired === true,
       },
     });

@@ -34,6 +34,9 @@ import { normalizeSeverity, conflictCategoryLabel } from '../../utils/conflictFl
 import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import PatientSnapshot from './PatientSnapshot.jsx';
+import SocCompletedCelebration from '../common/SocCompletedCelebration.jsx';
+import OooBadge from '../common/OooBadge.jsx';
+import { isUserOoo, oooWindowLabel } from '../../utils/outOfOffice.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
@@ -189,8 +192,9 @@ function CollapsibleChecklist({ title, items, doneMap, onToggle }) {
   );
 }
 
-function ReturnedFromClinicalFlag({ note }) {
-  const [expanded, setExpanded] = useState(false);
+function ReturnedFromClinicalFlag({ note, at }) {
+  const [expanded, setExpanded] = useState(true);
+  const ts = at ? new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
   return (
     <div data-testid="returned-from-clinical-flag" style={{ borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 12, overflow: 'hidden' }}>
       <button
@@ -198,20 +202,45 @@ function ReturnedFromClinicalFlag({ note }) {
         style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
       >
         <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
-          ↩ Returned from Clinical RN Review
+          ↩ Returned from Clinical RN Review{ts ? ` · ${ts}` : ''}
         </span>
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
           <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      {expanded && note && (
+      {expanded && (
         <div style={{ padding: '0 12px 10px' }}>
-          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>Reason:</p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>
+            {note ? 'What Intake needs:' : 'Clinical RN returned this case for more paperwork.'}
+          </p>
+          {note ? (
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
+          ) : (
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.55, fontStyle: 'italic' }}>No note provided.</p>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/** Fields stamped when Clinical RN (or EMR after Confirm) sends a case back to Intake. */
+function clinicalSendBackFields({ note, actorUserId }) {
+  const now = new Date().toISOString();
+  return {
+    in_clinical_review: false,
+    returned_from_clinical: true,
+    returned_from_clinical_note: note || '',
+    returned_from_clinical_at: now,
+    returned_from_clinical_by: actorUserId || 'unknown',
+    // Clear confirmation stamps so Accept/Confirm does not stick after a return
+    // for more paperwork — RN can re-decide once Intake re-pushes.
+    clinical_review_decision: null,
+    clinical_review_completed_at: null,
+    clinical_review_completed_by_id: null,
+    clinical_review_at: null,
+    clinical_review_by: null,
+  };
 }
 
 // Mirror of ReturnedFromClinicalFlag — surfaces when eligibility staff
@@ -340,6 +369,11 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   const [ownerId, setOwnerId] = useState('');
   const [onlySpeakers, setOnlySpeakers] = useState(false);
   const canSubmit = !!ownerId;
+  const selectedOwner = useMemo(
+    () => allUsers.find((u) => u.id === ownerId) || null,
+    [allUsers, ownerId],
+  );
+  const ownerIsOoo = isUserOoo(selectedOwner);
 
   const visibleUsers = useMemo(() => {
     if (!onlySpeakers || !hasPreferredLanguage) return allUsers;
@@ -424,21 +458,44 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
                     }}>
                       {u.first_name} {u.last_name}
                     </span>
-                    {speaks && (
-                      <span style={{
-                        flexShrink: 0, fontSize: 10.5, fontWeight: 650,
-                        padding: '2px 8px', borderRadius: 20,
-                        background: hexToRgba(palette.accentBlue.hex, 0.12),
-                        color: palette.accentBlue.hex,
-                        whiteSpace: 'nowrap',
-                      }}>
-                        Speaks {langLabel}
-                      </span>
-                    )}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <OooBadge user={u} />
+                      {speaks && (
+                        <span style={{
+                          flexShrink: 0, fontSize: 10.5, fontWeight: 650,
+                          padding: '2px 8px', borderRadius: 20,
+                          background: hexToRgba(palette.accentBlue.hex, 0.12),
+                          color: palette.accentBlue.hex,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          Speaks {langLabel}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
             </div>
+            {ownerIsOoo && (
+              <p
+                data-testid="ooo-intake-warn"
+                style={{
+                  margin: '8px 0 0',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  fontWeight: 550,
+                  color: palette.accentOrange.hex,
+                  background: hexToRgba(palette.accentOrange.hex, 0.1),
+                  border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.22)}`,
+                }}
+              >
+                {selectedOwner.first_name} {selectedOwner.last_name} is out of office
+                {oooWindowLabel(selectedOwner) ? ` (${oooWindowLabel(selectedOwner)})` : ''}.
+                You can still assign them as intake owner.
+              </p>
+            )}
             {hasPreferredLanguage && !onlySpeakers && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 6, marginBottom: 0 }}>
                 Assign owner.
@@ -737,7 +794,10 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
           {/* Returned from Clinical RN Review — note is optional, so flag on
               the boolean (the send-back can happen with nothing filled out). */}
           {(selectedReferral.returned_from_clinical === 'true' || selectedReferral.returned_from_clinical === true) && (
-            <ReturnedFromClinicalFlag note={selectedReferral.returned_from_clinical_note} />
+            <ReturnedFromClinicalFlag
+              note={selectedReferral.returned_from_clinical_note}
+              at={selectedReferral.returned_from_clinical_at}
+            />
           )}
 
           {/* ALF-only: early HCHB chart creation during Intake. Companion
@@ -986,7 +1046,15 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
       context: {
         note: '[Pushed to Clinical RN — left Intake]',
         actorUserId,
-        extraFields: { in_clinical_review: true, clinical_review_pushed_at: new Date().toISOString() },
+        extraFields: {
+          in_clinical_review: true,
+          clinical_review_pushed_at: new Date().toISOString(),
+          // Clear prior Clinical → Intake return flag when Intake re-pushes.
+          returned_from_clinical: false,
+          returned_from_clinical_note: null,
+          returned_from_clinical_at: null,
+          returned_from_clinical_by: null,
+        },
       },
     });
     if (!result.allowed) return;
@@ -1342,7 +1410,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
 
       {/* Returned from Clinical flag — expandable */}
       {ref && (ref.returned_from_clinical === 'true' || ref.returned_from_clinical === true) && (
-        <ReturnedFromClinicalFlag note={ref.returned_from_clinical_note} />
+        <ReturnedFromClinicalFlag note={ref.returned_from_clinical_note} at={ref.returned_from_clinical_at} />
       )}
 
       {ref && (
@@ -1660,10 +1728,14 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   } = useClinicalReview(selectedReferral?._id);
   const [sendBackNote, setSendBackNote] = useState('');
   const [showSendBack, setShowSendBack] = useState(false);
+  const [sendBackError, setSendBackError] = useState(null);
+  const [sendingBack, setSendingBack] = useState(false);
 
   useEffect(() => {
     setSendBackNote('');
     setShowSendBack(false);
+    setSendBackError(null);
+    setSendingBack(false);
   }, [selectedReferral?._id]);
 
   const checklistComplete = isChecklistComplete(checked);
@@ -1714,10 +1786,14 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   }
 
   async function handleSendBack() {
-    // Send Back to Intake is always available — it must work regardless of
-    // checklist state or whether a note was typed. The note is optional.
-    if (!selectedReferral) return;
+    // Available even after Accept — RNs often need more paperwork. Confirm
+    // already moved the patient to EMR; use Send Back there instead.
+    if (!selectedReferral || sendingBack) return;
     const note = sendBackNote.trim();
+    setSendingBack(true);
+    setSendBackError(null);
+    // Clear working Accept/Conditional so a later re-push is not locked.
+    if (decisionLocked) setDecision(null);
     const result = attemptTransition({
       referral: selectedReferral,
       toStage: 'Intake',
@@ -1727,25 +1803,29 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
         // sanctioned exit, so bypass the edge allowlist like the Eligibility
         // → Intake send-back does.
         system: true,
-        note: note ? `[Returned from Clinical] ${note}` : '[Returned from Clinical]',
+        note: note ? `[Returned from Clinical] ${note}` : '[Returned from Clinical — more paperwork needed]',
         actorUserId: appUserId,
-        extraFields: {
-          in_clinical_review: false,
-          returned_from_clinical: 'true',
-          returned_from_clinical_note: note,
-          returned_from_clinical_at: new Date().toISOString(),
-          returned_from_clinical_by: appUserId || 'unknown',
-        },
+        extraFields: clinicalSendBackFields({ note, actorUserId: appUserId }),
       },
     });
-    if (!result.allowed) return;
+    if (!result.allowed) {
+      setSendBackError(result.reason || 'Cannot send back to Intake');
+      setSendingBack(false);
+      return;
+    }
     setShowSendBack(false);
     setSendBackNote('');
     // Clear the selection BEFORE the await so the panel collapses on the same
     // render the optimistic update lands (see handleConfirm for the rationale).
     onSelectedReferralLeftModule?.();
-    await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
-    triggerDataRefresh();
+    try {
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      triggerDataRefresh();
+    } catch (err) {
+      setSendBackError(err.message || 'Failed to send back to Intake');
+      setSendingBack(false);
+      setShowSendBack(true);
+    }
   }
 
   return (
@@ -1779,27 +1859,42 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             locked={decisionLocked}
           />
 
-          {/* Send back to Intake — always available, not gated by clinical
-              permission, checklist state, or a required note. */}
+          {/* Send back to Intake — always available, including after Accept.
+              Not gated by clinical permission or checklist. Note optional. */}
           <PanelSection title="Send Back">
+            {decisionLocked && !showSendBack && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.45, margin: '0 0 8px' }}>
+                You can still send back after Accept if more paperwork is needed.
+              </p>
+            )}
             {!showSendBack ? (
               <ActionBtn label="↩ Send Back to Intake" variant="warning" onClick={() => setShowSendBack(true)} />
             ) : (
               <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
-                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>Add an optional note for Intake:</p>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
+                  Note for Intake (recommended — what paperwork is missing):
+                </p>
                 <textarea
                   data-testid="send-back-note"
                   value={sendBackNote}
                   onChange={(e) => setSendBackNote(e.target.value)}
-                  placeholder="Optional — describe why this patient is being returned…"
+                  placeholder="e.g. Need updated F2F / missing MD orders / facesheet incomplete…"
                   rows={3}
                   style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid ${sendBackNote.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box', marginBottom: 8 }}
                 />
+                {sendBackError && (
+                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8, fontWeight: 600 }}>{sendBackError}</p>
+                )}
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={handleSendBack} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
-                    Send Back
+                  <button
+                    data-testid="send-back-confirm"
+                    onClick={handleSendBack}
+                    disabled={sendingBack}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: sendingBack ? hexToRgba(palette.accentOrange.hex, 0.5) : palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: sendingBack ? 'wait' : 'pointer' }}
+                  >
+                    {sendingBack ? 'Sending…' : 'Send Back'}
                   </button>
-                  <button onClick={() => { setShowSendBack(false); setSendBackNote(''); }} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
+                  <button onClick={() => { setShowSendBack(false); setSendBackNote(''); setSendBackError(null); }} disabled={sendingBack} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
                     Cancel
                   </button>
                 </div>
@@ -2105,14 +2200,20 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const [pdfError, setPdfError] = useState(null);
   const [onboarding, setOnboarding] = useState(false);
   const [onboardError, setOnboardError] = useState(null);
+  const [showSendBack, setShowSendBack] = useState(false);
+  const [sendBackNote, setSendBackNote] = useState('');
+  const [sendBackError, setSendBackError] = useState(null);
+  const [sendingBack, setSendingBack] = useState(false);
 
   useEffect(() => {
     setPdfError(null); setOnboardError(null); setOnboarding(false);
+    setShowSendBack(false); setSendBackNote(''); setSendBackError(null); setSendingBack(false);
   }, [selectedReferral?._id]);
 
   // Onboarding is owned by the scheduling team; reuse the existing staffing
   // permission so current schedulers aren't locked out by a brand-new key.
   const canOnboard = canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
+  const canSendBackClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW);
   const alreadyOnboarded = !!selectedReferral?.emr_onboarded_at;
 
   async function handleDownloadPdf() {
@@ -2151,6 +2252,41 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
     }
   }
 
+  async function handleSendBackToIntake() {
+    if (!selectedReferral || sendingBack) return;
+    const note = sendBackNote.trim();
+    setSendingBack(true);
+    setSendBackError(null);
+    const result = attemptTransition({
+      referral: selectedReferral,
+      toStage: 'Intake',
+      context: {
+        system: true,
+        note: note
+          ? `[Returned from Clinical after Confirm] ${note}`
+          : '[Returned from Clinical after Confirm — more paperwork needed]',
+        actorUserId: appUserId,
+        extraFields: clinicalSendBackFields({ note, actorUserId: appUserId }),
+      },
+    });
+    if (!result.allowed) {
+      setSendBackError(result.reason || 'Cannot send back to Intake');
+      setSendingBack(false);
+      return;
+    }
+    setShowSendBack(false);
+    setSendBackNote('');
+    onSelectedReferralLeftModule?.();
+    try {
+      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      triggerDataRefresh();
+    } catch (err) {
+      setSendBackError(err.message || 'Failed to send back to Intake');
+      setSendingBack(false);
+      setShowSendBack(true);
+    }
+  }
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState message="Select a patient to onboard into the EMR." /> : (
@@ -2160,6 +2296,47 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
             <InfoRow label="Division" value={selectedReferral.division} />
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
           </PanelSection>
+
+          {canSendBackClinical && (
+            <PanelSection title="Send Back to Intake">
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, margin: '0 0 8px' }}>
+                Clinical RNs can return this case to Intake for more paperwork even after Accept / Confirm.
+              </p>
+              {!showSendBack ? (
+                <ActionBtn label="↩ Send Back to Intake" variant="warning" onClick={() => setShowSendBack(true)} />
+              ) : (
+                <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
+                    Note for Intake (recommended):
+                  </p>
+                  <textarea
+                    data-testid="emr-send-back-note"
+                    value={sendBackNote}
+                    onChange={(e) => setSendBackNote(e.target.value)}
+                    placeholder="e.g. Need updated F2F / missing MD orders…"
+                    rows={3}
+                    style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid ${sendBackNote.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box', marginBottom: 8 }}
+                  />
+                  {sendBackError && (
+                    <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8, fontWeight: 600 }}>{sendBackError}</p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      data-testid="emr-send-back-confirm"
+                      onClick={handleSendBackToIntake}
+                      disabled={sendingBack}
+                      style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: sendingBack ? hexToRgba(palette.accentOrange.hex, 0.5) : palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: sendingBack ? 'wait' : 'pointer' }}
+                    >
+                      {sendingBack ? 'Sending…' : 'Send Back'}
+                    </button>
+                    <button onClick={() => { setShowSendBack(false); setSendBackNote(''); setSendBackError(null); }} disabled={sendingBack} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </PanelSection>
+          )}
 
           <PanelSection title="EMR Onboarding">
             {selectedReferral.emr_initial_onboarded_at && (
@@ -2683,6 +2860,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   const [confirming, setConfirming] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
   const [onboardError, setOnboardError] = useState(null);
+  const [celebration, setCelebration] = useState(null);
 
   useEffect(() => {
     setSocDate(''); setError(null); setPdfError(null); setConfirming(false); setOnboardError(null);
@@ -2741,13 +2919,15 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true); setOnboardError(null);
     let succeeded = false;
+    const completedDate = new Date().toISOString().split('T')[0];
+    const patientName = selectedReferral.patientName || 'Patient';
     // current_stage at click time is either 'Pre-SOC' (no SOC Scheduled
     // sub-state yet) or 'SOC Scheduled'. Both reach SOC Completed; mark the
     // move `system` so it works from either without depending on the edge list.
     const result = attemptTransition({
       referral: selectedReferral,
       toStage: 'SOC Completed',
-      context: { system: true, actorUserId: appUserId, extraFields: { soc_completed_date: new Date().toISOString().split('T')[0] } },
+      context: { system: true, actorUserId: appUserId, extraFields: { soc_completed_date: completedDate } },
     });
     try {
       if (!result.allowed) throw new Error(result.reason || 'Failed');
@@ -2764,9 +2944,9 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     }
     if (succeeded) {
       setConfirming(false);
-      // Patient has left this module (now in SOC Completed) — clear the right
-      // panel so it doesn't keep rendering the Confirm UI for a stage they
-      // already moved past.
+      // Celebration first (portal), then clear selection — modal state lives on
+      // this panel so it survives the patient leaving the Pre-SOC queue.
+      setCelebration({ patientName, completedDate });
       onSelectedReferralLeftModule?.();
     }
   }
@@ -2783,6 +2963,13 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
 
   return (
     <Panel>
+      {celebration && (
+        <SocCompletedCelebration
+          patientName={celebration.patientName}
+          completedDate={celebration.completedDate}
+          onClose={() => setCelebration(null)}
+        />
+      )}
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="Patient">
@@ -2892,6 +3079,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
   const [confirming, setConfirming]       = useState(false);
   const [onboarding, setOnboarding]       = useState(false);
   const [onboardError, setOnboardError]   = useState(null);
+  const [celebration, setCelebration]     = useState(null);
 
   // Reset state when patient changes
   useEffect(() => {
@@ -2918,10 +3106,12 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
     setOnboarding(true);
     setOnboardError(null);
     let succeeded = false;
+    const completedDate = new Date().toISOString().split('T')[0];
+    const patientName = selectedReferral.patientName || 'Patient';
     const result = attemptTransition({
       referral: selectedReferral,
       toStage: 'SOC Completed',
-      context: { actorUserId: appUserId, extraFields: { soc_completed_date: new Date().toISOString().split('T')[0] } },
+      context: { actorUserId: appUserId, extraFields: { soc_completed_date: completedDate } },
     });
     try {
       if (!result.allowed) throw new Error(result.reason || 'Failed to update patient');
@@ -2939,9 +3129,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
     }
     if (succeeded) {
       setConfirming(false);
-      // Patient has left SOC Scheduled (now SOC Completed) — clear the right
-      // panel so it doesn't keep rendering the Confirm UI for a stage they
-      // already moved past. Mirrors LeadEntry / Push to Clinical RN pattern.
+      setCelebration({ patientName, completedDate });
       onSelectedReferralLeftModule?.();
     }
   }
@@ -2950,6 +3138,13 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
 
   return (
     <Panel>
+      {celebration && (
+        <SocCompletedCelebration
+          patientName={celebration.patientName}
+          completedDate={celebration.completedDate}
+          onClose={() => setCelebration(null)}
+        />
+      )}
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           <PanelSection title="SOC Details">

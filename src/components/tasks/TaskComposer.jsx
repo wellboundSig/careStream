@@ -46,6 +46,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { isUserOoo, oooOptionSuffix, oooWindowLabel } from '../../utils/outOfOffice.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TASK_TYPES_CORE = [
@@ -212,6 +213,14 @@ export default function TaskComposer({
     if (!lockAssignee || !defaultAssigneeId) return null;
     return Object.values(storeUsers).find((u) => u.id === defaultAssigneeId) || null;
   }, [lockAssignee, defaultAssigneeId, storeUsers]);
+
+  const selectedAssigneeUser = useMemo(() => {
+    const id = lockAssignee ? defaultAssigneeId : assigneeId;
+    if (!id) return null;
+    return Object.values(storeUsers).find((u) => u.id === id) || null;
+  }, [lockAssignee, defaultAssigneeId, assigneeId, storeUsers]);
+
+  const assigneeIsOoo = isUserOoo(selectedAssigneeUser);
 
   const canSubmit =
     !!taskTitle.trim() &&
@@ -483,6 +492,11 @@ export default function TaskComposer({
             {lockedAssigneeUser.id === appUserId && (
               <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, opacity: 0.7 }}>(you)</span>
             )}
+            {isUserOoo(lockedAssigneeUser) && (
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: palette.accentOrange.hex }}>
+                · Out of office
+              </span>
+            )}
           </div>
         ) : canAssign ? (
           <select
@@ -493,6 +507,7 @@ export default function TaskComposer({
             {appUserId ? (
               <option value={appUserId}>
                 Myself{appUser ? ` — ${appUser.first_name || ''} ${appUser.last_name || ''}`.trimEnd() : ''}
+                {oooOptionSuffix(Object.values(storeUsers).find((u) => u.id === appUserId) || appUser)}
               </option>
             ) : (
               <option value="">— Select team member —</option>
@@ -501,7 +516,7 @@ export default function TaskComposer({
               <optgroup label="Team">
                 {assignableUsers.map((u) => (
                   <option key={u._id || u.id} value={u.id}>
-                    {u.first_name} {u.last_name}
+                    {u.first_name} {u.last_name}{oooOptionSuffix(u)}
                   </option>
                 ))}
               </optgroup>
@@ -518,6 +533,24 @@ export default function TaskComposer({
           >
             Assigning to you — {appUser?.first_name} {appUser?.last_name}
           </div>
+        )}
+        {assigneeIsOoo && (
+          <p
+            data-testid="ooo-assign-warn"
+            style={{
+              margin: '8px 0 0',
+              padding: '8px 10px',
+              borderRadius: 8,
+              fontSize: 12,
+              lineHeight: 1.4,
+              fontWeight: 550,
+              color: palette.accentOrange.hex,
+              background: hexToRgba(palette.accentOrange.hex, 0.1),
+              border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.22)}`,
+            }}
+          >
+            This person is out of office{oooWindowLabel(selectedAssigneeUser) ? ` (${oooWindowLabel(selectedAssigneeUser)})` : ''}. You can still assign — they may not act on it until they return.
+          </p>
         )}
       </Field>
 

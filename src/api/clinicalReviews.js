@@ -109,11 +109,12 @@ export async function upsertClinicalReview({
 }) {
   if (!referralRecordId) throw new Error('upsertClinicalReview: referralRecordId required');
 
-  // Airtable singleSelect rejects empty strings — omit the field entirely
-  // when the user has not yet chosen a decision.
-  const decisionPart = (decision === 'accept' || decision === 'conditional')
-    ? { decision }
-    : {};
+  // Accept / conditional are written through. Explicit `null` clears a prior
+  // working decision (e.g. Clinical RN Send Back to Intake after Accept).
+  // `undefined` omits the field so other upserts don't wipe it.
+  let decisionPart = {};
+  if (decision === 'accept' || decision === 'conditional') decisionPart = { decision };
+  else if (decision === null) decisionPart = { decision: null };
 
   const payload = {
     ...uiToDbFields(checkedUiKeys),

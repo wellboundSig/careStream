@@ -7,6 +7,7 @@ import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { updateReferralSource } from '../../api/referralSources.js';
 import { languageById } from '../../data/languages.js';
 import UserSettingsSheet from '../../components/users/UserSettingsSheet.jsx';
+import OooBadge from '../../components/common/OooBadge.jsx';
 import { SkeletonTableRow } from '../../components/common/Skeleton.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -282,12 +283,15 @@ function UserRow({ user, roleLabel, languages, isSaving, selected, onOpen }) {
       </td>
 
       <td style={{ padding: '12px 14px' }}>
-        <span style={{
-          fontSize: 12, fontWeight: 650, padding: '4px 9px', borderRadius: 6,
-          background: statusStyle.bg, color: statusStyle.text,
-        }}>
-          {user.status || 'Active'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: 12, fontWeight: 650, padding: '4px 9px', borderRadius: 6,
+            background: statusStyle.bg, color: statusStyle.text,
+          }}>
+            {user.status || 'Active'}
+          </span>
+          <OooBadge user={user} size="md" />
+        </div>
       </td>
 
       <td style={{ padding: '12px 14px', maxWidth: 220 }}>

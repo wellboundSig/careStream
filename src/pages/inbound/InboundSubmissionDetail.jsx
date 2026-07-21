@@ -11,6 +11,7 @@ import {
 import { parseInboundEmail } from '../../lib/inboundParse.js';
 import ParseSuggestionChips from '../../components/inbound/ParseSuggestionChips.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { isUserOoo, oooOptionSuffix, oooWindowLabel } from '../../utils/outOfOffice.js';
 
 const ghostBtn = {
   padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
@@ -225,19 +226,34 @@ export default function InboundSubmissionDetail() {
           </div>
 
           {canAssign && !isTerminal && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Assign to</span>
-              <select
-                value={sub.assigned_to_id || ''}
-                disabled={working}
-                onChange={(e) => assignTo(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13 }}
-              >
-                <option value="">— unassigned —</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
-                ))}
-              </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>Assign to</span>
+                <select
+                  value={sub.assigned_to_id || ''}
+                  disabled={working}
+                  onChange={(e) => assignTo(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--color-border)', fontSize: 13 }}
+                >
+                  <option value="">— unassigned —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.first_name} {u.last_name}{oooOptionSuffix(u)}</option>
+                  ))}
+                </select>
+              </div>
+              {(() => {
+                const assignee = users.find((u) => u.id === sub.assigned_to_id);
+                if (!isUserOoo(assignee)) return null;
+                return (
+                  <p style={{
+                    margin: 0, fontSize: 12, fontWeight: 550, color: palette.accentOrange.hex,
+                    padding: '6px 10px', borderRadius: 8,
+                    background: hexToRgba(palette.accentOrange.hex, 0.1),
+                  }}>
+                    Assignee is out of office{oooWindowLabel(assignee) ? ` (${oooWindowLabel(assignee)})` : ''}. Assignment still allowed.
+                  </p>
+                );
+              })()}
             </div>
           )}
 

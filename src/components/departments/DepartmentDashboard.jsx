@@ -12,6 +12,7 @@ import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters, ColumnPicker
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EmptyState from '../common/EmptyState.jsx';
+import OooBadge from '../common/OooBadge.jsx';
 import { STAGE_SLUGS } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -190,6 +191,7 @@ export default function DepartmentDashboard({ department, scope }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                       <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc, flexShrink: 0 }} />
                       <p style={{ fontSize: 13.5, fontWeight: 700, color: palette.backgroundDark.hex, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.first_name} {m.last_name}{isMe && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: hexToRgba(palette.primaryMagenta.hex, 0.7) }}>you</span>}</p>
+                      <OooBadge user={m} />
                     </div>
                     <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{m.email}</p>
                     {roleName && <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex }}>{roleName}</span>}

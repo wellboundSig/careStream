@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTheme } from '../utils/ThemeContext.jsx';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePreferences } from '../context/UserPreferencesContext.jsx';
+import { useCareStore } from '../store/careStore.js';
 import { PIN_GROUPS } from '../components/layout/SubNav.jsx';
 import { refreshClinicians, getCliniciansLastFetched } from '../hooks/useEsperClinicians.js';
 import { usePermissions } from '../hooks/usePermissions.js';
@@ -9,6 +10,8 @@ import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
 import ReportIssueSection from '../components/settings/ReportIssueSection.jsx';
+import OutOfOfficeSection from '../components/settings/OutOfOfficeSection.jsx';
+import { isUserOoo } from '../utils/outOfOffice.js';
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 function Section({ title, description, children }) {
@@ -142,8 +145,13 @@ function ThemePreview({ isDark }) {
 export default function Settings() {
   const { isDark, toggleTheme } = useTheme();
   const { can } = usePermissions();
-  const { appUser, appUserName } = useCurrentAppUser();
+  const { appUser, appUserName, appUserId } = useCurrentAppUser();
   const { prefs, save, pinPage, unpinPage, MAX_PINS } = usePreferences();
+  const storeUsers = useCareStore((s) => s.users);
+  const liveMe = useMemo(
+    () => (appUserId ? Object.values(storeUsers || {}).find((u) => u.id === appUserId) : null) || appUser,
+    [storeUsers, appUserId, appUser],
+  );
 
   const [clinRefreshing, setClinRefreshing] = useState(false);
   const [clinStatus, setClinStatus]         = useState(null); // 'success' | 'error'
@@ -181,6 +189,8 @@ export default function Settings() {
 
       {/* ── Report an issue (top) ── */}
       <ReportIssueSection />
+
+      <OutOfOfficeSection />
 
       {/* ── Appearance ── */}
       <Section
@@ -402,7 +412,16 @@ export default function Settings() {
               </p>
             )}
           </div>
-          <div style={{ marginLeft: 'auto' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            {isUserOoo(liveMe) && (
+              <span style={{
+                fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
+                background: hexToRgba(palette.accentOrange.hex, 0.14),
+                color: palette.accentOrange.hex,
+              }}>
+                Out of office
+              </span>
+            )}
             <span style={{
               fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20,
               background: hexToRgba(palette.accentGreen.hex, 0.12),
