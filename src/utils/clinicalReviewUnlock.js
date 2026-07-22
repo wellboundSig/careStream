@@ -1,10 +1,11 @@
 /**
- * Unlock a finalized Clinical RN review so checklist / decision can be
- * corrected and Accept → Confirm can be run again.
+ * Unlock a clinical review so checklist / decision can be corrected.
  *
- * Clears referral confirmation stamps, clears the working clinical_review
- * decision (via caller), and returns the patient to Clinical Intake RN Review
- * when they have already left that stage (e.g. EMR Onboarding).
+ * Two modes:
+ *  1) Working Accept/Conditional (premature click) — clears ClinicalReview.decision
+ *     for everyone; patient stage unchanged.
+ *  2) Finalized Confirm — also clears referral stamps and returns the patient
+ *     to Clinical Intake RN Review when they have already left that stage.
  */
 
 import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
@@ -48,14 +49,47 @@ export async function unlockClinicalReview({
   if (!referral?._id) throw new Error('No referral selected');
 
   const now = new Date().toISOString();
+  const isFinalized = !!referral.clinical_review_decision;
   const noteBody = reason.trim()
     ? `[Clinical review unlocked] ${reason.trim()}`
-    : '[Clinical review unlocked — corrections needed]';
-  const fields = clinicalUnlockFields();
+    : (isFinalized
+      ? '[Clinical review unlocked — corrections needed]'
+      : '[Clinical review unlocked — Accept cleared for corrections]');
 
-  // Clear working Accept/Conditional on the ClinicalReview row first.
+  // Clear working Accept/Conditional on the ClinicalReview row (unlocks for all users).
   try { clearWorkingDecision?.(); } catch { /* non-fatal */ }
 
+  // Premature Accept only — no stage / stamp changes.
+  if (!isFinalized) {
+    if (referral.patient_id || referral.patient?.id) {
+      const patientId = referral.patient_id || referral.patient?.id;
+      createNoteOptimistic({
+        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        patient_id: patientId,
+        author_id: appUserId,
+        content: noteBody,
+        created_at: now,
+        updated_at: now,
+        ...(referral.id ? { referral_id: referral.id } : {}),
+      }).catch(() => {});
+    }
+
+    await recordActivity({
+      actorUserId: appUserId,
+      action: 'Clinical Review Unlocked',
+      patientId: referral.patient_id || referral.patient?.id,
+      referralId: referral.id,
+      detail: reason.trim()
+        ? `Working Accept cleared: ${reason.trim()}`
+        : 'Working Accept/Conditional cleared for corrections.',
+      metadata: { mode: 'working', stage: referral.current_stage },
+    }).catch(() => {});
+
+    triggerDataRefresh();
+    return { ok: true, mode: 'working', returnedToClinical: false };
+  }
+
+  const fields = clinicalUnlockFields();
   const alreadyInClinical = referral.current_stage === CLINICAL_RN_STAGE;
 
   if (alreadyInClinical) {
@@ -105,11 +139,12 @@ export async function unlockClinicalReview({
       ? `Clinical review unlocked: ${reason.trim()}`
       : 'Clinical review unlocked for corrections.',
     metadata: {
+      mode: 'finalized',
       fromStage: referral.current_stage,
       toStage: CLINICAL_RN_STAGE,
     },
   }).catch(() => {});
 
   triggerDataRefresh();
-  return { ok: true, returnedToClinical: !alreadyInClinical };
+  return { ok: true, mode: 'finalized', returnedToClinical: !alreadyInClinical };
 }

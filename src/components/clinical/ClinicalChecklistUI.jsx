@@ -36,6 +36,21 @@ const DECISION_SELECTED_LABELS = {
  *  - locked: boolean — true once a decision is set; locks the checklist and
  *    the risk dropdown so the review can't be silently edited after Accept.
  */
+function LockIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7 11V8a5 5 0 0 1 10 0v3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="16" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function ClinicalChecklistUI({
   checked,
   onToggle,
@@ -43,8 +58,13 @@ export default function ClinicalChecklistUI({
   onDecisionChange,
   compact,
   locked = false,
-  /** Override the default "deselect to edit" banner (e.g. after Confirm finalize). */
+  /** Override the default locked banner copy. */
   lockedMessage = null,
+  /** When true, show an unlock control on the locked banner. */
+  canUnlock = false,
+  /** Click handler for the unlock control (permission-gated by parent). */
+  onUnlock = null,
+  unlocking = false,
 }) {
   const completedRequired = REQUIRED_ITEMS.filter((i) => checked[i.key]).length;
   const totalRequired = REQUIRED_ITEMS.length;
@@ -82,13 +102,58 @@ export default function ClinicalChecklistUI({
       </div>
 
       {/* Locked banner — surfaces above the checklist so the user knows why
-          checkboxes won't respond once a decision is set. */}
+          checkboxes won't respond once a decision is set. Authorized users
+          get a clear lock-icon unlock control (clears Accept for everyone). */}
       {locked && (
-        <div style={{ marginBottom: compact ? 10 : 12, padding: '7px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: palette.accentGreen.hex }}>
-            {lockedMessage
-              || `Locked — deselect ${decision === 'conditional' ? 'Conditional' : 'Accepted'} to edit`}
-          </span>
+        <div
+          style={{
+            marginBottom: compact ? 10 : 12,
+            padding: '8px 10px',
+            borderRadius: 7,
+            background: hexToRgba(palette.accentOrange.hex, 0.08),
+            border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.28)}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+            <span style={{ color: palette.accentOrange.hex, display: 'inline-flex', flexShrink: 0 }}>
+              <LockIcon size={compact ? 13 : 15} />
+            </span>
+            <span style={{ fontSize: compact ? 11 : 11.5, fontWeight: 700, color: palette.accentOrange.hex, lineHeight: 1.35 }}>
+              {lockedMessage
+                || `Locked — ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected`}
+            </span>
+          </div>
+          {canUnlock && typeof onUnlock === 'function' && (
+            <button
+              type="button"
+              data-testid="unlock-clinical-review-btn"
+              onClick={onUnlock}
+              disabled={unlocking}
+              title="Unlock clinical review for all users"
+              style={{
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: compact ? '5px 9px' : '6px 11px',
+                borderRadius: 7,
+                border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.55)}`,
+                background: unlocking ? hexToRgba(palette.accentOrange.hex, 0.45) : palette.accentOrange.hex,
+                color: palette.backgroundLight.hex,
+                fontSize: compact ? 11 : 11.5,
+                fontWeight: 700,
+                cursor: unlocking ? 'wait' : 'pointer',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              <LockIcon size={12} />
+              {unlocking ? 'Unlocking…' : 'Unlock'}
+            </button>
+          )}
         </div>
       )}
 
@@ -151,8 +216,8 @@ export default function ClinicalChecklistUI({
         );
       })}
 
-      {/* Clinical Validation — decision buttons stay interactive when locked so
-          the reviewer can switch Accept↔Conditional or deselect to unlock. */}
+      {/* Clinical Validation — once locked, decision buttons are inert.
+          Corrections go through the permission-gated Unlock control above. */}
       <div style={{ marginBottom: compact ? 4 : 6 }}>
         <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 8 }}>
           Clinical Validation
@@ -165,20 +230,23 @@ export default function ClinicalChecklistUI({
             // Solid fills only — no rgba washes (those read as disabled).
             const idleBg = isConditional ? palette.highlightYellow.hex : '#E8F6EE';
             const idleFg = isConditional ? palette.backgroundDark.hex : palette.accentGreen.hex;
-            // Clicking the SELECTED decision again deselects it — that's how
-            // the reviewer "unlocks" the checklist to make a correction.
-            const onClick = () => onDecisionChange(sel ? null : d.key);
+            const onClick = () => {
+              if (locked) return;
+              onDecisionChange(sel ? null : d.key);
+            };
             return (
               <button
                 key={d.key}
                 type="button"
                 data-testid={`decision-${d.key}`}
                 onClick={onClick}
+                disabled={locked}
                 style={{
                   flex: 1,
                   padding: compact ? '10px 8px' : '12px 10px',
                   borderRadius: 8,
-                  cursor: 'pointer',
+                  cursor: locked ? 'not-allowed' : 'pointer',
+                  opacity: locked && !sel ? 0.55 : 1,
                   background: sel ? c : idleBg,
                   border: `2px solid ${c}`,
                   color: sel
@@ -191,6 +259,7 @@ export default function ClinicalChecklistUI({
                   letterSpacing: '-0.01em',
                 }}
                 onMouseEnter={(e) => {
+                  if (locked) return;
                   e.currentTarget.style.filter = 'brightness(0.97)';
                   e.currentTarget.style.transform = 'translateY(-1px)';
                 }}

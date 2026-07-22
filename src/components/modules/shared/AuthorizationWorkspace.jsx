@@ -677,7 +677,7 @@ function InsuranceAuthCard({
               border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.2)}`,
             }}>
               <p style={{ fontWeight: 700, color: palette.accentBlue.hex, marginBottom: 2 }}>
-                Medicare — no authorization required
+                No authorization required
               </p>
               <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
                 Straight Medicare does not need a prior-auth response. Medicare Advantage / managed plans still may.

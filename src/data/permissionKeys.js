@@ -174,7 +174,8 @@ export const PERMISSION_KEYS = {
 const K = PERMISSION_KEYS;
 const ALL_KEYS = Object.values(K);
 // High-risk tools kept off the Administrator preset by default — grant
-// individually (e.g. auth.delete_response → Rafi only for now).
+// individually (e.g. auth.delete_response → Rafi; clinical.rn_unlock →
+// Rafi + Olesya).
 const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.AUTH_DELETE_RESPONSE,
   K.CLINICAL_RN_UNLOCK,

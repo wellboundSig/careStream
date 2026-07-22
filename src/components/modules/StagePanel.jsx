@@ -1762,12 +1762,16 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   const [showSendBack, setShowSendBack] = useState(false);
   const [sendBackError, setSendBackError] = useState(null);
   const [sendingBack, setSendingBack] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState(null);
 
   useEffect(() => {
     setSendBackNote('');
     setShowSendBack(false);
     setSendBackError(null);
     setSendingBack(false);
+    setUnlocking(false);
+    setUnlockError(null);
   }, [selectedReferral?._id]);
 
   const checklistComplete = isChecklistComplete(checked);
@@ -1776,6 +1780,24 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   const reviewFinalized = !!selectedReferral?.clinical_review_decision;
   const decisionLocked = reviewFinalized || decision === 'accept' || decision === 'conditional';
   const canConfirm = !reviewFinalized && checklistComplete && (decision === 'accept' || decision === 'conditional');
+  const canUnlockClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
+
+  async function handleUnlockClinicalReview() {
+    if (!selectedReferral || !canUnlockClinical || unlocking) return;
+    setUnlocking(true);
+    setUnlockError(null);
+    try {
+      await unlockClinicalReview({
+        referral: selectedReferral,
+        appUserId,
+        clearWorkingDecision: () => setDecision(null),
+      });
+    } catch (err) {
+      setUnlockError(err.message || 'Failed to unlock clinical review');
+    } finally {
+      setUnlocking(false);
+    }
+  }
   // Informational only — surfaced as a header badge so the RN can see
   // whether eligibility has also completed (the drawer's eligibility tab
   // can finish that work in parallel). Does not gate the Confirm action.
@@ -1887,15 +1909,23 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 
           <ClinicalChecklistUI
             checked={checked}
-            onToggle={reviewFinalized ? () => {} : toggleItem}
+            onToggle={decisionLocked ? () => {} : toggleItem}
             decision={decision}
-            onDecisionChange={reviewFinalized ? () => {} : setDecision}
+            onDecisionChange={decisionLocked ? () => {} : setDecision}
             compact
             locked={decisionLocked}
             lockedMessage={reviewFinalized
-              ? 'Locked — clinical review is finalized. Unlock required to make corrections.'
-              : undefined}
+              ? 'Locked — review finalized. Unlock to correct for everyone.'
+              : (decisionLocked
+                ? `Locked — ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected. Unlock to correct for everyone.`
+                : undefined)}
+            canUnlock={canUnlockClinical && decisionLocked}
+            onUnlock={handleUnlockClinicalReview}
+            unlocking={unlocking}
           />
+          {unlockError && (
+            <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '0 0 8px' }}>{unlockError}</p>
+          )}
 
           {/* Send back to Intake — always available, including after Accept.
               Not gated by clinical permission or checklist. Note optional. */}
