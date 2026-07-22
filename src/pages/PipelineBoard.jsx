@@ -70,7 +70,7 @@ export default function PipelineBoard() {
   const { data: enriched, loading } = usePipelineData();
   const { appUser, appUserId } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
-  const { can } = usePermissions();
+  const { can, hasDivision } = usePermissions();
 
   const [draggingId, setDraggingId] = useState(null);
   const [draggingFrom, setDraggingFrom] = useState(null);
@@ -83,13 +83,15 @@ export default function PipelineBoard() {
   // No local copy needed — the zustand store IS the local state.
   // enriched already reads from memory (sub-ms), and optimistic
   // mutations update the store directly.
-  const filtered = useMemo(
-    () =>
-      division === 'All'
-        ? enriched
-        : enriched.filter((r) => r.division === division),
-    [enriched, division],
-  );
+  const filtered = useMemo(() => {
+    let list = enriched.filter((r) => {
+      if (r.division === 'ALF') return hasDivision('ALF');
+      if (r.division === 'Special Needs') return hasDivision('Special Needs');
+      return true;
+    });
+    if (division !== 'All') list = list.filter((r) => r.division === division);
+    return list;
+  }, [enriched, division, hasDivision]);
 
   function showToast(message, type = 'success') {
     setToast({ message, type });

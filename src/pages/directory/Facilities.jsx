@@ -206,10 +206,29 @@ export default function Facilities() {
                   <tr><td colSpan={3} style={{ padding: '30px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No network facilities found.</td></tr>
                 ) : filteredNet.map((f) => {
                   const mktName = f.marketer_id ? resolveMarketer(f.marketer_id) : null;
+                  const isSelected = selected?.id === f.id;
                   return (
-                    <tr key={f._id} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.025))}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                    <tr
+                      key={f._id}
+                      onClick={() => setSelected(f)}
+                      title="Click to view details"
+                      style={{
+                        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
+                        cursor: 'pointer',
+                        background: isSelected
+                          ? hexToRgba(palette.primaryDeepPlum.hex, 0.06)
+                          : 'transparent',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.025);
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = isSelected
+                          ? hexToRgba(palette.primaryDeepPlum.hex, 0.06)
+                          : 'transparent';
+                      }}
+                    >
                       <td style={{ padding: '11px 14px', fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{f.name}</td>
                       <td style={{ padding: '11px 14px' }}><RegionBadge region={f.region} /></td>
                       <td style={{ padding: '11px 14px', fontSize: 12.5, color: mktName && mktName !== f.marketer_id ? hexToRgba(palette.backgroundDark.hex, 0.6) : hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: !mktName ? 'italic' : 'normal' }}>
@@ -407,9 +426,19 @@ function FacilityRow({ facility, liaison, refCount, resolveMarketer, onOpen, can
   const liaisonName = liaison ? resolveMarketer(liaison) : null;
 
   return (
-    <tr onDoubleClick={onOpen} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      title="Double-click to view details"
-      style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent', cursor: 'default', transition: 'background 0.1s', userSelect: 'none' }}>
+    <tr
+      onClick={onOpen}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title="Click to view details"
+      style={{
+        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
+        background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent',
+        cursor: 'pointer',
+        transition: 'background 0.1s',
+        userSelect: 'none',
+      }}
+    >
       <td style={{ padding: '12px 14px' }}>
         <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 2 }}>{facility.name}</p>
         {facility.address_city && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{facility.address_city}, {facility.address_state}</p>}

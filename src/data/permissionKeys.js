@@ -9,11 +9,13 @@ export const PERMISSION_KEYS = {
   DIVISION_SN: 'division.sn',
 
   // Leads
+  LEADS_CREATE: 'leads.create',
   LEADS_PROMOTE_TO_INTAKE: 'leads.promote_to_intake',
   LEADS_DISCARD: 'leads.discard',
   INTAKE_EMR_INITIAL: 'intake.emr_initial',
 
   // Referrals
+  /** @deprecated Prefer LEADS_CREATE for entering new leads. Kept for back-compat. */
   REFERRAL_CREATE: 'referral.create',
   REFERRAL_VIEW: 'referral.view',
   REFERRAL_EDIT: 'referral.edit',
@@ -218,10 +220,11 @@ export const PERMISSION_CATALOG = [
   { key: K.INBOUND_MANAGE,            label: 'Manage all inbound submissions', category: 'Inbound Submissions', description: 'See all tickets (not only assigned), reassign, edit parse suggestions', sort: 9.7 },
 
   // ── Leads & Intake ────────────────────────────────────────────────────────
+  { key: K.LEADS_CREATE,            label: 'Enter new leads',               category: 'Leads & Intake', description: 'Open the New Lead / New Referral form and submit a patient into Lead Entry', sort: 9.5 },
   { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads & Intake', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads & Intake', description: 'Discard a lead with a reason and explanation', sort: 11 },
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads & Intake', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
-  { key: K.REFERRAL_CREATE,     label: 'Create new referrals',             category: 'Leads & Intake', description: 'Open the New Referral form and submit', sort: 12 },
+  { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Leads & Intake', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Leads & Intake', description: 'See referral cards, drawers, and detail panels', sort: 13 },
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Leads & Intake', description: 'Modify referral data in the overview tab', sort: 14 },
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Leads & Intake', description: 'Advance or regress referrals in the pipeline', sort: 15 },
@@ -351,7 +354,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL,
+      K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
@@ -407,10 +410,10 @@ export const DEFAULT_PRESETS = [
   {
     id: 'preset_marketer',
     name: 'Marketer',
-    description: 'Referral creation and patient visibility. Division access depends on marketer assignment.',
+    description: 'Lead entry and patient visibility. Division access depends on marketer assignment.',
     is_system: true,
     permissions: [
-      K.REFERRAL_CREATE, K.REFERRAL_VIEW,
+      K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW,
       K.PATIENT_VIEW,
       K.TASK_VIEW,
       K.NOTE_CREATE,

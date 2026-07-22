@@ -722,6 +722,9 @@ const DESIRED_PERMISSIONS = [
 
   // Urgent care / pre-assessment indicator (2026-05-20).
   { id: 'perm_referral_flag_urgent',     key: 'referral.flag_urgent_care', label: 'Flag urgent care / pre-assessment', category: 'Referrals', sort_order: 17, description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface.' },
+
+  // Enter new leads (2026-07) — canonical grant for New Lead form / Lead Entry.
+  { id: 'perm_leads_create',             key: 'leads.create',             label: 'Enter new leads',                  category: 'Leads',     sort_order: 1,  description: 'Open the New Lead form and submit a patient into Lead Entry.' },
 ];
 
 // ---------- Operations ----------

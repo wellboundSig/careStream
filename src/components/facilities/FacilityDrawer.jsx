@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useFacilityData } from '../../hooks/useFacilityData.js';
+import { useFacilityData, isNetworkFacility } from '../../hooks/useFacilityData.js';
 import { TypeBadge, RegionBadge } from '../../pages/directory/Facilities.jsx';
 import FacilityOverviewTab from './tabs/FacilityOverviewTab.jsx';
 import FacilityPatientsTab from './tabs/FacilityPatientsTab.jsx';
@@ -15,7 +15,11 @@ const TABS = [
 export default function FacilityDrawer({ facility, onClose }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [animated, setAnimated] = useState(false);
-  const { referrals, marketerLinks, marketerDetails, stats, liaisonMarketer, loading } = useFacilityData(facility);
+  const {
+    referrals, marketerLinks, marketerDetails, cocNurses,
+    stats, liaisonMarketer, loading, isNetwork,
+  } = useFacilityData(facility);
+  const network = isNetwork ?? isNetworkFacility(facility);
 
   useEffect(() => {
     if (facility) {
@@ -60,11 +64,17 @@ export default function FacilityDrawer({ facility, onClose }) {
         <div style={{ background: palette.primaryDeepPlum.hex, padding: '20px 22px 16px', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
             <div>
-              <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundLight.hex, 0.45), marginBottom: 4 }}>Facility</p>
+              <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundLight.hex, 0.45), marginBottom: 4 }}>
+                {network ? 'Network Facility' : 'Facility'}
+              </p>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, lineHeight: 1.2, marginBottom: 4 }}>{facility.name}</h2>
-              {facility.address_city && (
+              {facility.address_city ? (
                 <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.5) }}>{facility.address_city}, {facility.address_state}</p>
-              )}
+              ) : (facility.address_street || facility.zipcode) ? (
+                <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.5) }}>
+                  {[facility.address_street, facility.zipcode].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
             </div>
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 7, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -114,7 +124,7 @@ export default function FacilityDrawer({ facility, onClose }) {
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {activeTab === 'overview'  && <FacilityOverviewTab facility={facility} />}
+          {activeTab === 'overview'  && <FacilityOverviewTab facility={facility} cocNurses={cocNurses} />}
           {activeTab === 'patients'  && <FacilityPatientsTab referrals={referrals} loading={loading} />}
           {activeTab === 'marketers' && <FacilityMarketersTab marketerLinks={marketerLinks} marketerDetails={marketerDetails} loading={loading} />}
         </div>

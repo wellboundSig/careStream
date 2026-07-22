@@ -18,6 +18,133 @@ function placeCaretAfter(node) {
   sel?.addRange(range);
 }
 
+function isMentionPill(node) {
+  return node?.nodeType === Node.ELEMENT_NODE && !!node.getAttribute?.(PILL_ATTR);
+}
+
+/** True for empty / ZWSP / NBSP-only text nodes left after pill insert. */
+function isTrivialText(node) {
+  if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+  return !/[^\s\u00a0\u200b]/.test(node.textContent || '');
+}
+
+/**
+ * Find a mention pill adjacent to the caret for Backspace (behind) or Delete (ahead).
+ * Handles caret in parent after the pill, or in a text node at its edge.
+ */
+function findAdjacentMentionPill(root, direction) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  let node = range.startContainer;
+  let offset = range.startOffset;
+  if (!root.contains(node)) return null;
+
+  if (direction === 'behind') {
+    // Caret inside a text node at offset 0 → look at previous sibling (skip trivial text).
+    if (node.nodeType === Node.TEXT_NODE && offset === 0) {
+      let prev = node.previousSibling;
+      while (prev && isTrivialText(prev)) prev = prev.previousSibling;
+      if (isMentionPill(prev)) return prev;
+      return null;
+    }
+    // Caret in text node after only whitespace — treat as "just after pill"
+    if (node.nodeType === Node.TEXT_NODE && offset > 0) {
+      const before = (node.textContent || '').slice(0, offset);
+      if (!/[^\s\u00a0\u200b]/.test(before)) {
+        let prev = node.previousSibling;
+        while (prev && isTrivialText(prev)) prev = prev.previousSibling;
+        if (isMentionPill(prev)) return prev;
+      }
+      return null;
+    }
+    // Caret in element: child before offset
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      let i = offset - 1;
+      while (i >= 0 && isTrivialText(node.childNodes[i])) i -= 1;
+      const prev = node.childNodes[i];
+      if (isMentionPill(prev)) return prev;
+    }
+    return null;
+  }
+
+  // direction === 'ahead' (Delete key)
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent || '';
+    if (offset < text.length) {
+      const after = text.slice(offset);
+      if (/[^\s\u00a0\u200b]/.test(after)) return null;
+    }
+    let next = node.nextSibling;
+    while (next && isTrivialText(next)) next = next.nextSibling;
+    if (isMentionPill(next)) return next;
+    return null;
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    let i = offset;
+    while (i < node.childNodes.length && isTrivialText(node.childNodes[i])) i += 1;
+    const next = node.childNodes[i];
+    if (isMentionPill(next)) return next;
+  }
+  return null;
+}
+
+function removeMentionPill(pill) {
+  if (!pill?.parentNode) return;
+  const parent = pill.parentNode;
+  // Drop trailing trivial spacer that was inserted with the pill
+  const next = pill.nextSibling;
+  if (isTrivialText(next) && next.parentNode) parent.removeChild(next);
+  const prev = pill.previousSibling;
+  parent.removeChild(pill);
+  if (prev?.parentNode) {
+    placeCaretAfter(prev);
+  } else {
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.setStart(parent, 0);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+}
+
+/** If the selection intersects one or more mention pills, remove those pills. */
+function removeSelectedMentionPills(root) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return false;
+
+  const pills = [...root.querySelectorAll(`[${PILL_ATTR}]`)].filter((pill) => {
+    try {
+      return range.intersectsNode(pill);
+    } catch {
+      return false;
+    }
+  });
+  if (pills.length === 0) return false;
+
+  const anchor = pills[0].previousSibling;
+  // Remove last→first so sibling links stay stable
+  for (let i = pills.length - 1; i >= 0; i -= 1) {
+    const pill = pills[i];
+    const next = pill.nextSibling;
+    if (isTrivialText(next) && next.parentNode) next.parentNode.removeChild(next);
+    pill.parentNode?.removeChild(pill);
+  }
+  if (anchor?.parentNode) {
+    placeCaretAfter(anchor);
+  } else {
+    const r = document.createRange();
+    r.setStart(root, 0);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  return true;
+}
+
 function getCaretTextInfo(root) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) return null;
@@ -108,7 +235,7 @@ function createPillEl(user) {
     `box-shadow:inset 0 0 0 1px ${hexToRgba(palette.accentBlue.hex, 0.22)}`,
     'white-space:nowrap',
     'user-select:none',
-    'cursor:default',
+    'cursor:pointer',
   ].join(';');
   return span;
 }
@@ -251,10 +378,46 @@ const MentionComposer = forwardRef(function MentionComposer(
       }
     }
 
+    // Backspace / Delete removes an adjacent mention pill as a single unit
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const root = editorRef.current;
+      if (root) {
+        if (removeSelectedMentionPills(root)) {
+          e.preventDefault();
+          syncEmpty();
+          setMenu(null);
+          return;
+        }
+        const pill = findAdjacentMentionPill(
+          root,
+          e.key === 'Backspace' ? 'behind' : 'ahead',
+        );
+        if (pill) {
+          e.preventDefault();
+          removeMentionPill(pill);
+          syncEmpty();
+          setMenu(null);
+          return;
+        }
+      }
+    }
+
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       onSubmit?.();
     }
+  }
+
+  /** Click a pill to select it so Backspace/Delete clears it. */
+  function onEditorClick(e) {
+    const pill = e.target?.closest?.(`[${PILL_ATTR}]`);
+    if (!pill || !editorRef.current?.contains(pill)) return;
+    e.preventDefault();
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNode(pill);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
   }
 
   function onPaste(e) {
@@ -298,6 +461,7 @@ const MentionComposer = forwardRef(function MentionComposer(
         onInput={onInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
+        onClick={onEditorClick}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{

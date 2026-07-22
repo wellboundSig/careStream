@@ -140,6 +140,20 @@ export default function DepartmentDashboard({ department, scope }) {
       }
       case 'insurance': return <td key="ins" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{ref.patient?.insurance_plan || '—'}</td>;
       case 'facility': return <td key="fac" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveFacility(ref.facility_id) || '—'}</td>;
+      case 'emr_onboarded': {
+        const yes = !!(ref.emr_onboarded_at || ref.emr_initial_onboarded_at);
+        return (
+          <td key="emr" style={{ padding: '11px 14px' }}>
+            <span style={{
+              display: 'inline-flex', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 650,
+              background: yes ? hexToRgba(palette.accentGreen.hex, 0.12) : hexToRgba(palette.backgroundDark.hex, 0.06),
+              color: yes ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+            }}>
+              {yes ? 'Yes' : 'No'}
+            </span>
+          </td>
+        );
+      }
       case 'activity': return <td key="act" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{fmtDate(ref.referral_date)}</td>;
       default: return <td key={col.key} />;
     }

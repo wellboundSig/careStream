@@ -101,7 +101,7 @@ export default function ModulePage({ stage }) {
   } = useLookups();
   const { open: openPatient } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
-  const { can: canPerm } = usePermissions();
+  const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
 
   // We track which referral the user clicked by its Airtable record id and
   // DERIVE the live referral object from `allReferrals` on every render. The
@@ -187,6 +187,13 @@ export default function ModulePage({ stage }) {
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
     let list = decoratedReferrals.filter(predicate);
+    // Never show a division the user cannot access (also covers stale "All"
+    // selection before the sidebar default has been coerced).
+    list = list.filter((r) => {
+      if (r.division === 'ALF') return hasDivision('ALF');
+      if (r.division === 'Special Needs') return hasDivision('Special Needs');
+      return true;
+    });
     if (division !== 'All') list = list.filter((r) => r.division === division);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -225,6 +232,15 @@ export default function ModulePage({ stage }) {
           if (wantsNonUrgent) return !isUrgentCare(r);
           return true; // partial typing — don't filter yet
         }
+        if (key === 'emr_onboarded') {
+          const v = q.trim();
+          const onboarded = !!(r.emr_onboarded_at || r.emr_initial_onboarded_at);
+          const wantsYes = v === 'yes' || v === 'y' || v === 'true';
+          const wantsNo = v === 'no' || v === 'n' || v === 'false';
+          if (wantsYes) return onboarded;
+          if (wantsNo) return !onboarded;
+          return true;
+        }
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
@@ -262,7 +278,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta, hasDivision]);
 
   // Distinct values per filterable column for datalist suggestions
   const colOptions = useMemo(() => {
@@ -278,6 +294,7 @@ export default function ModulePage({ stage }) {
       base.forEach((r) => {
         switch (col.key) {
           case 'urgent': vals.add('yes'); vals.add('no'); break;
+          case 'emr_onboarded': vals.add('yes'); vals.add('no'); break;
           case 'division': if (r.division) vals.add(r.division); break;
           case 'licence': {
             const v = resolveEntity(r.entity_id);
@@ -646,6 +663,39 @@ export default function ModulePage({ stage }) {
           </td>
         );
       }
+      case 'emr_onboarded': {
+        const full = !!referral.emr_onboarded_at;
+        const initial = !!referral.emr_initial_onboarded_at;
+        const yes = full || initial;
+        const title = full
+          ? `EMR onboarded ${new Date(referral.emr_onboarded_at).toLocaleDateString()}`
+          : initial
+            ? `Initial EMR onboarding ${new Date(referral.emr_initial_onboarded_at).toLocaleDateString()}`
+            : 'Not EMR onboarded';
+        return (
+          <td key="emr_onboarded" style={td({ maxWidth: 110 })}>
+            <span
+              title={title}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '2px 8px',
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 650,
+                background: yes
+                  ? hexToRgba(palette.accentGreen.hex, 0.12)
+                  : hexToRgba(palette.backgroundDark.hex, 0.06),
+                color: yes
+                  ? palette.accentGreen.hex
+                  : hexToRgba(palette.backgroundDark.hex, 0.4),
+              }}
+            >
+              {yes ? 'Yes' : 'No'}
+            </span>
+          </td>
+        );
+      }
       case 'activity':
         return (
           <td key="activity" style={td({ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), maxWidth: 100 })}>
@@ -734,18 +784,18 @@ export default function ModulePage({ stage }) {
 
             <div style={{ flex: 1 }} />
 
-            {stage === 'Lead Entry' && canPerm(PERMISSION_KEYS.REFERRAL_CREATE) && (
+            {stage === 'Lead Entry' && canPermAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) && (
               <button
                 type="button"
                 onClick={() => setShowNewReferral(true)}
-                title="Create a new referral"
+                title="Enter a new lead"
                 style={{
                   height: 32, padding: '0 14px', borderRadius: 7, border: 'none', flexShrink: 0,
                   background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
                   fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
                 }}
               >
-                + New Referral
+                + New Lead
               </button>
             )}
 

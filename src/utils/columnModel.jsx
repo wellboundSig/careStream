@@ -36,6 +36,7 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'owner',     label: 'Owner',      defaultOn: true, filterable: true },
   { key: 'insurance', label: 'Insurance',  defaultOn: true, filterable: true },
   { key: 'facility',  label: 'Facility',   defaultOn: true, filterable: true },
+  { key: 'emr_onboarded', label: 'EMR Onboarded', defaultOn: true, filterable: true, tooltip: 'Yes if initial or full EMR onboarding has been completed. Filter accepts yes / no.' },
   { key: 'activity',  label: 'Last Activity', defaultOn: true, filterable: false },
   // Urgent care lives at the END so it doesn't crowd the patient label
   // (the row's name already carries the small red cross when flagged).

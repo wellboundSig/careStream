@@ -36,6 +36,14 @@ describe('MODULE_COLUMN_DEFS', () => {
     expect(facility.defaultOn).toBe(true);
   });
 
+  it('includes EMR Onboarded column (yes/no filterable)', () => {
+    const emr = MODULE_COLUMN_DEFS.find((c) => c.key === 'emr_onboarded');
+    expect(emr).toBeTruthy();
+    expect(emr.label).toBe('EMR Onboarded');
+    expect(emr.defaultOn).toBe(true);
+    expect(emr.filterable).toBe(true);
+  });
+
   it('does not include a "priority" column', () => {
     expect(MODULE_COLUMN_DEFS.find((c) => c.key === 'priority')).toBeFalsy();
   });

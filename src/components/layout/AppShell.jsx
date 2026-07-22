@@ -22,6 +22,8 @@ import { startSync, stopSync } from '../../store/sync.js';
 import { startRealtime, stopRealtime } from '../../store/realtime.js';
 import { isPopOutWindow, openPopOut } from '../../utils/windowManager.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -59,6 +61,8 @@ export default function AppShell() {
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
   const { appUserId } = useCurrentAppUser();
+  const { canAny, hasDivision } = usePermissions();
+  const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
   const isPopOut = isPopOutWindow();
 
   const [division, setDivision] = useState('All');
@@ -66,6 +70,22 @@ export default function AppShell() {
   const [showNewReferral, setShowNewReferral] = useState(false);
   const location = useLocation();
   const breadcrumbs = getBreadcrumbs(location.pathname);
+
+  // Coerce division to what the user can actually see. Users with only ALF
+  // (or only SPN) were stuck on "All" until they clicked the sidebar chip.
+  useEffect(() => {
+    const alf = hasDivision('ALF');
+    const sn = hasDivision('Special Needs');
+    if (alf && !sn) {
+      if (division !== 'ALF') setDivision('ALF');
+      return;
+    }
+    if (sn && !alf) {
+      if (division !== 'Special Needs') setDivision('Special Needs');
+      return;
+    }
+    // Both (or neither during early load) — leave "All" / current selection alone.
+  }, [hasDivision, division]);
 
   const splitEnabled = prefs.splitScreenEnabled || false;
   function toggleSplit() {
@@ -99,9 +119,9 @@ export default function AppShell() {
     }
   }, [hydrated, appUserId]);
 
-  // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)
+  // Ctrl+N / Cmd+N — open New Lead form from anywhere (desktop only)
   useEffect(() => {
-    if (!hydrated || isMobile) return;
+    if (!hydrated || isMobile || !canEnterLead) return;
     function onKey(e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         const tag = document.activeElement?.tagName;
@@ -113,7 +133,7 @@ export default function AppShell() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hydrated, isMobile]);
+  }, [hydrated, isMobile, canEnterLead]);
 
   // Show branded loading screen until the store is ready.
   // All hooks are above — this is safe per Rules of Hooks.
@@ -145,6 +165,7 @@ export default function AppShell() {
           padding: '0 16px',
         }}>
           <img src="/logo-cs.png" alt="CareStream" style={{ height: 26, objectFit: 'contain' }} />
+          {canEnterLead && (
           <button
             onClick={() => setShowNewReferral(true)}
             style={{
@@ -154,8 +175,9 @@ export default function AppShell() {
               fontSize: 13, fontWeight: 700,
             }}
           >
-            + New Referral
+            + New Lead
           </button>
+          )}
         </div>
 
         {/* Page content — padded at bottom to avoid overlap with bottom nav */}
@@ -191,6 +213,7 @@ export default function AppShell() {
             DASHBOARD
           </NavLink>
 
+          {canEnterLead && (
           <button
             onClick={() => setShowNewReferral(true)}
             style={{
@@ -206,8 +229,9 @@ export default function AppShell() {
               <line x1="12" y1="8" x2="12" y2="16"/>
               <line x1="8" y1="12" x2="16" y2="12"/>
             </svg>
-            NEW REFERRAL
+            NEW LEAD
           </button>
+          )}
         </div>
 
         {newReferralModal}

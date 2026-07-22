@@ -527,16 +527,17 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
 
 export default function NewReferralForm({ onClose, onSuccess, initialForm = null, forceStage = null, embedded = false, title = null, subtitle = null }) {
   const { appUser, appUserId } = useCurrentAppUser();
-  const { can } = usePermissions();
+  const { canAny } = usePermissions();
   const { resolveEntity } = useLookups();
   const isMobile = useIsMobile();
 
-  if (!can(PERMISSION_KEYS.REFERRAL_CREATE)) {
+  // leads.create is the canonical grant; referral.create kept as legacy alias.
+  if (!canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE)) {
     return (
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ background: palette.backgroundLight.hex, borderRadius: 16, padding: '40px 32px', textAlign: 'center', maxWidth: 380 }}>
           <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 8 }}>Permission Required</p>
-          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>You do not have permission to create referrals. Contact your administrator.</p>
+          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>You do not have permission to enter new leads. Contact your administrator.</p>
           <button onClick={onClose} style={{ marginTop: 16, padding: '8px 20px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 600, color: palette.backgroundLight.hex, cursor: 'pointer' }}>Close</button>
         </div>
       </div>

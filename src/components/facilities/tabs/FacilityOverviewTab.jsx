@@ -1,3 +1,5 @@
+import { useLookups } from '../../../hooks/useLookups.js';
+import { isNetworkFacility } from '../../../hooks/useFacilityData.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function Row({ label, value }) {
@@ -20,24 +22,61 @@ function Section({ title, children }) {
   );
 }
 
-export default function FacilityOverviewTab({ facility }) {
+export default function FacilityOverviewTab({ facility, cocNurses = [] }) {
+  const { resolveEntity, resolveMarketer } = useLookups();
   if (!facility) return null;
-  const addr = [facility.address_street, facility.address_city, facility.address_state, facility.address_zip].filter(Boolean).join(', ');
+
+  const network = isNetworkFacility(facility);
+  const zip = facility.address_zip || facility.zipcode;
+  const addr = network
+    ? [facility.address_street, zip].filter(Boolean).join(', ')
+    : [facility.address_street, facility.address_city, facility.address_state, zip].filter(Boolean).join(', ');
+
+  const marketerName = facility.marketer_id
+    ? resolveMarketer(facility.marketer_id)
+    : null;
+  const entityName = facility.entity_id
+    ? resolveEntity(facility.entity_id)
+    : null;
 
   return (
-    <div style={{ padding: '20px 22px 40px' }}>
+    <div style={{ padding: '20px 22px 40px', overflowY: 'auto', height: '100%' }}>
       <Section title="Location">
         <Row label="Address" value={addr || null} />
         <Row label="Region" value={facility.region} />
-        <Row label="Phone" value={facility.phone} />
-        <Row label="Fax" value={facility.fax} />
+        {!network && <Row label="Phone" value={facility.phone} />}
+        {!network && <Row label="Fax" value={facility.fax} />}
+        {network && zip && <Row label="ZIP" value={zip} />}
       </Section>
 
-      <Section title="Primary Contact">
-        <Row label="Name" value={facility.primary_contact_name} />
-        <Row label="Phone" value={facility.primary_contact_phone} />
-        <Row label="Email" value={facility.primary_contact_email} />
-      </Section>
+      {network ? (
+        <Section title="Network">
+          <Row
+            label="Marketer"
+            value={marketerName && marketerName !== facility.marketer_id ? marketerName : null}
+          />
+          <Row label="Case Manager" value={facility.case_manager} />
+          <Row
+            label="Entity"
+            value={entityName && entityName !== '—' ? entityName : facility.entity_id}
+          />
+          <Row label="Facility ID" value={facility.id} />
+        </Section>
+      ) : (
+        <Section title="Primary Contact">
+          <Row label="Name" value={facility.primary_contact_name} />
+          <Row label="Phone" value={facility.primary_contact_phone} />
+          <Row label="Email" value={facility.primary_contact_email} />
+        </Section>
+      )}
+
+      {network && cocNurses.length > 0 && (
+        <Section title="COC Nurses">
+          {cocNurses.map((c) => (
+            <Row key={c._id || c.id} label="Assigned" value={c.userName || c.user_id} />
+          ))}
+        </Section>
+      )}
 
       {facility.services_provided_internally && (
         <Section title="Services Provided Internally">

@@ -204,7 +204,7 @@ export default function PatientList() {
   const { open: openDrawer } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
   const location = useLocation();
-  const { can } = usePermissions();
+  const { can, hasDivision } = usePermissions();
 
   const [search, setSearch] = useState('');
   // Pre-populate stage filter when navigated here from the dashboard chart
@@ -312,6 +312,8 @@ export default function PatientList() {
 
   const filtered = useMemo(() => {
     let list = patients.filter((p) => {
+      if (p.division === 'ALF' && !hasDivision('ALF')) return false;
+      if (p.division === 'Special Needs' && !hasDivision('Special Needs')) return false;
       if (division !== 'All' && p.division !== division) return false;
       if (showActive && p.is_active === 'FALSE') return false;
       if (search.trim()) {
@@ -372,7 +374,7 @@ export default function PatientList() {
       }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]);
+  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, hasDivision]);
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
