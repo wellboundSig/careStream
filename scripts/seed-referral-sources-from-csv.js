@@ -42,8 +42,17 @@ function normKey(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function detectParser(filePath) {
+  const head = fs.readFileSync(filePath, 'utf8').slice(0, 400).toLowerCase();
+  if (head.includes('facility') && head.includes('email address')) {
+    return path.join(__dirname, 'parse-contact-list-csv.py');
+  }
+  return path.join(__dirname, 'parse-referral-sources-csv.py');
+}
+
 function parseViaPython(filePath) {
-  const py = path.join(__dirname, 'parse-referral-sources-csv.py');
+  const py = detectParser(filePath);
+  console.log(`Parser: ${path.basename(py)}`);
   const res = spawnSync('python3', [py, filePath], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   if (res.status !== 0) {
     console.error(res.stderr || res.error);

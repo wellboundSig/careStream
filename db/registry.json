@@ -518,6 +518,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
+      },
       "npi": {
         "column": "npi",
         "pg": "text",

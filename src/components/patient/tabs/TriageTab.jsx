@@ -54,6 +54,7 @@ import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { formatPhysicianName } from '../../../utils/physicianName.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { isTriageComplete } from '../../../utils/triageCompleteness.js';
@@ -498,7 +499,7 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
     set({
       ...data,
-      pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+      pcp_name: formatPhysicianName(phy),
       pcp_phone: phy.phone || data.pcp_phone || '',
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
@@ -651,16 +652,16 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
         <Field label="CCO Name" required error={missing.has('cco_name')}>
           <SegmentedPicker value={data.cco_name || ''} options={CCO_OPTIONS} onChange={(v) => set({ ...data, cco_name: v })} disabled={disabled} />
         </Field>
-        <Field label="Care Manager Name" required error={missing.has('cm_name')}>
+        <Field label="Care Manager Name">
           <TextInput value={data.cm_name} onChange={(v) => set({ ...data, cm_name: v })} disabled={disabled} />
         </Field>
-        <Field label="Care Manager Phone Number" required error={missing.has('cm_phone')}>
+        <Field label="Care Manager Phone Number">
           <SmartPhoneInput value={data.cm_phone} onChange={(v) => set({ ...data, cm_phone: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
-        <Field label="Care Manager Fax Number" required error={missing.has('cm_fax')}>
+        <Field label="Care Manager Fax Number">
           <SmartPhoneInput value={data.cm_fax} onChange={(v) => set({ ...data, cm_fax: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
-        <Field label="Care Manager Email Address" required error={missing.has('cm_email')}>
+        <Field label="Care Manager Email Address">
           <SmartEmailInput value={data.cm_email} onChange={(v) => set({ ...data, cm_email: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
       </FormSection>
@@ -684,7 +685,7 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
     const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
     set({
       ...data,
-      pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+      pcp_name: formatPhysicianName(phy),
       pcp_phone: phy.phone || data.pcp_phone || '',
       pcp_fax:   phy.fax   || data.pcp_fax   || '',
       pcp_address: addr || data.pcp_address || '',
@@ -842,16 +843,16 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
         <Field label="CCO Name" required error={missing.has('cco_name')}>
           <SegmentedPicker value={data.cco_name || ''} options={CCO_OPTIONS} onChange={(v) => set({ ...data, cco_name: v })} disabled={disabled} />
         </Field>
-        <Field label="Care Manager Name" required error={missing.has('cm_name')}>
+        <Field label="Care Manager Name">
           <TextInput value={data.cm_name} onChange={(v) => set({ ...data, cm_name: v })} disabled={disabled} />
         </Field>
-        <Field label="Care Manager Phone Number" required error={missing.has('cm_phone')}>
+        <Field label="Care Manager Phone Number">
           <SmartPhoneInput value={data.cm_phone} onChange={(v) => set({ ...data, cm_phone: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
-        <Field label="Care Manager Fax Number" required error={missing.has('cm_fax')}>
+        <Field label="Care Manager Fax Number">
           <SmartPhoneInput value={data.cm_fax} onChange={(v) => set({ ...data, cm_fax: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
-        <Field label="Care Manager Email Address" required error={missing.has('cm_email')}>
+        <Field label="Care Manager Email Address">
           <SmartEmailInput value={data.cm_email} onChange={(v) => set({ ...data, cm_email: v })} disabled={disabled} forceValidate={forceValidate} />
         </Field>
       </FormSection>
@@ -899,7 +900,7 @@ function buildPhysicianSeed(referral, storePhysicians, formType) {
   const addr = [phy.address_street, phy.address_city, phy.address_state, phy.address_zip].filter(Boolean).join(', ');
   const seed = {
     pcp_physician_id: phy.id || phy._id || '',
-    pcp_name: `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim(),
+    pcp_name: formatPhysicianName(phy),
     pcp_phone: phy.phone || '',
     pcp_fax: phy.fax || '',
     pcp_address: addr,

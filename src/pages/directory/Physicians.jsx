@@ -9,6 +9,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { formatPhysicianName, normalizePhysicianTitle } from '../../utils/physicianName.js';
 import { normalizePhone, lookupZip } from '../../utils/validation.js';
 
 const BASE_INPUT = {
@@ -268,6 +269,7 @@ export default function Physicians() {
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
                 {colHdr('Physician', 'last_name')}
+                {colHdr('Title', 'title')}
                 {colHdr('NPI', null)}
                 {colHdr('PECOS / OPRA', null)}
                 {colHdr('Location', null)}
@@ -276,9 +278,9 @@ export default function Physicians() {
             </thead>
             <tbody>
               {!hydrated ? (
-                Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)
+                Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No physicians found.</td></tr>
+                <tr><td colSpan={6} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No physicians found.</td></tr>
               ) : filtered.map((phy) => (
                 <PhysicianRow key={phy._id} physician={phy} refCount={refCounts[phy.id] || 0} onOpen={() => setSelected(phy)} />
               ))}
@@ -306,7 +308,10 @@ function PhysicianRow({ physician: phy, refCount, onOpen }) {
       title="Double-click for details"
       style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hov ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent', transition: 'background 0.1s', cursor: 'default' }}>
       <td style={{ padding: '11px 14px' }}>
-        <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>Dr. {phy.first_name} {phy.last_name}</p>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{formatPhysicianName(phy)}</p>
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 12.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.7) }}>
+        {normalizePhysicianTitle(phy.title) || '—'}
       </td>
       <td style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{phy.npi || '—'}</td>
       <td style={{ padding: '11px 14px' }}>

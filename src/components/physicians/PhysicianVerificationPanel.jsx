@@ -4,6 +4,7 @@ import { mergeEntities } from '../../store/careStore.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { verifyPhysicianNpi } from '../../api/cms.js';
+import { normalizePhysicianTitle } from '../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /**
@@ -75,11 +76,13 @@ export default function PhysicianVerificationPanel({ physician, readOnly = false
       const r = await verifyPhysicianNpi(npi);
       // Airtable checkbox fields must be `true` to check or `null` to uncheck —
       // sending `false` is silently ignored and would leave a stale ✓.
+      const title = normalizePhysicianTitle(r.details?.credential);
       const fields = {
         npi_status: r.npiStatus,
         npi_checked_at: r.checkedAt,
         npi_provider_name: r.providerName || '',
         npi_details: r.details ? JSON.stringify(r.details) : '',
+        ...(title ? { title } : {}),
         is_pecos_enrolled: r.pecosEnrolled ? true : null,
         pecos_last_checked: r.checkedAt,
         is_opra_enrolled: r.opraEligible ? true : null,

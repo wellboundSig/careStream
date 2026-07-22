@@ -19,6 +19,7 @@ import {
   subscribeToPhysicians,
 } from '../../hooks/usePhysicians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { formatPhysicianName } from '../../utils/physicianName.js';
 import { normalizePhone, lookupZip } from '../../utils/validation.js';
 
 // Kept for backward-compat — any existing callers of this still work.
@@ -68,7 +69,7 @@ function TInput({ value, onChange, placeholder, type = 'text', autoFocus, maxLen
 
 function phyDisplayName(phy) {
   if (!phy) return '';
-  return `Dr. ${phy.first_name || ''} ${phy.last_name || ''}`.trim();
+  return formatPhysicianName(phy);
 }
 function phyAddress(phy) {
   if (!phy) return '';

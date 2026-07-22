@@ -73,12 +73,8 @@ const ADULT_REQUIRED = [
   'pcp_fax',
   'pcp_address',
   'pcp_npi_number',
-  // Care Management
+  // Care Management — CCO still required; CM contact fields are optional
   'cco_name',
-  'cm_name',
-  'cm_phone',
-  'cm_fax',
-  'cm_email',
 ];
 
 const PEDIATRIC_REQUIRED = [
@@ -116,12 +112,8 @@ const PEDIATRIC_REQUIRED = [
   'pcp_phone',
   'pcp_fax',
   'pcp_address',
-  // Care Management
+  // Care Management — CCO still required; CM contact fields are optional
   'cco_name',
-  'cm_name',
-  'cm_phone',
-  'cm_fax',
-  'cm_email',
 ];
 
 // ── Conditional rules. `when: 'Yes' | 'No'` selects which gate state

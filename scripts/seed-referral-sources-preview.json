@@ -1,1567 +1,784 @@
 {
   "toInsert": [
     {
-      "id": "src_csv_dd7d417cf2",
-      "name": "Afriyie Scott",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f6e6b097a2",
-      "name": "Alan Davidov",
-      "type": "Other",
-      "source_entity": "Welcome Care",
-      "email": "alan@welcomecareinc.com",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_cd3cfcced2",
-      "name": "Aleny Lora",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "alora@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d9668879ff",
-      "name": "Amanda Fernandez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_672b7fefb5",
-      "name": "Amneris Serrano",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_983a33a327",
-      "name": "Amy Fine",
-      "type": "Other",
-      "source_entity": "Rebecca School",
-      "email": "afine@rebeccaschool.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_71c1750612",
-      "name": "Anchor HC — General",
-      "type": "Other",
-      "source_entity": "Anchor HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_13d456d27d",
-      "name": "Andrea Ariza",
-      "type": "Other",
-      "source_entity": "New York Health Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_9f45d803c7",
-      "name": "Angie Castillo",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_99a8070527",
-      "name": "Annie Barkor",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_6ad214e5be",
-      "name": "Antonio Acevedo",
-      "type": "Care Manager",
-      "source_entity": "OPWDD Front Door",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_dd561f20f8",
-      "name": "Arthur Muse",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_eec58a28c3",
-      "name": "Bernadette Blocker",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_97c604c487",
-      "name": "Bijay Kharel",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_9080da92fc",
-      "name": "Blanca Guzman Mendez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_3d685797c6",
-      "name": "Blizelle Tormis",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_48b6703308",
-      "name": "Brenda Morales",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_46c33a2b93",
-      "name": "Bronx DD Council Event",
-      "type": "Campaign",
-      "source_entity": "Bronx DD Council Event",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_1e0035fb1f",
-      "name": "Brooklyn DD Council",
-      "type": "Campaign",
-      "source_entity": "Brooklyn DD Council",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_7dbe43cc04",
-      "name": "Call-in Word Of Mouth",
-      "type": "Self-Referral",
-      "source_entity": "Call-In / Word of Mouth",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_1f6c2b0376",
-      "name": "Carlos Camargo",
-      "type": "Other",
-      "source_entity": "New York Health Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_06ec271458",
-      "name": "Carolina Morris",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_7136467c5d",
-      "name": "Chase Williams",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_ae9393b774",
-      "name": "Chaya Schwartz",
-      "type": "Other",
-      "source_entity": "High Standard Home Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_04108e3c78",
-      "name": "Cheona Rawls",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_cfb94bcc50",
-      "name": "Cheyenne Wilson",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "cheyenne.wilson@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f7b76b125a",
-      "name": "Claudia Corona",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_c62a719eca",
-      "name": "Corina Nieto",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "(518) 935-3263",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_91eb560e63",
-      "name": "Daisy",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_8acfb382b9",
-      "name": "Damaris Rodriguez",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f9276662ba",
-      "name": "Damascus Rice",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "damascus.rice@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_1d57f71094",
-      "name": "DaniRose Cuzzo",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "dani.cuzzo@myacany.org",
-      "phone": "(914) 670-7125",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_faf88c1e2f",
-      "name": "Daviana Nicholas",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_6fe2deb35b",
-      "name": "David Bambrick",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_93525c6c91",
-      "name": "David LEE",
-      "type": "CCO",
-      "source_entity": "AHRC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f531be340d",
-      "name": "Destiney Arthurton",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_caecf9992f",
-      "name": "Diego Rojas",
-      "type": "Other",
-      "source_entity": "New York Health Care",
-      "email": "drojas@nyhc.com",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_68e1f108dc",
-      "name": "Ekaterine Gutashvili",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_ff5c25a53a",
-      "name": "Elaine Perez",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_b798e23018",
-      "name": "Elizabeth Limanov",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_b29b3323da",
-      "name": "Emily Rodriguez",
-      "type": "Other",
-      "source_entity": "Anchor HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_6e95b55fe1",
-      "name": "Fax",
-      "type": "Other",
-      "source_entity": "Fax",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_89bf8d5aa5",
-      "name": "Gabriella Burgos",
-      "type": "Other",
-      "source_entity": "Parent to Parent",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d0ff725fc8",
-      "name": "Gabrielle Allen",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "gallen@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_a80fd1e62d",
-      "name": "Gabrielle Allen",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "gallen@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_903c32235e",
-      "name": "GAIL",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_55c57427be",
-      "name": "Gail Dominique",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_1d4c10d05e",
-      "name": "Gen Castro",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_310b6e65f1",
-      "name": "General",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 6
-    },
-    {
-      "id": "src_csv_0a4475b177",
-      "name": "General",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 8
-    },
-    {
-      "id": "src_csv_71bb937c9a",
-      "name": "Gwendolyn Yankannah",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_48d734ceff",
-      "name": "Hamaspik HC — General",
-      "type": "Other",
-      "source_entity": "Hamaspik HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_08c11a5a23",
-      "name": "Hector Ventura",
-      "type": "Other",
-      "source_entity": "Boulevard Homecare Associates",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_fca2b6e82f",
-      "name": "Hudson Joachim",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_973b8e938e",
-      "name": "Humaira Hossain",
-      "type": "Other",
-      "source_entity": "The Child Center of NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_86fb55b0f5",
-      "name": "Israel Weinreb",
-      "type": "Other",
-      "source_entity": "Anchor HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_2ee4620f96",
-      "name": "Jacqueline Martinez",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "jacqueline.martinez@myacany.org",
-      "phone": "(914) 575-2087",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_44f03a9f52",
-      "name": "Jahrod Pender",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_3ed5fb702f",
-      "name": "Jeiry Garcia",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d10903b58d",
-      "name": "Jemcare LLC — General",
-      "type": "Other",
-      "source_entity": "JEMCARE LLC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_1e9a672169",
-      "name": "Jennifer Dieudonne",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_9a4bb1acc4",
-      "name": "Jessica",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_762561e6a9",
-      "name": "Jessica Giler",
-      "type": "Other",
-      "source_entity": "The Child Center of NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_02e35664e3",
-      "name": "Jessica Luxe",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_3980b8a53d",
-      "name": "Jessica Moran Magana",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "jmoran1@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_6ff5faec19",
-      "name": "Jessica Perez",
-      "type": "Other",
-      "source_entity": "Anchor HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_6a3746c47c",
-      "name": "Jinell Buckle",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "jbuckle@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_05bf7aed95",
-      "name": "Johanni Garcia",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_fc14922950",
-      "name": "Josefa Gonzalez",
-      "type": "Other",
-      "source_entity": "Boulevard Homecare Associates",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_f942172b59",
-      "name": "Julie Chery",
-      "type": "Other",
-      "source_entity": "Summit",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_a21307a5bb",
-      "name": "Julieta Ignacio",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "jignacio@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_d82e4e22bd",
-      "name": "Kamola Kelesidi",
-      "type": "Other",
-      "source_entity": "Wellbound (Readmit)",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 5
-    },
-    {
-      "id": "src_csv_5bcb2c1f1d",
-      "name": "Karen Dennis",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "karen.dennis@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_b9e9bd9765",
-      "name": "Karen Humphrey-",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "karen.humphrey@mycany.org",
-      "phone": "(914) 341-2654",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_7581de1c1b",
-      "name": "Karline Balan",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d1168b14ed",
-      "name": "Karry-ann Garib",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_c3056a9240",
-      "name": "Kaytee Smith",
-      "type": "PCP / MD",
-      "source_entity": "Wakefield Pediatrics",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_bf9fc51b5d",
-      "name": "Kecha Perrin",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_2c0935f5f7",
-      "name": "Keisha Deane",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_cce2c8eeb2",
-      "name": "Kendra Johnson",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_bfd7dd53f9",
-      "name": "Keneisha Parnell",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_99851792b7",
-      "name": "Kerline Alexandre",
-      "type": "Other",
-      "source_entity": "Wellbound (Readmit)",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 5
-    },
-    {
-      "id": "src_csv_a49f6eb6aa",
-      "name": "Kissena Long",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_afb84298b6",
-      "name": "Lashawna Ricketts",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_1cdfc65ecf",
-      "name": "Luisa Palacios",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_ee38833697",
-      "name": "Madeline Russell",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "madeline.rusell@myacany.org",
-      "phone": "(631) 715-0467",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_39a3b5584a",
-      "name": "Malka Steinmetz",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_7fbe6e5ea7",
-      "name": "Manhattan DD Council Event",
-      "type": "Campaign",
-      "source_entity": "Manhattan DD Council Event",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_c81c6a519d",
-      "name": "Manhattan DDC Event 2025",
-      "type": "Campaign",
-      "source_entity": "Manhattan DD Council Event",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_593f85415a",
-      "name": "Maria Galan Hernandez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_960029f74f",
-      "name": "Maria Hernandez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_a45028d1d4",
-      "name": "Mariam Cardiwall",
-      "type": "Other",
-      "source_entity": "Sinergia",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_4751b68aa0",
-      "name": "Maricela Aguilar",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "maricela.aguilar@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_57adba0989",
-      "name": "Marina Marte",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "mmarte@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_3808301927",
-      "name": "Mayisha Nawar",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "mnawar@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_370764bbc2",
-      "name": "Melissa Davis",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_0d5cb48df3",
-      "name": "Michelle Lovell",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_e20aafb919",
-      "name": "Michelle Montoro",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_77dd229932",
-      "name": "Milagros Vasquez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "mvasquez@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_8c4a607b48",
-      "name": "Miriam Berger",
-      "type": "Other",
-      "source_entity": "High Standard Home Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_00f20b1349",
-      "name": "Miriam Indig",
-      "type": "Other",
-      "source_entity": "Hamaspik HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_a5aed4ca25",
-      "name": "Missy Babafemi",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_cdd9bc6807",
-      "name": "Mohammed Sahid",
-      "type": "Other",
-      "source_entity": "EZ Living Home Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 3
-    },
-    {
-      "id": "src_csv_4f373cbd23",
-      "name": "Mom Called",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_75533d37f6",
-      "name": "Mom Called",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_06665bf75d",
-      "name": "Monica Gonzalez",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "mgonzalez@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_2981bcede9",
-      "name": "Monifa Brown",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "monifa.brown@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_83930067fc",
-      "name": "Natalia Kuzminova",
-      "type": "Other",
-      "source_entity": "Advance Home Care Services",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_edf78f9365",
-      "name": "Natalie Moniuk",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_9d6789ee1d",
-      "name": "Natalie Moniuk",
-      "type": "Other",
-      "source_entity": "Wellbound (Readmit)",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_fbd39daf00",
-      "name": "Paul Randall",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_be68011fa8",
-      "name": "Rachel Cynamon",
-      "type": "Other",
-      "source_entity": "Hamaspik HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_2297445f2a",
-      "name": "Robyn Wright",
-      "type": "Other",
-      "source_entity": "",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_027c9494d1",
-      "name": "Robyn Wright",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_39e28ecd02",
-      "name": "Rokaya Cox",
-      "type": "Adult Home",
-      "source_entity": "IRA Group Home",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_e06ac73ab3",
-      "name": "Rosalva Torivio",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f3bfb9fb3a",
-      "name": "Rose Dubreuil",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_829daa6a3a",
-      "name": "Roselene Blanco",
-      "type": "Other",
-      "source_entity": "Human Care NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_8546d671ef",
-      "name": "Roselene Blanco Human Care",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d35540a5a7",
-      "name": "Sabrina Aguilar",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "sabrina.aguilar@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 7
-    },
-    {
-      "id": "src_csv_dd5964c08b",
-      "name": "Sabrina Aguilar",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "sabrina.aguilar@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_621d933b33",
-      "name": "Saije David-gray",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "sdavid-gray@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_16bdafc63c",
-      "name": "Salena Knapp",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_3d472c8a83",
-      "name": "Samona Jones -",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "(914) 732-1531",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_f4905e5186",
-      "name": "Sandra Telles",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "sandra.telles@myacany.com",
-      "phone": "(914) 732-1563",
-      "is_active": "TRUE",
-      "hits": 4
-    },
-    {
-      "id": "src_csv_ec86f9e08a",
-      "name": "Simon Liao",
-      "type": "Other",
-      "source_entity": "Crown Care HC",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_cfbc1d9b8c",
-      "name": "Sonnia Villao",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "svillao@caredesignny.com",
-      "phone": "(518) 612-8014",
-      "is_active": "TRUE",
-      "hits": 6
-    },
-    {
-      "id": "src_csv_7f0e7df540",
-      "name": "Stella Esele",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "st.esele@tricountycare.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_beb5b44ada",
-      "name": "Tabitha Rivera",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_7056fe9f3e",
-      "name": "Taia Thomas-mumby",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "tthomas@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_df6afa7ff5",
-      "name": "Tamara Easy",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_e281ad9d4d",
-      "name": "Tenzin Metok",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "tmetok@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_e1d29c9676",
-      "name": "Tibile Camara",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "tibile.camara@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_65bbb06d3d",
-      "name": "Tibile Camara",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_47e7ba289e",
-      "name": "Tri-county Care — General",
-      "type": "CCO",
-      "source_entity": "Tri-County Care",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 2
-    },
-    {
-      "id": "src_csv_fe7d62028a",
-      "name": "Vasilios Patras",
-      "type": "CCO",
-      "source_entity": "Care Design NY",
-      "email": "vpatras@caredesignny.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_5325006505",
-      "name": "Website",
-      "type": "Campaign",
-      "source_entity": "Website",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 4
-    },
-    {
-      "id": "src_csv_babfce7a24",
-      "name": "Wellbound (readmit)",
-      "type": "Other",
-      "source_entity": "Wellbound (Readmit)",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 6
-    },
-    {
-      "id": "src_csv_d62774a9de",
-      "name": "Wellbound Email Submission",
-      "type": "Other",
-      "source_entity": "Wellbound Email Submission",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_3c645b3d1b",
-      "name": "Wendi",
-      "type": "Other",
-      "source_entity": "Summit",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_c9b7e6efdd",
-      "name": "Wendi Escobar",
-      "type": "Other",
-      "source_entity": "Summit",
-      "email": "",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_d66c047a84",
-      "name": "Ximena Restrepo",
-      "type": "Other",
-      "source_entity": "New York Health Care",
-      "email": "xrestrepo@nyhc.com",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
-    },
-    {
-      "id": "src_csv_8c13aa70c2",
-      "name": "Yvel Boucicaut",
-      "type": "CCO",
-      "source_entity": "Advance Care Alliance",
-      "email": "yvel.boucicaut@myacany.org",
-      "phone": "",
-      "is_active": "TRUE",
-      "hits": 1
+      "id": "src_cl_b2f9140aa7",
+      "name": "Maria Wreesmann",
+      "type": "ALF",
+      "source_entity": "Amber Court of Brooklyn",
+      "email": "mwreesmann@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_538d2dcaca",
+      "name": "Brittany Cruz",
+      "type": "ALF",
+      "source_entity": "The Sentinel of Mohegan Lake ALP",
+      "email": "bcruz@myvisitingdocs.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_638d2bff47",
+      "name": "Jason King",
+      "type": "ALF",
+      "source_entity": "The Sentinel of Mohegan Lake ALP",
+      "email": "jking@myvisitingdocs.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1159520a5b",
+      "name": "Mickey Sharma",
+      "type": "ALF",
+      "source_entity": "The Sentinel of Mohegan Lake ALP",
+      "email": "mickey.sharma@myvisitingdoc.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_56aa96778f",
+      "name": "Christina Morales",
+      "type": "ALF",
+      "source_entity": "Harbor View Home",
+      "email": "cmorales@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_48b93bcb29",
+      "name": "Ashaunte Currie",
+      "type": "ALF",
+      "source_entity": "Harbor View Home",
+      "email": "acurrie@harborviewhome.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_dda60f516f",
+      "name": "Franklin Hill",
+      "type": "ALF",
+      "source_entity": "Harbor View Home",
+      "email": "fhill@harborviewhome.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_55199e4112",
+      "name": "Alcia Kirk",
+      "type": "ALF",
+      "source_entity": "Bronxwood Assisted Living",
+      "email": "akirk@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_21ac4e0933",
+      "name": "Jessica Santiago",
+      "type": "ALF",
+      "source_entity": "Bronxwood Assisted Living",
+      "email": "jsantiago@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_5a42075805",
+      "name": "Chantell Carter",
+      "type": "ALF",
+      "source_entity": "The W Assisted Living at Riverdale",
+      "email": "ccarter@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_191d65f0c4",
+      "name": "Queenie Jackson",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": "njackson@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_9fe3ca0f50",
+      "name": "Debra Timony",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": "dtimony@woodhavenalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_e6e51cd5d7",
+      "name": "Jana Calise",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": "jcalise@woodhavenalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_3d51ca5304",
+      "name": "Amy Walter",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": "awalter@woodhavenalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_e6ec2d0b5f",
+      "name": "Carmen Ruiz",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": "cruiz@woodhavenalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_ca5298845b",
+      "name": "Dawn Falciani",
+      "type": "ALF",
+      "source_entity": "Woodhaven Assisted Living",
+      "email": null,
+      "phone": null
+    },
+    {
+      "id": "src_cl_bb5441c2c6",
+      "name": "Batsheva Pollack",
+      "type": "ALF",
+      "source_entity": "Claremont Village",
+      "email": "bpollack@claremontvillagealp.org",
+      "phone": null
+    },
+    {
+      "id": "src_cl_250eba4db6",
+      "name": "Yoshae Woodstock",
+      "type": "ALF",
+      "source_entity": "Claremont Village",
+      "email": "edroom@claremontvillagealp.org",
+      "phone": null
+    },
+    {
+      "id": "src_cl_53ddafa7d0",
+      "name": "Judy Kessler",
+      "type": "ALF",
+      "source_entity": "New Fordham Arms Home Adults",
+      "email": "jwkessler@thewatfordham.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_358266500a",
+      "name": "Alla Hertskaya",
+      "type": "ALF",
+      "source_entity": "New Fordham Arms Home Adults",
+      "email": "ahretskaya@thewatriverdale.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_c54ac94cd9",
+      "name": "Vito Stevens",
+      "type": "ALF",
+      "source_entity": "Amber Court of Westbury",
+      "email": "vstevens@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_734f1a551a",
+      "name": "Anna Zawisha",
+      "type": "ALF",
+      "source_entity": "Amber Court of Westbury",
+      "email": "azawisha@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1c89f94ebd",
+      "name": "Jaeile Williams",
+      "type": "ALF",
+      "source_entity": "Amber Court of Westbury",
+      "email": "janwilliams@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_d42d757c26",
+      "name": "Brenda Beller",
+      "type": "ALF",
+      "source_entity": "Amber Court of Westbury",
+      "email": "bbeller@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_e2adda2551",
+      "name": "Jessica Brugueras",
+      "type": "ALF",
+      "source_entity": "Amber Court of Smithtown",
+      "email": "jbrugueras@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1808c3cac9",
+      "name": "Sarika Desai",
+      "type": "ALF",
+      "source_entity": "Amber Court of Smithtown",
+      "email": "sdesai@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_6b0c9077db",
+      "name": "Tugce Ozkir",
+      "type": "ALF",
+      "source_entity": "Lake Shore Assisted Living Residence",
+      "email": "tozkir@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_7cbc8b0913",
+      "name": "Marie Beta",
+      "type": "ALF",
+      "source_entity": "Lake Shore Assisted Living Residence",
+      "email": "ambeta@ambercourtal.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_201c7c23b3",
+      "name": "Susmeet Tailor",
+      "type": "ALF",
+      "source_entity": "New Broadview Manor",
+      "email": "susmeettailor@pymedicalgroup.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_2200b77192",
+      "name": "Adam Zeitlin",
+      "type": "ALF",
+      "source_entity": "Brooklyn Boulevard ALP",
+      "email": "dradamzeitlen@gmail.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_9cede97956",
+      "name": "Brittania Waugh",
+      "type": "ALF",
+      "source_entity": "Castle Senior Living Assisted Living",
+      "email": "bwaugh@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_cc24d63529",
+      "name": "Debby Ng",
+      "type": "ALF",
+      "source_entity": "Castle Senior Living Assisted Living",
+      "email": "edebby111@aol.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_da43074d9b",
+      "name": "Tamara Medinaortiz",
+      "type": "ALF",
+      "source_entity": "Willow Ridge of South Setauket",
+      "email": "tamara.medinaortiz@willowridgseniorliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_c328c65aa3",
+      "name": "Julie Jannotte",
+      "type": "ALF",
+      "source_entity": "Willow Ridge of South Setauket",
+      "email": "julie.jannotte@willowridgeseniorliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_d7c00f9321",
+      "name": "Jennifer Maldonado",
+      "type": "ALF",
+      "source_entity": "Willow Ridge of South Setauket",
+      "email": "jennifer.maldonado@willowridgeseniorliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1167146c98",
+      "name": "Vernon Brown",
+      "type": "ALF",
+      "source_entity": "Arbors Hauppauge",
+      "email": "vbrown@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_8115560b4b",
+      "name": "Nicholas Bailardo",
+      "type": "ALF",
+      "source_entity": "Arbors Hauppauge",
+      "email": "nickbaialardo@pymedicalgroup.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_eb1218c62e",
+      "name": "Diane Casamassina",
+      "type": "ALF",
+      "source_entity": "Arbors Hauppauge",
+      "email": null,
+      "phone": null
+    },
+    {
+      "id": "src_cl_95f485ab83",
+      "name": "Terry Thys",
+      "type": "ALF",
+      "source_entity": "Arbors Hauppauge",
+      "email": "tthys@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_0145dfd716",
+      "name": "Daneille Mattera",
+      "type": "ALF",
+      "source_entity": "Arbors Bohemia",
+      "email": "dmattera@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1b63ca24c0",
+      "name": "Kerri Petitpain",
+      "type": "ALF",
+      "source_entity": "Arbors Bohemia",
+      "email": "k.petitpain.fnp@gmail.com",
+      "phone": "(631) 905-6890"
+    },
+    {
+      "id": "src_cl_d614dfe2ef",
+      "name": "Sangeetha Kamath",
+      "type": "ALF",
+      "source_entity": "Arbors Bohemia",
+      "email": "drskamath75@gmail.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_d26f708393",
+      "name": "Jacquelyn Osborne",
+      "type": "ALF",
+      "source_entity": "Arbors Bohemia",
+      "email": "josborne@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_6d3bb240f3",
+      "name": "Natoya Agard",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "nagard@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_37d95f998a",
+      "name": "Cindy Lamont",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "clamont@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_62486dc8c5",
+      "name": "Melissa Orlando",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "morlando@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_dd1b2e11eb",
+      "name": "Mariana Costa",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "mcosta@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_7a8205c2b7",
+      "name": "Alison Menze",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "amenze@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_ef8441e2a3",
+      "name": "Tawanda Booker",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "tbooker@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_31d510c622",
+      "name": "Traci Battle",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia East",
+      "email": "tbattle@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_69607cc019",
+      "name": "Laura Berry",
+      "type": "ALF",
+      "source_entity": "The Arbors Islandia West",
+      "email": "lberry@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_4fbb1da3d7",
+      "name": "Natia Nasareia",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "nnasareia@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_11234eea21",
+      "name": "Aaliyah Arocho",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "aarocho@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_ba1a23871c",
+      "name": "Suzanne Lee",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "suzannelee@pymedicalgroup.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_2a53c7a395",
+      "name": "Carla Hoene",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "choene@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_187cc24770",
+      "name": "Sabine Fednard",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "sfednard@pymedicalgroup.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_73f5b06877",
+      "name": "Meghan Alvarez",
+      "type": "ALF",
+      "source_entity": "Arbors Westbury",
+      "email": "malvarez@thearborsliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_6b2a01f567",
+      "name": "Winnie Rutherford",
+      "type": "ALF",
+      "source_entity": "Braemar Living",
+      "email": "wrutherford@braemarliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_1c13d06382",
+      "name": "Faith Quesada",
+      "type": "ALF",
+      "source_entity": "New Haven Manor",
+      "email": "fquesada@thewatnewhaven.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_e08b7c256d",
+      "name": "Kaitlyn Folchetti",
+      "type": "ALF",
+      "source_entity": "The Plaza at Clover Lake",
+      "email": "kfolchetti@cloverlakeliving.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_4df315c8b5",
+      "name": "Batsheva Schoenfeld",
+      "type": "ALF",
+      "source_entity": "The Plaza at Clover Lake",
+      "email": null,
+      "phone": null
+    },
+    {
+      "id": "src_cl_49954c94df",
+      "name": "Meriem Khalid",
+      "type": "ALF",
+      "source_entity": "The Plaza at Clover Lake",
+      "email": "mkhalid@maximizehealth.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_3c4fae4af5",
+      "name": "Samara Lawes",
+      "type": "ALF",
+      "source_entity": "The Eliot at New Rochelle",
+      "email": "slawes@myvisitingdocs.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_750d285938",
+      "name": "Linda Osborne",
+      "type": "ALF",
+      "source_entity": "The Eliot at New Rochelle",
+      "email": "losborne@eliotalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_52671c5853",
+      "name": "Maxine Cardwell",
+      "type": "ALF",
+      "source_entity": "The Eliot at New Rochelle",
+      "email": "mcardwell@eliotalp.com",
+      "phone": null
+    },
+    {
+      "id": "src_cl_deb167175a",
+      "name": "Kim Stahl",
+      "type": "ALF",
+      "source_entity": "Bayview Rest Home",
+      "email": "kstahl@thewatbayview.com",
+      "phone": null
     }
   ],
   "toSkipDup": [],
   "skipped": [
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 0,
+      "reason": "single name, no email last (Addo)",
+      "facility": "ACB",
+      "name": "Dr. Addo",
+      "email": "addoyobs@gmail.com"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 2,
+      "reason": "single name, no email last (Bustillos)",
+      "facility": "ACPG",
+      "name": "Y. Bustillos , Medical Assist",
+      "email": "ybustillos@maximizehealth.com + support@max"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 9,
+      "reason": "empty",
+      "facility": "Bronxwood"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 27,
+      "reason": "single name, no email last (Manisha)",
+      "facility": "ACS",
+      "name": "Manisha, Medical Assist",
+      "email": "Masmithtown@ambercourtal.com + support@max"
     },
     {
-      "reason": "header/empty",
-      "left": "Referral source",
-      "right": "Referral Contact"
+      "row": 30,
+      "reason": "empty/non-person row",
+      "facility": "Lakeshore",
+      "name": "Medical Assistant",
+      "email": "malakeshore@ambercourtal.com"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 33,
+      "reason": "support-only email",
+      "facility": "Lakeshore"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 35,
+      "reason": "empty",
+      "facility": "Brooklyn ALP"
     },
     {
-      "reason": "no person/entity",
-      "left": "RE-CERT.",
-      "right": ""
+      "row": 37,
+      "reason": "support-only email",
+      "facility": "Castle"
     },
     {
-      "reason": "header/empty",
-      "left": "Referral source",
-      "right": "Referral Contact"
+      "row": 40,
+      "reason": "single name, no email last (Jennifer)",
+      "facility": "Brichwood",
+      "name": "Jennifer, Case mgr",
+      "email": "Jennifer@suttongardensseniorliving.com"
     },
     {
-      "reason": "no person/entity",
-      "left": "CEO Adam Yanofsky",
-      "right": ""
+      "row": 44,
+      "reason": "empty/non-person row",
+      "facility": "Arbors Haupaugge",
+      "name": "",
+      "email": "vbrown@thearborsliving.com"
     },
     {
-      "reason": "header/empty",
-      "left": "Referral source",
-      "right": "Referral Contact"
+      "row": 50,
+      "reason": "empty/non-person row",
+      "facility": "Arbors Bohemia",
+      "name": "MA Maximize",
+      "email": ""
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 53,
+      "reason": "empty",
+      "facility": "Arbors Bohemia"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 56,
+      "reason": "could not resolve (S Russell OLD assistant Admin)",
+      "facility": "Arbors Islandia East",
+      "name": "S Russell OLD assistant Admin",
+      "email": "srussell@thearborsliving.com"
     },
     {
-      "reason": "no person/entity",
-      "left": "HF",
-      "right": ""
+      "row": 60,
+      "reason": "duplicate person",
+      "name": "Nicholas Bailardo",
+      "facility": "Arbors Islandia East"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 61,
+      "reason": "duplicate person",
+      "name": "Terry Thys",
+      "facility": "Arbors Islandia East"
     },
     {
-      "reason": "no person/entity",
-      "left": "David K",
-      "right": "David K"
+      "row": 64,
+      "reason": "duplicate person",
+      "name": "Cindy Lamont",
+      "facility": "Islandia East Safercare"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 67,
+      "reason": "duplicate person",
+      "name": "Mariana Costa",
+      "facility": "Arbors Islandia West"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 68,
+      "reason": "duplicate person",
+      "name": "Cindy Lamont",
+      "facility": "Arbors Islandia West"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 69,
+      "reason": "duplicate person",
+      "name": "Alison Menze",
+      "facility": "Arbors Islandia West"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 70,
+      "reason": "duplicate person",
+      "name": "Nicholas Bailardo",
+      "facility": "Arbors Islandia West"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 71,
+      "reason": "duplicate person",
+      "name": "Terry Thys",
+      "facility": "Arbors Islandia West"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 78,
+      "reason": "duplicate person",
+      "name": "Sangeetha Kamath",
+      "facility": "Arbors Westbury"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 80,
+      "reason": "empty/non-person row",
+      "facility": "New Haven Manor",
+      "name": "Medical Assist",
+      "email": ""
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 82,
+      "reason": "support-only email",
+      "facility": "The Plaza at Clover Lake"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 86,
+      "reason": "duplicate person",
+      "name": "Jason King",
+      "facility": "Eliot New Rochelle"
     },
     {
-      "reason": "header/empty",
-      "left": "",
-      "right": ""
+      "row": 90,
+      "reason": "duplicate person",
+      "name": "Adam Zeitlin",
+      "facility": "Blvd Alp Queens"
+    },
+    {
+      "row": 92,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 93,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 94,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 95,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 96,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 97,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 98,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 99,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 100,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 101,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 102,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 103,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 104,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 105,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 106,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 107,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 108,
+      "reason": "empty",
+      "facility": "Bayview"
+    },
+    {
+      "row": 109,
+      "reason": "empty",
+      "facility": "Bayview"
     }
   ]
 }

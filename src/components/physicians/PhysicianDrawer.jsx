@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { usePhysicianData } from '../../hooks/usePhysicianData.js';
 import PhysicianOverviewTab from './tabs/PhysicianOverviewTab.jsx';
 import PhysicianPatientsTab from './tabs/PhysicianPatientsTab.jsx';
+import { formatPhysicianName, normalizePhysicianTitle } from '../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'patients', label: 'Patients' }];
@@ -55,10 +56,12 @@ export default function PhysicianDrawer({ physician, onClose }) {
     setEnrollmentOverride((prev) => ({ ...(prev || {}), ...fields }));
   }
 
-  const isPecos = (enrollmentOverride?.is_pecos_enrolled ?? physician.is_pecos_enrolled) === true
-    || (enrollmentOverride?.is_pecos_enrolled ?? physician.is_pecos_enrolled) === 'true';
-  const isOpra  = (enrollmentOverride?.is_opra_enrolled ?? physician.is_opra_enrolled) === true
-    || (enrollmentOverride?.is_opra_enrolled ?? physician.is_opra_enrolled) === 'true';
+  const displayPhy = { ...physician, ...(enrollmentOverride || {}) };
+  const isPecos = (displayPhy.is_pecos_enrolled) === true
+    || (displayPhy.is_pecos_enrolled) === 'true';
+  const isOpra  = (displayPhy.is_opra_enrolled) === true
+    || (displayPhy.is_opra_enrolled) === 'true';
+  const title = normalizePhysicianTitle(displayPhy.title);
 
   return (
     <>
@@ -68,7 +71,12 @@ export default function PhysicianDrawer({ physician, onClose }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
             <div>
               <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundLight.hex, 0.45), marginBottom: 3 }}>Physician</p>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>Dr. {physician.first_name} {physician.last_name}</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundLight.hex, marginBottom: 3 }}>{formatPhysicianName(displayPhy)}</h2>
+              {title && (
+                <p style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundLight.hex, 0.65), marginBottom: 2 }}>
+                  Title: {title}
+                </p>
+              )}
               {physician.address_city && <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.5) }}>{physician.address_city}, {physician.address_state}</p>}
             </div>
             <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 7, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

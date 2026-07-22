@@ -9,8 +9,9 @@
  *  - Dry-run by default. Pass --confirm to write.
  *
  * Usage:
- *   node scripts/aurora-reset-mock-patients.js            # dry-run
- *   node scripts/aurora-reset-mock-patients.js --confirm  # purge + seed
+ *   node scripts/aurora-reset-mock-patients.js                 # dry-run
+ *   node scripts/aurora-reset-mock-patients.js --confirm       # purge + seed
+ *   node scripts/aurora-reset-mock-patients.js --confirm --purge-only  # wipe only
  *
  * Env: WB_CLUSTER_ARN, WB_SECRET_ARN, WB_DATABASE (default wellbound), AWS creds.
  * Mock PDFs expected at /tmp/wb-mock-files/ (downloaded beforehand) OR
@@ -40,6 +41,7 @@ function loadEnv() {
 loadEnv();
 
 const CONFIRM = process.argv.includes('--confirm');
+const PURGE_ONLY = process.argv.includes('--purge-only');
 const resourceArn = process.env.WB_CLUSTER_ARN;
 const secretArn = process.env.WB_SECRET_ARN;
 const database = process.env.WB_DATABASE || 'wellbound';
@@ -78,6 +80,9 @@ const PURGE_TABLES = [
   'triage_pediatric',
   'triage_alf',
   'soc_reschedule_log',
+  'inbound_submission_events',
+  'inbound_submission_attachments',
+  'inbound_submissions',
   'referrals',
   'patients',
 ];
@@ -384,7 +389,41 @@ async function seedOne(row, refs, mockPaths, index) {
 
 async function main() {
   console.log(`Aurora mock reset → database=${database}`);
-  console.log(CONFIRM ? 'MODE: CONFIRM (writes enabled)' : 'MODE: dry-run (no writes). Pass --confirm to execute.');
+  const mode = !CONFIRM
+    ? 'dry-run (no writes)'
+    : PURGE_ONLY
+      ? 'CONFIRM purge-only (no reseed)'
+      : 'CONFIRM purge + seed';
+  console.log(`MODE: ${mode}`);
+
+  // Sanity: confirm keep-tables still have data (never wiped by this script).
+  const keep = await Promise.all([
+    count('users'), count('physicians'), count('referral_sources'),
+    count('marketers'), count('facilities'), count('entities'),
+  ]);
+  console.log('\nKept tables (will NOT be touched):');
+  console.log(`  users=${keep[0]} physicians=${keep[1]} referral_sources=${keep[2]} marketers=${keep[3]} facilities=${keep[4]} entities=${keep[5]}`);
+
+  await purge();
+
+  if (PURGE_ONLY) {
+    if (!CONFIRM) {
+      console.log('\nDry-run complete. Re-run with --confirm --purge-only to wipe patient graph.');
+      return;
+    }
+    const patients = await query('SELECT count(*)::int AS n FROM patients');
+    const referrals = await query('SELECT count(*)::int AS n FROM referrals');
+    const files = await query('SELECT count(*)::int AS n FROM files');
+    const triageA = await query('SELECT count(*)::int AS n FROM triage_adult');
+    const triageP = await query('SELECT count(*)::int AS n FROM triage_pediatric');
+    const users = await query('SELECT count(*)::int AS n FROM users');
+    const physicians = await query('SELECT count(*)::int AS n FROM physicians');
+    console.log('\n── Done (purge-only) ──');
+    console.log(`  patients=${patients[0].n} referrals=${referrals[0].n} files=${files[0].n}`);
+    console.log(`  triage_adult=${triageA[0].n} triage_pediatric=${triageP[0].n}`);
+    console.log(`  users=${users[0].n} physicians=${physicians[0].n} (untouched)`);
+    return;
+  }
 
   const refs = await pickRefs();
   console.log('\nReference picks (kept intact):');
@@ -393,8 +432,6 @@ async function main() {
   console.log(`  Source:       ${refs.sourceId}`);
   console.log(`  ALF facility: ${refs.facilityId} (${refs.facilityName})`);
   console.log(`  Entity:       ${refs.entityId}`);
-
-  await purge();
 
   const f2fPath = process.env.MOCK_F2F_PATH
     || '/tmp/wb-mock-files/1784646022654_jgfjl4_mock_20f2f_20test.pdf';

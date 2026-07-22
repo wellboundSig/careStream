@@ -200,6 +200,31 @@ CHANNEL_ENTITIES = {
     "Wellbound Email Submission",
 }
 
+# CareStream name column rules: person only, first+last, Title Case, letters/spaces.
+_NON_PERSON_NAME = re.compile(
+    r"\b(general|llc|inc|services|alliance|design|homecare|home care|hospital|school|"
+    r"pediatrics|event|council|submission|readmit|website|fax|email|called|mom)\b",
+    re.I,
+)
+
+
+def normalize_person_name(raw: str):
+    """Return Title-Cased First Last… or None if not a valid person name."""
+    s = clean(raw)
+    if not s:
+        return None
+    s = re.sub(r"[-–—_/]+", " ", s)
+    s = re.sub(r"['’`.,;:()\[\]{}|+&@#$!?\\]+", "", s)
+    s = clean(s)
+    if not s or _NON_PERSON_NAME.search(s):
+        return None
+    parts = [p for p in s.split() if p]
+    if len(parts) < 2:
+        return None
+    if any(not re.fullmatch(r"[A-Za-z]+", p) for p in parts):
+        return None
+    return " ".join(p[:1].upper() + p[1:].lower() for p in parts)
+
 
 def parse_csv(path: Path):
     with path.open(newline="", encoding="utf-8-sig") as f:
@@ -258,14 +283,9 @@ def parse_csv(path: Path):
             contact_raw = person_hint
 
         if (not contact_raw) or norm_key(contact_raw) in (norm_key(left), norm_key(entity)):
-            if not entity:
-                skipped.append({"reason": "no person/entity", "left": left, "right": right})
-                continue
-            if entity in CHANNEL_ENTITIES or typ == "Campaign":
-                contact_raw = entity
-            else:
-                # Org listed with no contact person — one shared "General" row.
-                contact_raw = f"{entity} — General"
+            # No person contact — skip (do not invent "General" / channel names).
+            skipped.append({"reason": "no person contact", "left": left, "right": right})
+            continue
 
         contact_raw = re.sub(r"^\(readmission\)\s*", "", contact_raw, flags=re.I)
         name, email, phone = parse_contact(contact_raw)
@@ -273,8 +293,9 @@ def parse_csv(path: Path):
             email = force_email
         if force_phone:
             phone = force_phone
+        name = normalize_person_name(name or "")
         if not name:
-            skipped.append({"reason": "could not parse person", "left": left, "right": right})
+            skipped.append({"reason": "invalid person name", "left": left, "right": right})
             continue
 
         key = f"{norm_key(name)}|{norm_key(entity)}"
