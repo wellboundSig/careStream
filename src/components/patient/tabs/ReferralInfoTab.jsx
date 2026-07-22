@@ -8,6 +8,7 @@ import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { inferAgeGroupFromDob } from '../../../utils/validation.js';
+import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
@@ -269,8 +270,8 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
         <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} fullWidth readOnly={readOnly} />
         <EditableReferralPhysician referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
 
-        {referral.f2f_date && <ReadField label="F2F Date" value={new Date(referral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
-        {referral.f2f_expiration && <ReadField label="F2F Expiration" value={new Date(referral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
+        {referral.f2f_date && <ReadField label="F2F Date" value={fmtCalendarDate(referral.f2f_date)} />}
+        {referral.f2f_expiration && <ReadField label="F2F Expiration" value={fmtCalendarDate(referral.f2f_expiration)} />}
         {referral.hold_reason && <ReadField label="Hold Reason" value={referral.hold_reason} fullWidth />}
         {referral.ntuc_reason && <ReadField label="NTUC Reason" value={referral.ntuc_reason} fullWidth />}
       </Section>

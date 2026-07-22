@@ -28,7 +28,8 @@ const GENDER_OPTIONS   = ['Male', 'Female'];
 
 const INSURANCE_PLANS = [
   'Fidelis Care', 'UnitedHealthcare Community Plan', 'Healthfirst',
-  'Aetna Better Health', 'Molina Healthcare', 'Anthem BCBS',
+  'Aetna Better Health', 'Molina Healthcare', 'Anthem BCBS', 'Humana',
+  'Wellcare',
   'Medicaid', 'Medicare', 'Hamaspik', 'VNS Health',
   'MetroPlus MLTC', 'Fidelis Care at Home', 'Elderplan HomeFirst',
   'Montefiore Diamond Care', 'Healthfirst CompleteCare',

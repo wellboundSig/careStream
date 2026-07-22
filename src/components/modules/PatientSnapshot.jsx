@@ -5,6 +5,7 @@ import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
+import { fmtCalendarDate } from '../../utils/dateFormat.js';
 
 // Fields required for the demographics readiness dot to turn green. Aligned
 // with what the Demographics tab actually edits — `medicaid_number` is NOT
@@ -216,14 +217,10 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
         const isF2FRow = key === 'f2f';
         let secondary = null;
         if (isF2FRow && flags.f2fDate) {
-          try {
-            secondary = new Date(flags.f2fDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          } catch { /* malformed date → omit */ }
+          secondary = fmtCalendarDate(flags.f2fDate, null);
         }
         if (key === 'initialEmr' && flags.initialEmrDate) {
-          try {
-            secondary = new Date(flags.initialEmrDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          } catch { /* omit */ }
+          secondary = fmtCalendarDate(flags.initialEmrDate, null);
         }
         return (
           <button

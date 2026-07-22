@@ -15,33 +15,24 @@ import FilePreviewModal from '../../common/FilePreviewModal.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { formatPhysicianName } from '../../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import {
+  fmtCalendarDate,
+  fmtDateTime,
+  toCalendarDateInput,
+  addCalendarDays,
+  daysUntilCalendarDate,
+} from '../../../utils/dateFormat.js';
 
 function truthyFlag(v) {
   return v === true || v === 'true' || v === 'TRUE' || v === 'Yes' || v === 'yes' || v === 1 || v === '1';
 }
 
-function fmtDateTime(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
-}
-
 function daysLeft(exp) {
-  if (!exp) return null;
-  return Math.ceil((new Date(exp) - Date.now()) / 86400000);
-}
-
-function addDays(dateStr, n) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  return daysUntilCalendarDate(exp);
 }
 
 function fmtDate(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtCalendarDate(d, '');
 }
 
 function Section({ title, children }) {
@@ -126,7 +117,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     setSaving(true);
     setSaveError(null);
     try {
-      const expiration = addDays(receivedDate, 90);
+      const expiration = addCalendarDays(receivedDate, 90);
       const loggedAt = new Date().toISOString();
       // Optimistic: the F2F tab indicator (green check in the drawer) and the
       // Intake panel's "Push to Clinical RN" section both read from the store.
@@ -179,7 +170,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         const today = new Date().toISOString().split('T')[0];
         await updateReferralOptimistic(referral._id, {
           f2f_date: today,
-          f2f_expiration: addDays(today, 90),
+          f2f_expiration: addCalendarDays(today, 90),
           f2f_date_logged_by_id: appUserId || 'unknown',
           f2f_date_logged_at: new Date().toISOString(),
         });
@@ -291,7 +282,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
             <button
               type="button"
               onClick={() => {
-                if (referral.f2f_date) setReceivedDate(new Date(referral.f2f_date).toISOString().split('T')[0]);
+                if (referral.f2f_date) setReceivedDate(toCalendarDateInput(referral.f2f_date));
                 setShowDatePicker(true);
               }}
               style={{
@@ -317,7 +308,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
               />
               {receivedDate && (
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 8 }}>
-                  Expires <strong style={{ color: palette.accentOrange.hex }}>{fmtDate(addDays(receivedDate, 90))}</strong>
+                  Expires <strong style={{ color: palette.accentOrange.hex }}>{fmtDate(addCalendarDays(receivedDate, 90))}</strong>
                 </p>
               )}
               {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{saveError}</p>}

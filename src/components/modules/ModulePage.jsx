@@ -33,6 +33,7 @@ import NewReferralForm from '../forms/NewReferralForm.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { fmtCalendarDate, daysUntilCalendarDate } from '../../utils/dateFormat.js';
 
 /** Uniform queue row height — every module table row is this tall. */
 const QUEUE_ROW_HEIGHT = 48;
@@ -68,7 +69,7 @@ function F2FCountdown({ referral }) {
   if (!referral?.f2f_expiration) {
     return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>;
   }
-  const days = Math.ceil((new Date(referral.f2f_expiration) - Date.now()) / 86400000);
+  const days = daysUntilCalendarDate(referral.f2f_expiration);
   const color = days < 0 ? palette.primaryMagenta.hex
     : days <= 7  ? palette.primaryMagenta.hex
     : days <= 14 ? palette.accentOrange.hex
@@ -76,7 +77,7 @@ function F2FCountdown({ referral }) {
     : palette.accentGreen.hex;
   const label = days < 0 ? `Exp ${Math.abs(days)}d` : `${days}d`;
   return (
-    <span title={`F2F expires ${new Date(referral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+    <span title={`F2F expires ${fmtCalendarDate(referral.f2f_expiration, '')}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, fontWeight: days <= 14 ? 650 : 500, color }}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />

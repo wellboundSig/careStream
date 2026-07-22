@@ -38,6 +38,12 @@ import PatientSnapshot from './PatientSnapshot.jsx';
 import SocCompletedCelebration from '../common/SocCompletedCelebration.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import { isUserOoo, oooWindowLabel } from '../../utils/outOfOffice.js';
+import {
+  fmtCalendarDate,
+  toCalendarDateInput,
+  addCalendarDays,
+  daysUntilCalendarDate,
+} from '../../utils/dateFormat.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
@@ -56,22 +62,6 @@ const SOC_RESCHEDULE_REASONS = [
   { value: 'family_request', label: 'Family request' },
   { value: 'other', label: 'Other' },
 ];
-
-// Format a calendar date WITHOUT timezone shift. A value like '2026-06-01'
-// (or its ISO form) is the calendar day the user picked; parsing it through
-// `new Date(...).toLocaleDateString()` reinterprets midnight-UTC in local time
-// and can show the previous day. We parse the Y-M-D parts and build a LOCAL
-// date so "June 1" always renders as "Jun 1".
-function fmtCalendarDate(value) {
-  if (!value) return null;
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) {
-    const d = new Date(value);
-    return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 // Shared panel wrapper ────────────────────────────────────────────────────────
 function Panel({ children, width = 280 }) {
@@ -715,17 +705,13 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
   const totalReq = F2F_REQUIRED_ITEMS.length;
 
   function daysLeft(exp) {
-    if (!exp) return null;
-    return Math.ceil((new Date(exp) - Date.now()) / 86400000);
-  }
-  function addDays(dateStr, n) {
-    const d = new Date(dateStr); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0];
+    return daysUntilCalendarDate(exp);
   }
   async function handleLogReceived() {
     if (!receivedDate || !selectedReferral) return;
     setSaving(true);
     try {
-      const expiration = addDays(receivedDate, 90);
+      const expiration = addCalendarDays(receivedDate, 90);
       // Optimistic so the F2F section + Push-to-Clinical-RN gate reflect the
       // new date instantly (both read selectedReferral / the store).
       await updateReferralOptimistic(selectedReferral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
@@ -924,11 +910,11 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                     <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3 }}>{days < 0 ? 'F2F has expired' : 'until expiration'}</p>
                     {selectedReferral.f2f_date && (
                       <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>
-                        Visit {new Date(selectedReferral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Visit {fmtCalendarDate(selectedReferral.f2f_date, '')}
                         {selectedReferral.f2f_expiration && (
                           <>
                             {' · '}
-                            Expires {new Date(selectedReferral.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            Expires {fmtCalendarDate(selectedReferral.f2f_expiration, '')}
                           </>
                         )}
                       </p>
@@ -937,7 +923,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 ) : selectedReferral.f2f_date ? (
                   <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
                     <p style={{ fontSize: 13, fontWeight: 650, color: palette.accentGreen.hex, lineHeight: 1.3 }}>
-                      Visit logged {new Date(selectedReferral.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Visit logged {fmtCalendarDate(selectedReferral.f2f_date, '')}
                     </p>
                   </div>
                 ) : (
@@ -955,7 +941,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                     <ActionBtn
                       label={selectedReferral.f2f_date ? 'Update F2F Date' : 'F2F / MD Orders Received'}
                       variant={selectedReferral.f2f_date ? 'default' : 'success'}
-                      onClick={() => { if (selectedReferral.f2f_date) setReceivedDate(new Date(selectedReferral.f2f_date).toISOString().split('T')[0]); setShowDatePicker(true); }}
+                      onClick={() => { if (selectedReferral.f2f_date) setReceivedDate(toCalendarDateInput(selectedReferral.f2f_date)); setShowDatePicker(true); }}
                     />
                   ) : (
                     <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '10px' }}>
@@ -1362,14 +1348,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
   const totalReq = F2F_REQUIRED_ITEMS.length;
 
   function daysLeft(exp) {
-    if (!exp) return null;
-    return Math.ceil((new Date(exp) - Date.now()) / 86400000);
-  }
-
-  function addDays(dateStr, n) {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() + n);
-    return d.toISOString().split('T')[0];
+    return daysUntilCalendarDate(exp);
   }
 
   async function handleLogReceived() {
@@ -1377,7 +1356,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
     setSaving(true);
     setSaveError(null);
     try {
-      const expiration = addDays(receivedDate, 90);
+      const expiration = addCalendarDays(receivedDate, 90);
       // Optimistic — drawer F2F indicator + Push-to-Clinical-RN gate read from
       // the store; raw updateReferral leaves them stale until the next sync.
       await updateReferralOptimistic(selectedReferral._id, {
@@ -1440,10 +1419,10 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 {ref.f2f_date && (
                   <div style={{ marginTop: 10 }}>
                     <p style={{ fontSize: 15, fontWeight: 750, color: palette.backgroundDark.hex }}>
-                      Visit {new Date(ref.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Visit {fmtCalendarDate(ref.f2f_date, '')}
                     </p>
                     <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 2 }}>
-                      Expires {new Date(ref.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Expires {fmtCalendarDate(ref.f2f_expiration, '')}
                     </p>
                     {(ref.f2f_date_logged_by_id || ref.f2f_date_logged_at) && (
                       <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>
@@ -1481,7 +1460,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 onClick={() => {
                   // Pre-fill with existing date if available so the user just confirms
                   if (ref.f2f_date) {
-                    setReceivedDate(new Date(ref.f2f_date).toISOString().split('T')[0]);
+                    setReceivedDate(toCalendarDateInput(ref.f2f_date));
                   }
                   setShowDatePicker(true);
                 }}
@@ -1528,10 +1507,10 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 />
                 {receivedDate && (
                   <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 8 }}>
-                    Clock starts {new Date(receivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    Clock starts {fmtCalendarDate(receivedDate, '')}
                     {' — '}
                     expires <strong style={{ color: palette.accentOrange.hex }}>
-                      {new Date(addDays(receivedDate, 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {fmtCalendarDate(addCalendarDays(receivedDate, 90), '')}
                     </strong>
                   </p>
                 )}

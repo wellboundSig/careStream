@@ -19,6 +19,7 @@ import EmptyState from '../components/common/EmptyState.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
+import { fmtCalendarDate, daysUntilCalendarDate } from '../utils/dateFormat.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
 
@@ -44,8 +45,7 @@ const DEFAULT_COL_FILTERS = Object.fromEntries(
 );
 
 function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtCalendarDate(d, '—');
 }
 // Read pre-computed metrics set by usePipelineData (single source of truth —
 // see src/utils/referralMetrics.js). Returns `null` when the referral hasn't
@@ -62,7 +62,7 @@ function daysInPipeline(referral) {
 // ── F2F Countdown cell ─────────────────────────────────────────────────────────
 function F2FCell({ referral }) {
   if (!referral?.f2f_expiration) return <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>;
-  const days = Math.ceil((new Date(referral.f2f_expiration) - Date.now()) / 86400000);
+  const days = daysUntilCalendarDate(referral.f2f_expiration);
   const color = days < 0 ? palette.primaryMagenta.hex : days <= 7 ? palette.primaryMagenta.hex : days <= 14 ? palette.accentOrange.hex : days <= 30 ? '#7A5F00' : palette.accentGreen.hex;
   const label = days < 0 ? `${Math.abs(days)}d ago` : `${days}d`;
   return (

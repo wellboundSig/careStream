@@ -24,6 +24,11 @@ import {
 import { getChecklistItemsByReferral } from '../../../api/opwddChecklistItems.js';
 import { markChecklistItemReceived } from '../../../store/opwddOrchestration.js';
 import { recordActivity } from '../../../api/activityLog.js';
+import {
+  fmtCalendarDate,
+  toCalendarDateInput,
+  addCalendarDays,
+} from '../../../utils/dateFormat.js';
 
 const CATEGORY_COLORS = {
   'F2F': { bg: hexToRgba(palette.primaryMagenta.hex, 0.1), text: palette.primaryMagenta.hex },
@@ -282,14 +287,14 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         }
       }
 
-      // If category is F2F, the visit date drives the 90-day expiration clock
+      // If category is F2F, the visit date drives the 90-day expiration clock.
+      // Store calendar dates (YYYY-MM-DD) only — ISO midnight-UTC shifts display
+      // back one day in US Eastern.
       if (pendingCategory === 'F2F' && f2fDate && referral?._id) {
-        const visitDate = new Date(f2fDate);
-        const expiration = new Date(visitDate);
-        expiration.setDate(expiration.getDate() + 90);
+        const visitDate = toCalendarDateInput(f2fDate);
         await updateReferral(referral._id, {
-          f2f_date: visitDate.toISOString(),
-          f2f_expiration: expiration.toISOString(),
+          f2f_date: visitDate,
+          f2f_expiration: addCalendarDays(visitDate, 90),
           f2f_date_logged_by_id: appUserId || 'unknown',
           f2f_date_logged_at: new Date().toISOString(),
         }).catch(() => {});
@@ -377,7 +382,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                   setPendingCategory(cat);
                   if (cat === 'F2F') {
                     if (referral?.f2f_date) {
-                      setF2fDate(new Date(referral.f2f_date).toISOString().slice(0, 10));
+                      setF2fDate(toCalendarDateInput(referral.f2f_date));
                       setF2fDatePrefilled(true);
                     } else {
                       setF2fDate('');
@@ -530,7 +535,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                   />
                   {f2fDate && (
                     <p style={{ fontSize: 11.5, color: palette.accentGreen.hex, marginTop: 6, fontWeight: 600 }}>
-                      Expires {new Date(new Date(f2fDate).setDate(new Date(f2fDate).getDate() + 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Expires {fmtCalendarDate(addCalendarDays(f2fDate, 90), '')}
                     </p>
                   )}
                 </div>
@@ -547,7 +552,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                   />
                   {f2fDate && (
                     <p style={{ fontSize: 11.5, color: palette.accentGreen.hex, marginTop: 6, fontWeight: 600 }}>
-                      Expires {new Date(new Date(f2fDate).setDate(new Date(f2fDate).getDate() + 90)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Expires {fmtCalendarDate(addCalendarDays(f2fDate, 90), '')}
                     </p>
                   )}
                   {!f2fDate && (

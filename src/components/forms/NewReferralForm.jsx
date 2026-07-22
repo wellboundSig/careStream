@@ -36,6 +36,8 @@ const INSURANCE_PLANS = [
   'Aetna Better Health',
   'Molina Healthcare',
   'Anthem BCBS',
+  'Humana',
+  'Wellcare',
   'Medicaid',
   'Medicare',
   'Hamaspik',
