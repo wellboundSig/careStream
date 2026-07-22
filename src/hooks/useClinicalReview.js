@@ -179,6 +179,30 @@ export function useClinicalReview(referralRecordId) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referralRecordId, existingRow, checked, authRequired]);
 
+  // Local-only clear used after Unlock already persisted decision=null.
+  // Cancels any pending debounced save so an older Accept write can't win.
+  const clearDecisionLocal = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    dirtyRef.current = false;
+    setDecision(null);
+    if (!referralRecordId) return;
+    const rowId = existingRow?._id || pendingId(referralRecordId);
+    mergeEntities('clinicalReviews', {
+      [rowId]: {
+        _id: rowId,
+        ...(existingRow || {}),
+        referral_id: [referralRecordId],
+        ...uiToDbFields(checked),
+        decision: null,
+        auth_required: authRequired === true,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referralRecordId, existingRow, checked, authRequired]);
+
   const updateAuthRequired = useCallback((nextAuth) => {
     if (!referralRecordId) return;
     dirtyRef.current = true;
@@ -210,6 +234,7 @@ export function useClinicalReview(referralRecordId) {
     authRequired,
     toggle,
     setDecision: updateDecision,
+    clearDecisionLocal,
     setAuthRequired: updateAuthRequired,
     saveNow,
     saving,

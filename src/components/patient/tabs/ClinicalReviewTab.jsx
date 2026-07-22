@@ -57,6 +57,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     decision: workingDecision,
     toggle: toggleItem,
     setDecision: setLocalDecision,
+    clearDecisionLocal,
   } = useClinicalReview(referral?._id);
 
   const isFinalized = !!hasReview;
@@ -73,7 +74,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
       await unlockClinicalReview({
         referral,
         appUserId,
-        clearWorkingDecision: () => setLocalDecision(null),
+        clearWorkingDecision: clearDecisionLocal,
         onReferralLocal: (fields) => updateReferralLocal?.(fields),
       });
     } catch (err) {
@@ -131,9 +132,9 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         onDecisionChange={editingLocked ? () => {} : setLocalDecision}
         locked={editingLocked}
         lockedMessage={isFinalized
-          ? 'Locked — review finalized. Unlock to correct for everyone.'
+          ? 'Locked: review finalized. Unlock so staff can continue editing.'
           : (decisionLocked
-            ? `Locked — ${workingDecision === 'conditional' ? 'Conditional' : 'Accepted'} selected. Unlock to correct for everyone.`
+            ? `Locked: ${workingDecision === 'conditional' ? 'Conditional' : 'Accepted'} selected. Unlock so staff can continue editing.`
             : undefined)}
         canUnlock={canUnlock && decisionLocked && !readOnly}
         onUnlock={handleUnlock}

@@ -31,6 +31,9 @@ import { CLINICAL_UI_TO_DB, CLINICAL_DB_TO_UI } from '../data/clinicalChecklist.
 
 const TABLE = 'ClinicalReview';
 const LINK_FIELDS = ['referral_id'];
+// Null must reach the API for these fields so Unlock can clear Accept
+// for every user. Stripping nulls left the old decision in the database.
+const NULLABLE_CLEAR_FIELDS = new Set(['decision']);
 
 function normaliseFields(fields) {
   if (!fields) return fields;
@@ -43,7 +46,8 @@ function normaliseFields(fields) {
     }
   }
   for (const k of Object.keys(out)) {
-    if (out[k] === null || out[k] === undefined) delete out[k];
+    if (out[k] === undefined) delete out[k];
+    else if (out[k] === null && !NULLABLE_CLEAR_FIELDS.has(k)) delete out[k];
   }
   return out;
 }

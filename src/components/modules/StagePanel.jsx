@@ -1757,6 +1757,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     decision,
     toggle: toggleItem,
     setDecision,
+    clearDecisionLocal,
   } = useClinicalReview(selectedReferral?._id);
   const [sendBackNote, setSendBackNote] = useState('');
   const [showSendBack, setShowSendBack] = useState(false);
@@ -1790,7 +1791,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       await unlockClinicalReview({
         referral: selectedReferral,
         appUserId,
-        clearWorkingDecision: () => setDecision(null),
+        clearWorkingDecision: clearDecisionLocal,
       });
     } catch (err) {
       setUnlockError(err.message || 'Failed to unlock clinical review');
@@ -1915,9 +1916,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             compact
             locked={decisionLocked}
             lockedMessage={reviewFinalized
-              ? 'Locked — review finalized. Unlock to correct for everyone.'
+              ? 'Locked: review finalized. Unlock so staff can continue editing.'
               : (decisionLocked
-                ? `Locked — ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected. Unlock to correct for everyone.`
+                ? `Locked: ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected. Unlock so staff can continue editing.`
                 : undefined)}
             canUnlock={canUnlockClinical && decisionLocked}
             onUnlock={handleUnlockClinicalReview}
@@ -2265,8 +2266,7 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
   const {
-    decision: clinicalWorkingDecision,
-    setDecision: setClinicalWorkingDecision,
+    clearDecisionLocal: clearClinicalDecisionLocal,
   } = useClinicalReview(selectedReferral?._id);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
@@ -2375,9 +2375,7 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
         referral: selectedReferral,
         appUserId,
         reason: unlockReason,
-        clearWorkingDecision: () => {
-          if (clinicalWorkingDecision) setClinicalWorkingDecision(null);
-        },
+        clearWorkingDecision: clearClinicalDecisionLocal,
       });
       setShowUnlock(false);
       setUnlockReason('');
@@ -2402,7 +2400,7 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
           {canUnlockClinical && clinicalFinalized && (
             <PanelSection title="Unlock Clinical Review">
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, margin: '0 0 8px' }}>
-                Error-correction tool: unaccept the finalized Clinical RN review so checklist/decision can be corrected and Accept → Confirm can be run again. Returns the patient to Clinical Intake RN Review.
+                Unaccept this clinical review so staff can keep editing, then Accept and Confirm again. Returns the patient to Clinical Intake RN Review.
               </p>
               {!showUnlock ? (
                 <ActionBtn

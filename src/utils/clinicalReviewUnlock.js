@@ -1,16 +1,16 @@
 /**
  * Unlock a clinical review so checklist / decision can be corrected.
  *
- * Two modes:
- *  1) Working Accept/Conditional (premature click) — clears ClinicalReview.decision
- *     for everyone; patient stage unchanged.
- *  2) Finalized Confirm — also clears referral stamps and returns the patient
- *     to Clinical Intake RN Review when they have already left that stage.
+ * Clears ClinicalReview.decision in the database (so every user sees it
+ * unlocked). If Confirm already stamped the referral, also clears those
+ * stamps and returns the patient to Clinical Intake RN Review when needed.
  */
 
 import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 import { updateReferralOptimistic, createNoteOptimistic } from '../store/mutations.js';
+import { upsertClinicalReview, dbToUiFields } from '../api/clinicalReviews.js';
 import { recordActivity } from '../api/activityLog.js';
+import { useCareStore, mergeEntities } from '../store/careStore.js';
 import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
 
 export const CLINICAL_RN_STAGE = 'Clinical Intake RN Review';
@@ -31,13 +31,61 @@ export function clinicalUnlockFields() {
   };
 }
 
+function findClinicalReviewRow(referralRecordId) {
+  if (!referralRecordId) return null;
+  const rows = useCareStore.getState().clinicalReviews || {};
+  for (const row of Object.values(rows)) {
+    const link = Array.isArray(row.referral_id) ? row.referral_id[0] : row.referral_id;
+    if (link === referralRecordId) return row;
+  }
+  return null;
+}
+
+/**
+ * Persist decision=null on the ClinicalReview row and mirror the store.
+ * This is what makes Unlock stick for other users after refresh.
+ */
+async function clearWorkingDecisionInDb(referralRecordId) {
+  const existing = findClinicalReviewRow(referralRecordId);
+  const existingId = existing?._id && !String(existing._id).startsWith('_pending_')
+    ? existing._id
+    : undefined;
+
+  const updated = await upsertClinicalReview({
+    referralRecordId,
+    checkedUiKeys: dbToUiFields(existing),
+    decision: null,
+    authRequired: existing?.auth_required === true,
+    reviewedBy: existing?.reviewed_by || undefined,
+    existingId,
+  });
+
+  if (updated?.id) {
+    mergeEntities('clinicalReviews', {
+      [updated.id]: {
+        _id: updated.id,
+        ...(existing || {}),
+        ...updated.fields,
+        decision: null,
+        referral_id: [referralRecordId],
+      },
+    });
+  } else if (existing?._id) {
+    mergeEntities('clinicalReviews', {
+      [existing._id]: { ...existing, decision: null },
+    });
+  }
+
+  return updated;
+}
+
 /**
  * @param {object} opts
- * @param {object} opts.referral — store referral (needs _id, id, current_stage)
+ * @param {object} opts.referral
  * @param {string|null} opts.appUserId
- * @param {() => void} [opts.clearWorkingDecision] — e.g. setDecision(null)
+ * @param {() => void} [opts.clearWorkingDecision] local UI clear (optional)
  * @param {string} [opts.reason]
- * @param {(fields: object) => void} [opts.onReferralLocal] — drawer local patch
+ * @param {(fields: object) => void} [opts.onReferralLocal]
  */
 export async function unlockClinicalReview({
   referral,
@@ -53,13 +101,15 @@ export async function unlockClinicalReview({
   const noteBody = reason.trim()
     ? `[Clinical review unlocked] ${reason.trim()}`
     : (isFinalized
-      ? '[Clinical review unlocked — corrections needed]'
-      : '[Clinical review unlocked — Accept cleared for corrections]');
+      ? '[Clinical review unlocked: corrections needed]'
+      : '[Clinical review unlocked: Accept cleared for corrections]');
 
-  // Clear working Accept/Conditional on the ClinicalReview row (unlocks for all users).
+  // 1) Clear Accept in the DB first (source of truth for all users).
+  await clearWorkingDecisionInDb(referral._id);
+
+  // 2) Clear local hook state so this screen unlocks immediately.
   try { clearWorkingDecision?.(); } catch { /* non-fatal */ }
 
-  // Premature Accept only — no stage / stamp changes.
   if (!isFinalized) {
     if (referral.patient_id || referral.patient?.id) {
       const patientId = referral.patient_id || referral.patient?.id;

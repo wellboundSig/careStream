@@ -124,7 +124,7 @@ export default function ClinicalChecklistUI({
             </span>
             <span style={{ fontSize: compact ? 11 : 11.5, fontWeight: 700, color: palette.accentOrange.hex, lineHeight: 1.35 }}>
               {lockedMessage
-                || `Locked — ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected`}
+                || `Locked: ${decision === 'conditional' ? 'Conditional' : 'Accepted'} selected`}
             </span>
           </div>
           {canUnlock && typeof onUnlock === 'function' && (
@@ -133,7 +133,7 @@ export default function ClinicalChecklistUI({
               data-testid="unlock-clinical-review-btn"
               onClick={onUnlock}
               disabled={unlocking}
-              title="Unlock clinical review for all users"
+              title="Unlock so everyone can keep editing"
               style={{
                 flexShrink: 0,
                 display: 'inline-flex',
