@@ -2,12 +2,13 @@
  * reportEngine.js
  *
  * Schema definitions, filter formula building, data fetching with lookup
- * resolution, and Excel (XLSX) export for the CareStream Reports page.
+ * resolution, presets, and multi-tab Excel export (Summary + Detail + charts)
+ * for the CareStream Reports page.
  */
 
 import airtable from '../api/airtable.js';
 import { getSignedFileUrl } from './r2Upload.js';
-import * as XLSX from 'xlsx';
+import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ export const TABLE_SCHEMAS = {
       {
         label: 'Referral',
         fields: [
+          { key: 'id',                   label: 'Referral ID',           type: 'text',    filterable: true },
           { key: 'division',             label: 'Division',              type: 'enum',    options: DIVISIONS,   filterable: true },
           { key: 'current_stage',        label: 'Stage',                 type: 'enum',    options: STAGES,      filterable: true },
           { key: 'priority',             label: 'Priority',              type: 'enum',    options: PRIORITIES,  filterable: true },
@@ -99,14 +101,48 @@ export const TABLE_SCHEMAS = {
           { key: 'hchb_entered',         label: 'HCHB Entered',          type: 'boolean', filterable: true },
           { key: 'is_pecos_verified',    label: 'PECOS Verified',        type: 'boolean', filterable: true },
           { key: 'is_opra_verified',     label: 'OPRA Verified',         type: 'boolean', filterable: true },
+          { key: 'created_at',           label: 'Created At',            type: 'date',    filterable: true },
+          { key: 'updated_at',           label: 'Updated At',            type: 'date',    filterable: true },
+        ],
+      },
+      {
+        label: 'Ownership & Staff',
+        fields: [
+          { key: '__intake_owner',       label: 'Intake Owner',          type: 'virtual', virtual: true },
+          { key: 'intake_owner_id',       label: 'Intake Owner ID (raw)', type: 'text',    filterable: true },
+          { key: '__hold_owner',         label: 'Hold Owner',            type: 'virtual', virtual: true },
+          { key: 'hold_owner_id',        label: 'Hold Owner ID (raw)',   type: 'text',    filterable: true },
         ],
       },
       {
         label: 'F2F / Clinical',
         fields: [
-          { key: 'f2f_date',       label: 'F2F Date',        type: 'date',    filterable: true },
-          { key: 'f2f_expiration', label: 'F2F Expiration',  type: 'date',    filterable: true },
-          { key: 'f2f_urgency',    label: 'F2F Urgency',     type: 'enum',    options: F2F_URGENCY, filterable: true },
+          { key: 'f2f_date',                       label: 'F2F Date',                    type: 'date',    filterable: true },
+          { key: 'f2f_expiration',                 label: 'F2F Expiration',              type: 'date',    filterable: true },
+          { key: 'f2f_urgency',                    label: 'F2F Urgency',                 type: 'enum',    options: F2F_URGENCY, filterable: true },
+          { key: 'f2f_date_logged_at',             label: 'F2F Logged At',               type: 'date',    filterable: true },
+          { key: '__f2f_logged_by',                label: 'F2F Logged By',               type: 'virtual', virtual: true },
+          { key: 'clinical_review_decision',       label: 'Clinical Decision',           type: 'enum',    options: ['accept', 'conditional', 'decline'], filterable: true },
+          { key: 'clinical_review_at',             label: 'Clinical Review At',          type: 'date',    filterable: true },
+          { key: 'clinical_review_completed_at',   label: 'Clinical Completed At',       type: 'date',    filterable: true },
+          { key: '__clinical_by',                  label: 'Clinical Reviewed By',        type: 'virtual', virtual: true },
+          { key: 'clinical_review_pushed_at',      label: 'Pushed to Clinical At',       type: 'date',    filterable: true },
+          { key: 'in_clinical_review',             label: 'In Clinical Review',          type: 'boolean', filterable: true },
+          { key: 'returned_from_clinical',         label: 'Returned from Clinical',      type: 'boolean', filterable: true },
+          { key: 'returned_from_clinical_at',      label: 'Returned from Clinical At',   type: 'date',    filterable: true },
+          { key: 'returned_from_clinical_note',    label: 'Returned from Clinical Note', type: 'text',    filterable: false },
+        ],
+      },
+      {
+        label: 'EMR & Auth stamps',
+        fields: [
+          { key: 'emr_initial_onboarded_at', label: 'Initial EMR At',      type: 'date',    filterable: true },
+          { key: '__emr_initial_by',         label: 'Initial EMR By',      type: 'virtual', virtual: true },
+          { key: 'emr_onboarded_at',         label: 'EMR Onboarded At',    type: 'date',    filterable: true },
+          { key: '__emr_onboarded_by',       label: 'EMR Onboarded By',    type: 'virtual', virtual: true },
+          { key: 'auth_obtained_at',         label: 'Auth Obtained At',    type: 'date',    filterable: true },
+          { key: '__auth_obtained_by',       label: 'Auth Obtained By',    type: 'virtual', virtual: true },
+          { key: 'eligibility_completed_at', label: 'Eligibility Done At', type: 'date',    filterable: true },
         ],
       },
       {
@@ -116,6 +152,7 @@ export const TABLE_SCHEMAS = {
           { key: 'ntuc_financial_impact',    label: 'NTUC Financial Impact',     type: 'text', filterable: false },
           { key: 'hold_reason',              label: 'Hold Reason',               type: 'text', filterable: false },
           { key: 'hold_expected_resolution', label: 'Hold Exp. Resolution',      type: 'date', filterable: true },
+          { key: 'hold_return_stage',        label: 'Hold Return Stage',         type: 'enum', options: STAGES, filterable: true },
         ],
       },
       {
@@ -138,11 +175,16 @@ export const TABLE_SCHEMAS = {
       { key: 'current_stage',  label: 'Stage',       type: 'enum',    options: STAGES },
       { key: 'priority',       label: 'Priority',    type: 'enum',    options: PRIORITIES },
       { key: 'f2f_urgency',    label: 'F2F Urgency', type: 'enum',    options: F2F_URGENCY },
+      { key: 'clinical_review_decision', label: 'Clinical Decision', type: 'enum', options: ['accept', 'conditional', 'decline'] },
       { key: 'referral_date',  label: 'Referral Date', type: 'date' },
       { key: 'soc_scheduled_date', label: 'SOC Date', type: 'date' },
       { key: 'soc_completed_date', label: 'SOC Completed', type: 'date' },
+      { key: 'clinical_review_completed_at', label: 'Clinical Completed', type: 'date' },
+      { key: 'emr_onboarded_at', label: 'EMR Onboarded', type: 'date' },
+      { key: 'intake_owner_id', label: 'Intake Owner ID', type: 'text' },
       { key: 'hchb_entered',   label: 'HCHB Entered', type: 'boolean' },
       { key: 'is_pecos_verified', label: 'PECOS Verified', type: 'boolean' },
+      { key: 'returned_from_clinical', label: 'Returned from Clinical', type: 'boolean' },
       { key: 'ntuc_reason',    label: 'NTUC Reason', type: 'text' },
     ],
   },
@@ -386,6 +428,168 @@ export const TABLE_SCHEMAS = {
       { key: 'resolved_at', label: 'Resolved Date', type: 'date' },
     ],
   },
+
+  StageHistory: {
+    label: 'Stage History',
+    description: 'Every stage transition (who moved the patient, when, and why)',
+    groups: [
+      {
+        label: 'Transition',
+        fields: [
+          { key: 'from_stage',       label: 'From Stage',   type: 'enum', options: STAGES, filterable: true },
+          { key: 'to_stage',         label: 'To Stage',     type: 'enum', options: STAGES, filterable: true },
+          { key: 'reason',           label: 'Reason / Note', type: 'text', filterable: true },
+          { key: 'timestamp',        label: 'Timestamp',    type: 'date', filterable: true },
+          { key: '__actor_name',     label: 'Changed By',   type: 'virtual', virtual: true },
+          { key: 'changed_by_id',    label: 'Changed By ID', type: 'text', filterable: true },
+          { key: 'referral_id',      label: 'Referral ID',  type: 'text', filterable: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'from_stage', label: 'From Stage', type: 'enum', options: STAGES },
+      { key: 'to_stage',   label: 'To Stage',   type: 'enum', options: STAGES },
+      { key: 'timestamp',  label: 'Timestamp',  type: 'date' },
+      { key: 'changed_by_id', label: 'Changed By ID', type: 'text' },
+      { key: 'reason', label: 'Reason contains', type: 'text' },
+    ],
+  },
+
+  ActivityLog: {
+    label: 'Activity Log',
+    description: 'Staff audit trail of key actions across CareStream',
+    groups: [
+      {
+        label: 'Event',
+        fields: [
+          { key: 'action',         label: 'Action',      type: 'text', filterable: true },
+          { key: 'detail',         label: 'Detail',      type: 'text', filterable: true },
+          { key: 'timestamp',      label: 'Timestamp',   type: 'date', filterable: true },
+          { key: '__actor_name',   label: 'Actor',       type: 'virtual', virtual: true },
+          { key: 'actor_id',       label: 'Actor ID',    type: 'text', filterable: true },
+          { key: '__patient_name', label: 'Patient',     type: 'virtual', virtual: true },
+          { key: 'patient_id',     label: 'Patient ID',  type: 'text', filterable: true },
+          { key: 'referral_id',    label: 'Referral ID', type: 'text', filterable: true },
+          { key: 'metadata',       label: 'Metadata',    type: 'text', filterable: false },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'action',     label: 'Action',     type: 'text' },
+      { key: 'timestamp',  label: 'Timestamp',  type: 'date' },
+      { key: 'actor_id',   label: 'Actor ID',   type: 'text' },
+      { key: 'detail',     label: 'Detail contains', type: 'text' },
+    ],
+  },
+
+  Notes: {
+    label: 'Notes',
+    description: 'Patient / referral notes written by staff',
+    groups: [
+      {
+        label: 'Note',
+        fields: [
+          { key: 'content',        label: 'Content',     type: 'text', filterable: true },
+          { key: 'is_pinned',      label: 'Pinned',      type: 'boolean', filterable: true },
+          { key: 'created_at',     label: 'Created',     type: 'date', filterable: true },
+          { key: '__actor_name',   label: 'Author',      type: 'virtual', virtual: true },
+          { key: 'author_id',      label: 'Author ID',   type: 'text', filterable: true },
+          { key: '__patient_name', label: 'Patient',     type: 'virtual', virtual: true },
+          { key: 'patient_id',     label: 'Patient ID',  type: 'text', filterable: true },
+          { key: 'referral_id',    label: 'Referral ID', type: 'text', filterable: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'created_at', label: 'Created', type: 'date' },
+      { key: 'author_id',  label: 'Author ID', type: 'text' },
+      { key: 'is_pinned',  label: 'Pinned', type: 'boolean' },
+      { key: 'content',    label: 'Content contains', type: 'text' },
+    ],
+  },
+
+  PatientInsurances: {
+    label: 'Patient Insurances',
+    description: 'Payer rows linked to patients (category, member ID, order)',
+    groups: [
+      {
+        label: 'Payer',
+        fields: [
+          { key: '__patient_name',      label: 'Patient',           type: 'virtual', virtual: true },
+          { key: 'payer_display_name',  label: 'Payer Name',        type: 'text', filterable: true },
+          { key: 'insurance_category',  label: 'Category',          type: 'text', filterable: true },
+          { key: 'plan_name',           label: 'Plan Name',         type: 'text', filterable: true },
+          { key: 'member_id',           label: 'Member ID',         type: 'text', filterable: true },
+          { key: 'group_number',        label: 'Group #',           type: 'text', filterable: false },
+          { key: 'order_rank',          label: 'Order',             type: 'enum', options: ['primary', 'secondary', 'tertiary', 'informational'], filterable: true },
+          { key: 'created_at',          label: 'Created',           type: 'date', filterable: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'payer_display_name', label: 'Payer Name', type: 'text' },
+      { key: 'insurance_category', label: 'Category', type: 'text' },
+      { key: 'order_rank', label: 'Order', type: 'enum', options: ['primary', 'secondary', 'tertiary', 'informational'] },
+      { key: 'created_at', label: 'Created', type: 'date' },
+    ],
+  },
+
+  ClinicalReview: {
+    label: 'Clinical Reviews',
+    description: 'Clinical RN checklist working state and decision per referral',
+    groups: [
+      {
+        label: 'Review',
+        fields: [
+          { key: 'decision',       label: 'Decision',     type: 'enum', options: ['accept', 'conditional'], filterable: true },
+          { key: 'auth_required',  label: 'Auth Required', type: 'boolean', filterable: true },
+          { key: 'reviewed_by',    label: 'Reviewed By ID', type: 'text', filterable: true },
+          { key: '__actor_name',   label: 'Reviewed By',  type: 'virtual', virtual: true },
+          { key: 'referral_id',    label: 'Referral ID',  type: 'text', filterable: true },
+          { key: 'created_at',     label: 'Created',      type: 'date', filterable: true },
+          { key: 'updated_at',     label: 'Updated',      type: 'date', filterable: true },
+          { key: 'dx_reviewed',    label: 'Dx Reviewed',  type: 'boolean', filterable: true },
+          { key: 'skilled_need',   label: 'Skilled Need', type: 'boolean', filterable: true },
+          { key: 'homebound',      label: 'Homebound',    type: 'boolean', filterable: true },
+          { key: 'risk_high',      label: 'Risk High',    type: 'boolean', filterable: true },
+          { key: 'risk_moderate',  label: 'Risk Moderate', type: 'boolean', filterable: true },
+          { key: 'risk_low',       label: 'Risk Low',     type: 'boolean', filterable: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'decision', label: 'Decision', type: 'enum', options: ['accept', 'conditional'] },
+      { key: 'reviewed_by', label: 'Reviewed By ID', type: 'text' },
+      { key: 'updated_at', label: 'Updated', type: 'date' },
+      { key: 'auth_required', label: 'Auth Required', type: 'boolean' },
+    ],
+  },
+
+  SocRescheduleLog: {
+    label: 'SOC Reschedules',
+    description: 'Audit log of SOC date changes with reason categories',
+    groups: [
+      {
+        label: 'Reschedule',
+        fields: [
+          { key: 'previous_soc_date', label: 'Previous SOC Date', type: 'date', filterable: true },
+          { key: 'new_soc_date',      label: 'New SOC Date',      type: 'date', filterable: true },
+          { key: 'reason_category',   label: 'Reason Category',   type: 'text', filterable: true },
+          { key: 'reason_detail',     label: 'Detail',            type: 'text', filterable: false },
+          { key: 'created_at',        label: 'Logged At',         type: 'date', filterable: true },
+          { key: '__actor_name',      label: 'Logged By',         type: 'virtual', virtual: true },
+          { key: 'rescheduled_by_id', label: 'Logged By ID',      type: 'text', filterable: true },
+          { key: 'referral_id',       label: 'Referral ID',       type: 'text', filterable: true },
+          { key: '__patient_name',    label: 'Patient',           type: 'virtual', virtual: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'reason_category', label: 'Reason Category', type: 'text' },
+      { key: 'created_at', label: 'Logged At', type: 'date' },
+      { key: 'rescheduled_by_id', label: 'Logged By ID', type: 'text' },
+    ],
+  },
 };
 
 // ── Filter formula builder ─────────────────────────────────────────────────────
@@ -442,6 +646,11 @@ export function buildFormula(filters) {
 
 // ── Virtual column resolvers ──────────────────────────────────────────────────
 
+function firstId(v) {
+  if (Array.isArray(v) && v.length) return v[0];
+  return v || null;
+}
+
 async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
   // Determine which lookup tables we need
   const needsPatient   = selectedKeys.some((k) => k.startsWith('__patient'));
@@ -450,7 +659,18 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
   const needsSource    = selectedKeys.some((k) => k.startsWith('__source'));
   const needsPhysician = selectedKeys.some((k) => k.startsWith('__physician'));
   const needsCampaign  = selectedKeys.some((k) => k.startsWith('__campaign'));
-  const needsAssigned  = selectedKeys.some((k) => k.startsWith('__assigned') || k.startsWith('__flagged') || k.startsWith('__resolved'));
+  const needsUsers = selectedKeys.some((k) =>
+    k.startsWith('__assigned')
+    || k.startsWith('__flagged')
+    || k.startsWith('__resolved')
+    || k.startsWith('__intake_owner')
+    || k.startsWith('__hold_owner')
+    || k.startsWith('__clinical_by')
+    || k.startsWith('__f2f_logged_by')
+    || k.startsWith('__emr_')
+    || k.startsWith('__auth_obtained_by')
+    || k.startsWith('__actor_name')
+  );
 
   const [patients, marketers, facilities, sources, physicians, campaigns, users] = await Promise.all([
     needsPatient   ? getLookupMap('Patients')         : Promise.resolve({}),
@@ -459,15 +679,16 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     needsSource    ? getLookupMap('ReferralSources')  : Promise.resolve({}),
     needsPhysician ? getLookupMap('Physicians')       : Promise.resolve({}),
     needsCampaign  ? getLookupMap('Campaigns')        : Promise.resolve({}),
-    needsAssigned  ? getLookupMap('Users')            : Promise.resolve({}),
+    needsUsers     ? getLookupMap('Users')            : Promise.resolve({}),
   ]);
 
   return records.map((row) => {
     const out = { ...row };
 
-    // Patient lookups
+    // Patient lookups (patient_id may be link array on some tables)
     if (needsPatient) {
-      const p = patients[row.patient_id] || {};
+      const pid = firstId(row.patient_id);
+      const p = patients[pid] || {};
       out.__patient_name     = resolve.patient(p);
       out.__patient_dob      = p.dob || '—';
       out.__patient_gender   = p.gender || '—';
@@ -491,10 +712,20 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     }
     if (needsPhysician) out.__physician_name = resolve.physician(physicians[row.physician_id]);
     if (needsCampaign)  out.__campaign_name  = resolve.campaign(campaigns[row.campaign_id]);
-    if (needsAssigned) {
-      out.__assigned_name  = resolve.user(users[row.assigned_to_id]);
-      out.__flagged_by     = resolve.user(users[row.flagged_by_id]);
-      out.__resolved_by    = resolve.user(users[row.resolved_by_id]);
+    if (needsUsers) {
+      out.__assigned_name     = resolve.user(users[row.assigned_to_id]);
+      out.__flagged_by        = resolve.user(users[row.flagged_by_id]);
+      out.__resolved_by       = resolve.user(users[row.resolved_by_id]);
+      out.__intake_owner      = resolve.user(users[row.intake_owner_id]);
+      out.__hold_owner        = resolve.user(users[row.hold_owner_id]);
+      out.__clinical_by       = resolve.user(users[row.clinical_review_completed_by_id || row.clinical_review_by || row.reviewed_by]);
+      out.__f2f_logged_by     = resolve.user(users[row.f2f_date_logged_by_id]);
+      out.__emr_initial_by    = resolve.user(users[row.emr_initial_onboarded_by_id]);
+      out.__emr_onboarded_by  = resolve.user(users[row.emr_onboarded_by_id]);
+      out.__auth_obtained_by  = resolve.user(users[row.auth_obtained_by_id]);
+      out.__actor_name        = resolve.user(users[
+        row.changed_by_id || row.actor_id || row.author_id || row.reviewed_by || row.rescheduled_by_id
+      ]);
     }
 
     return out;
@@ -530,72 +761,26 @@ export async function fetchReportData({ tableName, filters = [], selectedKeys = 
   return { rows, total: rows.length };
 }
 
-// ── Excel export ──────────────────────────────────────────────────────────────
-
-function autoWidth(ws, cols) {
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-  ws['!cols'] = [];
-  for (let C = range.s.c; C <= range.e.c; C++) {
-    let max = cols[C]?.length || 10;
-    for (let R = range.s.r; R <= range.e.r; R++) {
-      const cell = ws[XLSX.utils.encode_cell({ c: C, r: R })];
-      if (cell && cell.v != null) {
-        const len = String(cell.v).length;
-        if (len > max) max = len;
-      }
-    }
-    ws['!cols'].push({ wch: Math.min(max + 2, 60) });
-  }
-}
+// ── Excel export (multi-tab: Summary + Detail + Chart Data) ───────────────────
 
 /**
- * Generate and download an XLSX file.
+ * Generate and download a styled multi-sheet XLSX workbook.
+ * Accepts optional `summary` with KPIs/charts; otherwise auto-builds from rows.
  *
- * @param {Object[]} rows         - flat row objects
- * @param {Array}    columns      - [{ key, label }] in display order
- * @param {string}   reportTitle  - used for sheet name and filename
- * @param {string}   [subtitle]   - e.g. applied filters summary
+ * @param {Object[]} rows
+ * @param {Array}    columns
+ * @param {string}   reportTitle
+ * @param {string}   [subtitle]
+ * @param {object}   [summary]
  */
-export function exportToExcel(rows, columns, reportTitle, subtitle = '') {
-  const wb = XLSX.utils.book_new();
-
-  const colLabels = columns.map((c) => c.label);
-  const dataRows  = rows.map((row) =>
-    columns.map((c) => {
-      const v = row[c.key];
-      if (v === null || v === undefined) return '';
-      if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-      if (Array.isArray(v)) return v.join(', ');
-      return v;
-    }),
-  );
-
-  // Build AOA (array of arrays)
-  const aoa = [
-    [`${reportTitle} — CareStream Report`],
-    [subtitle || `Generated: ${new Date().toLocaleString()}`],
-    [`Total records: ${rows.length}`],
-    [], // spacer
-    colLabels,
-    ...dataRows,
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  autoWidth(ws, colLabels);
-
-  // Merge title cell across all columns
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: colLabels.length - 1 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: colLabels.length - 1 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: colLabels.length - 1 } },
-  ];
-
-  const safeSheetName = reportTitle.replace(/[:\\/\[\]*?]/g, '').slice(0, 31);
-  XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
-
-  const date     = new Date().toISOString().split('T')[0];
-  const filename = `${reportTitle.replace(/\s+/g, '_')}_${date}.xlsx`;
-  XLSX.writeFile(wb, filename);
+export async function exportToExcel(rows, columns, reportTitle, subtitle = '', summary = null) {
+  await exportReportWorkbook({
+    rows,
+    columns,
+    reportTitle,
+    subtitle,
+    summary: summary || buildAutoSummary(rows, columns),
+  });
 }
 
 // ── Aggregated reports (computed in JS after fetch) ───────────────────────────
@@ -669,7 +854,263 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division }) {
   }));
 
   outputRows.sort((a, b) => b.total - a.total);
-  return { rows: outputRows, columns };
+
+  const top = outputRows.slice(0, 12);
+  const summary = {
+    kpis: [
+      { label: 'Marketers', value: outputRows.length },
+      { label: 'Total referrals', value: outputRows.reduce((s, r) => s + r.total, 0) },
+      { label: 'SOC completed', value: outputRows.reduce((s, r) => s + r.soc, 0) },
+      { label: 'NTUC', value: outputRows.reduce((s, r) => s + r.ntuc, 0) },
+    ],
+    charts: [
+      {
+        title: 'Referrals by marketer',
+        type: 'bar',
+        labels: top.map((r) => r.marketer),
+        datasets: [{
+          label: 'Total',
+          data: top.map((r) => r.total),
+          backgroundColor: '#C41E6ACC',
+          borderColor: '#C41E6A',
+          borderWidth: 1,
+        }],
+      },
+      {
+        title: 'SOC vs NTUC (top marketers)',
+        type: 'bar',
+        labels: top.map((r) => r.marketer),
+        datasets: [
+          {
+            label: 'SOC',
+            data: top.map((r) => r.soc),
+            backgroundColor: '#059669CC',
+            borderColor: '#059669',
+            borderWidth: 1,
+          },
+          {
+            label: 'NTUC',
+            data: top.map((r) => r.ntuc),
+            backgroundColor: '#EA580CCC',
+            borderColor: '#EA580C',
+            borderWidth: 1,
+          },
+        ],
+      },
+    ],
+  };
+
+  return { rows: outputRows, columns, summary };
+}
+
+/**
+ * Intake Volume — referrals created in range with owner / stage / daily volume.
+ */
+export async function runIntakeVolume({ dateFrom, dateTo, division }) {
+  const filters = [];
+  if (dateFrom && dateTo) filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
+  else if (dateFrom) filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
+  else if (dateTo) filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
+  if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+
+  const cols = [
+    '__patient_name', 'division', 'current_stage', 'priority', 'referral_date',
+    '__intake_owner', '__marketer_name', '__facility_name', '__source_name',
+    'services_requested', 'clinical_review_decision', 'soc_scheduled_date', 'soc_completed_date',
+  ];
+  const { rows } = await fetchReportData({
+    tableName: 'Referrals',
+    filters,
+    selectedKeys: cols,
+    sort: [{ field: 'referral_date', direction: 'desc' }],
+  });
+
+  const columns = [
+    { key: '__patient_name', label: 'Patient' },
+    { key: 'division', label: 'Division' },
+    { key: 'current_stage', label: 'Stage' },
+    { key: 'priority', label: 'Priority' },
+    { key: 'referral_date', label: 'Referral Date' },
+    { key: '__intake_owner', label: 'Intake Owner' },
+    { key: '__marketer_name', label: 'Marketer' },
+    { key: '__facility_name', label: 'Facility' },
+    { key: '__source_name', label: 'Source' },
+    { key: 'services_requested', label: 'Services' },
+    { key: 'clinical_review_decision', label: 'Clinical Decision' },
+    { key: 'soc_scheduled_date', label: 'SOC Scheduled' },
+    { key: 'soc_completed_date', label: 'SOC Completed' },
+  ];
+
+  const byDay = {};
+  const byOwner = {};
+  const byStage = {};
+  for (const r of rows) {
+    const day = String(r.referral_date || '').slice(0, 10) || '(no date)';
+    byDay[day] = (byDay[day] || 0) + 1;
+    const owner = r.__intake_owner || 'Unassigned';
+    byOwner[owner] = (byOwner[owner] || 0) + 1;
+    const stage = r.current_stage || 'Unknown';
+    byStage[stage] = (byStage[stage] || 0) + 1;
+  }
+  const daySeries = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0]));
+  const ownerSeries = Object.entries(byOwner).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const stageSeries = Object.entries(byStage).sort((a, b) => b[1] - a[1]);
+
+  const summary = {
+    kpis: [
+      { label: 'Referrals in range', value: rows.length },
+      { label: 'Intake owners', value: Object.keys(byOwner).length },
+      { label: 'Reached Clinical+', value: rows.filter((r) => !!r.clinical_review_decision || ['Clinical Intake RN Review', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed'].includes(r.current_stage)).length },
+      { label: 'SOC completed', value: rows.filter((r) => r.current_stage === 'SOC Completed').length },
+    ],
+    charts: [
+      {
+        title: 'Intake volume by day',
+        type: 'bar',
+        labels: daySeries.map(([d]) => d),
+        datasets: [{
+          label: 'Referrals',
+          data: daySeries.map(([, n]) => n),
+          backgroundColor: '#C41E6ACC',
+          borderColor: '#C41E6A',
+          borderWidth: 1,
+        }],
+      },
+      {
+        title: 'By intake owner',
+        type: 'bar',
+        labels: ownerSeries.map(([d]) => d),
+        datasets: [{
+          label: 'Referrals',
+          data: ownerSeries.map(([, n]) => n),
+          backgroundColor: '#2563EBCC',
+          borderColor: '#2563EB',
+          borderWidth: 1,
+        }],
+      },
+      {
+        title: 'Current stage mix',
+        type: 'doughnut',
+        labels: stageSeries.map(([d]) => d),
+        datasets: [{
+          data: stageSeries.map(([, n]) => n),
+          backgroundColor: ['#C41E6A', '#2563EB', '#059669', '#EA580C', '#7C3AED', '#0891B2', '#CA8A04', '#BE123C', '#4B5563', '#0F766E'],
+        }],
+      },
+    ],
+  };
+
+  return { rows, columns, summary };
+}
+
+/**
+ * Staff Audit — stage moves + activity log actions by staff in a date range.
+ */
+export async function runStaffAudit({ dateFrom, dateTo }) {
+  const histFilters = [];
+  const actFilters = [];
+  if (dateFrom && dateTo) {
+    histFilters.push({ field: 'timestamp', operator: 'between', value: dateFrom, value2: dateTo });
+    actFilters.push({ field: 'timestamp', operator: 'between', value: dateFrom, value2: dateTo });
+  } else if (dateFrom) {
+    histFilters.push({ field: 'timestamp', operator: 'after', value: dateFrom });
+    actFilters.push({ field: 'timestamp', operator: 'after', value: dateFrom });
+  } else if (dateTo) {
+    histFilters.push({ field: 'timestamp', operator: 'before', value: dateTo });
+    actFilters.push({ field: 'timestamp', operator: 'before', value: dateTo });
+  }
+
+  const [{ rows: history }, { rows: activity }] = await Promise.all([
+    fetchReportData({
+      tableName: 'StageHistory',
+      filters: histFilters,
+      selectedKeys: ['__actor_name'],
+      sort: [{ field: 'timestamp', direction: 'desc' }],
+    }),
+    fetchReportData({
+      tableName: 'ActivityLog',
+      filters: actFilters,
+      selectedKeys: ['__actor_name', '__patient_name'],
+      sort: [{ field: 'timestamp', direction: 'desc' }],
+    }).catch(() => ({ rows: [] })),
+  ]);
+
+  // Combined detail: stage moves first, then activity events tagged by type
+  const stageRows = history.map((r) => ({
+    event_type: 'Stage Move',
+    timestamp: r.timestamp || r.created_at || '',
+    staff: r.__actor_name || '—',
+    action: `${r.from_stage || '?'} → ${r.to_stage || '?'}`,
+    detail: r.reason || '',
+    patient: '',
+    referral_id: r.referral_id || '',
+  }));
+  const activityRows = activity.map((r) => ({
+    event_type: 'Activity',
+    timestamp: r.timestamp || r.created_at || '',
+    staff: r.__actor_name || '—',
+    action: r.action || '—',
+    detail: r.detail || '',
+    patient: r.__patient_name || '',
+    referral_id: r.referral_id || '',
+  }));
+
+  const rows = [...stageRows, ...activityRows].sort((a, b) =>
+    String(b.timestamp).localeCompare(String(a.timestamp)));
+
+  const columns = [
+    { key: 'event_type', label: 'Event Type' },
+    { key: 'timestamp', label: 'Timestamp' },
+    { key: 'staff', label: 'Staff' },
+    { key: 'action', label: 'Action' },
+    { key: 'detail', label: 'Detail' },
+    { key: 'patient', label: 'Patient' },
+    { key: 'referral_id', label: 'Referral ID' },
+  ];
+
+  const byStaff = {};
+  for (const r of rows) {
+    const s = r.staff || '—';
+    if (!byStaff[s]) byStaff[s] = { staff: s, stage_moves: 0, activities: 0, total: 0 };
+    if (r.event_type === 'Stage Move') byStaff[s].stage_moves++;
+    else byStaff[s].activities++;
+    byStaff[s].total++;
+  }
+  const staffSeries = Object.values(byStaff).sort((a, b) => b.total - a.total).slice(0, 15);
+
+  const summary = {
+    kpis: [
+      { label: 'Total events', value: rows.length },
+      { label: 'Stage moves', value: stageRows.length },
+      { label: 'Activity events', value: activityRows.length },
+      { label: 'Staff involved', value: Object.keys(byStaff).length },
+    ],
+    charts: [
+      {
+        title: 'Events by staff',
+        type: 'bar',
+        labels: staffSeries.map((s) => s.staff),
+        datasets: [
+          {
+            label: 'Stage moves',
+            data: staffSeries.map((s) => s.stage_moves),
+            backgroundColor: '#C41E6ACC',
+            borderColor: '#C41E6A',
+            borderWidth: 1,
+          },
+          {
+            label: 'Activity',
+            data: staffSeries.map((s) => s.activities),
+            backgroundColor: '#2563EBCC',
+            borderColor: '#2563EB',
+            borderWidth: 1,
+          },
+        ],
+      },
+    ],
+  };
+
+  return { rows, columns, summary };
 }
 
 /**
@@ -904,6 +1345,27 @@ export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }
 
 export const PRESETS = [
   {
+    id: 'intake_volume',
+    title: 'Intake Volume',
+    description: 'Daily intake volume with owner, marketer, source, and stage mix. Summary charts for leadership.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runIntakeVolume(params); },
+  },
+  {
+    id: 'staff_audit',
+    title: 'Staff Audit',
+    description: 'Who moved patients and which CareStream actions they took. Stage history + activity log combined.',
+    paramControls: ['dateRange'],
+    async run(params) { return runStaffAudit(params); },
+  },
+  {
+    id: 'marketer_performance',
+    title: 'Marketer Performance',
+    description: 'Total referrals, stage distribution, SOC rate, and NTUC rate with charts for manager reviews.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runMarketerPerformance(params); },
+  },
+  {
     id: 'pipeline_snapshot',
     title: 'Pipeline Snapshot',
     description: 'All referrals currently in the pipeline with patient info, stage, priority, marketer, and F2F status.',
@@ -937,13 +1399,6 @@ export const PRESETS = [
       ];
       return { rows, columns };
     },
-  },
-  {
-    id: 'marketer_performance',
-    title: 'Marketer Performance',
-    description: 'Total referrals, stage distribution, SOC rate, and NTUC rate. Great for manager reviews.',
-    paramControls: ['dateRange', 'division'],
-    async run(params) { return runMarketerPerformance(params); },
   },
   {
     id: 'ntuc_analysis',

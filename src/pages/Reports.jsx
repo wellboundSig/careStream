@@ -50,8 +50,10 @@ const Icon = {
 };
 
 const PRESET_ICONS = {
-  pipeline_snapshot:     Icon.Pipeline,
+  intake_volume:         Icon.Pipeline,
+  staff_audit:           Icon.Shield,
   marketer_performance:  Icon.Chart,
+  pipeline_snapshot:     Icon.Pipeline,
   ntuc_analysis:         Icon.Block,
   f2f_expiration:        Icon.Clock,
   hold_aging:            Icon.Pause,
@@ -322,10 +324,10 @@ function PresetPanel() {
     setStatus(null);
     setErrMsg('');
     try {
-      const { rows, columns } = await preset.run(params);
+      const { rows, columns, summary } = await preset.run(params);
       const subtitle = Object.entries(params).filter(([, v]) => v)
         .map(([k, v]) => `${k}: ${v}`).join(' | ') || `Generated: ${new Date().toLocaleString()}`;
-      exportToExcel(rows, columns, preset.title, subtitle);
+      await exportToExcel(rows, columns, preset.title, subtitle, summary || null);
       setRowCount(rows.length);
       setStatus('done');
     } catch (e) {
@@ -417,12 +419,12 @@ function PresetPanel() {
               }}
             >
               <Icon.Download />
-              {loading ? 'Fetching data…' : 'Export to Excel'}
+              {loading ? 'Building workbook…' : 'Export Excel (Summary + Detail)'}
             </button>
 
             {status === 'done' && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: palette.accentGreen.hex, fontWeight: 600 }}>
-                <Icon.Check /> {rowCount?.toLocaleString()} records exported
+                <Icon.Check /> {rowCount?.toLocaleString()} records · Summary + Detail tabs
               </span>
             )}
             {status === 'error' && (
@@ -527,8 +529,17 @@ function CustomBuilder() {
   const filterDefs = schema.airtableFilters;
 
   function handleTableChange(t) {
-    setTableKey(t); setColumns([]); setFilters([]);
-    setSortField(''); setPreview(null); setStatus(null);
+    const next = TABLE_SCHEMAS[t];
+    const defaults = (next?.groups || [])
+      .flatMap((g) => g.fields)
+      .slice(0, 8)
+      .map((f) => f.key);
+    setTableKey(t);
+    setColumns(defaults);
+    setFilters([]);
+    setSortField('');
+    setPreview(null);
+    setStatus(null);
   }
 
   const toggleCol  = (k) => setColumns((p) => p.includes(k) ? p.filter((x) => x !== k) : [...p, k]);
@@ -548,7 +559,7 @@ function CustomBuilder() {
         const sub = airtableFilters.length
           ? `Filters: ${airtableFilters.map((f) => `${f.field} ${f.operator} ${f.value || ''}`).join(' | ')}`
           : `Generated: ${new Date().toLocaleString()}`;
-        exportToExcel(rows, orderedCols, `${schema.label} Report`, sub);
+        await exportToExcel(rows, orderedCols, `${schema.label} Report`, sub);
         setStatus('done');
       } else {
         setStatus('preview');
@@ -565,20 +576,25 @@ function CustomBuilder() {
       {/* 1 - Data source */}
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
         <SectionHeader label="1. Data Source" />
-        <div style={{ padding: '12px 14px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {Object.entries(TABLE_SCHEMAS).map(([key, s]) => {
-            const active = tableKey === key;
-            return (
-              <button key={key} onClick={() => handleTableChange(key)} style={{
-                padding: '6px 14px', borderRadius: 3, fontSize: 12.5, fontWeight: active ? 650 : 500, cursor: 'pointer',
-                border: `1px solid ${active ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
-                background: active ? hexToRgba(palette.primaryMagenta.hex, 0.06) : 'transparent',
-                color: active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
-              }}>
-                {s.label}
-              </button>
-            );
-          })}
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {Object.entries(TABLE_SCHEMAS).map(([key, s]) => {
+              const active = tableKey === key;
+              return (
+                <button key={key} onClick={() => handleTableChange(key)} style={{
+                  padding: '6px 14px', borderRadius: 3, fontSize: 12.5, fontWeight: active ? 650 : 500, cursor: 'pointer',
+                  border: `1px solid ${active ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                  background: active ? hexToRgba(palette.primaryMagenta.hex, 0.06) : 'transparent',
+                  color: active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
+                }}>
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ margin: 0, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.45 }}>
+            {schema.description} · {allFields.length} columns available. Stack multiple filters for granular cuts.
+          </p>
         </div>
       </div>
 

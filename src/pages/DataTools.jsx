@@ -877,7 +877,7 @@ function DataTableTab({ referrals, resolveMarketer, resolveSource }) {
         marketer:      resolveMarketer(r.marketer_id),
         services:      Array.isArray(r.services_requested) ? r.services_requested.join(', ') : '',
       }));
-      exportToExcel(rows, columns, 'CareStream Data Export', `${filtered.length} records · exported ${new Date().toLocaleDateString()}`);
+      await exportToExcel(rows, columns, 'CareStream Data Export', `${filtered.length} records · exported ${new Date().toLocaleDateString()}`);
     } finally { setExporting(false); }
   }
 

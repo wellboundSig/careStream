@@ -3546,7 +3546,7 @@ function NtucPanel({ referrals }) {
           : (r.services_requested || ''),
         current_stage:         r.current_stage || '',
       }));
-      exportToExcel(rows, columns, 'NTUC Report', `${referrals.length} records · exported ${new Date().toLocaleDateString()}`);
+      await exportToExcel(rows, columns, 'NTUC Report', `${referrals.length} records · exported ${new Date().toLocaleDateString()}`);
     } catch (e) {
       console.error('NTUC export failed:', e);
     } finally {
