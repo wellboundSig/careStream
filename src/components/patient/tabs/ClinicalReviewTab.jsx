@@ -1,6 +1,12 @@
+import { useState } from 'react';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useClinicalReview } from '../../../hooks/useClinicalReview.js';
+import { usePermissions } from '../../../hooks/usePermissions.js';
+import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
+import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
+import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import ClinicalChecklistUI from '../../clinical/ClinicalChecklistUI.jsx';
+import { unlockClinicalReview } from '../../../utils/clinicalReviewUnlock.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 const DECISION_LABELS = {
@@ -22,6 +28,9 @@ const PRE_CLINICAL_STAGES = new Set([
 
 export default function ClinicalReviewTab({ patient, referral, readOnly = false }) {
   const { resolveUser } = useLookups();
+  const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
+  const { updateReferralLocal } = usePatientDrawer();
 
   const decision = referral?.clinical_review_decision;
   const reviewedBy = referral?.clinical_review_by;
@@ -30,6 +39,12 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const currentStage = referral?.current_stage;
   const isAwaitingReview = currentStage === 'Clinical Intake RN Review';
   const isPreClinical = PRE_CLINICAL_STAGES.has(currentStage);
+
+  const canUnlock = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [unlockReason, setUnlockReason] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState(null);
 
   const reviewerName = reviewedBy ? resolveUser(reviewedBy) : null;
   const reviewDate = reviewedAt
@@ -49,6 +64,33 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     setDecision: setLocalDecision,
   } = useClinicalReview(referral?._id);
 
+  // Finalized stamp on the referral locks edits until an authorized unlock.
+  const isFinalized = !!hasReview;
+  const editingLocked = readOnly || isFinalized
+    || workingDecision === 'accept'
+    || workingDecision === 'conditional';
+
+  async function handleUnlock() {
+    if (!canUnlock || !referral || unlocking) return;
+    setUnlocking(true);
+    setUnlockError(null);
+    try {
+      await unlockClinicalReview({
+        referral,
+        appUserId,
+        reason: unlockReason,
+        clearWorkingDecision: () => setLocalDecision(null),
+        onReferralLocal: (fields) => updateReferralLocal?.(fields),
+      });
+      setShowUnlock(false);
+      setUnlockReason('');
+    } catch (err) {
+      setUnlockError(err.message || 'Failed to unlock clinical review');
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   return (
     <div style={{ padding: '20px 20px 40px' }}>
 
@@ -66,6 +108,83 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
           )}
           {reviewDate && (
             <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{reviewDate}</p>
+          )}
+
+          {canUnlock && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${hexToRgba(decisionColor, 0.18)}` }}>
+              {!showUnlock ? (
+                <button
+                  data-testid="unlock-clinical-review-btn"
+                  type="button"
+                  onClick={() => { setShowUnlock(true); setUnlockError(null); }}
+                  style={{
+                    padding: '7px 12px', borderRadius: 7, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.45)}`,
+                    background: hexToRgba(palette.accentOrange.hex, 0.08), color: palette.accentOrange.hex,
+                    fontSize: 12, fontWeight: 650, cursor: 'pointer',
+                  }}
+                >
+                  Unlock review to correct
+                </button>
+              ) : (
+                <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px' }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+                    Unlock this clinical review?
+                  </p>
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, marginBottom: 8 }}>
+                    Clears the Accept stamp so checklist and decision can be updated, then Accept → Confirm can be hit again.
+                    {currentStage && currentStage !== 'Clinical Intake RN Review'
+                      ? ` Patient will return to Clinical Intake RN Review from ${currentStage}.`
+                      : ''}
+                  </p>
+                  <textarea
+                    data-testid="unlock-clinical-review-reason"
+                    value={unlockReason}
+                    onChange={(e) => setUnlockReason(e.target.value)}
+                    placeholder="Reason for unlock (recommended)…"
+                    rows={2}
+                    style={{
+                      width: '100%', padding: '7px 9px', borderRadius: 7,
+                      border: `1px solid ${unlockReason.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`,
+                      fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none',
+                      background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex,
+                      boxSizing: 'border-box', marginBottom: 8,
+                    }}
+                  />
+                  {unlockError && (
+                    <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8, fontWeight: 600 }}>{unlockError}</p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      data-testid="unlock-clinical-review-confirm"
+                      type="button"
+                      onClick={handleUnlock}
+                      disabled={unlocking}
+                      style={{
+                        flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                        background: unlocking ? hexToRgba(palette.accentOrange.hex, 0.5) : palette.accentOrange.hex,
+                        color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650,
+                        cursor: unlocking ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {unlocking ? 'Unlocking…' : 'Unlock review'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowUnlock(false); setUnlockReason(''); setUnlockError(null); }}
+                      disabled={unlocking}
+                      style={{
+                        flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
+                        background: hexToRgba(palette.backgroundDark.hex, 0.07),
+                        color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                        fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -90,10 +209,13 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
       </p>
       <ClinicalChecklistUI
         checked={checked}
-        onToggle={readOnly ? () => {} : toggleItem}
+        onToggle={editingLocked ? () => {} : toggleItem}
         decision={workingDecision}
-        onDecisionChange={readOnly ? () => {} : setLocalDecision}
-        locked={workingDecision === 'accept' || workingDecision === 'conditional'}
+        onDecisionChange={editingLocked ? () => {} : setLocalDecision}
+        locked={editingLocked}
+        lockedMessage={isFinalized
+          ? 'Locked — clinical review is finalized. Unlock required to make corrections.'
+          : undefined}
       />
     </div>
   );

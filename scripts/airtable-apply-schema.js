@@ -725,6 +725,12 @@ const DESIRED_PERMISSIONS = [
 
   // Enter new leads (2026-07) — canonical grant for New Lead form / Lead Entry.
   { id: 'perm_leads_create',             key: 'leads.create',             label: 'Enter new leads',                  category: 'Leads',     sort_order: 1,  description: 'Open the New Lead form and submit a patient into Lead Entry.' },
+
+  // Delete auth response tool (2026-07) — restricted admin capability.
+  { id: 'perm_auth_delete_response',     key: 'auth.delete_response',     label: 'Delete auth responses',            category: 'Authorization', sort_order: 20, description: 'Permanently delete a recorded authorization response.' },
+
+  // Unlock completed Clinical RN review (2026-07) — restricted error-correction tool.
+  { id: 'perm_clinical_rn_unlock',       key: 'clinical.rn_unlock',       label: 'Unlock completed clinical review', category: 'Clinical', sort_order: 21, description: 'Unaccept a finalized Clinical RN review so it can be corrected and accepted again.' },
 ];
 
 // ---------- Operations ----------

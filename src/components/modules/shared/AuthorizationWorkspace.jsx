@@ -22,13 +22,14 @@
 import { useMemo, useState } from 'react';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
-import { useCareStore, mergeEntities } from '../../../store/careStore.js';
+import { useCareStore, mergeEntities, removeEntity } from '../../../store/careStore.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
-import { createAuthorization, updateAuthorization } from '../../../api/authorizations.js';
+import { createAuthorization, updateAuthorization, deleteAuthorization } from '../../../api/authorizations.js';
 import { recordActivity } from '../../../api/activityLog.js';
 import { createNoteOptimistic, createTaskOptimistic, updateReferralOptimistic } from '../../../store/mutations.js';
 import { flagConflict } from '../../../utils/conflictFlagging.js';
+import { isMedicareNoAuthRequired } from '../../../data/policies/authorizationPolicies.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import {
   DIVISION,
@@ -132,6 +133,7 @@ export default function AuthorizationWorkspace({
   });
 
   const canEdit = !readOnly && can(PERMISSION_KEYS.AUTH_DECIDE);
+  const canDeleteResponse = can(PERMISSION_KEYS.AUTH_DELETE_RESPONSE);
   const alreadyObtained = !!referral?.auth_obtained_at;
 
   // Latest auth response per insurance (rows are pre-sorted newest-first).
@@ -268,6 +270,7 @@ export default function AuthorizationWorkspace({
             insurance={ins}
             response={responseByInsurance.get(ins._id) || null}
             readOnly={!canEdit}
+            canDeleteResponse={canDeleteResponse}
             patient={patient}
             referral={referral}
             patientRecordId={patientRecordId}
@@ -289,6 +292,10 @@ export default function AuthorizationWorkspace({
           t={t}
           response={orphan}
           storeUsers={storeUsers}
+          canDeleteResponse={canDeleteResponse}
+          patient={patient}
+          referral={referral}
+          appUserId={appUserId}
         />
       ))}
 
@@ -320,24 +327,70 @@ export default function AuthorizationWorkspace({
   );
 }
 
-function PendingAuthBanner({ t, response, storeUsers }) {
+function PendingAuthBanner({ t, response, storeUsers, canDeleteResponse, patient, referral, appUserId }) {
+  const [deleting, setDeleting] = useState(false);
   const status = (response?.auth_status || response?.status || 'pending').toString().toLowerCase();
   const isPending = status === 'pending' || status === 'follow_up_needed' || status === '';
   if (!isPending) return null;
   const when = fmtRequestStamp(response?.request_initial_date || response?.created_at);
   const who = userDisplayName(storeUsers, response?.requested_by_user_id);
+
+  async function handleDelete() {
+    if (!canDeleteResponse || !response?._id || deleting) return;
+    if (!window.confirm('Delete this pending authorization request? This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      await deleteAuthorization(response._id);
+      removeEntity('authorizations', response._id);
+      await recordActivity({
+        actorUserId: appUserId,
+        action: 'Authorization Response Deleted',
+        patientId: patient?.id,
+        referralId: referral?.id,
+        detail: 'Deleted orphan pending authorization request.',
+        metadata: { authorizationRecId: response._id },
+      }).catch(() => {});
+      triggerDataRefresh();
+    } catch (err) {
+      console.error('[Authorization] delete pending failed', err);
+      window.alert(err?.message || 'Failed to delete authorization');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div style={{
       marginTop: t.gap, padding: '10px 12px', borderRadius: 8,
       background: hexToRgba(palette.accentOrange.hex, 0.08),
       border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.22)}`,
     }}>
-      <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
-        Pending — awaiting response
-      </p>
-      <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-        {[when ? `Requested ${when}` : null, who ? `by ${who}` : null].filter(Boolean).join(' · ') || 'Authorization requested'}
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <div>
+          <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
+            Pending — awaiting response
+          </p>
+          <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+            {[when ? `Requested ${when}` : null, who ? `by ${who}` : null].filter(Boolean).join(' · ') || 'Authorization requested'}
+          </p>
+        </div>
+        {canDeleteResponse && (
+          <button
+            type="button"
+            data-testid="delete-auth-response"
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: 'none',
+              background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+              color: palette.primaryMagenta.hex, fontSize: t.fontMuted - 0.5,
+              fontWeight: 650, cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -345,13 +398,15 @@ function PendingAuthBanner({ t, response, storeUsers }) {
 // ── Per-insurance card ───────────────────────────────────────────────────────
 
 function InsuranceAuthCard({
-  t, division, authServices, insurance, response, readOnly,
+  t, division, authServices, insurance, response, readOnly, canDeleteResponse,
   patient, referral, patientRecordId, verifierRecordId, appUserId, findSupervisorUserId,
   storeUsers,
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
+  const medicareNoAuth = isMedicareNoAuthRequired(insurance);
 
   const initial = useMemo(() => ({
     coverage_status: response?.coverage_status || AUTH_COVERAGE_STATUS.ACTIVE,
@@ -415,7 +470,37 @@ function InsuranceAuthCard({
     return null;
   }
 
+  async function handleDeleteResponse() {
+    if (!canDeleteResponse || !response?._id || deleting) return;
+    const payerName = insurance.payer_display_name || 'this payer';
+    if (!window.confirm(`Delete the auth response for ${payerName}? This cannot be undone.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteAuthorization(response._id);
+      removeEntity('authorizations', response._id);
+      await recordActivity({
+        actorUserId: appUserId,
+        action: 'Authorization Response Deleted',
+        patientId: patient?.id,
+        referralId: referral?.id,
+        detail: `Deleted auth response for ${payerName}.`,
+        metadata: { authorizationRecId: response._id, payerInsuranceId: insurance._id },
+      }).catch(() => {});
+      setEditing(false);
+      triggerDataRefresh();
+    } catch (err) {
+      setError(err?.message || 'Failed to delete authorization response');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function handleSave() {
+    if (medicareNoAuth || isMedicareNoAuthRequired(form.payer_type)) {
+      setError('Straight Medicare does not require authorization — responses cannot be recorded for this payer.');
+      return;
+    }
     const v = validate();
     if (v) { setError(v); return; }
     setSaving(true); setError(null);
@@ -566,7 +651,11 @@ function InsuranceAuthCard({
               {[insurance.insurance_category, insurance.order_rank, insurance.member_id && `Member ${insurance.member_id}`].filter(Boolean).join(' · ')}
             </p>
           </div>
-          {isAwaitingResponse ? (
+          {medicareNoAuth ? (
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentBlue.hex, 0.12), color: palette.accentBlue.hex, flexShrink: 0 }}>
+              No auth required
+            </span>
+          ) : isAwaitingResponse ? (
             <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, flexShrink: 0 }}>
               Pending
             </span>
@@ -581,7 +670,21 @@ function InsuranceAuthCard({
       {/* Collapsed summary */}
       {!editing && (
         <div style={{ padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, fontSize: t.fontMuted }}>
-          {isAwaitingResponse && (
+          {medicareNoAuth && (
+            <div style={{
+              marginBottom: response ? 8 : 0, padding: '8px 10px', borderRadius: 7,
+              background: hexToRgba(palette.accentBlue.hex, 0.08),
+              border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.2)}`,
+            }}>
+              <p style={{ fontWeight: 700, color: palette.accentBlue.hex, marginBottom: 2 }}>
+                Medicare — no authorization required
+              </p>
+              <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+                Straight Medicare does not need a prior-auth response. Medicare Advantage / managed plans still may.
+              </p>
+            </div>
+          )}
+          {!medicareNoAuth && isAwaitingResponse && (
             <div style={{
               marginBottom: storedLines.length ? 8 : 0, padding: '8px 10px', borderRadius: 7,
               background: hexToRgba(palette.accentOrange.hex, 0.08),
@@ -609,19 +712,38 @@ function InsuranceAuthCard({
                 </div>
               ))}
             </div>
-          ) : !isAwaitingResponse ? (
+          ) : !medicareNoAuth && !isAwaitingResponse ? (
             <p style={{ color: '#888' }}>No auth response recorded yet.</p>
           ) : null}
           {storedFollowUps.length > 0 && (
             <p style={{ color: '#888', marginTop: 6 }}>{storedFollowUps.length} follow-up{storedFollowUps.length === 1 ? '' : 's'} logged</p>
           )}
-          {!readOnly && (
-            <div style={{ marginTop: 8 }}>
+          {error && (
+            <p style={{ color: palette.primaryMagenta.hex, marginTop: 6, fontSize: t.fontMuted - 0.5 }}>{error}</p>
+          )}
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {!readOnly && !medicareNoAuth && (
               <button onClick={startEdit} data-testid="record-auth-response" style={{ padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer' }}>
                 {response ? 'Update auth response' : 'Record auth response'}
               </button>
-            </div>
-          )}
+            )}
+            {canDeleteResponse && response?._id && (
+              <button
+                type="button"
+                data-testid="delete-auth-response"
+                onClick={handleDeleteResponse}
+                disabled={deleting}
+                style={{
+                  padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5, border: 'none',
+                  background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+                  color: palette.primaryMagenta.hex, fontSize: t.fontMuted, fontWeight: 650,
+                  cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {deleting ? 'Deleting…' : 'Delete auth response'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -636,7 +758,9 @@ function InsuranceAuthCard({
           </Field>
           <Field t={t} label="Payer Type (staff-confirmed)">
             <select value={form.payer_type} onChange={(e) => set({ payer_type: e.target.value })} style={inputStyle(t)}>
-              {PAYER_TYPE_STAFF_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {PAYER_TYPE_STAFF_OPTIONS
+                .filter((o) => o.value !== INSURANCE_CATEGORY.MEDICARE)
+                .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field t={t} label="Payer Order">
@@ -707,11 +831,26 @@ function InsuranceAuthCard({
           </Field>
 
           {error && <ErrBanner t={t}>{error}</ErrBanner>}
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
             <button onClick={() => setEditing(false)} style={secondaryBtn(t)}>Cancel</button>
             <button onClick={handleSave} disabled={saving} data-testid="save-auth-response" style={primaryBtn(t, { disabled: saving, color: palette.accentGreen.hex })}>
               {saving ? 'Saving…' : 'Save auth response'}
             </button>
+            {canDeleteResponse && response?._id && (
+              <button
+                type="button"
+                data-testid="delete-auth-response-edit"
+                onClick={handleDeleteResponse}
+                disabled={deleting}
+                style={{
+                  ...secondaryBtn(t),
+                  color: palette.primaryMagenta.hex,
+                  background: hexToRgba(palette.primaryMagenta.hex, 0.08),
+                }}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -134,6 +134,22 @@ export function validateAuthorizationRecord(record) {
  *   with shape: { insuranceCategory }
  * @returns {{ suggestNar: boolean, rationale: string, requiresConfirmation: true }}
  */
+/**
+ * Straight fee-for-service Medicare never requires prior auth — the Auth
+ * workspace must not record a response against that payer. Medicare Advantage
+ * / managed (`medicare_managed`) still may require auth.
+ *
+ * @param {string|{ insurance_category?: string, payer_type?: string }} insuranceOrCategory
+ */
+export function isMedicareNoAuthRequired(insuranceOrCategory) {
+  const cat = typeof insuranceOrCategory === 'string'
+    ? insuranceOrCategory
+    : (insuranceOrCategory?.insurance_category
+      || insuranceOrCategory?.payer_type
+      || '');
+  return cat === INSURANCE_CATEGORY.MEDICARE;
+}
+
 export function suggestNar(verifiedInsurances = []) {
   if (!Array.isArray(verifiedInsurances) || verifiedInsurances.length === 0) {
     return { suggestNar: false, rationale: 'No confirmed insurances yet.', requiresConfirmation: true };

@@ -118,7 +118,7 @@ export default function SocCompletedCelebration({ patientName, completedDate, on
               fontSize: 13.5, fontWeight: 700, cursor: 'pointer', letterSpacing: '-0.01em',
             }}
           >
-            Nice — continue
+            Nice
           </button>
         </div>
       </div>

@@ -27,6 +27,7 @@ import { isChecklistComplete } from '../../data/clinicalChecklist.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
+import { unlockClinicalReview } from '../../utils/clinicalReviewUnlock.js';
 import HospitalizationReview from './shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
 import { openSignedFile } from '../../utils/r2Upload.js';
@@ -1770,8 +1771,11 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   }, [selectedReferral?._id]);
 
   const checklistComplete = isChecklistComplete(checked);
-  const decisionLocked = decision === 'accept' || decision === 'conditional';
-  const canConfirm = checklistComplete && decisionLocked;
+  // Referral stamp (post-Confirm) hard-locks until an authorized unlock —
+  // working Accept/Conditional alone still locks for the in-progress review.
+  const reviewFinalized = !!selectedReferral?.clinical_review_decision;
+  const decisionLocked = reviewFinalized || decision === 'accept' || decision === 'conditional';
+  const canConfirm = !reviewFinalized && checklistComplete && (decision === 'accept' || decision === 'conditional');
   // Informational only — surfaced as a header badge so the RN can see
   // whether eligibility has also completed (the drawer's eligibility tab
   // can finish that work in parallel). Does not gate the Confirm action.
@@ -1883,11 +1887,14 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 
           <ClinicalChecklistUI
             checked={checked}
-            onToggle={toggleItem}
+            onToggle={reviewFinalized ? () => {} : toggleItem}
             decision={decision}
-            onDecisionChange={setDecision}
+            onDecisionChange={reviewFinalized ? () => {} : setDecision}
             compact
             locked={decisionLocked}
+            lockedMessage={reviewFinalized
+              ? 'Locked — clinical review is finalized. Unlock required to make corrections.'
+              : undefined}
           />
 
           {/* Send back to Intake — always available, including after Accept.
@@ -2227,6 +2234,10 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
+  const {
+    decision: clinicalWorkingDecision,
+    setDecision: setClinicalWorkingDecision,
+  } = useClinicalReview(selectedReferral?._id);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [onboarding, setOnboarding] = useState(false);
@@ -2235,17 +2246,24 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const [sendBackNote, setSendBackNote] = useState('');
   const [sendBackError, setSendBackError] = useState(null);
   const [sendingBack, setSendingBack] = useState(false);
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [unlockReason, setUnlockReason] = useState('');
+  const [unlockError, setUnlockError] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     setPdfError(null); setOnboardError(null); setOnboarding(false);
     setShowSendBack(false); setSendBackNote(''); setSendBackError(null); setSendingBack(false);
+    setShowUnlock(false); setUnlockReason(''); setUnlockError(null); setUnlocking(false);
   }, [selectedReferral?._id]);
 
   // Onboarding is owned by the scheduling team; reuse the existing staffing
   // permission so current schedulers aren't locked out by a brand-new key.
   const canOnboard = canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
   const canSendBackClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW);
+  const canUnlockClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
   const alreadyOnboarded = !!selectedReferral?.emr_onboarded_at;
+  const clinicalFinalized = !!selectedReferral?.clinical_review_decision;
 
   async function handleDownloadPdf() {
     if (!selectedReferral) return;
@@ -2318,6 +2336,29 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
     }
   }
 
+  async function handleUnlockClinicalReview() {
+    if (!selectedReferral || !canUnlockClinical || unlocking) return;
+    setUnlocking(true);
+    setUnlockError(null);
+    try {
+      await unlockClinicalReview({
+        referral: selectedReferral,
+        appUserId,
+        reason: unlockReason,
+        clearWorkingDecision: () => {
+          if (clinicalWorkingDecision) setClinicalWorkingDecision(null);
+        },
+      });
+      setShowUnlock(false);
+      setUnlockReason('');
+      onSelectedReferralLeftModule?.();
+    } catch (err) {
+      setUnlockError(err.message || 'Failed to unlock clinical review');
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   return (
     <Panel>
       {!selectedReferral ? <EmptyPanelState message="Select a patient to onboard into the EMR." /> : (
@@ -2327,6 +2368,51 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
             <InfoRow label="Division" value={selectedReferral.division} />
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
           </PanelSection>
+
+          {canUnlockClinical && clinicalFinalized && (
+            <PanelSection title="Unlock Clinical Review">
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, margin: '0 0 8px' }}>
+                Error-correction tool: unaccept the finalized Clinical RN review so checklist/decision can be corrected and Accept → Confirm can be run again. Returns the patient to Clinical Intake RN Review.
+              </p>
+              {!showUnlock ? (
+                <ActionBtn
+                  label="Unlock clinical review"
+                  variant="warning"
+                  onClick={() => { setShowUnlock(true); setUnlockError(null); }}
+                />
+              ) : (
+                <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
+                    Reason for unlock (recommended):
+                  </p>
+                  <textarea
+                    data-testid="emr-unlock-clinical-reason"
+                    value={unlockReason}
+                    onChange={(e) => setUnlockReason(e.target.value)}
+                    placeholder="e.g. Wrong Accept decision / missed checklist item…"
+                    rows={3}
+                    style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: `1px solid ${unlockReason.trim() ? palette.accentOrange.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box', marginBottom: 8 }}
+                  />
+                  {unlockError && (
+                    <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8, fontWeight: 600 }}>{unlockError}</p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      data-testid="emr-unlock-clinical-confirm"
+                      onClick={handleUnlockClinicalReview}
+                      disabled={unlocking}
+                      style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: unlocking ? hexToRgba(palette.accentOrange.hex, 0.5) : palette.accentOrange.hex, color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650, cursor: unlocking ? 'wait' : 'pointer' }}
+                    >
+                      {unlocking ? 'Unlocking…' : 'Unlock review'}
+                    </button>
+                    <button onClick={() => { setShowUnlock(false); setUnlockReason(''); setUnlockError(null); }} disabled={unlocking} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 11.5, fontWeight: 650, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </PanelSection>
+          )}
 
           {canSendBackClinical && (
             <PanelSection title="Send Back to Intake">

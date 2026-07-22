@@ -43,6 +43,8 @@ export default function ClinicalChecklistUI({
   onDecisionChange,
   compact,
   locked = false,
+  /** Override the default "deselect to edit" banner (e.g. after Confirm finalize). */
+  lockedMessage = null,
 }) {
   const completedRequired = REQUIRED_ITEMS.filter((i) => checked[i.key]).length;
   const totalRequired = REQUIRED_ITEMS.length;
@@ -84,7 +86,8 @@ export default function ClinicalChecklistUI({
       {locked && (
         <div style={{ marginBottom: compact ? 10 : 12, padding: '7px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: palette.accentGreen.hex }}>
-            Locked — deselect {decision === 'conditional' ? 'Conditional' : 'Accepted'} to edit
+            {lockedMessage
+              || `Locked — deselect ${decision === 'conditional' ? 'Conditional' : 'Accepted'} to edit`}
           </span>
         </div>
       )}

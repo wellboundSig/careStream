@@ -44,3 +44,4 @@ export const getAuthorizationsByInsurance = (insuranceId) =>
 
 export const createAuthorization = (fields) => airtable.create(TABLE, normaliseFields(fields));
 export const updateAuthorization = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
+export const deleteAuthorization = (id) => airtable.remove(TABLE, id);

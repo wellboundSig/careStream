@@ -33,6 +33,7 @@ export const PERMISSION_KEYS = {
   CLINICAL_APPROVED_SERVICES: 'clinical.approved_services',
   CLINICAL_TRIAGE: 'clinical.triage',
   CLINICAL_RN_REVIEW: 'clinical.rn_review',
+  CLINICAL_RN_UNLOCK: 'clinical.rn_unlock',
   CLINICAL_F2F: 'clinical.f2f',
   CLINICAL_ELIGIBILITY: 'clinical.eligibility',
 
@@ -40,6 +41,7 @@ export const PERMISSION_KEYS = {
   AUTH_SUBMIT: 'auth.submit',
   AUTH_DECIDE: 'auth.decide',
   AUTH_REQUEST_SCA: 'auth.request_sca',
+  AUTH_DELETE_RESPONSE: 'auth.delete_response',
 
   // Routing
   ROUTING_OPWDD: 'routing.opwdd',
@@ -171,6 +173,13 @@ export const PERMISSION_KEYS = {
 
 const K = PERMISSION_KEYS;
 const ALL_KEYS = Object.values(K);
+// High-risk tools kept off the Administrator preset by default — grant
+// individually (e.g. auth.delete_response → Rafi only for now).
+const RESTRICTED_FROM_ADMIN_PRESET = new Set([
+  K.AUTH_DELETE_RESPONSE,
+  K.CLINICAL_RN_UNLOCK,
+]);
+const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
 // ── Ordered category list (drives UI section rendering) ─────────────────────
 
@@ -240,6 +249,7 @@ export const PERMISSION_CATALOG = [
   { key: K.AUTH_SUBMIT, label: 'Submit prior authorizations',            category: 'Eligibility & Authorization', description: 'Create authorization records for managed care', sort: 31 },
   { key: K.AUTH_DECIDE, label: 'Record auth approval or denial',         category: 'Eligibility & Authorization', description: 'Mark authorizations as approved or denied', sort: 32 },
   { key: K.AUTH_REQUEST_SCA, label: 'Request Single Case Agreement',     category: 'Eligibility & Authorization', description: 'Open an SCA tracking record after an SPN denial', sort: 33 },
+  { key: K.AUTH_DELETE_RESPONSE, label: 'Delete auth responses',         category: 'Eligibility & Authorization', description: 'Permanently delete a recorded authorization response (admin tool)', sort: 33.5 },
   { key: K.ROUTING_OPWDD, label: 'Route cases to OPWDD flow',            category: 'Eligibility & Authorization', description: 'Trigger an explicit OPWDD routing action from Eligibility', sort: 34 },
   { key: K.ROUTING_DISENROLLMENT_ASSIST, label: 'Flag for Expert Disenrollment Assist', category: 'Eligibility & Authorization', description: 'Flag a case for expert Medicaid disenrollment assistance (replaces legacy checklist)', sort: 35 },
 
@@ -247,6 +257,7 @@ export const PERMISSION_CATALOG = [
   { key: K.CLINICAL_APPROVED_SERVICES, label: 'Edit approved services', category: 'Clinical Review', description: 'Update which services are approved for a patient in Demographics', sort: 40 },
   { key: K.CLINICAL_TRIAGE,      label: 'Submit triage assessments',     category: 'Clinical Review', description: 'Fill or edit adult/pediatric triage forms', sort: 41 },
   { key: K.CLINICAL_RN_REVIEW,   label: 'Perform Clinical RN review',    category: 'Clinical Review', description: 'Approve or route from Clinical Intake RN Review stage', sort: 42 },
+  { key: K.CLINICAL_RN_UNLOCK,   label: 'Unlock completed clinical review', category: 'Clinical Review', description: 'Unaccept a finalized Clinical RN review so checklist/decision can be corrected and Accept can be hit again (error-correction tool)', sort: 42.5 },
 
   // ── F2F / MD Orders (non-clinical for our purposes) ───────────────────────
   { key: K.CLINICAL_F2F,    label: 'Log Face-to-Face documents',        category: 'F2F / MD Orders', description: 'Record F2F received dates and expiration', sort: 50 },
@@ -344,7 +355,7 @@ export const DEFAULT_PRESETS = [
     name: 'Administrator / CEO',
     description: 'Full unrestricted access to every feature and data set.',
     is_system: true,
-    permissions: ALL_KEYS,
+    permissions: ADMIN_KEYS,
   },
   {
     id: 'preset_intake',

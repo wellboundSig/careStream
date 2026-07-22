@@ -3,6 +3,7 @@ import {
   determineAllowedAuthorizationPaths,
   validateAuthorizationRecord,
   suggestNar,
+  isMedicareNoAuthRequired,
   validateFollowUp,
   determineRequiresFollowUp,
 } from '../authorizationPolicies.js';
@@ -135,6 +136,23 @@ describe('validateAuthorizationRecord', () => {
     });
     expect(r.valid).toBe(false);
     expect(r.errors.some((e) => e.field === 'followUpOwnerUserId')).toBe(true);
+  });
+});
+
+// ── isMedicareNoAuthRequired ────────────────────────────────────────────────
+describe('isMedicareNoAuthRequired', () => {
+  it('is true for straight Medicare category', () => {
+    expect(isMedicareNoAuthRequired(INSURANCE_CATEGORY.MEDICARE)).toBe(true);
+    expect(isMedicareNoAuthRequired({ insurance_category: INSURANCE_CATEGORY.MEDICARE })).toBe(true);
+  });
+
+  it('is false for Medicare managed / Advantage', () => {
+    expect(isMedicareNoAuthRequired(INSURANCE_CATEGORY.MEDICARE_MANAGED)).toBe(false);
+  });
+
+  it('is false for Medicaid / commercial', () => {
+    expect(isMedicareNoAuthRequired(INSURANCE_CATEGORY.MEDICAID)).toBe(false);
+    expect(isMedicareNoAuthRequired(INSURANCE_CATEGORY.COMMERCIAL)).toBe(false);
   });
 });
 
