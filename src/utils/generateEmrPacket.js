@@ -107,10 +107,41 @@ function downloadBlob(bytes, filename, mime = 'application/pdf') {
 }
 
 async function fetchFileBytes(file) {
-  const url = await getSignedFileUrl(file, { download: true });
-  if (!url) throw new Error('No signed URL');
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // Prefer inline signed URL for ZIP packing (attachment disposition is irrelevant
+  // here). S3 bucket CORS must allow GET from the CareStream origin — without it
+  // browser fetch() fails while <img>/<iframe>/window.open still work.
+  const url = await getSignedFileUrl(file, { download: false });
+  if (!url) throw new Error('No signed URL (missing r2_key or sign failed)');
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (err) {
+    throw new Error(
+      err?.message?.includes('Failed to fetch')
+        ? 'Network/CORS blocked reading file bytes'
+        : (err?.message || 'Fetch failed'),
+    );
+  }
+  if (!res.ok) {
+    // Worker returns {"error":"Not found"}; S3 returns XML NoSuchKey.
+    let detail = `HTTP ${res.status}`;
+    try {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('json')) {
+        const body = await res.json();
+        if (body?.error) detail = body.error;
+      }
+    } catch { /* ignore */ }
+    throw new Error(detail);
+  }
+  const ct = res.headers.get('content-type') || '';
+  // Guard: never pack an API error JSON body as if it were the patient file.
+  if (ct.includes('application/json')) {
+    const text = await res.text();
+    let msg = 'Unexpected JSON response';
+    try { msg = JSON.parse(text)?.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
   return res.arrayBuffer();
 }
 

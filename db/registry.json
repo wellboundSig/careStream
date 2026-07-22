@@ -868,6 +868,16 @@
         "pg": "text",
         "wire": "text"
       },
+      "f2f_date_logged_by_id": {
+        "column": "f2f_date_logged_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "f2f_date_logged_at": {
+        "column": "f2f_date_logged_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
       "physician_id": {
         "column": "physician_id",
         "pg": "text",

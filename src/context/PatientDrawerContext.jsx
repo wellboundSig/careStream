@@ -7,16 +7,33 @@ export function PatientDrawerProvider({ children }) {
   const [patient, setPatient] = useState(null);
   const [referral, setReferral] = useState(null);
   const [activeTab, setActiveTab] = useState('demographics');
+  /** File open beside the patient snapshot (split workspace). */
+  const [sideFile, setSideFile] = useState(null);
 
   const open = useCallback((patientObj, referralObj = null, tab = 'demographics') => {
     setPatient(patientObj);
     setReferral(referralObj);
     setActiveTab(tab);
+    setSideFile(null);
     setIsOpen(true);
   }, []);
 
   const close = useCallback(() => {
     setIsOpen(false);
+    setSideFile(null);
+  }, []);
+
+  const openFileBeside = useCallback((file, patientObj = null, referralObj = null) => {
+    if (patientObj) setPatient(patientObj);
+    if (referralObj) setReferral(referralObj);
+    setSideFile(file || null);
+    // Keep staff on a work tab — Overview/Referral is the natural snapshot.
+    setActiveTab((prev) => (prev === 'files' ? 'overview' : prev));
+    setIsOpen(true);
+  }, []);
+
+  const clearSideFile = useCallback(() => {
+    setSideFile(null);
   }, []);
 
   const updatePatientLocal = useCallback((updates) => {
@@ -29,7 +46,20 @@ export function PatientDrawerProvider({ children }) {
 
   return (
     <PatientDrawerContext.Provider
-      value={{ isOpen, patient, referral, activeTab, setActiveTab, open, close, updatePatientLocal, updateReferralLocal }}
+      value={{
+        isOpen,
+        patient,
+        referral,
+        activeTab,
+        setActiveTab,
+        open,
+        close,
+        updatePatientLocal,
+        updateReferralLocal,
+        sideFile,
+        openFileBeside,
+        clearSideFile,
+      }}
     >
       {children}
     </PatientDrawerContext.Provider>

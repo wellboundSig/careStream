@@ -13,6 +13,7 @@ import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import OooBadge from '../common/OooBadge.jsx';
+import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
 import { STAGE_SLUGS } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -105,7 +106,20 @@ export default function DepartmentDashboard({ department, scope }) {
   function renderCell(col, ref) {
     const days = ref.updated_at ? Math.max(0, Math.floor((now - new Date(ref.updated_at).getTime()) / 86400000)) : 0;
     switch (col.key) {
-      case 'patient': return <td key="patient" style={{ padding: '11px 14px' }}><p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p></td>;
+      case 'patient': {
+        const isMine = !!(appUserId && ref.intake_owner_id && ref.intake_owner_id === appUserId);
+        return (
+          <td key="patient" style={{ padding: '11px 14px' }}>
+            <p
+              title={isMine ? 'You own this case' : undefined}
+              style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}
+            >
+              {isMine && <OwnedByMeIcon size={11} />}
+              {ref.patientName || ref.patient_id}
+            </p>
+          </td>
+        );
+      }
       case 'division': return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>;
       case 'source': return <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>;
       case 'marketer': return <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{ref?.marketer_id ? resolveMarketer(ref.marketer_id) : '—'}</td>;
@@ -113,7 +127,17 @@ export default function DepartmentDashboard({ department, scope }) {
       case 'triage': return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
       case 'days': return <td key="days" style={{ padding: '11px 14px' }}><span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>{days === 0 ? 'Today' : `${days}d`}</span></td>;
       case 'f2f': return <td key="f2f" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{ref.f2f_expiration ? `${Math.ceil((new Date(ref.f2f_expiration) - now) / 86400000)}d` : '—'}</td>;
-      case 'owner': return <td key="owner" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveUser(ref.intake_owner_id) || '—'}</td>;
+      case 'owner': {
+        const isMine = !!(appUserId && ref.intake_owner_id && ref.intake_owner_id === appUserId);
+        return (
+          <td key="owner" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {isMine && <OwnedByMeIcon size={10} />}
+              <span style={{ fontWeight: isMine ? 650 : 400 }}>{resolveUser(ref.intake_owner_id) || '—'}</span>
+            </span>
+          </td>
+        );
+      }
       case 'insurance': return <td key="ins" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{ref.patient?.insurance_plan || '—'}</td>;
       case 'facility': return <td key="fac" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveFacility(ref.facility_id) || '—'}</td>;
       case 'activity': return <td key="act" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{fmtDate(ref.referral_date)}</td>;

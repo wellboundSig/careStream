@@ -17,7 +17,7 @@
  * the field-support worker), SIGN_TTL_SECONDS (default 600).
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { authenticate } from './clerkJwt.js';
 
@@ -74,6 +74,18 @@ export async function handler(event) {
   if (method === 'GET' && rawPath === '/sign') {
     const key = event.queryStringParameters?.key;
     if (!key) return json(400, { error: 'key required' }, origin);
+    // Fail fast if the object is missing — otherwise clients get a signed URL
+    // that downloads S3/XML or worker JSON error bodies as "files".
+    try {
+      await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+    } catch (err) {
+      const code = err?.name || err?.Code || '';
+      const status = err?.$metadata?.httpStatusCode;
+      if (status === 404 || code === 'NotFound' || code === 'NoSuchKey') {
+        return json(404, { error: 'Not found' }, origin);
+      }
+      throw err;
+    }
     const download = ['1', 'true'].includes(event.queryStringParameters?.download || '');
     const filename = (key.split('/').pop() || 'file').replace(/"/g, '');
     const cmd = new GetObjectCommand({

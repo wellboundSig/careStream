@@ -1310,6 +1310,9 @@ function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
 // ── 5. F2F/MD Orders Pending ──────────────────────────────────────────────────
 function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransition }) {
   const { can: canPerm } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
+  const { resolveUser } = useLookups();
+  const storePhysicians = useCareStore((s) => s.physicians);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate]     = useState('');
   const [saving, setSaving]                 = useState(false);
@@ -1379,6 +1382,8 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
       await updateReferralOptimistic(selectedReferral._id, {
         f2f_date:       receivedDate,
         f2f_expiration: expiration,
+        f2f_date_logged_by_id: appUserId || 'unknown',
+        f2f_date_logged_at: new Date().toISOString(),
       });
       triggerDataRefresh();
       setShowDatePicker(false);
@@ -1398,6 +1403,13 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
     : days <= 14 ? palette.accentOrange.hex
     : days <= 30 ? palette.highlightYellow.hex
     : palette.accentGreen.hex;
+  const physician = (() => {
+    const pid = ref?.physician_id;
+    if (!pid) return null;
+    return Object.values(storePhysicians || {}).find((p) => p.id === pid || p._id === pid) || null;
+  })();
+  const phyPecos = physician && (physician.is_pecos_enrolled === true || physician.is_pecos_enrolled === 'true' || physician.is_pecos_enrolled === 'TRUE');
+  const phyOpra = physician && (physician.is_opra_enrolled === true || physician.is_opra_enrolled === 'true' || physician.is_opra_enrolled === 'TRUE');
 
   return (
     <Panel>
@@ -1425,11 +1437,22 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                   {days < 0 ? 'F2F has expired' : 'until F2F expiration'}
                 </p>
                 {ref.f2f_date && (
-                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 3 }}>
-                    Received {new Date(ref.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    {' · '}
-                    Expires {new Date(ref.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
+                  <div style={{ marginTop: 10 }}>
+                    <p style={{ fontSize: 15, fontWeight: 750, color: palette.backgroundDark.hex }}>
+                      Visit {new Date(ref.f2f_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 2 }}>
+                      Expires {new Date(ref.f2f_expiration).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    {(ref.f2f_date_logged_by_id || ref.f2f_date_logged_at) && (
+                      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>
+                        Logged by {ref.f2f_date_logged_by_id ? resolveUser(ref.f2f_date_logged_by_id) : '—'}
+                        {ref.f2f_date_logged_at
+                          ? ` · ${new Date(ref.f2f_date_logged_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                          : ''}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
@@ -1437,8 +1460,16 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 No F2F date recorded
               </p>
             )}
-            <InfoRow label="PECOS Verified" value={ref.is_pecos_verified === 'TRUE' || ref.is_pecos_verified === true ? 'Yes' : 'No'} highlight={ref.is_pecos_verified === 'TRUE' || ref.is_pecos_verified === true ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
-            <InfoRow label="OPRA Verified"  value={ref.is_opra_verified  === 'TRUE' || ref.is_opra_verified  === true ? 'Yes' : 'No'} />
+            {physician ? (
+              <>
+                <InfoRow label="PECOS" value={phyPecos ? 'Enrolled' : 'Not enrolled'} highlight={phyPecos ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
+                <InfoRow label="OPRA" value={phyOpra ? 'Eligible' : 'Not eligible'} highlight={phyOpra ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
+              </>
+            ) : (
+              <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), padding: '4px 0 2px' }}>
+                No physician linked — PECOS / OPRA hidden.
+              </p>
+            )}
           </PanelSection>
 
           <PanelSection title="Actions">

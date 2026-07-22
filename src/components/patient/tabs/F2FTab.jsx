@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
-import { mergeEntities } from '../../../store/careStore.js';
+import { mergeEntities, useCareStore } from '../../../store/careStore.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
@@ -12,7 +12,21 @@ import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from
 import { useCursoryReview } from '../../../hooks/useCursoryReview.js';
 import HospitalizationReview from '../../modules/shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
+import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
+import { formatPhysicianName } from '../../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+
+function truthyFlag(v) {
+  return v === true || v === 'true' || v === 'TRUE' || v === 'Yes' || v === 'yes' || v === 1 || v === '1';
+}
+
+function fmtDateTime(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
 
 function daysLeft(exp) {
   if (!exp) return null;
@@ -51,12 +65,20 @@ function InfoRow({ label, value, color }) {
 export default function F2FTab({ patient, referral, readOnly = false }) {
   const { can } = usePermissions();
   const { appUserId } = useCurrentAppUser();
-  const { resolvePhysician } = useLookups();
+  const { resolveUser } = useLookups();
+  const { openFileBeside } = usePatientDrawer();
+  const storePhysicians = useCareStore((s) => s.physicians);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  const physician = useMemo(() => {
+    const pid = referral?.physician_id;
+    if (!pid) return null;
+    return Object.values(storePhysicians || {}).find((p) => p.id === pid || p._id === pid) || null;
+  }, [referral?.physician_id, storePhysicians]);
 
   // Cursory review checklist — persisted to the CursoryReview table.
   const {
@@ -105,10 +127,16 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     setSaveError(null);
     try {
       const expiration = addDays(receivedDate, 90);
+      const loggedAt = new Date().toISOString();
       // Optimistic: the F2F tab indicator (green check in the drawer) and the
       // Intake panel's "Push to Clinical RN" section both read from the store.
       // Without an optimistic write, neither updates until the next data sync.
-      await updateReferralOptimistic(referral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
+      await updateReferralOptimistic(referral._id, {
+        f2f_date: receivedDate,
+        f2f_expiration: expiration,
+        f2f_date_logged_by_id: appUserId || 'unknown',
+        f2f_date_logged_at: loggedAt,
+      });
       triggerDataRefresh();
       setShowDatePicker(false);
       setReceivedDate('');
@@ -149,7 +177,12 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
 
       if (uploadCategory === 'F2F' && referral && !referral.f2f_date) {
         const today = new Date().toISOString().split('T')[0];
-        await updateReferralOptimistic(referral._id, { f2f_date: today, f2f_expiration: addDays(today, 90) });
+        await updateReferralOptimistic(referral._id, {
+          f2f_date: today,
+          f2f_expiration: addDays(today, 90),
+          f2f_date_logged_by_id: appUserId || 'unknown',
+          f2f_date_logged_at: new Date().toISOString(),
+        });
         triggerDataRefresh();
       }
     } catch { /* silent */ } finally {
@@ -182,9 +215,9 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
             <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>
               {days < 0 ? 'F2F has expired' : 'until F2F expiration'}
             </p>
-            {referral.f2f_date && (
+            {referral.f2f_expiration && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 3 }}>
-                Visit {fmtDate(referral.f2f_date)} · Expires {fmtDate(referral.f2f_expiration)}
+                Expires {fmtDate(referral.f2f_expiration)}
               </p>
             )}
           </div>
@@ -193,34 +226,86 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
             No F2F date recorded
           </p>
         )}
-        <InfoRow label="PECOS Verified" value={referral.is_pecos_verified === 'TRUE' || referral.is_pecos_verified === true ? 'Yes' : 'No'} color={referral.is_pecos_verified === 'TRUE' || referral.is_pecos_verified === true ? palette.accentGreen.hex : palette.primaryMagenta.hex} />
-        <InfoRow label="OPRA Verified" value={referral.is_opra_verified === 'TRUE' || referral.is_opra_verified === true ? 'Yes' : 'No'} color={referral.is_opra_verified === 'TRUE' || referral.is_opra_verified === true ? palette.accentGreen.hex : undefined} />
-        {referral.physician_id && (
-          <InfoRow label="Physician" value={resolvePhysician(referral.physician_id)} />
+        {physician ? (
+          <>
+            <InfoRow label="Physician" value={formatPhysicianName(physician)} />
+            <InfoRow
+              label="PECOS"
+              value={truthyFlag(physician.is_pecos_enrolled) ? 'Enrolled' : 'Not enrolled'}
+              color={truthyFlag(physician.is_pecos_enrolled) ? palette.accentGreen.hex : palette.primaryMagenta.hex}
+            />
+            <InfoRow
+              label="OPRA"
+              value={truthyFlag(physician.is_opra_enrolled) ? 'Eligible' : 'Not eligible'}
+              color={truthyFlag(physician.is_opra_enrolled) ? palette.accentGreen.hex : palette.primaryMagenta.hex}
+            />
+          </>
+        ) : (
+          <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), padding: '6px 0 2px', lineHeight: 1.45 }}>
+            No physician linked yet — add one on the Physician tab to see PECOS / OPRA.
+          </p>
         )}
       </Section>
 
-      {/* Log F2F Date */}
-      {!readOnly && can(PERMISSION_KEYS.CLINICAL_F2F) && (
-        <Section title="Date of Visit">
-          {!showDatePicker ? (
+      {/* Date of Visit — primary, obvious */}
+      <Section title="Date of Visit">
+        {referral.f2f_date ? (
+          <div style={{
+            borderRadius: 10,
+            padding: '16px 14px',
+            marginBottom: 12,
+            background: hexToRgba(palette.accentGreen.hex, 0.08),
+            border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`,
+            textAlign: 'center',
+          }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+              Visit date
+            </p>
+            <p style={{ fontSize: 26, fontWeight: 800, color: palette.backgroundDark.hex, margin: '6px 0 0', letterSpacing: '-0.02em' }}>
+              {fmtDate(referral.f2f_date)}
+            </p>
+            {(referral.f2f_date_logged_by_id || referral.f2f_date_logged_at) && (
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), margin: '8px 0 0', lineHeight: 1.4 }}>
+                Logged by {referral.f2f_date_logged_by_id ? resolveUser(referral.f2f_date_logged_by_id) : '—'}
+                {referral.f2f_date_logged_at ? ` · ${fmtDateTime(referral.f2f_date_logged_at)}` : ''}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            borderRadius: 10,
+            padding: '14px',
+            marginBottom: 12,
+            background: hexToRgba(palette.backgroundDark.hex, 0.03),
+            border: `1px dashed ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+            textAlign: 'center',
+          }}>
+            <p style={{ fontSize: 14, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0 }}>
+              No date of visit logged
+            </p>
+          </div>
+        )}
+
+        {!readOnly && can(PERMISSION_KEYS.CLINICAL_F2F) && (
+          !showDatePicker ? (
             <button
+              type="button"
               onClick={() => {
                 if (referral.f2f_date) setReceivedDate(new Date(referral.f2f_date).toISOString().split('T')[0]);
                 setShowDatePicker(true);
               }}
               style={{
-                width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
-                background: referral.f2f_date ? hexToRgba(palette.accentGreen.hex, 0.1) : palette.accentGreen.hex,
+                width: '100%', padding: '12px 0', borderRadius: 8, border: 'none',
+                background: referral.f2f_date ? hexToRgba(palette.accentGreen.hex, 0.12) : palette.accentGreen.hex,
                 color: referral.f2f_date ? palette.accentGreen.hex : palette.backgroundLight.hex,
-                fontSize: 13, fontWeight: 650, cursor: 'pointer',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
             >
               {referral.f2f_date ? 'Update Date of Visit' : 'Log Date of Visit'}
             </button>
           ) : (
             <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '12px' }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 8 }}>
+              <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 8 }}>
                 {referral.f2f_date ? 'Confirm or update date of visit' : 'When did the physician visit occur?'}
               </p>
               <input
@@ -228,7 +313,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                 value={receivedDate}
                 max={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setReceivedDate(e.target.value)}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 7, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 7, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 15, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }}
               />
               {receivedDate && (
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 8 }}>
@@ -238,22 +323,24 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
               {saveError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 8 }}>{saveError}</p>}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
+                  type="button"
                   onClick={handleLogReceived} disabled={!receivedDate || saving}
-                  style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', background: receivedDate && !saving ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), color: receivedDate && !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 12, fontWeight: 650, cursor: receivedDate && !saving ? 'pointer' : 'not-allowed' }}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 7, border: 'none', background: receivedDate && !saving ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), color: receivedDate && !saving ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 13, fontWeight: 650, cursor: receivedDate && !saving ? 'pointer' : 'not-allowed' }}
                 >
                   {saving ? 'Saving...' : 'Confirm'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => { setShowDatePicker(false); setReceivedDate(''); setSaveError(null); }} disabled={saving}
-                  style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.08), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 12, fontWeight: 650, cursor: 'pointer' }}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 7, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.08), color: hexToRgba(palette.backgroundDark.hex, 0.55), fontSize: 13, fontWeight: 650, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
               </div>
             </div>
-          )}
-        </Section>
-      )}
+          )
+        )}
+      </Section>
 
       {/* File Upload */}
       <Section title="Documents">
@@ -291,8 +378,22 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                   <p style={{ fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
                   <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category} · {fmtDate(f.created_at)}</p>
                 </div>
-                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <button
+                    type="button"
+                    onClick={() => openFileBeside(f, patient, referral)}
+                    title="Open beside patient snapshot"
+                    style={{
+                      padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 650,
+                      background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+                      border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.22)}`,
+                      color: palette.primaryMagenta.hex,
+                    }}
+                  >
+                    Open to side
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setPreview(f)}
                     title="Preview file"
                     style={{
@@ -305,6 +406,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                     Preview
                   </button>
                   <button
+                    type="button"
                     onClick={() => openSignedFile(f, { download: true })}
                     title="Download file"
                     style={{
@@ -349,7 +451,13 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         <HospitalizationReview referral={referral} patient={patient} readOnly={readOnly} />
       </Section>
 
-      {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {preview && (
+        <FilePreviewModal
+          file={preview}
+          onClose={() => setPreview(null)}
+          onOpenToSide={() => openFileBeside(preview, patient, referral)}
+        />
+      )}
     </div>
   );
 }

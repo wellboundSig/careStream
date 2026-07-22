@@ -9,6 +9,7 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
+import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -112,6 +113,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const { user } = useUser();
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser, resolvePhysician } = useLookups();
+  const { openFileBeside } = usePatientDrawer();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
@@ -148,7 +150,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
       .catch(() => setOpwddChecklistItems([]));
   }, [referral?.id]);
 
-  const r2Configured = !!import.meta.env.VITE_R2_WORKER_URL;
+  const r2Configured = !!(import.meta.env.VITE_FILES_API_URL || import.meta.env.VITE_R2_WORKER_URL);
 
   async function handleDeleteFile(file) {
     if (!window.confirm(`Delete "${file.file_name || 'this file'}"? This cannot be undone.`)) return;
@@ -288,6 +290,8 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         await updateReferral(referral._id, {
           f2f_date: visitDate.toISOString(),
           f2f_expiration: expiration.toISOString(),
+          f2f_date_logged_by_id: appUserId || 'unknown',
+          f2f_date_logged_at: new Date().toISOString(),
         }).catch(() => {});
         triggerDataRefresh();
       }
@@ -637,6 +641,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           collapsedGroups={collapsedGroups}
           toggleGroup={(id) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))}
           onPreview={setPreview}
+          onOpenToSide={(file) => openFileBeside(file, patient, referral)}
           onDelete={readOnly ? undefined : handleDeleteFile}
           resolveUser={resolveUser}
           resolvePhysician={resolvePhysician}
@@ -644,7 +649,13 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         />
       )}
 
-      {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {preview && (
+        <FilePreviewModal
+          file={preview}
+          onClose={() => setPreview(null)}
+          onOpenToSide={() => openFileBeside(preview, patient, referral)}
+        />
+      )}
     </div>
   );
 }
@@ -661,7 +672,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
 function GroupedFileList({
   files, categoryFilter, setCategoryFilter, search, setSearch,
   collapsedGroups, toggleGroup,
-  onPreview, onDelete, resolveUser, resolvePhysician, appUserName,
+  onPreview, onOpenToSide, onDelete, resolveUser, resolvePhysician, appUserName,
 }) {
   const groupDefs = useMemo(() => ([
     {
@@ -830,7 +841,7 @@ function GroupedFileList({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {subFiles.map((file) => (
                           <FileRow key={file._id} file={file}
-                            onPreview={onPreview} onDelete={onDelete}
+                            onPreview={onPreview} onOpenToSide={onOpenToSide} onDelete={onDelete}
                             resolveUser={resolveUser} resolvePhysician={resolvePhysician}
                             appUserName={appUserName} />
                         ))}
@@ -840,7 +851,7 @@ function GroupedFileList({
                 ) : (
                   group.items.map((file) => (
                     <FileRow key={file._id} file={file}
-                      onPreview={onPreview} onDelete={onDelete}
+                      onPreview={onPreview} onOpenToSide={onOpenToSide} onDelete={onDelete}
                       resolveUser={resolveUser} resolvePhysician={resolvePhysician}
                       appUserName={appUserName} />
                   ))
@@ -854,7 +865,7 @@ function GroupedFileList({
   );
 }
 
-function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, appUserName }) {
+function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolvePhysician, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
   // Private R2: a file is viewable/downloadable as long as we have its key
@@ -914,9 +925,25 @@ function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, app
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {canPreview && onOpenToSide && (
+          <button
+            type="button"
+            onClick={() => onOpenToSide(file)}
+            title="Open beside patient snapshot"
+            style={{
+              padding: '5px 11px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 650,
+              background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+              border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.22)}`,
+              color: palette.primaryMagenta.hex,
+            }}
+          >
+            Open to side
+          </button>
+        )}
         {canPreview && (
           <button
+            type="button"
             onClick={() => onPreview(file)}
             style={{
               padding: '5px 11px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
@@ -932,6 +959,7 @@ function FileRow({ file, onPreview, onDelete, resolveUser, resolvePhysician, app
         )}
         {canPreview && (
           <button
+            type="button"
             onClick={() => openSignedFile(file, { download: true })}
             style={{
               padding: '5px 11px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',

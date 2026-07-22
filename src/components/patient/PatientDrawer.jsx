@@ -23,6 +23,8 @@ import AuthorizationsTab from './tabs/AuthorizationsTab.jsx';
 import ConflictsTab from './tabs/ConflictsTab.jsx';
 import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
 import PhysicianTab from './tabs/PhysicianTab.jsx';
+import FilePreviewPane from '../common/FilePreviewPane.jsx';
+import { openSignedFile } from '../../utils/r2Upload.js';
 
 const HEADER_TEXT = '#F7F7FA';
 
@@ -74,7 +76,10 @@ function getF2FStatus(f2fExpiration) {
 }
 
 export default function PatientDrawer() {
-  const { isOpen, patient: ctxPatient, referral: ctxReferral, activeTab, setActiveTab, close } = usePatientDrawer();
+  const {
+    isOpen, patient: ctxPatient, referral: ctxReferral, activeTab, setActiveTab, close,
+    sideFile, clearSideFile,
+  } = usePatientDrawer();
 
   // The drawer context only tracks WHICH patient/referral is open (captured at
   // open() time). The DATA shown must come from the live zustand store —
@@ -112,7 +117,12 @@ export default function PatientDrawer() {
   useEffect(() => {
     if (!isOpen) return;
     function onKey(e) {
-      if (e.key === 'Escape') { close(); return; }
+      if (e.key === 'Escape') {
+        // First Esc closes the side file; second closes the drawer.
+        if (sideFile) { clearSideFile(); return; }
+        close();
+        return;
+      }
       if (e.shiftKey && e.key === 'C') {
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
@@ -132,7 +142,7 @@ export default function PatientDrawer() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, close, setActiveTab]);
+  }, [isOpen, close, setActiveTab, sideFile, clearSideFile]);
 
   // Tab completeness — computed from patient + referral + store data
   const storeInsChecks = useCareStore((s) => s.insuranceChecks);
@@ -228,15 +238,117 @@ export default function PatientDrawer() {
 
   const f2f = referral ? getF2FStatus(referral.f2f_expiration) : null;
   const age = patient ? calcAge(patient.dob) : null;
+  const split = !!sideFile;
 
   return (
     <>
       <div onClick={close} style={{ position: 'fixed', inset: 0, background: animated ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)', zIndex: 1000, transition: 'background 0.3s ease', backdropFilter: animated ? 'blur(2px)' : 'none' }} />
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 100vw)', background: palette.backgroundLight.hex, zIndex: 1001, display: 'flex', flexDirection: 'column', boxShadow: `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`, transform: animated ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden' }}>
-        <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} />
-        <ScrollableTabBar tabs={DRAWER_TABS} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-          {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: split ? 0 : 'auto',
+          width: split ? '100vw' : 'min(560px, 100vw)',
+          background: split ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
+          zIndex: 1001,
+          display: 'flex',
+          flexDirection: 'row',
+          boxShadow: split ? 'none' : `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+          transform: animated ? 'translateX(0)' : (split ? 'none' : 'translateX(100%)'),
+          transition: split ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          overflow: 'hidden',
+          opacity: animated ? 1 : 0,
+        }}
+      >
+        {split && (
+          <div
+            style={{
+              flex: '1 1 58%',
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              background: palette.backgroundLight.hex,
+              borderRight: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              padding: '12px 16px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0,
+              background: palette.backgroundLight.hex,
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+                  Document
+                </p>
+                <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {sideFile.file_name || 'File'}
+                </p>
+                {sideFile.category && (
+                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '2px 0 0' }}>
+                    {sideFile.category}
+                  </p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => openSignedFile(sideFile)}
+                  style={{
+                    padding: '7px 12px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                    background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
+                    color: palette.primaryDeepPlum.hex, fontSize: 12, fontWeight: 650,
+                  }}
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openSignedFile(sideFile, { download: true })}
+                  style={{
+                    padding: '7px 12px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                    background: hexToRgba(palette.accentBlue.hex, 0.1),
+                    color: palette.accentBlue.hex, fontSize: 12, fontWeight: 650,
+                  }}
+                >
+                  Download
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSideFile}
+                  title="Close document (keep patient open)"
+                  style={{
+                    padding: '7px 12px', borderRadius: 7, border: `1px solid var(--color-border)`, cursor: 'pointer',
+                    background: hexToRgba(palette.backgroundDark.hex, 0.04),
+                    color: hexToRgba(palette.backgroundDark.hex, 0.6), fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  Close file
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+              <FilePreviewPane file={sideFile} fill />
+            </div>
+          </div>
+        )}
+
+        <div style={{
+          flex: split ? '0 0 min(480px, 42vw)' : '1 1 auto',
+          width: split ? undefined : '100%',
+          maxWidth: split ? 520 : undefined,
+          background: palette.backgroundLight.hex,
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: split ? 320 : 0,
+          boxShadow: split ? `-6px 0 24px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
+        }}>
+          <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} />
+          <ScrollableTabBar tabs={DRAWER_TABS} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+            {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
+          </div>
         </div>
       </div>
     </>

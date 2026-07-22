@@ -26,6 +26,7 @@ import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import AuthObtainedIcon from '../common/AuthObtainedIcon.jsx';
+import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
@@ -477,6 +478,7 @@ export default function ModulePage({ stage }) {
       case 'patient': {
         const hasFile = fileUploadFlags.has(referral.patient_id);
         const name = referral.patientName || referral.patient_id || '—';
+        const isMine = !!(appUserId && referral.intake_owner_id && referral.intake_owner_id === appUserId);
         const authObtainedAt = referral.auth_obtained_at;
         let authObtainedTitle = null;
         if (authObtainedAt) {
@@ -490,9 +492,10 @@ export default function ModulePage({ stage }) {
         return (
           <td key="patient" style={td({ maxWidth: 220 })}>
             <span
-              title={[name, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
+              title={[name, isMine ? 'You own this case' : null, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
               style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden' }}
             >
+              {isMine && <OwnedByMeIcon size={11} />}
               {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
               {authObtainedAt && (
@@ -616,10 +619,12 @@ export default function ModulePage({ stage }) {
         const ownerUser = referral.intake_owner_id
           ? Object.values(storeUsers).find((u) => u.id === referral.intake_owner_id)
           : null;
+        const isMine = !!(appUserId && referral.intake_owner_id && referral.intake_owner_id === appUserId);
         return (
-          <td key="owner" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 160 })} title={label}>
+          <td key="owner" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 160 })} title={isMine ? `${label} (you)` : label}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+              {isMine && <OwnedByMeIcon size={10} />}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isMine ? 650 : 400 }}>{label}</span>
               <OooBadge user={ownerUser} />
             </span>
           </td>
