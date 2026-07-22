@@ -1,13 +1,20 @@
 import { useState, useMemo, useRef } from 'react';
 import { useUser } from '@clerk/react';
 import { useCareStore } from '../../../store/careStore.js';
-import { createNoteOptimistic, updateNoteOptimistic } from '../../../store/mutations.js';
+import {
+  createNoteOptimistic,
+  updateNoteOptimistic,
+  createMentionNotifications,
+} from '../../../store/mutations.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import { extractMentionUserIds } from '../../../utils/mentions.js';
 import LoadingState from '../../common/LoadingState.jsx';
+import MentionComposer from '../../common/MentionComposer.jsx';
+import MentionText from '../../common/MentionText.jsx';
 
 function formatDateTime(dateStr) {
   if (!dateStr) return '';
@@ -29,9 +36,9 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   const { resolveUser, resolveUserImage } = useLookups();
   const allNotes = useCareStore((s) => s.notes);
   const hydrated = useCareStore((s) => s.hydrated);
-  const [composing, setComposing] = useState('');
+  const [composerEmpty, setComposerEmpty] = useState(true);
   const [error, setError] = useState(null);
-  const textareaRef = useRef(null);
+  const composerRef = useRef(null);
   const { can } = usePermissions();
 
   const notes = useMemo(() => {
@@ -45,7 +52,8 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
 
   function submitNote() {
     if (!can(PERMISSION_KEYS.NOTE_CREATE)) return;
-    if (!composing.trim()) return;
+    const content = composerRef.current?.getValue?.()?.trim() || '';
+    if (!content) return;
     setError(null);
 
     if (!appUserId) {
@@ -61,21 +69,38 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
       return;
     }
 
+    const noteId = generateNoteId();
     const fields = {
-      id: generateNoteId(),
+      id: noteId,
       patient_id: patient.id,
       author_id: appUserId,
-      content: composing.trim(),
+      content,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...(referral?.id ? { referral_id: referral.id } : {}),
     };
 
-    // Optimistic: note appears instantly, Airtable write happens in background
     createNoteOptimistic(fields).catch((err) => {
       setError(`Failed to save note: ${err.message}`);
     });
-    setComposing('');
+
+    const mentioned = extractMentionUserIds(content);
+    if (mentioned.length) {
+      const patientLabel = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+      createMentionNotifications({
+        mentionedUserIds: mentioned,
+        actorUserId: appUserId,
+        noteId,
+        patientId: patient.id,
+        referralId: referral?.id || null,
+        noteContent: content,
+        actorName: appUserName,
+        patientLabel,
+      });
+    }
+
+    composerRef.current?.clear?.();
+    setComposerEmpty(true);
   }
 
   function togglePin(note) {
@@ -124,28 +149,13 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
     )}
 
     {!readOnly && can(PERMISSION_KEYS.NOTE_CREATE) && <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
-      <textarea
-          ref={textareaRef}
-          value={composing}
-          onChange={(e) => setComposing(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submitNote();
-            }
-          }}
-          placeholder="Write a note... (Cmd+Enter or click Add Note to save)"
+        <MentionComposer
+          ref={composerRef}
           rows={3}
-          style={{
-            width: '100%', padding: '10px 12px', borderRadius: 8,
-            border: `1px solid var(--color-border)`,
-            background: hexToRgba(palette.backgroundDark.hex, 0.03),
-            fontSize: 13, color: palette.backgroundDark.hex,
-            resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5,
-            transition: 'border-color 0.15s',
-          }}
-          onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-          onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.1))}
+          excludeUserId={appUserId}
+          onSubmit={submitNote}
+          onEmptyChange={setComposerEmpty}
+          placeholder="Write a note… Type @ to mention staff (Cmd+Enter to save)"
         />
 
         {error && (
@@ -164,24 +174,22 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
             Posting as{' '}
             <strong style={{ color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
               {appUserName}
-              {appUserId && (
-                <span style={{ fontWeight: 400, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginLeft: 4 }}>
-                  ({appUserId})
-                </span>
-              )}
             </strong>
+            <span style={{ marginLeft: 8, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>
+              · @ to mention
+            </span>
           </span>
           <button
             onClick={submitNote}
-            disabled={!composing.trim()}
+            disabled={composerEmpty}
             style={{
               padding: '7px 18px', borderRadius: 7,
-              background: composing.trim()
+              background: !composerEmpty
                 ? palette.primaryMagenta.hex
                 : hexToRgba(palette.primaryMagenta.hex, 0.3),
               border: 'none', fontSize: 12.5, fontWeight: 650,
               color: palette.backgroundLight.hex,
-              cursor: composing.trim() ? 'pointer' : 'not-allowed',
+              cursor: !composerEmpty ? 'pointer' : 'not-allowed',
               transition: 'background 0.15s',
             }}
           >
@@ -210,11 +218,6 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
                 currentUserId={appUserId}
                 resolveUser={resolveUser}
                 resolveUserImage={resolveUserImage}
-                // Live Clerk image URL for the signed-in user — used as a
-                // belt-and-suspenders fallback in case clerk_image_url has
-                // not yet propagated from Clerk → Airtable → store on first
-                // login. The Airtable-backed lookup is still the canonical
-                // source for *everyone else's* avatar.
                 currentClerkImageUrl={clerkUser?.imageUrl || null}
               />
             ))}
@@ -237,16 +240,9 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserIm
     .map((w) => w[0].toUpperCase())
     .join('');
 
-  // Resolve the avatar URL from the Airtable-backed lookup. For the author's
-  // OWN notes, fall back to the live Clerk image URL so the avatar shows
-  // immediately on first login, before the Clerk → Airtable sync round-trip
-  // has populated `clerk_image_url` on the user record.
   const lookupImage = resolveUserImage ? resolveUserImage(note.author_id) : null;
   const photoUrl = lookupImage || (isOwn ? currentClerkImageUrl : null);
 
-  // Track whether the <img> failed to load — when it does we render the
-  // initials circle instead. (Clerk image URLs can 404 if the user deletes
-  // their profile photo upstream and we haven't re-synced yet.)
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = photoUrl && !imgFailed;
 
@@ -270,8 +266,6 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserIm
               style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 objectFit: 'cover',
-                // Subtle ring so the avatar reads as "person" even on
-                // light backgrounds where the photo edge can disappear.
                 boxShadow: isOwn
                   ? `0 0 0 1.5px ${hexToRgba(palette.primaryMagenta.hex, 0.35)}`
                   : `0 0 0 1px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
@@ -329,12 +323,16 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserIm
         </div>
       </div>
 
-      <p style={{
+      <div style={{
         fontSize: 13, color: palette.backgroundDark.hex,
-        lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        lineHeight: 1.65,
       }}>
-        {note.content}
-      </p>
+        <MentionText
+          content={note.content}
+          resolveUser={resolveUser}
+          highlightUserId={currentUserId}
+        />
+      </div>
     </div>
   );
 }

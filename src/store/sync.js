@@ -1,6 +1,7 @@
 import airtable from '../api/airtable.js';
 import { useCareStore, mergeEntities } from './careStore.js';
 import { silentRehydrate } from './hydrate.js';
+import { getNotificationsForUser } from '../api/notifications.js';
 
 function normalize(records) {
   const map = {};
@@ -8,6 +9,28 @@ function normalize(records) {
     map[r.id] = { _id: r.id, ...r.fields };
   }
   return map;
+}
+
+function currentAppUserId() {
+  try {
+    const clerkId = window.Clerk?.user?.id;
+    if (!clerkId) return null;
+    const users = useCareStore.getState().users || {};
+    return Object.values(users).find((u) => u.clerk_user_id === clerkId)?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+async function syncNotificationsInbox() {
+  const userId = currentAppUserId();
+  if (!userId) return;
+  try {
+    const records = await getNotificationsForUser(userId, { maxRecords: 150 });
+    if (records.length > 0) mergeEntities('notifications', normalize(records));
+  } catch {
+    // Silent — background sync never disrupts UI
+  }
 }
 
 // ── Table tiers for polling ─────────────────────────────────────────────────
@@ -20,6 +43,7 @@ const HOT = [
 const WARM = [
   { key: 'notes',     table: 'Notes',     sortField: 'updated_at' },
   { key: 'conflicts', table: 'Conflicts', sortField: 'created_at' },
+  // Inbox is recipient-scoped — synced separately in syncNotificationsInbox.
 ];
 
 const HOT_INTERVAL  = 45_000;      // 45 seconds (was 10s — 78% reduction)
@@ -79,6 +103,7 @@ function onVisibilityChange() {
   } else {
     _visible = true;
     syncTier(HOT);
+    syncNotificationsInbox();
     scheduleTimers();
   }
 }
@@ -93,7 +118,10 @@ function clearTimers() {
 function scheduleTimers() {
   if (hotTimer) return;
   hotTimer  = setInterval(() => syncTier(HOT),  HOT_INTERVAL);
-  warmTimer = setInterval(() => syncTier(WARM), WARM_INTERVAL);
+  warmTimer = setInterval(() => {
+    syncTier(WARM);
+    syncNotificationsInbox();
+  }, WARM_INTERVAL);
   fullTimer = setInterval(() => silentRehydrate(), FULL_INTERVAL);
 }
 

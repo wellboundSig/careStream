@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
+import {
+  markNotificationReadOptimistic,
+  markAllNotificationsReadOptimistic,
+} from '../../store/mutations.js';
+import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { useLookups } from '../../hooks/useLookups.js';
 import CommandPalette from '../search/CommandPalette.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -221,31 +227,38 @@ function SearchBar({ onOpen }) {
 
 // ── Notification bell ──────────────────────────────────────────────────────────
 function NotificationBell() {
-  const navigate        = useNavigate();
-  const { appUserId }   = useCurrentAppUser();
+  const navigate = useNavigate();
+  const { appUserId } = useCurrentAppUser();
+  const { open: openPatient } = usePatientDrawer();
+  const { resolveUser } = useLookups();
   const [open, setOpen] = useState(false);
-  const wrapperRef      = useRef(null);
+  const wrapperRef = useRef(null);
 
-  const storeTasks   = useCareStore((s) => s.tasks);
+  const storeNotifications = useCareStore((s) => s.notifications);
+  const storeTasks = useCareStore((s) => s.tasks);
   const storePatients = useCareStore((s) => s.patients);
+  const storeReferrals = useCareStore((s) => s.referrals);
 
-  const { tasks, patientNames } = useMemo(() => {
-    if (!appUserId) return { tasks: [], patientNames: {} };
-    const myTasks = Object.values(storeTasks)
-      .filter((t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-      .slice(0, 5);
+  const { inbox, unreadCount, openTaskCount } = useMemo(() => {
+    if (!appUserId) return { inbox: [], unreadCount: 0, openTaskCount: 0 };
+    const mine = Object.values(storeNotifications || {})
+      .filter((n) => n.recipient_user_id === appUserId)
+      .sort((a, b) => {
+        const ar = a.is_read === true || a.is_read === 'true' ? 1 : 0;
+        const br = b.is_read === true || b.is_read === 'true' ? 1 : 0;
+        if (ar !== br) return ar - br;
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      })
+      .slice(0, 12);
 
-    const nameMap = {};
-    for (const t of myTasks) {
-      if (!t.patient_id) continue;
-      const p = Object.values(storePatients).find((pt) => pt.id === t.patient_id);
-      if (p) nameMap[t.patient_id] = `${p.first_name || ''} ${p.last_name || ''}`.trim();
-    }
-    return { tasks: myTasks, patientNames: nameMap };
-  }, [appUserId, storeTasks, storePatients]);
+    const unread = mine.filter((n) => !(n.is_read === true || n.is_read === 'true')).length;
+    const openTasks = Object.values(storeTasks || {}).filter(
+      (t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled',
+    ).length;
 
-  // Close on outside click
+    return { inbox: mine, unreadCount: unread, openTaskCount: openTasks };
+  }, [appUserId, storeNotifications, storeTasks]);
+
   useEffect(() => {
     if (!open) return;
     function handler(e) {
@@ -255,18 +268,47 @@ function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const unreadCount = tasks.length;
+  function patientFor(id) {
+    if (!id) return null;
+    return Object.values(storePatients || {}).find((p) => p.id === id) || null;
+  }
 
-  const TASK_TYPE_COLORS = {
-    'Insurance Barrier': palette.primaryMagenta.hex,
-    'Missing Document':  palette.accentOrange.hex,
-    'Auth Needed':       palette.accentBlue.hex,
-    'Escalation':        palette.primaryMagenta.hex,
-    'Staffing':          palette.accentGreen.hex,
-    'Scheduling':        palette.accentGreen.hex,
-    'Follow-Up':         hexToRgba(palette.backgroundDark.hex, 0.45),
-    'Other':             hexToRgba(palette.backgroundDark.hex, 0.35),
-  };
+  function referralFor(patientId, referralId) {
+    if (referralId) {
+      const byId = Object.values(storeReferrals || {}).find((r) => r.id === referralId);
+      if (byId) return byId;
+    }
+    if (!patientId) return null;
+    return Object.values(storeReferrals || {}).find((r) => r.patient_id === patientId) || null;
+  }
+
+  function openNotification(n) {
+    const isRead = n.is_read === true || n.is_read === 'true';
+    if (!isRead && n._id && !String(n._id).startsWith('_pending_')) {
+      markNotificationReadOptimistic(n._id).catch(() => {});
+    }
+    setOpen(false);
+
+    if (n.patient_id) {
+      const patient = patientFor(n.patient_id) || {
+        id: n.patient_id,
+        _id: n.patient_id,
+      };
+      const referral = referralFor(n.patient_id, n.referral_id);
+      openPatient(patient, referral, 'notes');
+      return;
+    }
+    if (n.type === 'task' || n.entity_type === 'task') {
+      navigate('/tasks');
+    }
+  }
+
+  function markAllRead() {
+    if (!appUserId || unreadCount === 0) return;
+    markAllNotificationsReadOptimistic(appUserId);
+  }
+
+  const badgeCount = unreadCount;
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
@@ -292,8 +334,7 @@ function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
 
-        {/* Badge */}
-        {unreadCount > 0 && (
+        {badgeCount > 0 && (
           <span style={{
             position: 'absolute', top: 4, right: 4,
             minWidth: 16, height: 16, borderRadius: 8,
@@ -304,16 +345,15 @@ function NotificationBell() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 3px',
           }}>
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {badgeCount > 9 ? '9+' : badgeCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown panel */}
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-          width: 310,
+          width: 340,
           background: NAV_TEXT,
           borderRadius: 12,
           boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
@@ -321,87 +361,128 @@ function NotificationBell() {
           overflow: 'hidden',
           zIndex: 500,
         }}>
-          {/* Header */}
           <div style={{
             padding: '11px 14px 10px',
             borderBottom: `1px solid var(--color-border)`,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: 8,
           }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundDark.hex }}>
               Notifications
             </span>
-            {unreadCount > 0 && (
-              <span style={{
-                fontSize: 10.5, fontWeight: 650,
-                color: palette.primaryMagenta.hex,
-                background: hexToRgba(palette.primaryMagenta.hex, 0.08),
-                borderRadius: 10, padding: '2px 8px',
-              }}>
-                {unreadCount} open
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {unreadCount > 0 && (
+                <>
+                  <span style={{
+                    fontSize: 10.5, fontWeight: 650,
+                    color: palette.primaryMagenta.hex,
+                    background: hexToRgba(palette.primaryMagenta.hex, 0.08),
+                    borderRadius: 10, padding: '2px 8px',
+                  }}>
+                    {unreadCount} new
+                  </span>
+                  <button
+                    type="button"
+                    onClick={markAllRead}
+                    style={{
+                      fontSize: 11, fontWeight: 650, border: 'none', background: 'none',
+                      color: palette.accentBlue.hex, cursor: 'pointer', padding: 0,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Mark all read
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+            {inbox.length === 0 ? (
+              <div style={{ padding: '22px 14px', textAlign: 'center' }}>
+                <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+                  No notifications yet.
+                </p>
+                <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), margin: '6px 0 0' }}>
+                  You’ll be notified when someone @mentions you in a note.
+                </p>
+              </div>
+            ) : (
+              inbox.map((n) => {
+                const isRead = n.is_read === true || n.is_read === 'true';
+                const actor = n.actor_user_id ? resolveUser(n.actor_user_id) : null;
+                const typeLabel = n.type === 'mention' ? 'Mention' : (n.type || 'Alert');
+                return (
+                  <div
+                    key={n._id}
+                    onClick={() => openNotification(n)}
+                    style={{
+                      padding: '11px 14px',
+                      borderBottom: `1px solid var(--color-border)`,
+                      cursor: 'pointer',
+                      transition: 'background 0.1s',
+                      background: isRead
+                        ? 'transparent'
+                        : hexToRgba(palette.accentBlue.hex, 0.05),
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04);
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = isRead
+                        ? 'transparent'
+                        : hexToRgba(palette.accentBlue.hex, 0.05);
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                          {!isRead && (
+                            <span style={{
+                              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                              background: palette.primaryMagenta.hex,
+                            }} />
+                          )}
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                            color: n.type === 'mention'
+                              ? palette.accentBlue.hex
+                              : hexToRgba(palette.backgroundDark.hex, 0.45),
+                          }}>
+                            {typeLabel}
+                          </span>
+                        </div>
+                        <p style={{
+                          fontSize: 12.5, fontWeight: isRead ? 550 : 650,
+                          color: palette.backgroundDark.hex,
+                          margin: 0, lineHeight: 1.4,
+                        }}>
+                          {n.title || (actor ? `${actor} mentioned you` : 'New notification')}
+                        </p>
+                        {n.body && (
+                          <p style={{
+                            fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                            margin: '3px 0 0', lineHeight: 1.4,
+                            display: '-webkit-box', WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                          }}>
+                            {n.body}
+                          </p>
+                        )}
+                      </div>
+                      <span style={{
+                        fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.35),
+                        flexShrink: 0, marginTop: 2,
+                      }}>
+                        {timeAgo(n.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 
-          {/* Task cards */}
-          {tasks.length === 0 && (
-            <div style={{ padding: '22px 14px', textAlign: 'center' }}>
-              <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>No open tasks assigned to you.</p>
-            </div>
-          )}
-
-          {tasks.map((task) => {
-            const patientName = patientNames[task.patient_id] || null;
-            const typeColor   = TASK_TYPE_COLORS[task.type] || hexToRgba(palette.backgroundDark.hex, 0.35);
-            return (
-              <div
-                key={task._id}
-                onClick={() => { setOpen(false); navigate('/tasks'); }}
-                style={{
-                  padding: '10px 14px',
-                  borderBottom: `1px solid var(--color-border)`,
-                  cursor: 'pointer',
-                  transition: 'background 0.1s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03))}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Task type badge */}
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                      color: typeColor,
-                      display: 'block', marginBottom: 3,
-                    }}>
-                      {task.type || 'Task'} assigned to you
-                    </span>
-
-                    {/* Task title */}
-                    <p style={{
-                      fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex,
-                      margin: 0, lineHeight: 1.4,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {task.title || '(No title)'}
-                    </p>
-
-                    {/* Patient name */}
-                    {patientName && (
-                      <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), margin: '2px 0 0' }}>
-                        Re: {patientName}
-                      </p>
-                    )}
-                  </div>
-
-                  <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0, marginTop: 2 }}>
-                    {timeAgo(task.created_at)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Footer */}
           <div
             onClick={() => { setOpen(false); navigate('/tasks'); }}
             style={{
@@ -410,12 +491,15 @@ function NotificationBell() {
               textAlign: 'center',
               fontSize: 12, fontWeight: 650,
               color: palette.accentBlue.hex,
+              borderTop: `1px solid var(--color-border)`,
               transition: 'background 0.1s',
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentBlue.hex, 0.05))}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            View all tasks →
+            {openTaskCount > 0
+              ? `View tasks (${openTaskCount} open) →`
+              : 'View all tasks →'}
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ export const useCareStore = create((set, get) => ({
   referrals: {},
   entities: {},
   notes: {},
+  notifications: {}, // recipient-scoped inbox (mention alerts, etc.)
   tasks: {},
   stageHistory: {},
   files: {},

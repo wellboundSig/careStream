@@ -7,6 +7,8 @@ export const SOURCE_TYPES = [
   'CCO',
   'Hospital',
   'SNF',
+  'LHCSA',
+  'CHHA',
   'PCP / MD',
   'ALF',
   'Adult Home',
@@ -20,6 +22,8 @@ export const TYPE_COLORS = {
   CCO:             { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), text: palette.primaryDeepPlum.hex },
   Hospital:        { bg: hexToRgba(palette.primaryMagenta.hex, 0.14),  text: palette.primaryMagenta.hex },
   SNF:             { bg: hexToRgba(palette.accentOrange.hex, 0.14),    text: '#8B4A00' },
+  LHCSA:           { bg: hexToRgba(palette.accentOrange.hex, 0.12),    text: '#9a3412' },
+  CHHA:            { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.10), text: '#5b21b6' },
   'PCP / MD':      { bg: hexToRgba(palette.accentGreen.hex, 0.15),     text: '#2e7d52' },
   ALF:             { bg: hexToRgba(palette.highlightYellow.hex, 0.22), text: '#7A5F00' },
   'Adult Home':    { bg: hexToRgba(palette.accentBlue.hex, 0.12),      text: '#1a5fa8' },
@@ -31,4 +35,5 @@ export const TYPE_COLORS = {
 
 // Categories where the source represents an individual (or a generic
 // channel) rather than a person inside another company.
+// LHCSA / CHHA always require a company/entity name.
 export const NO_ENTITY_TYPES = new Set(['Self-Referral', 'Campaign', 'Other']);

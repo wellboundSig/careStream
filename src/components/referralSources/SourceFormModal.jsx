@@ -246,7 +246,9 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
             title="Affiliation"
             sub={entityIsNA
               ? 'Not applicable for this category.'
-              : 'The CCO, hospital, practice, or facility this person works for.'}
+              : type === 'LHCSA' || type === 'CHHA'
+                ? 'Required — enter the LHCSA / CHHA agency company name.'
+                : 'The CCO, hospital, practice, agency, or facility this person works for.'}
           >
             <FieldLabel required={entityRequired} optional={!entityRequired && !entityIsNA}>
               Company / entity
@@ -261,12 +263,24 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
               onChange={(e) => setSourceEntity(e.target.value)}
               onFocus={() => setFocus((f) => ({ ...f, ent: true }))}
               onBlur={() => setFocus((f) => ({ ...f, ent: false }))}
-              placeholder={entityIsNA ? 'Not applicable' : 'e.g. Tri-County Care'}
+              placeholder={
+                entityIsNA
+                  ? 'Not applicable'
+                  : type === 'LHCSA'
+                    ? 'e.g. ABC Home Care LLC'
+                    : type === 'CHHA'
+                      ? 'e.g. Visiting Nurse Service'
+                      : 'e.g. Tri-County Care'
+              }
               disabled={entityIsNA}
               style={inputStyle(focus.ent, showErrors && entityErr, entityIsNA)}
             />
             {showErrors && entityErr && (
-              <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>Required for this category.</p>
+              <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>
+                {type === 'LHCSA' || type === 'CHHA'
+                  ? 'Required — enter the company / agency name for this LHCSA or CHHA.'
+                  : 'Required for this category.'}
+              </p>
             )}
           </Section>
 

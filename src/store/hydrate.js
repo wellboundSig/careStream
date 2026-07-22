@@ -64,7 +64,25 @@ const TABLES = [
 ];
 
 /** table name → store key, used by the realtime layer for targeted merges. */
-export const TABLE_TO_STORE_KEY = Object.fromEntries(TABLES.map((t) => [t.table, t.key]));
+export const TABLE_TO_STORE_KEY = {
+  ...Object.fromEntries(TABLES.map((t) => [t.table, t.key])),
+  // Recipient-scoped: not bulk-hydrated (privacy + size). Loaded via hydrateNotificationsForUser.
+  Notifications: 'notifications',
+};
+
+/**
+ * Load the signed-in user's notification inbox only (never all users' rows).
+ */
+export async function hydrateNotificationsForUser(userId) {
+  if (!userId) return;
+  try {
+    const { getNotificationsForUser } = await import('../api/notifications.js');
+    const records = await getNotificationsForUser(userId, { maxRecords: 150 });
+    mergeEntities('notifications', normalize(records));
+  } catch (err) {
+    console.warn('[hydrate] Notifications:', err.message);
+  }
+}
 
 /**
  * Batched hydrate (wellbound-api only): all tables in ONE round trip via

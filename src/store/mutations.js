@@ -100,6 +100,77 @@ export function deleteNoteOptimistic(recordId) {
   return optimisticDelete('notes', 'Notes', recordId);
 }
 
+function generateNotificationId() {
+  return `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * Persist mention (or other) notifications for recipients.
+ * Does not optimistically insert into the actor's local store — inbox is recipient-scoped.
+ */
+export async function createMentionNotifications({
+  mentionedUserIds,
+  actorUserId,
+  noteId,
+  patientId,
+  referralId,
+  noteContent,
+  actorName,
+  patientLabel,
+}) {
+  const ids = [...new Set((mentionedUserIds || []).filter((id) => id && id !== actorUserId))];
+  if (ids.length === 0) return [];
+
+  const { createNotification } = await import('../api/notifications.js');
+  const { mentionPlainPreview } = await import('../utils/mentions.js');
+  const now = new Date().toISOString();
+  const preview = mentionPlainPreview(noteContent, 120);
+  const title = `${actorName || 'Someone'} mentioned you`;
+  const body = patientLabel
+    ? `${patientLabel}: ${preview || 'Open the patient note.'}`
+    : (preview || 'You were mentioned in a note.');
+
+  return Promise.all(
+    ids.map((recipientId) =>
+      createNotification({
+        id: generateNotificationId(),
+        recipient_user_id: recipientId,
+        actor_user_id: actorUserId,
+        type: 'mention',
+        entity_type: 'note',
+        entity_id: noteId,
+        patient_id: patientId || null,
+        referral_id: referralId || null,
+        title,
+        body,
+        is_read: false,
+        created_at: now,
+        updated_at: now,
+      }).catch((err) => {
+        console.warn('[notifications] failed to create mention alert:', err.message);
+        return null;
+      }),
+    ),
+  );
+}
+
+export function markNotificationReadOptimistic(recordId) {
+  return optimisticUpdate('notifications', 'Notifications', recordId, {
+    is_read: true,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export function markAllNotificationsReadOptimistic(recipientUserId) {
+  const state = useCareStore.getState();
+  const unread = Object.values(state.notifications || {}).filter(
+    (n) => n.recipient_user_id === recipientUserId && !n.is_read,
+  );
+  return Promise.all(
+    unread.map((n) => markNotificationReadOptimistic(n._id).catch(() => null)),
+  );
+}
+
 export function getNextTaskId() {
   const tasks = useCareStore.getState().tasks;
   let max = 0;

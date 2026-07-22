@@ -70,13 +70,19 @@ async function applyChange({ table, recId, action, actorSub }) {
   } catch {
     return; // deleted in the meantime / transient — polling will reconcile
   }
+  const me = myAppUserId();
+
+  // Notifications are recipient-private — never merge another user's inbox rows.
+  if (table === 'Notifications') {
+    if (!me || record.fields.recipient_user_id !== me) return;
+  }
+
   const prev = useCareStore.getState()[storeKey]?.[recId];
   mergeEntities(storeKey, { [recId]: { _id: recId, ...record.fields } });
 
-  // Task-assignment notification: someone ELSE created/updated a task that is
+  // Task-assignment toast: someone ELSE created/updated a task that is
   // now assigned to me (and wasn't before).
   if (table === 'Tasks' && actorSub !== myClerkId()) {
-    const me = myAppUserId();
     const assignee = record.fields.assigned_to_id;
     if (me && assignee === me && prev?.assigned_to_id !== me) {
       notify({
@@ -85,6 +91,20 @@ async function applyChange({ table, recId, action, actorSub }) {
         href: '/tasks',
       });
     }
+  }
+
+  // Mention (and future) inbox toasts when a notification lands for me.
+  if (
+    table === 'Notifications' &&
+    actorSub !== myClerkId() &&
+    record.fields.recipient_user_id === me &&
+    !prev
+  ) {
+    notify({
+      title: record.fields.title || 'New notification',
+      body: record.fields.body || '',
+      href: record.fields.patient_id ? null : undefined,
+    });
   }
 }
 

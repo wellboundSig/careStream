@@ -17,10 +17,11 @@ import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { prefetchClinicians } from '../../hooks/useEsperClinicians.js';
 import { useCareStore, setupBroadcastSync } from '../../store/careStore.js';
-import { hydrateStore } from '../../store/hydrate.js';
+import { hydrateStore, hydrateNotificationsForUser } from '../../store/hydrate.js';
 import { startSync, stopSync } from '../../store/sync.js';
 import { startRealtime, stopRealtime } from '../../store/realtime.js';
 import { isPopOutWindow, openPopOut } from '../../utils/windowManager.js';
+import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -57,6 +58,7 @@ export default function AppShell() {
   const { open: openDrawer } = usePatientDrawer();
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
+  const { appUserId } = useCurrentAppUser();
   const isPopOut = isPopOutWindow();
 
   const [division, setDivision] = useState('All');
@@ -89,6 +91,13 @@ export default function AppShell() {
       startRealtime();
     }
   }, [hydrated]);
+
+  // Recipient-scoped notification inbox (after we know who is signed in)
+  useEffect(() => {
+    if (hydrated && appUserId) {
+      hydrateNotificationsForUser(appUserId);
+    }
+  }, [hydrated, appUserId]);
 
   // Ctrl+N / Cmd+N — open New Referral form from anywhere (desktop only)
   useEffect(() => {

@@ -7,6 +7,7 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { conflictCategoryLabel, normalizeSeverity } from '../../../utils/conflictFlagging.js';
 import LoadingState from '../../common/LoadingState.jsx';
+import MentionText from '../../common/MentionText.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function fmtFull(d) {
@@ -428,9 +429,19 @@ function TimelineEntry({ entry, resolveUser, appUserId, isLast }) {
                 Resolution note
               </p>
             )}
-            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', display: expanded ? 'block' : '-webkit-box', WebkitLineClamp: expanded ? undefined : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {humanizeUserIds(entry.noteContent, resolveUser)}
-            </p>
+            <div style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.55, display: expanded ? 'block' : '-webkit-box', WebkitLineClamp: expanded ? undefined : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {isNote ? (
+                <MentionText
+                  content={entry.noteContent}
+                  resolveUser={resolveUser}
+                  highlightUserId={appUserId}
+                />
+              ) : (
+                <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {humanizeUserIds(entry.noteContent, resolveUser)}
+                </span>
+              )}
+            </div>
             {hasLongContent && (
               <button onClick={() => setExpanded((e) => !e)} style={{ fontSize: 11.5, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit' }}>
                 {expanded ? 'Show less' : 'Show more'}

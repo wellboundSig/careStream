@@ -27,10 +27,8 @@ export const SERVICES     = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 export const PRIORITIES   = ['Low', 'Normal', 'High', 'Critical'];
 export const F2F_URGENCY  = ['Green', 'Yellow', 'Orange', 'Red', 'Expired'];
 export const REGIONS      = ['LI', 'Bronx', 'Westchester', 'NYC'];
-export const SOURCE_TYPES = [
-  'Hospital', 'SNF', 'MD/PCP', 'ALF', 'Web', 'Vendor', 'Fax',
-  'Allscripts', 'Wellness Director', 'Campaign', 'Self-Referral', 'Other',
-];
+// Keep in sync with referralSources/sourceConstants.js (directory catalog).
+export { SOURCE_TYPES } from '../components/referralSources/sourceConstants.js';
 
 // ── Lookup cache (session-scoped) ─────────────────────────────────────────────
 

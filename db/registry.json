@@ -1290,6 +1290,76 @@
       }
     }
   },
+  "Notifications": {
+    "pgTable": "notifications",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "recipient_user_id": {
+        "column": "recipient_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "actor_user_id": {
+        "column": "actor_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_type": {
+        "column": "entity_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_id": {
+        "column": "entity_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
+      },
+      "body": {
+        "column": "body",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_read": {
+        "column": "is_read",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
   "Files": {
     "pgTable": "files",
     "fields": {
