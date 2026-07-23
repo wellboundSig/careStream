@@ -41,6 +41,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import { createTaskOptimistic } from '../../store/mutations.js';
+import { todayCalendarDate } from '../../utils/dateFormat.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -450,7 +451,7 @@ export default function TaskComposer({
           <input
             type="date"
             value={dueDate}
-            min={new Date().toISOString().split('T')[0]}
+            min={todayCalendarDate()}
             onChange={(e) => setDueDate(e.target.value)}
             style={inputStyle}
           />
@@ -459,7 +460,7 @@ export default function TaskComposer({
           <input
             type="date"
             value={scheduledDate}
-            min={new Date().toISOString().split('T')[0]}
+            min={todayCalendarDate()}
             onChange={(e) => setScheduledDate(e.target.value)}
             style={inputStyle}
           />

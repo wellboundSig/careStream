@@ -12,6 +12,7 @@ import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import TaskComposer from '../components/tasks/TaskComposer.jsx';
 import AccessDenied from '../components/common/AccessDenied.jsx';
+import { parseCalendarDate } from '../utils/dateFormat.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales: { 'en-US': enUS } });
@@ -97,8 +98,8 @@ export default function CalendarPage() {
 
     Object.values(referralMap).forEach((ref) => {
       if (!ref.f2f_expiration) return;
-      const d = new Date(ref.f2f_expiration);
-      if (isNaN(d.getTime())) return;
+      const d = parseCalendarDate(ref.f2f_expiration);
+      if (!d) return;
       const patient = patientMap[ref._patientRecordId] ||
         Object.values(patientMap).find((p) => p.id === ref.patient_id);
       const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Unknown';
@@ -119,8 +120,8 @@ export default function CalendarPage() {
       if (!isOwner) return;
 
       if (task.due_date) {
-        const d = new Date(task.due_date);
-        if (!isNaN(d.getTime())) {
+        const d = parseCalendarDate(task.due_date);
+        if (d) {
           const patient = task.patient_id
             ? Object.values(patientMap).find((p) => p.id === task.patient_id)
             : null;
@@ -138,8 +139,8 @@ export default function CalendarPage() {
       }
 
       if (task.scheduled_date) {
-        const d = new Date(task.scheduled_date);
-        if (!isNaN(d.getTime())) {
+        const d = parseCalendarDate(task.scheduled_date);
+        if (d) {
           const patient = task.patient_id
             ? Object.values(patientMap).find((p) => p.id === task.patient_id)
             : null;

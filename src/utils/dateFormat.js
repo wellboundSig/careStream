@@ -22,6 +22,15 @@ export function toCalendarDateInput(value) {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
 }
 
+/** Today's date as YYYY-MM-DD in local calendar time (not UTC). */
+export function todayCalendarDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
 /** Add N calendar days; returns YYYY-MM-DD. */
 export function addCalendarDays(dateStr, n) {
   const d = parseCalendarDate(dateStr);

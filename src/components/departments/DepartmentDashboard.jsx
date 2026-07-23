@@ -15,6 +15,8 @@ import EmptyState from '../common/EmptyState.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
 import { STAGE_SLUGS } from '../../data/stageConfig.js';
+import { buildTeamActivityEvents, activityColor } from '../../utils/teamActivity.js';
+import { fmtCalendarDate, fmtDateTime, daysUntilCalendarDate } from '../../utils/dateFormat.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TERMINAL = new Set(['NTUC', 'SOC Completed']);
@@ -26,10 +28,7 @@ const STAGE_BAR_COLOR = {
   'SOC Completed': palette.accentGreen.hex, 'Hold': palette.highlightYellow.hex, 'NTUC': hexToRgba(palette.backgroundDark.hex, 0.33),
 };
 const STATUS_DOT = { Active: palette.accentGreen.hex, Pending: palette.highlightYellow.hex, Suspended: palette.accentOrange.hex, Revoked: hexToRgba(palette.backgroundDark.hex, 0.3) };
-const ACTION_COLORS = { 'Referral Created': palette.accentGreen.hex, 'Stage Change': palette.accentBlue.hex, 'Note Added': palette.primaryMagenta.hex, 'Task Created': palette.accentOrange.hex, 'File Uploaded': palette.primaryDeepPlum.hex, 'Patient Created': palette.accentGreen.hex, 'Insurance Check': palette.highlightYellow.hex, 'Triage Submitted': palette.primaryMagenta.hex, 'Conflict Flagged': palette.accentOrange.hex };
 
-function fmtDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-function fmtTime(ts) { if (!ts) return '—'; const diff = Date.now() - new Date(ts).getTime(); const m = Math.floor(diff / 60000); if (m < 2) return 'Just now'; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
 function initials(f, l) { return `${(f || '?')[0]}${(l || '')[0] || ''}`.toUpperCase(); }
 
 export default function DepartmentDashboard({ department, scope }) {
@@ -39,9 +38,24 @@ export default function DepartmentDashboard({ department, scope }) {
   const { appUserId } = useCurrentAppUser();
   const navigate = useNavigate();
   const storeUsers = useCareStore((s) => s.users);
-  const activityLog = useCareStore((s) => s.activityLog);
   const storePatients = useCareStore((s) => s.patients);
-  const { can } = usePermissions();
+  const storeReferrals = useCareStore((s) => s.referrals);
+  const activityLog = useCareStore((s) => s.activityLog);
+  const stageHistory = useCareStore((s) => s.stageHistory);
+  const notes = useCareStore((s) => s.notes);
+  const tasks = useCareStore((s) => s.tasks);
+  const files = useCareStore((s) => s.files);
+  const conflicts = useCareStore((s) => s.conflicts);
+  const triageAdult = useCareStore((s) => s.triageAdult);
+  const triagePediatric = useCareStore((s) => s.triagePediatric);
+  const insuranceChecks = useCareStore((s) => s.insuranceChecks);
+  const authorizations = useCareStore((s) => s.authorizations);
+  const clinicalReviews = useCareStore((s) => s.clinicalReviews);
+  const cursoryReviews = useCareStore((s) => s.cursoryReviews);
+  const opwddCases = useCareStore((s) => s.opwddCases);
+  const opwddChecklistItems = useCareStore((s) => s.opwddChecklistItems);
+  const disenrollmentAssistanceFlags = useCareStore((s) => s.disenrollmentAssistanceFlags);
+  const { can, hasDivision } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
   const [expandedMember, setExpandedMember] = useState(null);
   const [search, setSearch] = useState('');
@@ -64,9 +78,31 @@ export default function DepartmentDashboard({ department, scope }) {
   const members = useMemo(() => Object.values(storeUsers).filter((u) => u.department_id === department.id && (u.status === 'Active' || !u.status)).sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '')), [storeUsers, department.id]);
 
   const scopedReferrals = useMemo(() => {
-    if (!scopeStages.length) return referrals.filter((r) => !TERMINAL.has(r.current_stage));
-    return referrals.filter((r) => new Set(scopeStages).has(r.current_stage));
-  }, [referrals, scopeStages]);
+    const stageSet = scopeStages.length ? new Set(scopeStages) : null;
+    const deptDiv = department.division === 'ALF' || department.division === 'Special Needs'
+      ? department.division
+      : null;
+
+    return referrals.filter((r) => {
+      // Stage scope (department scope packet)
+      if (stageSet) {
+        if (!stageSet.has(r.current_stage)) return false;
+      } else if (TERMINAL.has(r.current_stage)) {
+        return false;
+      }
+
+      const div = r.division || r.patient?.division || null;
+
+      // Department's configured division (e.g. SPN Intake → Special Needs only)
+      if (deptDiv && div !== deptDiv) return false;
+
+      // Viewer's division permissions
+      if (div === 'ALF' && !hasDivision('ALF')) return false;
+      if (div === 'Special Needs' && !hasDivision('Special Needs')) return false;
+
+      return true;
+    });
+  }, [referrals, scopeStages, department.division, hasDivision]);
 
   const activeCount = scopedReferrals.filter((r) => !TERMINAL.has(r.current_stage)).length;
   const now = Date.now();
@@ -84,9 +120,42 @@ export default function DepartmentDashboard({ department, scope }) {
     return [...list].sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0));
   }, [scopedReferrals, search, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
 
-  const allActivities = useMemo(() => Object.values(activityLog || {}), [activityLog]);
-  function getMemberActs(uid, n) { return allActivities.filter((a) => a.actor_id === uid).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, n); }
-  function patName(pid) { if (!pid) return null; const p = Object.values(storePatients).find((pt) => pt.id === pid); return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : null; }
+  const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
+
+  const teamActivity = useMemo(() => buildTeamActivityEvents({
+    memberIds,
+    users: storeUsers,
+    stores: {
+      activityLog, stageHistory, notes, tasks, files, conflicts,
+      triageAdult, triagePediatric, insuranceChecks, authorizations,
+      clinicalReviews, cursoryReviews, referrals: storeReferrals,
+      opwddCases, opwddChecklistItems, disenrollmentAssistanceFlags,
+    },
+  }), [
+    memberIds, storeUsers, activityLog, stageHistory, notes, tasks, files, conflicts,
+    triageAdult, triagePediatric, insuranceChecks, authorizations,
+    clinicalReviews, cursoryReviews, storeReferrals,
+    opwddCases, opwddChecklistItems, disenrollmentAssistanceFlags,
+  ]);
+
+  const activityByMember = useMemo(() => {
+    const map = new Map();
+    for (const e of teamActivity) {
+      if (!map.has(e.actorId)) map.set(e.actorId, []);
+      map.get(e.actorId).push(e);
+    }
+    return map;
+  }, [teamActivity]);
+
+  function getMemberActs(uid, n) {
+    return (activityByMember.get(uid) || []).slice(0, n);
+  }
+
+  function patName(pid) {
+    if (!pid) return null;
+    const p = Object.values(storePatients).find((pt) => pt.id === pid || pt._id === pid);
+    return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : null;
+  }
   const hasAnyFilter = search.trim() || hasActiveFilters;
 
   useEffect(() => {
@@ -126,7 +195,10 @@ export default function DepartmentDashboard({ department, scope }) {
       case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
       case 'triage': return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
       case 'days': return <td key="days" style={{ padding: '11px 14px' }}><span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>{days === 0 ? 'Today' : `${days}d`}</span></td>;
-      case 'f2f': return <td key="f2f" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{ref.f2f_expiration ? `${Math.ceil((new Date(ref.f2f_expiration) - now) / 86400000)}d` : '—'}</td>;
+      case 'f2f': {
+        const daysLeft = daysUntilCalendarDate(ref.f2f_expiration);
+        return <td key="f2f" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{daysLeft == null ? '—' : `${daysLeft}d`}</td>;
+      }
       case 'owner': {
         const isMine = !!(appUserId && ref.intake_owner_id && ref.intake_owner_id === appUserId);
         return (
@@ -154,7 +226,7 @@ export default function DepartmentDashboard({ department, scope }) {
           </td>
         );
       }
-      case 'activity': return <td key="act" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{fmtDate(ref.referral_date)}</td>;
+      case 'activity': return <td key="act" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{fmtCalendarDate(ref.referral_date)}</td>;
       default: return <td key={col.key} />;
     }
   }
@@ -165,7 +237,11 @@ export default function DepartmentDashboard({ department, scope }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>{department.name}</h1>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{members.length} member{members.length !== 1 ? 's' : ''} · {activeCount} active · Supervisor: {resolveUser(department.supervisor)}{department.division ? ` · ${department.division}` : ''}</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+            {members.length} member{members.length !== 1 ? 's' : ''} · {activeCount} active · Supervisor: {resolveUser(department.supervisor)}
+            {department.division ? ` · ${department.division} only` : ''}
+            {scopeStages.length ? ` · ${scopeStages.length} stage${scopeStages.length !== 1 ? 's' : ''} in scope` : ''}
+          </p>
         </div>
       </div>
 
@@ -212,7 +288,8 @@ export default function DepartmentDashboard({ department, scope }) {
         <h2 style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 14 }}>Team</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
           {members.map((m) => {
-            const acts = getMemberActs(m.id, expandedMember === m.id ? 30 : 3);
+            const totalActs = (activityByMember.get(m.id) || []).length;
+            const acts = getMemberActs(m.id, expandedMember === m.id ? 50 : 5);
             const expanded = expandedMember === m.id;
             const photo = m.clerk_image_url || null;
             const roleName = resolveRole(m.role_id);
@@ -232,30 +309,51 @@ export default function DepartmentDashboard({ department, scope }) {
                       <OooBadge user={m} />
                     </div>
                     <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{m.email}</p>
-                    {roleName && <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex }}>{roleName}</span>}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {roleName && <span style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex }}>{roleName}</span>}
+                      <span style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{totalActs} event{totalActs !== 1 ? 's' : ''}</span>
+                    </div>
                   </div>
                   <button onClick={() => setExpandedMember(expanded ? null : m.id)} style={{ padding: '5px 11px', borderRadius: 6, background: expanded ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.05), border: 'none', color: expanded ? '#fff' : hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>{expanded ? 'Collapse' : 'Activity'}</button>
                 </div>
                 {(expanded || acts.length > 0) && (
-                  <div style={{ padding: '0 16px 12px', maxHeight: expanded ? 400 : 100, overflowY: 'auto', borderTop: `1px solid var(--color-border)` }}>
-                    {acts.length === 0 ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: 'italic', padding: '10px 0' }}>No recent activity</p>
+                  <div style={{ padding: '0 16px 12px', maxHeight: expanded ? 480 : 160, overflowY: 'auto', borderTop: `1px solid var(--color-border)` }}>
+                    {acts.length === 0 ? <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: 'italic', padding: '10px 0' }}>No tracked activity yet</p>
                     : acts.map((a) => {
-                      const ac = ACTION_COLORS[a.action] || hexToRgba(palette.backgroundDark.hex, 0.4);
-                      const pn = patName(a.patient_id);
+                      const ac = activityColor(a.colorKey || a.action, palette, hexToRgba);
+                      const pn = patName(a.patientId);
                       return (
-                        <div key={a._id || a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: ac, flexShrink: 0, marginTop: 5 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex }}>{a.action}</span>
-                              <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.3), marginLeft: 'auto', flexShrink: 0 }}>{fmtTime(a.timestamp)}</span>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                              <span style={{ fontSize: 12, fontWeight: 650, color: palette.backgroundDark.hex }}>{a.action}</span>
+                              <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }} title={a.timestamp}>
+                                {fmtDateTime(a.timestamp) || '—'}
+                              </span>
                             </div>
-                            {a.detail && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginTop: 1, lineHeight: 1.4 }}>{a.detail}</p>}
-                            {pn && <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 1 }}>{pn}</p>}
+                            {a.detail && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginTop: 2, lineHeight: 1.4 }}>{a.detail}</p>}
+                            {pn && (
+                              <p style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.accentBlue.hex, 0.85), marginTop: 2 }}>
+                                {pn}
+                              </p>
+                            )}
                           </div>
                         </div>
                       );
                     })}
+                    {!expanded && totalActs > acts.length && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMember(m.id)}
+                        style={{
+                          marginTop: 6, border: 'none', background: 'none', cursor: 'pointer',
+                          fontSize: 11.5, fontWeight: 650, color: palette.accentBlue.hex, padding: 0,
+                        }}
+                      >
+                        Show all {totalActs} events…
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

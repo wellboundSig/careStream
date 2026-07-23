@@ -7,20 +7,26 @@ import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import TaskComposer from '../../tasks/TaskComposer.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
+import {
+  daysUntilCalendarDate,
+  fmtCalendarDate,
+  parseCalendarDate,
+} from '../../../utils/dateFormat.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function isOverdue(dueDate) {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date();
+  const diff = daysUntilCalendarDate(dueDate);
+  return diff != null && diff < 0;
 }
 
-function fmtDate(d) {
+function fmtDue(d) {
   if (!d) return null;
-  const diff = Math.floor((new Date(d) - Date.now()) / 86400000);
+  const diff = daysUntilCalendarDate(d);
+  if (diff == null) return null;
   if (diff < 0) return { label: `Overdue ${Math.abs(diff)}d`, color: palette.primaryMagenta.hex };
   if (diff === 0) return { label: 'Due today', color: palette.accentOrange.hex };
   if (diff <= 7) return { label: `Due in ${diff}d`, color: '#7A5F00' };
-  return { label: new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: hexToRgba(palette.backgroundDark.hex, 0.45) };
+  return { label: fmtCalendarDate(d, ''), color: hexToRgba(palette.backgroundDark.hex, 0.45) };
 }
 
 const PRIORITY_ACCENT = {
@@ -57,7 +63,11 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
     if (!patient?.id) return [];
     return Object.values(allTasks)
       .filter((t) => t.patient_id === patient.id)
-      .sort((a, b) => new Date(a.due_date || '9999') - new Date(b.due_date || '9999'));
+      .sort((a, b) => {
+        const da = parseCalendarDate(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+        const db = parseCalendarDate(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+        return da - db;
+      });
   }, [allTasks, patient?.id]);
 
   const loading = !hydrated;
@@ -157,7 +167,7 @@ export default function TasksTab({ patient, referral, autoNewTask, onAutoNewTask
 // ── Task card ──────────────────────────────────────────────────────────────────
 function TaskCard({ task, resolveUser, confirmPending, onRequestComplete, onConfirmComplete, onCancelComplete }) {
   const isDone = task.status === 'Completed' || task.status === 'Cancelled';
-  const due = fmtDate(task.due_date);
+  const due = fmtDue(task.due_date);
   const overdue = isOverdue(task.due_date) && !isDone;
   const isBlocking = task.blocks_stage_progression === true || task.blocks_stage_progression === 'true';
   const priorityColor = PRIORITY_ACCENT[task.priority] || PRIORITY_ACCENT.Normal;

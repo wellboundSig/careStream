@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { daysUntilCalendarDate, fmtCalendarDate } from '../../utils/dateFormat.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /* ─── Type → hue mapping ───────────────────────────────────────── */
@@ -35,7 +36,9 @@ const STATUS_STYLES = {
 
 export function taskUrgencyLevel(dueDate) {
   if (!dueDate) return 'none';
-  const diff = Math.floor((new Date(dueDate) - Date.now()) / 86400000);
+  // Calendar-safe: YYYY-MM-DD via UTC midnight would look a day early in US TZ.
+  const diff = daysUntilCalendarDate(dueDate);
+  if (diff == null) return 'none';
   if (diff < 0)  return 'overdue';
   if (diff === 0) return 'today';
   if (diff <= 7)  return 'week';
@@ -52,13 +55,13 @@ const URGENCY_COLOR = {
 
 function formatDue(dateStr) {
   if (!dateStr) return null;
-  const d    = new Date(dateStr);
-  const diff = Math.floor((d - Date.now()) / 86400000);
+  const diff = daysUntilCalendarDate(dateStr);
+  if (diff == null) return null;
   if (diff < 0)  return `Overdue ${Math.abs(diff)}d`;
   if (diff === 0) return 'Due today';
   if (diff === 1) return 'Due tomorrow';
   if (diff <= 7)  return `Due in ${diff}d`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtCalendarDate(dateStr);
 }
 
 export default function TaskCard({ task, resolveUser, resolvePatient, resolvePatientRecord, onStatusChange }) {
