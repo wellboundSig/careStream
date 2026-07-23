@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
-  TABLE_SCHEMAS,
+  PRESETS, TABLE_SCHEMAS,
   STAGES, DIVISIONS, F2F_URGENCY,
   fetchReportData, exportToExcel,
 } from '../utils/reportEngine.js';
@@ -49,6 +49,396 @@ const Icon = {
   Link:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
   Ticket:    () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>,
 };
+
+const PRESET_ICONS = {
+  intake_volume:         Icon.Pipeline,
+  staff_audit:           Icon.Shield,
+  marketer_performance:  Icon.Chart,
+  pipeline_snapshot:     Icon.Pipeline,
+  ntuc_analysis:         Icon.Block,
+  f2f_expiration:        Icon.Clock,
+  hold_aging:            Icon.Pause,
+  insurance_barriers:    Icon.Shield,
+  authorization_tracker: Icon.Checkmark,
+  active_episodes:       Icon.Pills,
+  conflict_log:          Icon.Warning,
+  source_attribution:    Icon.Link,
+  support_tickets:       Icon.Ticket,
+};
+
+// ── Style tokens ───────────────────────────────────────────────────────────────
+const T = {
+  border:   'var(--color-border)',
+  surface:  () => palette.backgroundLight.hex,
+  text:     () => palette.backgroundDark.hex,
+  muted:    () => hexToRgba(palette.backgroundDark.hex, 0.45),
+  subtle:   () => hexToRgba(palette.backgroundDark.hex, 0.25),
+  divider:  () => hexToRgba(palette.backgroundDark.hex, 0.06),
+  accent:   () => palette.primaryMagenta.hex,
+};
+
+const fieldStyle = {
+  display: 'block',
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '6px 9px',
+  border: '1px solid var(--color-border)',
+  borderRadius: 3,
+  background: () => palette.backgroundLight.hex,
+  color: () => palette.backgroundDark.hex,
+  fontSize: 12.5,
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+
+function Field({ children, style, ...props }) {
+  return (
+    <input
+      {...props}
+      style={{
+        ...fieldStyle,
+        background: palette.backgroundLight.hex,
+        color: palette.backgroundDark.hex,
+        ...style,
+      }}
+    />
+  );
+}
+
+function Select({ children, style, ...props }) {
+  return (
+    <select
+      {...props}
+      style={{
+        ...fieldStyle,
+        background: palette.backgroundLight.hex,
+        color: palette.backgroundDark.hex,
+        ...style,
+      }}
+    >
+      {children}
+    </select>
+  );
+}
+
+// ── Section header ─────────────────────────────────────────────────────────────
+function SectionHeader({ label, right }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '9px 14px',
+      background: hexToRgba(palette.backgroundDark.hex, 0.04),
+      borderBottom: '1px solid var(--color-border)',
+    }}>
+      <span style={{
+        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.09em',
+        textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.5),
+      }}>
+        {label}
+      </span>
+      {right}
+    </div>
+  );
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────────
+function allFieldsFlat(schema) {
+  return schema.groups.flatMap((g) => g.fields);
+}
+function fieldsByKey(schema) {
+  const map = {};
+  allFieldsFlat(schema).forEach((f) => { map[f.key] = f; });
+  return map;
+}
+
+// ── Preset parameter controls ─────────────────────────────────────────────────
+function ParamControls({ controls, params, onChange }) {
+  const set = (k, v) => onChange({ ...params, [k]: v });
+
+  const rows = [];
+
+  if (controls.includes('dateRange')) {
+    rows.push(
+      <tr key="dateRange">
+        <td style={labelCell}>Date Range</td>
+        <td style={valueCell}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <Field type="date" value={params.dateFrom || ''} onChange={(e) => set('dateFrom', e.target.value)} style={{ width: 130 }} />
+            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>to</span>
+            <Field type="date" value={params.dateTo || ''} onChange={(e) => set('dateTo', e.target.value)} style={{ width: 130 }} />
+          </div>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('division')) {
+    rows.push(
+      <tr key="division">
+        <td style={labelCell}>Division</td>
+        <td style={valueCell}>
+          <Select value={params.division || ''} onChange={(e) => set('division', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Divisions</option>
+            {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('stage')) {
+    rows.push(
+      <tr key="stage">
+        <td style={labelCell}>Stage</td>
+        <td style={valueCell}>
+          <Select value={params.stage || ''} onChange={(e) => set('stage', e.target.value)} style={{ width: 220 }}>
+            <option value="">All Stages</option>
+            {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('f2fUrgency')) {
+    rows.push(
+      <tr key="f2fUrgency">
+        <td style={labelCell}>F2F Urgency</td>
+        <td style={valueCell}>
+          <Select value={params.f2fUrgency || ''} onChange={(e) => set('f2fUrgency', e.target.value)} style={{ width: 160 }}>
+            <option value="">All Levels</option>
+            {F2F_URGENCY.map((u) => <option key={u} value={u}>{u}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('authStatus')) {
+    rows.push(
+      <tr key="authStatus">
+        <td style={labelCell}>Auth Status</td>
+        <td style={valueCell}>
+          <Select value={params.authStatus || ''} onChange={(e) => set('authStatus', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Statuses</option>
+            {['Pending','Approved','Denied','Expired','Appealed'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('episodeStatus')) {
+    rows.push(
+      <tr key="episodeStatus">
+        <td style={labelCell}>Episode Status</td>
+        <td style={valueCell}>
+          <Select value={params.episodeStatus || ''} onChange={(e) => set('episodeStatus', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Statuses</option>
+            {['Active','Discharged','Transferred','Expired'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('revenueRisk')) {
+    rows.push(
+      <tr key="revenueRisk">
+        <td style={labelCell}>Revenue Risk</td>
+        <td style={valueCell}>
+          <Select value={params.revenueRisk || ''} onChange={(e) => set('revenueRisk', e.target.value)} style={{ width: 200 }}>
+            <option value="">All Records</option>
+            <option value="true">Flagged Only</option>
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('conflictStatus')) {
+    rows.push(
+      <tr key="conflictStatus">
+        <td style={labelCell}>Conflict Status</td>
+        <td style={valueCell}>
+          <Select value={params.conflictStatus || ''} onChange={(e) => set('conflictStatus', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Statuses</option>
+            {['Open','In Progress','Resolved','Waived'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('ticketStatus')) {
+    rows.push(
+      <tr key="ticketStatus">
+        <td style={labelCell}>Ticket Status</td>
+        <td style={valueCell}>
+          <Select value={params.ticketStatus || ''} onChange={(e) => set('ticketStatus', e.target.value)} style={{ width: 180 }}>
+            <option value="">All Statuses</option>
+            {['Unaddressed', 'In Progress', 'Resolved'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </td>
+      </tr>
+    );
+  }
+
+  if (rows.length === 0) {
+    return <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), margin: '12px 0 0' }}>No parameters for this report.</p>;
+  }
+
+  return (
+    <table style={{ borderCollapse: 'collapse', marginTop: 10, width: '100%' }}>
+      <tbody>{rows}</tbody>
+    </table>
+  );
+}
+
+const labelCell = {
+  padding: '6px 12px 6px 0',
+  fontSize: 12,
+  fontWeight: 600,
+  color: hexToRgba(palette.backgroundDark.hex, 0.5),
+  verticalAlign: 'middle',
+  whiteSpace: 'nowrap',
+  width: 130,
+};
+const valueCell = {
+  padding: '6px 0',
+  verticalAlign: 'middle',
+};
+
+// ── Preset panel (list + detail) ──────────────────────────────────────────────
+function PresetPanel() {
+  // Episodes report is intentionally omitted from the canned list.
+  const cannedPresets = PRESETS.filter((p) => p.id !== 'active_episodes');
+  const [selectedId, setSelectedId] = useState(cannedPresets[0]?.id || PRESETS[0].id);
+  const [params,     setParams]     = useState({});
+  const [loading,    setLoading]    = useState(false);
+  const [status,     setStatus]     = useState(null);
+  const [rowCount,   setRowCount]   = useState(null);
+  const [errMsg,     setErrMsg]     = useState('');
+
+  const preset = cannedPresets.find((p) => p.id === selectedId) || cannedPresets[0];
+
+  function handleSelect(id) {
+    setSelectedId(id);
+    setParams({});
+    setStatus(null);
+    setErrMsg('');
+    setRowCount(null);
+  }
+
+  async function handleExport() {
+    setLoading(true);
+    setStatus(null);
+    setErrMsg('');
+    try {
+      const { rows, columns, summary } = await preset.run(params);
+      const subtitle = Object.entries(params).filter(([, v]) => v)
+        .map(([k, v]) => `${k}: ${v}`).join(' | ') || `Generated: ${new Date().toLocaleString()}`;
+      await exportToExcel(rows, columns, preset.title, subtitle, summary || null);
+      setRowCount(rows.length);
+      setStatus('done');
+    } catch (e) {
+      setErrMsg(e.message || 'Export failed');
+      setStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden' }}>
+      {/* Report list */}
+      <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--color-border)' }}>
+        <SectionHeader label={`Reports (${cannedPresets.length})`} />
+        <div>
+          {cannedPresets.map((p, i) => {
+            const IconComp = PRESET_ICONS[p.id] || Icon.Chart;
+            const active   = p.id === selectedId;
+            return (
+              <div
+                key={p.id}
+                onClick={() => handleSelect(p.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  borderBottom: i < cannedPresets.length - 1 ? '1px solid var(--color-border)' : 'none',
+                  background: active
+                    ? hexToRgba(palette.primaryMagenta.hex, 0.06)
+                    : 'transparent',
+                  borderLeft: `2px solid ${active ? palette.primaryMagenta.hex : 'transparent'}`,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ color: active ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.4), flexShrink: 0 }}>
+                  <IconComp />
+                </span>
+                <span style={{
+                  fontSize: 12.5, fontWeight: active ? 650 : 450,
+                  color: active ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+                  lineHeight: 1.3,
+                }}>
+                  {p.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Detail pane */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <SectionHeader label="Report Configuration" />
+
+        <div style={{ padding: '20px 24px', flex: 1 }}>
+          {/* Title + description */}
+          <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 5px' }}>
+              {preset.title}
+            </h2>
+            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.5 }}>
+              {preset.description}
+            </p>
+          </div>
+
+          {/* Parameters */}
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '0 0 8px' }}>
+              Parameters
+            </p>
+            <ParamControls controls={preset.paramControls} params={params} onChange={setParams} />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+            <button
+              onClick={handleExport}
+              disabled={loading}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                padding: '8px 16px', borderRadius: 3, border: 'none',
+                background: palette.primaryMagenta.hex,
+                color: palette.backgroundLight.hex,
+                fontSize: 12.5, fontWeight: 650, cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.65 : 1,
+              }}
+            >
+              <Icon.Download />
+              {loading ? 'Building workbook…' : 'Export Excel (Summary + Detail)'}
+            </button>
+
+            {status === 'done' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: palette.accentGreen.hex, fontWeight: 600 }}>
+                <Icon.Check /> {rowCount?.toLocaleString()} records · Summary + Detail tabs
+              </span>
+            )}
+            {status === 'error' && (
+              <span style={{ fontSize: 12, color: palette.primaryMagenta.hex }}>{errMsg}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Custom builder ─────────────────────────────────────────────────────────────
 const OPERATORS_FOR = {
@@ -400,7 +790,7 @@ function CustomBuilder() {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function Reports() {
-  const [tab, setTab] = useState('guided');
+  const [tab, setTab] = useState('presets');
 
   const { can } = usePermissions();
   if (!can(PERMISSION_KEYS.REPORT_VIEW)) return <AccessDenied message="You do not have permission to view reports." />;
@@ -414,13 +804,17 @@ export default function Reports() {
           Reports
         </h1>
         <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0 }}>
-          Purpose-driven guided reports, or build a custom export.
+          Canned operational exports, guided sentence reports, or a custom builder.
         </p>
       </div>
 
       {/* Tab navigation */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 20, gap: 0 }}>
-        {[['guided', 'Guided Reports'], ['custom', 'Custom Report Builder']].map(([id, label]) => (
+        {[
+          ['presets', 'Preset Reports'],
+          ['guided', 'Guided Reports'],
+          ['custom', 'Custom Report Builder'],
+        ].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -437,6 +831,7 @@ export default function Reports() {
         ))}
       </div>
 
+      {tab === 'presets' && <PresetPanel />}
       {tab === 'guided' && <GuidedReports />}
       {tab === 'custom' && <CustomBuilder />}
     </div>

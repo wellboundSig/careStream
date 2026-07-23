@@ -307,7 +307,7 @@ export default function GuidedReports() {
                 {template.title}
               </h2>
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0 }}>
-                Fill in the blanks — then preview or export.
+                Fill in the blanks, then preview or export.
               </p>
             </div>
             <button
