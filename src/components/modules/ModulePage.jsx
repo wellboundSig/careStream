@@ -528,6 +528,8 @@ export default function ModulePage({ stage }) {
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       maxWidth: 280,
+      // Per-cell border — tr borders don't paint reliably with border-collapse: separate (needed for sticky cols).
+      borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
       ...extra,
     });
     switch (col.key) {
@@ -939,6 +941,31 @@ export default function ModulePage({ stage }) {
               {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: '50%', background: palette.accentBlue.hex, flexShrink: 0 }} />}
             </button>
 
+            {/* Pin / unpin patient column */}
+            <button
+              type="button"
+              onClick={() => setFreezePatient(!freezePatientCol)}
+              title={freezePatientCol ? 'Unpin patient name (scrolls with columns)' : 'Pin patient name while scrolling columns'}
+              aria-pressed={freezePatientCol}
+              style={{
+                height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
+                border: `1px solid ${freezePatientCol ? palette.accentBlue.hex : 'var(--color-border)'}`,
+                background: freezePatientCol ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+                fontSize: 12, fontWeight: 600,
+                color: freezePatientCol ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                cursor: 'pointer', transition: 'all 0.12s',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+                {freezePatientCol ? (
+                  <path d="M12 17v5M9 3h6l1 7h2a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4h2L9 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                ) : (
+                  <path d="M12 17v5M9 3h6l1 7h2a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4h2L9 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+                )}
+              </svg>
+              {freezePatientCol ? 'Pinned' : 'Pin patient'}
+            </button>
+
             {/* Column picker */}
             <div ref={colPickerRef} style={{ position: 'relative', flexShrink: 0 }}>
               <button
@@ -1324,7 +1351,6 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
         height: QUEUE_ROW_HEIGHT,
-        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`,
         background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.06) : hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent',
         cursor: 'pointer', transition: 'background 0.1s',
       }}

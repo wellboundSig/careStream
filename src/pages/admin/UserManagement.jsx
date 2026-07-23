@@ -142,7 +142,7 @@ export default function UserManagement() {
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>User Management</h1>
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-              {users.length} people — click a row to open settings
+              {users.length} people. Click a row to open settings
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 8, padding: '0 12px', height: 36, width: 260 }}>

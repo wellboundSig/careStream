@@ -2,9 +2,8 @@ import { useState, useMemo } from 'react';
 import { useCareStore, mergeEntities, removeEntity, updateEntity } from '../../store/careStore.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import {
-  PERMISSION_CATALOG,
-  PERMISSION_CATEGORIES,
   PERMISSION_KEYS,
+  PERMISSION_CATALOG,
 } from '../../data/permissionKeys.js';
 import {
   createPermissionPreset,
@@ -12,15 +11,10 @@ import {
   deletePermissionPreset,
 } from '../../api/permissionPresets.js';
 import { updateRole } from '../../api/roles.js';
+import PermissionChecklist from '../../components/users/PermissionChecklist.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const ALL_KEYS = Object.values(PERMISSION_KEYS);
-
-const CAT_COLORS = [
-  palette.primaryMagenta.hex, palette.accentBlue.hex, palette.accentGreen.hex,
-  palette.accentOrange.hex, palette.primaryDeepPlum.hex, palette.highlightYellow.hex,
-];
-function catColor(idx) { return CAT_COLORS[idx % CAT_COLORS.length]; }
 
 export default function Permissions() {
   const { can } = usePermissions();
@@ -229,7 +223,7 @@ function RoleDefaultsPanel({ onToast }) {
           Role defaults
         </h2>
         <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, maxWidth: 640 }}>
-          Choose the default permission preset for each role — or leave blank for a name-only role.
+          Choose the default permission preset for each role,or leave blank for a name-only role.
           When you assign a role in User Management, you&apos;ll be asked whether to apply this default or keep the user&apos;s current permissions.
         </p>
       </div>
@@ -319,11 +313,6 @@ function PresetEditor({ preset, onClose, onSaved, onDeleted }) {
     });
   }
 
-  const grouped = PERMISSION_CATEGORIES.map((cat) => ({
-    category: cat,
-    items: PERMISSION_CATALOG.filter((p) => p.category === cat),
-  })).filter((g) => g.items.length > 0);
-
   async function handleSave() {
     if (!name.trim()) return;
     setSaving(true);
@@ -382,7 +371,7 @@ function PresetEditor({ preset, onClose, onSaved, onDeleted }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 9995, background: hexToRgba(palette.backgroundDark.hex, 0.55), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
     >
-      <div style={{ background: palette.backgroundLight.hex, borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: `0 8px 48px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
+      <div style={{ background: palette.backgroundLight.hex, borderRadius: 16, width: '100%', maxWidth: 760, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: `0 8px 48px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--color-border)', flexShrink: 0, background: palette.primaryDeepPlum.hex }}>
@@ -409,31 +398,13 @@ function PresetEditor({ preset, onClose, onSaved, onDeleted }) {
         </div>
 
         {/* Checkboxes */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 8px' }}>
-          {grouped.map((group, gi) => {
-            const catKeys = group.items.map((p) => p.key);
-            const allCatChecked = catKeys.every((k) => checked.has(k));
-            const someCatChecked = catKeys.some((k) => checked.has(k)) && !allCatChecked;
-            const color = catColor(gi);
-
-            return (
-              <div key={group.category} style={{ marginBottom: 16 }}>
-                <div onClick={() => toggleCategory(group.category)} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer', userSelect: 'none' }}>
-                  <input type="checkbox" checked={allCatChecked} ref={(el) => { if (el) el.indeterminate = someCatChecked; }} onChange={() => toggleCategory(group.category)} style={{ accentColor: color, width: 14, height: 14, cursor: 'pointer' }} />
-                  <span style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase', color }}>{group.category}</span>
-                  <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>{catKeys.filter((k) => checked.has(k)).length}/{catKeys.length}</span>
-                </div>
-                <div style={{ paddingLeft: 6 }}>
-                  {group.items.map((perm) => (
-                    <label key={perm.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '4px 8px', borderRadius: 5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={checked.has(perm.key)} onChange={() => toggle(perm.key)} style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, fontWeight: 500, color: palette.backgroundDark.hex }}>{perm.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
+          <PermissionChecklist
+            checked={checked}
+            onToggle={toggle}
+            onToggleCategory={toggleCategory}
+            showDescriptions={false}
+          />
         </div>
 
         {/* Footer */}

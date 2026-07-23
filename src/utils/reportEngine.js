@@ -716,7 +716,15 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       out.__assigned_name     = resolve.user(users[row.assigned_to_id]);
       out.__flagged_by        = resolve.user(users[row.flagged_by_id]);
       out.__resolved_by       = resolve.user(users[row.resolved_by_id]);
-      out.__intake_owner      = resolve.user(users[row.intake_owner_id]);
+      // Lead Entry / Discarded Leads are not referrals yet — no intake owner.
+      // (Older rows may incorrectly have creator/marketer stamped as owner.)
+      out.__intake_owner = (
+        row.current_stage === 'Lead Entry'
+        || row.current_stage === 'Discarded Leads'
+        || !row.intake_owner_id
+      )
+        ? ''
+        : resolve.user(users[row.intake_owner_id]);
       out.__hold_owner        = resolve.user(users[row.hold_owner_id]);
       out.__clinical_by       = resolve.user(users[row.clinical_review_completed_by_id || row.clinical_review_by || row.reviewed_by]);
       out.__f2f_logged_by     = resolve.user(users[row.f2f_date_logged_by_id]);
@@ -785,21 +793,37 @@ export async function exportToExcel(rows, columns, reportTitle, subtitle = '', s
 
 // ── Aggregated reports (computed in JS after fetch) ───────────────────────────
 
+/** Shared date + division + multi-id filters for referral reports. */
+export function buildReferralParamFilters({
+  dateFrom, dateTo, division,
+  dateField = 'referral_date',
+  marketerIds, ownerIds, sourceIds, stages,
+} = {}) {
+  const filters = [];
+  if (dateFrom && dateTo) filters.push({ field: dateField, operator: 'between', value: dateFrom, value2: dateTo });
+  else if (dateFrom) filters.push({ field: dateField, operator: 'after', value: dateFrom });
+  else if (dateTo) filters.push({ field: dateField, operator: 'before', value: dateTo });
+  if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+  if (Array.isArray(stages) && stages.length) {
+    filters.push({ field: 'current_stage', operator: 'in', value: stages });
+  }
+  if (Array.isArray(marketerIds) && marketerIds.length) {
+    filters.push({ field: 'marketer_id', operator: 'in', value: marketerIds });
+  }
+  if (Array.isArray(ownerIds) && ownerIds.length) {
+    filters.push({ field: 'intake_owner_id', operator: 'in', value: ownerIds });
+  }
+  if (Array.isArray(sourceIds) && sourceIds.length) {
+    filters.push({ field: 'referral_source_id', operator: 'in', value: sourceIds });
+  }
+  return filters;
+}
+
 /**
  * Marketer Performance — one row per marketer showing referral counts by stage.
  */
-export async function runMarketerPerformance({ dateFrom, dateTo, division }) {
-  const filters = [];
-  if (dateFrom || dateTo) {
-    if (dateFrom && dateTo) {
-      filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
-    } else if (dateFrom) {
-      filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
-    } else {
-      filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
-    }
-  }
-  if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+export async function runMarketerPerformance({ dateFrom, dateTo, division, marketerIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds });
 
   const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: ['__marketer_name', '__marketer_region'] });
   const marketers = await getLookupMap('Marketers');
@@ -906,12 +930,8 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division }) {
 /**
  * Intake Volume — referrals created in range with owner / stage / daily volume.
  */
-export async function runIntakeVolume({ dateFrom, dateTo, division }) {
-  const filters = [];
-  if (dateFrom && dateTo) filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
-  else if (dateFrom) filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
-  else if (dateTo) filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
-  if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, marketerIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, ownerIds, marketerIds });
 
   const cols = [
     '__patient_name', 'division', 'current_stage', 'priority', 'referral_date',
@@ -1116,12 +1136,8 @@ export async function runStaffAudit({ dateFrom, dateTo }) {
 /**
  * Source & Campaign Attribution — one row per source
  */
-export async function runSourceAttribution({ dateFrom, dateTo, division }) {
-  const filters = [];
-  if (dateFrom && dateTo) filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
-  else if (dateFrom) filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
-  else if (dateTo)   filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
-  if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+export async function runSourceAttribution({ dateFrom, dateTo, division, sourceIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, sourceIds });
 
   const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: ['__source_name', '__source_type', '__campaign_name'] });
 
@@ -1341,6 +1357,84 @@ export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }
   return { rows, columns };
 }
 
+/**
+ * Start of Care — patients with SOC completed in a date range.
+ */
+export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds } = {}) {
+  const filters = [
+    { field: 'current_stage', operator: 'eq', value: 'SOC Completed' },
+    ...buildReferralParamFilters({
+      dateFrom,
+      dateTo,
+      division,
+      marketerIds,
+      ownerIds,
+      dateField: 'soc_completed_date',
+    }),
+  ];
+  // If SOC completed date is empty on older rows, also allow referral_date fallback
+  // by not requiring not_empty — between on empty SOC date simply won't match.
+
+  const cols = [
+    '__patient_name', '__patient_dob', 'division', 'current_stage',
+    'referral_date', 'soc_scheduled_date', 'soc_completed_date',
+    '__marketer_name', '__intake_owner', '__facility_name', '__source_name',
+    'services_requested',
+  ];
+  const { rows } = await fetchReportData({
+    tableName: 'Referrals',
+    filters,
+    selectedKeys: cols,
+    sort: [{ field: 'soc_completed_date', direction: 'desc' }],
+  });
+
+  const columns = [
+    { key: '__patient_name', label: 'Patient' },
+    { key: '__patient_dob', label: 'DOB' },
+    { key: 'division', label: 'Division' },
+    { key: 'soc_completed_date', label: 'SOC Completed' },
+    { key: 'soc_scheduled_date', label: 'SOC Scheduled' },
+    { key: 'referral_date', label: 'Referral Date' },
+    { key: '__marketer_name', label: 'Marketer' },
+    { key: '__intake_owner', label: 'Intake Owner' },
+    { key: '__facility_name', label: 'Facility' },
+    { key: '__source_name', label: 'Source' },
+    { key: 'services_requested', label: 'Services' },
+  ];
+
+  const byMarketer = {};
+  for (const r of rows) {
+    const m = r.__marketer_name || 'Unassigned';
+    byMarketer[m] = (byMarketer[m] || 0) + 1;
+  }
+  const marketerSeries = Object.entries(byMarketer).sort((a, b) => b[1] - a[1]).slice(0, 12);
+
+  return {
+    rows,
+    columns,
+    summary: {
+      kpis: [
+        { label: 'Starts of care', value: rows.length },
+        { label: 'Marketers', value: Object.keys(byMarketer).length },
+        { label: 'ALF', value: rows.filter((r) => r.division === 'ALF').length },
+        { label: 'Special Needs', value: rows.filter((r) => r.division === 'Special Needs').length },
+      ],
+      charts: marketerSeries.length ? [{
+        title: 'SOC completed by marketer',
+        type: 'bar',
+        labels: marketerSeries.map(([m]) => m),
+        datasets: [{
+          label: 'SOC',
+          data: marketerSeries.map(([, n]) => n),
+          backgroundColor: '#059669CC',
+          borderColor: '#059669',
+          borderWidth: 1,
+        }],
+      }] : [],
+    },
+  };
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
@@ -1370,13 +1464,13 @@ export const PRESETS = [
     title: 'Pipeline Snapshot',
     description: 'All referrals currently in the pipeline with patient info, stage, priority, marketer, and F2F status.',
     paramControls: ['dateRange', 'division', 'stage'],
-    async run({ dateFrom, dateTo, division, stage }) {
-      const filters = [];
-      if (dateFrom && dateTo) filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
-      else if (dateFrom) filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
-      else if (dateTo)   filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
-      if (division) filters.push({ field: 'division', operator: 'eq', value: division });
-      if (stage)    filters.push({ field: 'current_stage', operator: 'eq', value: stage });
+    async run({ dateFrom, dateTo, division, stage, stages, marketerIds } = {}) {
+      const stageList = Array.isArray(stages) && stages.length
+        ? stages
+        : (stage ? [stage] : []);
+      const filters = buildReferralParamFilters({
+        dateFrom, dateTo, division, marketerIds, stages: stageList,
+      });
 
       const cols = ['__patient_name','__patient_dob','division','current_stage','priority','services_requested','referral_date','__marketer_name','__facility_name','__source_name','f2f_urgency','f2f_expiration','is_pecos_verified','hchb_entered'];
       const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: cols });
@@ -1405,12 +1499,11 @@ export const PRESETS = [
     title: 'NTUC & Declined Analysis',
     description: 'All referrals that ended as Not to Utilize Care.',
     paramControls: ['dateRange', 'division'],
-    async run({ dateFrom, dateTo, division }) {
-      const filters = [{ field: 'current_stage', operator: 'eq', value: 'NTUC' }];
-      if (dateFrom && dateTo) filters.push({ field: 'referral_date', operator: 'between', value: dateFrom, value2: dateTo });
-      else if (dateFrom) filters.push({ field: 'referral_date', operator: 'after', value: dateFrom });
-      else if (dateTo)   filters.push({ field: 'referral_date', operator: 'before', value: dateTo });
-      if (division) filters.push({ field: 'division', operator: 'eq', value: division });
+    async run({ dateFrom, dateTo, division, marketerIds, sourceIds } = {}) {
+      const filters = [
+        { field: 'current_stage', operator: 'eq', value: 'NTUC' },
+        ...buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds, sourceIds }),
+      ];
 
       const cols = ['__patient_name','division','ntuc_reason','ntuc_financial_impact','referral_date','services_requested','__marketer_name','__facility_name','__source_name'];
       const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: cols });

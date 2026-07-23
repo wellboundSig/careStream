@@ -5,9 +5,9 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { createUserPermission, updateUserPermission } from '../../api/userPermissions.js';
 import {
   PERMISSION_CATALOG,
-  PERMISSION_CATEGORIES,
   PERMISSION_KEYS,
 } from '../../data/permissionKeys.js';
+import PermissionChecklist from './PermissionChecklist.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const ALL_KEYS = Object.values(PERMISSION_KEYS);
@@ -15,16 +15,6 @@ const ALL_KEYS = Object.values(PERMISSION_KEYS);
 function initials(first, last) {
   return `${(first || '?')[0]}${(last || '')[0] || ''}`.toUpperCase();
 }
-
-const CAT_COLORS = [
-  palette.primaryMagenta.hex,
-  palette.accentBlue.hex,
-  palette.accentGreen.hex,
-  palette.accentOrange.hex,
-  palette.primaryDeepPlum.hex,
-  palette.highlightYellow.hex,
-];
-function catColor(idx) { return CAT_COLORS[idx % CAT_COLORS.length]; }
 
 export default function PermissionModal({ user, onClose, onOpenAssignable }) {
   const { appUserId } = useCurrentAppUser();
@@ -169,11 +159,6 @@ export default function PermissionModal({ user, onClose, onOpenAssignable }) {
 
   const roleName = resolveRole(user.role_id);
 
-  const grouped = PERMISSION_CATEGORIES.map((cat) => ({
-    category: cat,
-    items: PERMISSION_CATALOG.filter((p) => p.category === cat),
-  })).filter((g) => g.items.length > 0);
-
   const assigneeSummary = (() => {
     if (!existingRecord?.allowed_assignees) return 'Everyone';
     try {
@@ -196,7 +181,7 @@ export default function PermissionModal({ user, onClose, onOpenAssignable }) {
     >
       <div style={{
         background: palette.backgroundLight.hex,
-        borderRadius: 16, width: '100%', maxWidth: 640,
+        borderRadius: 16, width: '100%', maxWidth: 760,
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         boxShadow: `0 8px 48px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
         overflow: 'hidden', position: 'relative',
@@ -254,74 +239,14 @@ export default function PermissionModal({ user, onClose, onOpenAssignable }) {
           <button onClick={selectNone} style={{ padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid var(--color-border)', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>None</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 8px' }}>
-          {grouped.map((group, gi) => {
-            const catKeys = group.items.map((p) => p.key);
-            const allCatChecked = catKeys.every((k) => checked.has(k));
-            const someCatChecked = catKeys.some((k) => checked.has(k)) && !allCatChecked;
-            const color = catColor(gi);
-
-            return (
-              <div key={group.category} style={{ marginBottom: 18 }}>
-                <div
-                  onClick={() => toggleCategory(group.category)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={allCatChecked}
-                    ref={(el) => { if (el) el.indeterminate = someCatChecked; }}
-                    onChange={() => toggleCategory(group.category)}
-                    style={{ accentColor: color, width: 14, height: 14, cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase', color }}>
-                    {group.category}
-                  </span>
-                  <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.3), fontWeight: 500 }}>
-                    {catKeys.filter((k) => checked.has(k)).length}/{catKeys.length}
-                  </span>
-                </div>
-
-                <div style={{ paddingLeft: 6 }}>
-                  {group.items.map((perm) => {
-                    const isChecked = checked.has(perm.key);
-                    const differsFromPreset = presetKeys && (presetKeys.has(perm.key) !== isChecked);
-                    return (
-                      <label
-                        key={perm.key}
-                        style={{
-                          display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 8px',
-                          borderRadius: 6, cursor: 'pointer',
-                          background: differsFromPreset ? hexToRgba(palette.highlightYellow.hex, 0.12) : 'transparent',
-                          transition: 'background 0.1s',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggle(perm.key)}
-                          style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, marginTop: 1, cursor: 'pointer', flexShrink: 0 }}
-                        />
-                        <div>
-                          <span style={{ fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>
-                            {perm.label}
-                          </span>
-                          {differsFromPreset && (
-                            <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: hexToRgba(palette.highlightYellow.hex, 0.3), color: '#7A5F00', verticalAlign: 'middle' }}>
-                              modified
-                            </span>
-                          )}
-                          <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 1, lineHeight: 1.35 }}>
-                            {perm.description}
-                          </p>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
+          <PermissionChecklist
+            checked={checked}
+            onToggle={toggle}
+            onToggleCategory={toggleCategory}
+            presetKeys={presetKeys}
+            showDescriptions
+          />
         </div>
 
         {onOpenAssignable && (

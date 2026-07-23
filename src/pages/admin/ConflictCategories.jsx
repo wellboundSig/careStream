@@ -306,7 +306,7 @@ export default function ConflictCategories() {
                 <button
                   type="button"
                   onClick={() => handleToggleActive(cat)}
-                  title={active ? 'Active — click to hide from pickers' : 'Hidden — click to show in pickers'}
+                  title={active ? 'Active, click to hide from pickers' : 'Hidden, click to show in pickers'}
                   style={{ padding: '3px 10px', borderRadius: 20, border: 'none', fontSize: 11, fontWeight: 650, cursor: 'pointer', background: active ? hexToRgba(palette.accentGreen.hex, 0.14) : hexToRgba(palette.backgroundDark.hex, 0.08), color: active ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.45) }}
                 >
                   {active ? 'Active' : 'Hidden'}

@@ -819,7 +819,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 </div>
               ) : (
                 <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-                  Create the patient chart in HCHB early. Download the packet, enter the patient in the EMR, then confirm. This does not leave Intake — full EMR Onboarding still happens later before Staffing.
+                  Create the patient chart in HCHB early. Download the packet, enter the patient in the EMR, then confirm. This does not leave Intake.
                 </p>
               )}
 
