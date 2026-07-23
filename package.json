@@ -16,6 +16,8 @@
     "schema:apply": "node scripts/airtable-apply-schema.js",
     "schema:apply:dry": "node scripts/airtable-apply-schema.js --dry-run",
     "invariants": "node scripts/check-invariants.js",
+    "cleanup:patient-names": "node scripts/cleanup-patient-names.js",
+    "cleanup:patient-names:apply": "node scripts/cleanup-patient-names.js --confirm",
     "db:ddl": "node db/generate-ddl.js",
     "db:migrate": "node db/migrate.js",
     "db:export": "node db/export-airtable.js",

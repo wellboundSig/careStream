@@ -29,6 +29,11 @@ import {
   isPlausibleSourceLabel,
   UNKNOWN_SOURCE_ID,
 } from '../../utils/sourceName.js';
+import {
+  normalizePersonNamePart,
+  normalizePersonNameFields,
+  normalizeContactName,
+} from '../../utils/personName.js';
 import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
@@ -136,7 +141,7 @@ const inputBase = {
   boxSizing: 'border-box',
 };
 
-function Input({ value, onChange, placeholder, type = 'text', hasError, min, max }) {
+function Input({ value, onChange, onBlurNormalize, placeholder, type = 'text', hasError, min, max }) {
   return (
     <input
       type={type}
@@ -147,7 +152,10 @@ function Input({ value, onChange, placeholder, type = 'text', hasError, min, max
       max={max || undefined}
       style={{ ...inputBase, boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none' }}
       onFocus={(e) => (e.target.style.boxShadow = `0 0 0 1.5px ${palette.primaryMagenta.hex}`)}
-      onBlur={(e) => (e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none')}
+      onBlur={(e) => {
+        e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none';
+        if (onBlurNormalize) onBlurNormalize(e.target.value);
+      }}
     />
   );
 }
@@ -976,10 +984,14 @@ export default function NewReferralForm({
       const allInsuranceJson = form.insurance_plans.length > 0 ? JSON.stringify(form.insurance_plans) : '';
       const planDetailsJson = Object.keys(form.insurance_plan_details).length > 0 ? JSON.stringify(form.insurance_plan_details) : '';
 
+      const named = normalizePersonNameFields({
+        first_name: form.first_name,
+        last_name: form.last_name,
+      });
       const patientFields = {
         id: patientCustomId,
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
+        first_name: named.first_name,
+        last_name: named.last_name,
         phone_primary: form.phone_primary.trim(),
         insurance_plan: insurancePrimary,
         division: form.division,
@@ -1002,7 +1014,9 @@ export default function NewReferralForm({
         ...(form.address_city && { address_city: form.address_city }),
         ...(form.address_state && { address_state: form.address_state }),
         ...(form.address_zip && { address_zip: form.address_zip }),
-        ...(form.emergency_contact_name && { emergency_contact_name: form.emergency_contact_name }),
+        ...(form.emergency_contact_name && {
+          emergency_contact_name: normalizeContactName(form.emergency_contact_name),
+        }),
         ...(form.emergency_contact_phone && { emergency_contact_phone: form.emergency_contact_phone }),
       };
 
@@ -1515,11 +1529,23 @@ export default function NewReferralForm({
           </p>
           <FieldGroup cols={2}>
             <FieldBox label="First Name" required>
-              <Input value={form.first_name} onChange={(v) => setField('first_name', v)} placeholder="First name" hasError={!!errors.first_name} />
+              <Input
+                value={form.first_name}
+                onChange={(v) => setField('first_name', v)}
+                onBlurNormalize={(v) => setField('first_name', normalizePersonNamePart(v))}
+                placeholder="First name"
+                hasError={!!errors.first_name}
+              />
               {errors.first_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.first_name}</p>}
             </FieldBox>
             <FieldBox label="Last Name" required>
-              <Input value={form.last_name} onChange={(v) => setField('last_name', v)} placeholder="Last name" hasError={!!errors.last_name} />
+              <Input
+                value={form.last_name}
+                onChange={(v) => setField('last_name', v)}
+                onBlurNormalize={(v) => setField('last_name', normalizePersonNamePart(v))}
+                placeholder="Last name"
+                hasError={!!errors.last_name}
+              />
               {errors.last_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.last_name}</p>}
             </FieldBox>
             <FieldBox label="Primary Phone" required={form.division !== 'ALF'}>
@@ -1626,7 +1652,14 @@ export default function NewReferralForm({
                 />
                 {errors.address_zip && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.address_zip}</p>}
               </FieldBox>
-              <FieldBox label="Emergency Contact Name"><Input value={form.emergency_contact_name} onChange={(v) => setField('emergency_contact_name', v)} placeholder="Contact name" /></FieldBox>
+              <FieldBox label="Emergency Contact Name">
+                <Input
+                  value={form.emergency_contact_name}
+                  onChange={(v) => setField('emergency_contact_name', v)}
+                  onBlurNormalize={(v) => setField('emergency_contact_name', normalizeContactName(v))}
+                  placeholder="Contact name"
+                />
+              </FieldBox>
               <FieldBox label="Emergency Contact Phone"><Input value={form.emergency_contact_phone} onChange={(v) => setField('emergency_contact_phone', v)} placeholder="(XXX) XXX-XXXX" type="tel" /></FieldBox>
             </FieldGroup>
             );

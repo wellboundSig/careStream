@@ -20,6 +20,7 @@ import {
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { LANGUAGE_OPTIONS, languageName, DEFAULT_LANGUAGE_CODE } from '../../../data/languages.js';
+import { normalizePersonNamePart, normalizeContactName } from '../../../utils/personName.js';
 
 const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
@@ -69,15 +70,21 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
 
   async function save() {
     if (!can(PERMISSION_KEYS.PATIENT_EDIT)) return;
-    if (draft === (value || '')) { setEditing(false); setError(''); return; }
-    onSave(fieldKey, draft);
+    let nextValue = draft;
+    if (fieldKey === 'first_name' || fieldKey === 'last_name') {
+      nextValue = normalizePersonNamePart(draft);
+    } else if (fieldKey === 'emergency_contact_name') {
+      nextValue = normalizeContactName(draft);
+    }
+    if (nextValue === (value || '')) { setEditing(false); setError(''); return; }
+    onSave(fieldKey, nextValue);
     setEditing(false);
     // Update the store immediately so checklists and other readers see the change
-    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: draft });
+    if (patientRecordId) updateEntity('patients', patientRecordId, { [fieldKey]: nextValue });
     setSaving(true);
     setError('');
     try {
-      await updatePatient(patientId, { [fieldKey]: draft });
+      await updatePatient(patientId, { [fieldKey]: nextValue });
     } catch (err) {
       // Surface the failure so the user knows the change didn't persist —
       // previously the catch was empty and the store revert made the edit
