@@ -12,6 +12,7 @@ import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/confl
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import QuickNoteModal from '../components/patients/QuickNoteModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
+import ChangeIntakeOwnerModal from '../components/referrals/ChangeIntakeOwnerModal.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
@@ -77,7 +78,7 @@ function F2FCell({ referral }) {
 }
 
 // ── Context menu ───────────────────────────────────────────────────────────────
-function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDismiss }) {
+function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onChangeOwner, canChangeOwner, onStageChange, onDismiss }) {
   const menuRef = useRef(null);
   const isSN = row.division === 'Special Needs';
   const currentStage = row.current_stage;
@@ -129,6 +130,7 @@ function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onStageChange, onDis
           {item('Open', <PersonIcon />, onOpen)}
           {isSN && item('Triage Form', <ClipboardIcon />, onTriage, palette.primaryMagenta.hex)}
           {item('Add Note', <NoteIcon />, onNote, palette.accentBlue.hex)}
+          {canChangeOwner && row.referral_id && item('Change intake owner', <PersonIcon />, onChangeOwner, palette.accentBlue.hex)}
         </div>
         {validStages.length > 0 && (
           <>
@@ -213,11 +215,13 @@ export default function PatientList() {
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
   const [contextMenu, setContextMenu] = useState(null);
+  const [changeOwnerTarget, setChangeOwnerTarget] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [transitioning, setTransitioning] = useState(false);
   const [noteTarget, setNoteTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const [showNewReferral, setShowNewReferral] = useState(false);
+  const canChangeIntakeOwner = can(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
 
   // Column picker + filter row
   const [visibleCols, setVisibleCols] = useState(() => new Set(COLUMN_DEFS.filter((c) => c.defaultOn).map((c) => c.key)));
@@ -646,15 +650,38 @@ export default function PatientList() {
           <ContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
-            row={{ patientName: contextMenu.patientName, current_stage: contextMenu.currentStage, division: contextMenu.division }}
+            row={{
+              patientName: contextMenu.patientName,
+              current_stage: contextMenu.currentStage,
+              division: contextMenu.division,
+              referral_id: r?.id || null,
+            }}
+            canChangeOwner={canChangeIntakeOwner}
             onOpen={() => { if (p) openDrawer(buildPatient(p), r || null); setContextMenu(null); }}
             onTriage={() => { if (p) openDrawer(buildPatient(p), r || null, 'triage'); setContextMenu(null); }}
             onNote={() => { if (p) setNoteTarget({ patient: p, referral: r }); setContextMenu(null); }}
+            onChangeOwner={() => {
+              if (r) setChangeOwnerTarget({ referral: r, patientName: contextMenu.patientName });
+              setContextMenu(null);
+            }}
             onStageChange={(toStage) => { if (p) initiateTransition(p, toStage); setContextMenu(null); }}
             onDismiss={() => setContextMenu(null)}
           />
         );
       })()}
+
+      {changeOwnerTarget && (
+        <ChangeIntakeOwnerModal
+          referral={changeOwnerTarget.referral}
+          patientName={changeOwnerTarget.patientName}
+          onCancel={() => setChangeOwnerTarget(null)}
+          onDone={() => {
+            setChangeOwnerTarget(null);
+            setToast({ msg: 'Intake owner updated', type: 'ok' });
+            triggerDataRefresh();
+          }}
+        />
+      )}
 
       {/* Transition modal */}
       {pendingTransition && (

@@ -823,6 +823,21 @@
         "pg": "text",
         "wire": "text"
       },
+      "lead_created_by_id": {
+        "column": "lead_created_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "intake_owner_changed_at": {
+        "column": "intake_owner_changed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "intake_owner_changed_by_id": {
+        "column": "intake_owner_changed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "coc_nurse_id": {
         "column": "coc_nurse_id",
         "pg": "text",

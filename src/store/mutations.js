@@ -77,7 +77,13 @@ function optimisticDelete(entityKey, tableName, recordId) {
 // ── Domain-specific mutations ──────────────────────────────────────────────
 
 export function updateReferralOptimistic(recordId, fields) {
-  return optimisticUpdate('referrals', 'Referrals', recordId, fields);
+  // lead_created_by_id is immutable once set — strip overwrite attempts.
+  const safe = { ...fields };
+  if ('lead_created_by_id' in safe) {
+    const current = useCareStore.getState().referrals?.[recordId];
+    if (current?.lead_created_by_id) delete safe.lead_created_by_id;
+  }
+  return optimisticUpdate('referrals', 'Referrals', recordId, safe);
 }
 
 export function updatePatientOptimistic(recordId, fields) {

@@ -602,13 +602,19 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
     // surfaces a raw `usr_###` id to a clinical/business reader.
     const ownerUser = Object.values(useCareStore.getState().users || {}).find((u) => u.id === ownerId);
     const ownerName = ownerUser ? `${ownerUser.first_name || ''} ${ownerUser.last_name || ''}`.trim() : ownerId;
+    const now = new Date().toISOString();
     const result = attemptTransition({
       referral: selectedReferral,
       toStage: 'Intake',
       context: {
         note: `Owner assigned: ${ownerName}`,
         actorUserId: appUserId,
-        extraFields: { intake_owner_id: ownerId, updated_at: new Date().toISOString() },
+        extraFields: {
+          intake_owner_id: ownerId,
+          intake_owner_changed_at: now,
+          intake_owner_changed_by_id: appUserId,
+          updated_at: now,
+        },
       },
     });
     if (result.allowed) {

@@ -411,7 +411,11 @@ function NotificationBell() {
               inbox.map((n) => {
                 const isRead = n.is_read === true || n.is_read === 'true';
                 const actor = n.actor_user_id ? resolveUser(n.actor_user_id) : null;
-                const typeLabel = n.type === 'mention' ? 'Mention' : (n.type || 'Alert');
+                const typeLabel = n.type === 'mention'
+                  ? 'Mention'
+                  : n.type === 'intake_owner_assigned'
+                    ? 'Ownership'
+                    : (n.type || 'Alert');
                 return (
                   <div
                     key={n._id}

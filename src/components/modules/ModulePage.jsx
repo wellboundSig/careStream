@@ -33,6 +33,7 @@ import NewReferralForm from '../forms/NewReferralForm.jsx';
 import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
+import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate } from '../../utils/dateFormat.js';
 
@@ -136,6 +137,8 @@ export default function ModulePage({ stage }) {
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
+  const [changeOwnerTarget, setChangeOwnerTarget] = useState(null);
+  const canChangeIntakeOwner = canPerm(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [toast, setToast] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
@@ -778,8 +781,13 @@ export default function ModulePage({ stage }) {
       {contextMenu && (
         <RowContextMenu
           x={contextMenu.x} y={contextMenu.y} referral={contextMenu.referral}
+          canChangeOwner={canChangeIntakeOwner}
           onOpen={() => { handleRowOpen(contextMenu.referral); setContextMenu(null); }}
           onOpenTriage={() => { openPatient(buildPatient(contextMenu.referral), contextMenu.referral, 'triage'); setContextMenu(null); }}
+          onChangeOwner={() => {
+            setChangeOwnerTarget(contextMenu.referral);
+            setContextMenu(null);
+          }}
           onToggleUrgent={async () => {
             const ref = contextMenu.referral;
             setContextMenu(null);
@@ -792,6 +800,18 @@ export default function ModulePage({ stage }) {
             }
           }}
           onDismiss={() => setContextMenu(null)}
+        />
+      )}
+      {changeOwnerTarget && (
+        <ChangeIntakeOwnerModal
+          referral={changeOwnerTarget}
+          patientName={changeOwnerTarget.patientName}
+          onCancel={() => setChangeOwnerTarget(null)}
+          onDone={() => {
+            setChangeOwnerTarget(null);
+            showToast('Intake owner updated');
+            refetch?.();
+          }}
         />
       )}
       {showNewReferral && (
@@ -1360,7 +1380,7 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   );
 }
 
-function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onToggleUrgent, onDismiss }) {
+function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, onToggleUrgent, onDismiss }) {
   const ref = useRef(null);
   const isSN = referral.division === 'Special Needs';
   const urgent = isUrgentCare(referral);
@@ -1392,6 +1412,14 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onToggleUrgent, 
         <div style={{ padding: '4px 0' }}>
           <MenuItem label="Open" onClick={onOpen} icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>} />
           {isSN && <MenuItem label="Open Triage Form" onClick={onOpenTriage} accent={palette.primaryMagenta.hex} icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><rect x="9" y="3" width="6" height="4" rx="1.5" stroke="currentColor" strokeWidth="1.7" /><path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>} />}
+          {canChangeOwner && (
+            <MenuItem
+              label="Change intake owner"
+              onClick={onChangeOwner}
+              accent={palette.accentBlue.hex}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
+            />
+          )}
           {/* Urgent care toggle is ALWAYS present in the context menu — the
               user explicitly requested it never be hidden behind a permission
               gate at the UI layer. */}

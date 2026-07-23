@@ -12,6 +12,8 @@ export const PERMISSION_KEYS = {
   LEADS_CREATE: 'leads.create',
   LEADS_PROMOTE_TO_INTAKE: 'leads.promote_to_intake',
   LEADS_DISCARD: 'leads.discard',
+  /** Reassign intake_owner_id after promote — deny-by-default; grant individually. */
+  LEADS_CHANGE_INTAKE_OWNER: 'leads.change_intake_owner',
   INTAKE_EMR_INITIAL: 'intake.emr_initial',
 
   // Referrals
@@ -176,10 +178,20 @@ const K = PERMISSION_KEYS;
 const ALL_KEYS = Object.values(K);
 // High-risk tools kept off the Administrator preset by default — grant
 // individually (e.g. auth.delete_response → Rafi; clinical.rn_unlock →
-// Rafi + Olesya).
+// Rafi + Olesya; leads.change_intake_owner → Rafi / Mia / Dominick / Victoria).
 const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.AUTH_DELETE_RESPONSE,
   K.CLINICAL_RN_UNLOCK,
+  K.LEADS_CHANGE_INTAKE_OWNER,
+]);
+
+/**
+ * Keys that stay OFF unless explicitly listed on a UserPermissions row.
+ * Unlike the usual "no row ⇒ all keys" migration safety, these are deny-by-default
+ * even when the user has no permissions record.
+ */
+export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
+  K.LEADS_CHANGE_INTAKE_OWNER,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -249,6 +261,7 @@ export const PERMISSION_CATALOG = [
   { key: K.LEADS_CREATE,            label: 'Enter new leads',               category: 'Leads', description: 'Open the New Lead / New Referral form and submit a patient into Lead Entry', sort: 9.5 },
   { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 11 },
+  { key: K.LEADS_CHANGE_INTAKE_OWNER, label: 'Change intake owner',       category: 'Leads', description: 'Reassign the intake owner on an existing referral (writes a timeline event and notifies the new owner). Deny-by-default — grant only to named supervisors.', sort: 11.5 },
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Referrals', description: 'See referral cards, drawers, and detail panels', sort: 13 },

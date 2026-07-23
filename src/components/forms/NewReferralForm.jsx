@@ -1094,12 +1094,18 @@ export default function NewReferralForm({
         referral_date: referralDate,
         created_at: referralDate,
         updated_at: referralDate,
+        // Immutable: who submitted the original lead. Never overwrite later.
+        ...(appUserId && { lead_created_by_id: appUserId }),
         ...(form.services_requested.length && { services_requested: form.services_requested }),
         ...(form.facility_id && { facility_id: form.facility_id }),
         ...(form.coc_nurse_id && { coc_nurse_id: form.coc_nurse_id }),
         // Intake owner is assigned when a lead becomes a referral (promote to Intake),
         // not when a marketer/staff creates a Lead Entry record.
-        ...(appUserId && stage === 'Intake' && { intake_owner_id: appUserId }),
+        ...(appUserId && stage === 'Intake' && {
+          intake_owner_id: appUserId,
+          intake_owner_changed_at: referralDate,
+          intake_owner_changed_by_id: appUserId,
+        }),
         ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
         ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
         ...(form.entity_id && { entity_id: form.entity_id }),

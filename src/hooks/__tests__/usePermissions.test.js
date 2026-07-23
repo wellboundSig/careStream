@@ -87,6 +87,27 @@ describe('usePermissions — feature permissions (existing behavior)', () => {
     expect(result.current.can('admin.permissions')).toBe(true);
   });
 
+  it('denies leads.change_intake_owner by default even with no permissions row', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {};
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('leads.change_intake_owner')).toBe(false);
+  });
+
+  it('grants leads.change_intake_owner only when explicitly listed', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {
+      up1: {
+        _id: 'up1',
+        user_id: 'usr_1',
+        permissions: '["referral.view","leads.change_intake_owner"]',
+      },
+    };
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('leads.change_intake_owner')).toBe(true);
+    expect(result.current.can('admin.permissions')).toBe(false);
+  });
+
   it('respects explicit permission keys', () => {
     mockAppUserId = 'usr_1';
     mockUserPermissions = {

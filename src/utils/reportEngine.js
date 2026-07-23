@@ -110,6 +110,8 @@ export const TABLE_SCHEMAS = {
         fields: [
           { key: '__intake_owner',       label: 'Intake Owner',          type: 'virtual', virtual: true },
           { key: 'intake_owner_id',       label: 'Intake Owner ID (raw)', type: 'text',    filterable: true },
+          { key: '__lead_created_by',   label: 'Lead Submitted By',     type: 'virtual', virtual: true },
+          { key: 'lead_created_by_id',  label: 'Lead Submitted By ID (raw)', type: 'text', filterable: true },
           { key: '__hold_owner',         label: 'Hold Owner',            type: 'virtual', virtual: true },
           { key: 'hold_owner_id',        label: 'Hold Owner ID (raw)',   type: 'text',    filterable: true },
         ],
@@ -736,6 +738,7 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
         ? ''
         : resolve.user(users[row.intake_owner_id]);
       out.__hold_owner        = resolve.user(users[row.hold_owner_id]);
+      out.__lead_created_by   = resolve.user(users[row.lead_created_by_id]);
       out.__clinical_by       = resolve.user(users[row.clinical_review_completed_by_id || row.clinical_review_by || row.reviewed_by]);
       out.__f2f_logged_by     = resolve.user(users[row.f2f_date_logged_by_id]);
       out.__emr_initial_by    = resolve.user(users[row.emr_initial_onboarded_by_id]);

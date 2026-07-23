@@ -542,6 +542,11 @@ const DESIRED_NEW_FIELDS = {
     t.dateTime('urgent_care_marked_at'),
     t.text('urgent_care_marked_by_id'),
     t.longText('urgent_care_note'),
+
+    // Immutable initial lead submitter + intake-owner change audit (2026-07).
+    t.text('lead_created_by_id'),
+    t.dateTime('intake_owner_changed_at'),
+    t.text('intake_owner_changed_by_id'),
   ],
   Conflicts: [
     // Captured at creation so resolve actions know which module to return to.
@@ -731,6 +736,9 @@ const DESIRED_PERMISSIONS = [
 
   // Unlock completed Clinical RN review (2026-07) — restricted error-correction tool.
   { id: 'perm_clinical_rn_unlock',       key: 'clinical.rn_unlock',       label: 'Unlock completed clinical review', category: 'Clinical', sort_order: 21, description: 'Unaccept a finalized Clinical RN review so it can be corrected and accepted again.' },
+
+  // Change intake owner (2026-07) — deny-by-default; grant to named supervisors only.
+  { id: 'perm_leads_change_intake_owner', key: 'leads.change_intake_owner', label: 'Change intake owner', category: 'Leads', sort_order: 11, description: 'Reassign the intake owner on an existing referral. Writes a timeline event and notifies the new owner.' },
 ];
 
 // ---------- Operations ----------

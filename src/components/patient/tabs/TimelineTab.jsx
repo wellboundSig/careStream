@@ -46,6 +46,25 @@ function referralMilestones(referral) {
     out.push({ _id: id, type: 'milestone', timestamp: ts, title, detail: detail || null, actor: actor || null });
   };
 
+  // Original lead submitter — immutable. Anchor to referral_date / created_at.
+  if (r.lead_created_by_id) {
+    push(
+      'ms-lead-created',
+      r.referral_date || r.created_at,
+      'Lead submitted',
+      'Initial lead entry (unchanging)',
+      r.lead_created_by_id,
+    );
+  }
+
+  push(
+    'ms-owner-changed',
+    r.intake_owner_changed_at,
+    'Intake owner changed',
+    r.intake_owner_id ? `Current owner assigned` : null,
+    r.intake_owner_changed_by_id || null,
+  );
+
   push('ms-clin-pushed', r.clinical_review_pushed_at, 'Pushed to Clinical RN Review', null, null);
 
   if (r.clinical_review_completed_at) {

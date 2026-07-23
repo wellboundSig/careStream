@@ -1,9 +1,15 @@
 import { useMemo, useCallback } from 'react';
 import { useCareStore } from '../store/careStore.js';
 import { useCurrentAppUser } from './useCurrentAppUser.js';
-import { PERMISSION_KEYS } from '../data/permissionKeys.js';
+import { PERMISSION_KEYS, DENY_BY_DEFAULT_PERMISSIONS } from '../data/permissionKeys.js';
 
 const ALL_KEYS_SET = new Set(Object.values(PERMISSION_KEYS));
+
+function allKeysExceptDenyByDefault() {
+  const set = new Set(ALL_KEYS_SET);
+  for (const k of DENY_BY_DEFAULT_PERMISSIONS) set.delete(k);
+  return set;
+}
 
 /**
  * Returns permission-check helpers for the currently signed-in user.
@@ -21,7 +27,9 @@ const ALL_KEYS_SET = new Set(Object.values(PERMISSION_KEYS));
  * - `isAssignmentRestricted` → boolean — true if the user has an explicit restriction set
  *
  * Migration safety: if no UserPermissions record exists, ALL permissions
- * are granted and assignment is unrestricted.
+ * are granted and assignment is unrestricted — EXCEPT keys listed in
+ * DENY_BY_DEFAULT_PERMISSIONS (e.g. leads.change_intake_owner), which
+ * require an explicit grant on the user's permissions row.
  */
 export function usePermissions() {
   const { appUserId } = useCurrentAppUser();
@@ -33,12 +41,12 @@ export function usePermissions() {
   }, [appUserId, userPermissions]);
 
   const granted = useMemo(() => {
-    if (!record?.permissions) return ALL_KEYS_SET;
+    if (!record?.permissions) return allKeysExceptDenyByDefault();
     try {
       const keys = JSON.parse(record.permissions);
       return new Set(Array.isArray(keys) ? keys : []);
     } catch {
-      return ALL_KEYS_SET;
+      return allKeysExceptDenyByDefault();
     }
   }, [record]);
 

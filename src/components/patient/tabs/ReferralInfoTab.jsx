@@ -4,6 +4,7 @@ import { updateEntity, useCareStore } from '../../../store/careStore.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
+import ChangeIntakeOwnerModal from '../../referrals/ChangeIntakeOwnerModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -426,6 +427,9 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
 export default function ReferralInfoTab({ patient, referral, readOnly = false }) {
   const { updateReferralLocal } = usePatientDrawer();
   const { resolveMarketer, resolveUser, resolveFacility } = useLookups();
+  const { can } = usePermissions();
+  const canChangeOwner = can(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
+  const [showChangeOwner, setShowChangeOwner] = useState(false);
 
   function handleReferralSave(field, value) { updateReferralLocal({ [field]: value }); }
 
@@ -437,13 +441,57 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
     );
   }
 
+  const patientLabel = patient
+    ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
+    : null;
+
   return (
     <div style={{ padding: '20px 20px 40px' }}>
+      {showChangeOwner && (
+        <ChangeIntakeOwnerModal
+          referral={referral}
+          patientName={patientLabel}
+          onCancel={() => setShowChangeOwner(false)}
+          onDone={(fields) => {
+            updateReferralLocal(fields);
+            setShowChangeOwner(false);
+          }}
+        />
+      )}
       <Section title="Referral Info">
         <ReadField label="Referral ID" value={referral.id} />
         <ReadField label="Referral Date" value={referral.referral_date ? new Date(referral.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null} />
         <ReadField label="Marketer" value={resolveMarketer(referral.marketer_id)} />
-        <ReadField label="Intake Owner" value={resolveUser(referral.intake_owner_id)} />
+        <ReadField
+          label="Lead submitted by"
+          value={resolveUser(referral.lead_created_by_id)}
+        />
+        <div>
+          <p style={fl()}>Intake Owner</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
+            <p style={{
+              fontSize: 13, flex: 1, margin: 0,
+              color: referral.intake_owner_id ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
+              fontStyle: referral.intake_owner_id ? 'normal' : 'italic',
+            }}>
+              {resolveUser(referral.intake_owner_id) || '—'}
+            </p>
+            {canChangeOwner && !readOnly && (
+              <button
+                type="button"
+                onClick={() => setShowChangeOwner(true)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 650,
+                  background: hexToRgba(palette.accentBlue.hex, 0.12),
+                  color: palette.accentBlue.hex, flexShrink: 0,
+                }}
+              >
+                Change
+              </button>
+            )}
+          </div>
+        </div>
         <EditableReferralSource referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
         {referral.facility_id && <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />}
 

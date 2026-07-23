@@ -456,7 +456,23 @@ export function buildTeamActivityEvents({ memberIds, stores, users, referralById
     ['f2f_date_logged_at', 'f2f_date_logged_by_id', 'F2F Document Logged', null],
     ['opwdd_route_started_at', 'opwdd_route_started_by_id', 'Routed to OPWDD', null],
     ['intake_owner_assigned_at', 'intake_owner_id', 'Intake Owner Assigned', null],
+    ['intake_owner_changed_at', 'intake_owner_changed_by_id', 'Intake Owner Changed', null],
   ];
+  // Immutable lead submitter — show as activity for that person
+  for (const ref of Object.values(stores.referrals || {})) {
+    const actorId = tryActor(ref.lead_created_by_id);
+    if (!actorId) continue;
+    push(out, {
+      id: `ms_lead_created_${ref._id || ref.id}`,
+      actorId,
+      timestamp: ref.referral_date || ref.created_at,
+      action: 'Lead Submitted',
+      detail: 'Initial lead entry',
+      patientId: ref.patient_id || null,
+      referralId: ref.id || null,
+      colorKey: 'Lead Submitted',
+    });
+  }
   for (const ref of Object.values(stores.referrals || {})) {
     for (const [tsKey, byKey, action, detail] of milestones) {
       const actorId = tryActor(ref[byKey]);
@@ -527,6 +543,8 @@ export function activityColor(colorKey, palette, hexToRgba) {
     'Routed to OPWDD': palette.primaryDeepPlum.hex,
     'Disenrollment Assist Flagged': palette.accentOrange.hex,
     'Intake Owner Assigned': palette.accentBlue.hex,
+    'Intake Owner Changed': palette.accentBlue.hex,
+    'Lead Submitted': palette.accentGreen.hex,
   };
   return map[colorKey] || hexToRgba(palette.backgroundDark.hex, 0.4);
 }
