@@ -30,6 +30,7 @@ import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
+import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
 import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -37,6 +38,22 @@ import { fmtCalendarDate, daysUntilCalendarDate } from '../../utils/dateFormat.j
 
 /** Uniform queue row height — every module table row is this tall. */
 const QUEUE_ROW_HEIGHT = 48;
+const QUEUE_HEADER_HEIGHT = 40;
+const FREEZE_PATIENT_KEY = 'wb.moduleFreezePatient';
+
+function readFreezePatientPref() {
+  try {
+    const v = localStorage.getItem(FREEZE_PATIENT_KEY);
+    if (v === null) return true;
+    return v === '1' || v === 'true';
+  } catch {
+    return true;
+  }
+}
+
+/** Opaque sticky surfaces — translucent fills let scrolling rows bleed through. */
+const QUEUE_STICKY_HEADER_BG = palette.backgroundLight.hex;
+const QUEUE_STICKY_FILTER_BG = palette.backgroundLight.hex;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -115,13 +132,22 @@ export default function ModulePage({ stage }) {
   const [sortField, setSortField] = useState('days');
   const [sortDir, setSortDir] = useState('desc');
   const [showNewReferral, setShowNewReferral] = useState(false);
+  const [activeDraft, setActiveDraft] = useState(null);
+  const [showDraftsPanel, setShowDraftsPanel] = useState(false);
+  const [draftCount, setDraftCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [toast, setToast] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
+  const [freezePatientCol, setFreezePatientCol] = useState(readFreezePatientPref);
   const colPickerRef = useRef(null);
 
   const { visibleCols, setVisibleCols, activeColumns } = useColumnVisibility(MODULE_COLUMN_DEFS);
+
+  function setFreezePatient(next) {
+    setFreezePatientCol(next);
+    try { localStorage.setItem(FREEZE_PATIENT_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+  }
   const { colFilters, setColFilter, clearFilters, showFilters, setShowFilters, hasActiveFilters } = useColumnFilters(MODULE_COLUMN_DEFS);
 
   const meta = STAGE_META[stage] || {};
@@ -139,7 +165,24 @@ export default function ModulePage({ stage }) {
     setSelectedReferralId(null);
     setSearch('');
     clearFilters();
+    setShowDraftsPanel(false);
   }, [stage]);
+
+  const refreshDraftCount = useCallback(async () => {
+    if (stage !== 'Lead Entry' || !appUserId) {
+      setDraftCount(0);
+      return;
+    }
+    try {
+      setDraftCount(await countReferralDrafts(appUserId));
+    } catch {
+      setDraftCount(0);
+    }
+  }, [stage, appUserId]);
+
+  useEffect(() => {
+    refreshDraftCount();
+  }, [refreshDraftCount]);
 
   // ── Stage referrals with column filters ───────────────────────────────────
   // Decorate each referral with concurrent-presence flags so the per-stage
@@ -471,11 +514,12 @@ export default function ModulePage({ stage }) {
   if (loading) return <LoadingState message={`Loading ${stage}...`} />;
 
   // ── Render cell for a given column key ────────────────────────────────────
-  function renderCell(col, referral) {
+  function renderCell(col, referral, rowMeta = {}) {
     const days       = daysInStage(referral);
     const totalDays  = daysInPipeline(referral);
     const isSN = referral.division === 'Special Needs';
     const urgent = isUrgentCare(referral);
+    const { isSelected = false, hovered = false } = rowMeta;
     const td = (extra = {}) => ({
       padding: '0 14px',
       height: QUEUE_ROW_HEIGHT,
@@ -507,8 +551,27 @@ export default function ModulePage({ stage }) {
             authObtainedTitle = `Authorization obtained on ${authObtainedAt}`;
           }
         }
+        // Stack tint over opaque page bg so sticky cells never show scrolling columns underneath.
+        const patientBg = isSelected
+          ? `linear-gradient(${hexToRgba(palette.primaryMagenta.hex, 0.06)}, ${hexToRgba(palette.primaryMagenta.hex, 0.06)}), linear-gradient(${palette.backgroundLight.hex}, ${palette.backgroundLight.hex})`
+          : hovered
+            ? `linear-gradient(${hexToRgba(palette.primaryDeepPlum.hex, 0.03)}, ${hexToRgba(palette.primaryDeepPlum.hex, 0.03)}), linear-gradient(${palette.backgroundLight.hex}, ${palette.backgroundLight.hex})`
+            : palette.backgroundLight.hex;
         return (
-          <td key="patient" style={td({ maxWidth: 220 })}>
+          <td
+            key="patient"
+            style={td({
+              maxWidth: 220,
+              minWidth: 160,
+              ...(freezePatientCol ? {
+                position: 'sticky',
+                left: 0,
+                zIndex: 2,
+                background: patientBg,
+                boxShadow: `2px 0 0 ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
+              } : {}),
+            })}
+          >
             <span
               title={[name, isMine ? 'You own this case' : null, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
               style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden' }}
@@ -730,7 +793,24 @@ export default function ModulePage({ stage }) {
         />
       )}
       {showNewReferral && (
-        <NewReferralForm onClose={() => setShowNewReferral(false)} onSuccess={({ patient, referral }) => { refetch?.(); openPatient(patient, referral); }} />
+        <NewReferralForm
+          key={activeDraft?.id || 'new-lead'}
+          draftRecordId={activeDraft?.id || null}
+          draftBusinessId={activeDraft?.fields?.id || null}
+          draftNumber={activeDraft?.fields?.draft_number || null}
+          initialForm={activeDraft?.fields?.form_data || null}
+          onClose={() => {
+            setShowNewReferral(false);
+            setActiveDraft(null);
+            refreshDraftCount();
+          }}
+          onSuccess={({ patient, referral }) => {
+            setActiveDraft(null);
+            refreshDraftCount();
+            refetch?.();
+            openPatient(patient, referral);
+          }}
+        />
       )}
       {pendingTransition && (
         <TransitionModal
@@ -786,18 +866,65 @@ export default function ModulePage({ stage }) {
             <div style={{ flex: 1 }} />
 
             {stage === 'Lead Entry' && canPermAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) && (
-              <button
-                type="button"
-                onClick={() => setShowNewReferral(true)}
-                title="Enter a new lead"
-                style={{
-                  height: 32, padding: '0 14px', borderRadius: 7, border: 'none', flexShrink: 0,
-                  background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
-                  fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
-                }}
-              >
-                + New Lead
-              </button>
+              <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDraftsPanel((v) => !v)}
+                  title="Open saved lead drafts"
+                  style={{
+                    height: 32, padding: '0 12px', borderRadius: 7, flexShrink: 0,
+                    border: `1px solid ${showDraftsPanel ? palette.accentBlue.hex : 'var(--color-border)'}`,
+                    background: showDraftsPanel ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+                    fontSize: 12, fontWeight: 600,
+                    color: showDraftsPanel ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                    cursor: 'pointer', transition: 'all 0.12s',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  Drafts
+                  {draftCount > 0 && (
+                    <span style={{
+                      minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                      background: palette.accentBlue.hex, color: palette.backgroundLight.hex,
+                      fontSize: 10, fontWeight: 700, display: 'inline-flex',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {draftCount > 99 ? '99+' : draftCount}
+                    </span>
+                  )}
+                </button>
+                <ReferralDraftsPanel
+                  open={showDraftsPanel}
+                  onClose={() => setShowDraftsPanel(false)}
+                  onOpenDraft={(rec) => {
+                    setShowDraftsPanel(false);
+                    let formData = rec?.fields?.form_data;
+                    if (typeof formData === 'string') {
+                      try { formData = JSON.parse(formData); } catch { formData = null; }
+                    }
+                    setActiveDraft({
+                      ...rec,
+                      fields: { ...(rec.fields || {}), form_data: formData && typeof formData === 'object' ? formData : {} },
+                    });
+                    setShowNewReferral(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDraft(null);
+                    setShowNewReferral(true);
+                  }}
+                  title="Enter a new lead"
+                  style={{
+                    height: 32, padding: '0 14px', borderRadius: 7, border: 'none', flexShrink: 0,
+                    background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
+                    fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
+                  }}
+                >
+                  + New Lead
+                </button>
+              </div>
             )}
 
             <DuplicateChecker selectedReferral={selectedReferral} allReferrals={allReferrals} />
@@ -822,7 +949,14 @@ export default function ModulePage({ stage }) {
                 <ColsIcon /> Columns
               </button>
               {showColPicker && (
-                <ColumnPicker columnDefs={MODULE_COLUMN_DEFS} visibleCols={visibleCols} onChange={setVisibleCols} onClose={() => setShowColPicker(false)} />
+                <ColumnPicker
+                  columnDefs={MODULE_COLUMN_DEFS}
+                  visibleCols={visibleCols}
+                  onChange={setVisibleCols}
+                  onClose={() => setShowColPicker(false)}
+                  freezePatient={freezePatientCol}
+                  onFreezePatientChange={setFreezePatient}
+                />
               )}
             </div>
 
@@ -879,31 +1013,80 @@ export default function ModulePage({ stage }) {
             {stageReferrals.length === 0 ? (
               <EmptyState title={`No patients in ${meta.displayName || stage}`} subtitle={hasAnyFilter ? 'Try clearing filters or search.' : 'Patients will appear here when they reach this stage.'} />
             ) : (
-              <QueueScrollFrame>
-                <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
+              <QueueScrollFrame freezePatientCol={freezePatientCol}>
+                <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ height: 40, background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                      {activeColumns.map((col) => (
-                        <th key={col.key} title={col.tooltip || undefined} style={{ padding: '0 14px', height: 40, textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default', verticalAlign: 'middle' }}>
-                          {col.label}
-                          {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
-                        </th>
-                      ))}
+                    <tr style={{ height: QUEUE_HEADER_HEIGHT, borderBottom: `1px solid var(--color-border)` }}>
+                      {activeColumns.map((col) => {
+                        const isPatient = col.key === 'patient';
+                        return (
+                          <th
+                            key={col.key}
+                            title={col.tooltip || undefined}
+                            style={{
+                              padding: '0 14px',
+                              height: QUEUE_HEADER_HEIGHT,
+                              textAlign: 'left',
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              letterSpacing: '0.05em',
+                              textTransform: 'uppercase',
+                              color: hexToRgba(palette.backgroundDark.hex, 0.4),
+                              whiteSpace: 'nowrap',
+                              cursor: col.tooltip ? 'help' : 'default',
+                              verticalAlign: 'middle',
+                              position: 'sticky',
+                              top: 0,
+                              zIndex: isPatient && freezePatientCol ? 6 : 4,
+                              background: QUEUE_STICKY_HEADER_BG,
+                              boxShadow: `inset 0 -1px 0 var(--color-border)`,
+                              ...(isPatient && freezePatientCol ? {
+                                left: 0,
+                                minWidth: 160,
+                                boxShadow: `inset 0 -1px 0 var(--color-border), 2px 0 0 ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
+                              } : {}),
+                            }}
+                          >
+                            {col.label}
+                            {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+                          </th>
+                        );
+                      })}
                     </tr>
                     {showFilters && (
-                      <tr style={{ height: 40, background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                        {activeColumns.map((col) => (
-                          <th key={col.key} style={{ padding: '0 8px', height: 40, verticalAlign: 'middle' }}>
-                            {col.filterable ? (
-                              <FilterInput
-                                value={colFilters[col.key] || ''}
-                                onChange={(v) => setColFilter(col.key, v)}
-                                placeholder={col.label}
-                                options={colOptions[col.key] || []}
-                              />
-                            ) : null}
-                          </th>
-                        ))}
+                      <tr style={{ height: QUEUE_HEADER_HEIGHT, borderBottom: `1px solid var(--color-border)` }}>
+                        {activeColumns.map((col) => {
+                          const isPatient = col.key === 'patient';
+                          return (
+                            <th
+                              key={col.key}
+                              style={{
+                                padding: '0 8px',
+                                height: QUEUE_HEADER_HEIGHT,
+                                verticalAlign: 'middle',
+                                position: 'sticky',
+                                top: QUEUE_HEADER_HEIGHT,
+                                zIndex: isPatient && freezePatientCol ? 5 : 3,
+                                background: QUEUE_STICKY_FILTER_BG,
+                                boxShadow: `inset 0 -1px 0 var(--color-border)`,
+                                ...(isPatient && freezePatientCol ? {
+                                  left: 0,
+                                  minWidth: 160,
+                                  boxShadow: `inset 0 -1px 0 var(--color-border), 2px 0 0 ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
+                                } : {}),
+                              }}
+                            >
+                              {col.filterable ? (
+                                <FilterInput
+                                  value={colFilters[col.key] || ''}
+                                  onChange={(v) => setColFilter(col.key, v)}
+                                  placeholder={col.label}
+                                  options={colOptions[col.key] || []}
+                                />
+                              ) : null}
+                            </th>
+                          );
+                        })}
                       </tr>
                     )}
                   </thead>
@@ -951,7 +1134,7 @@ export default function ModulePage({ stage }) {
  * bottom track so Windows / mouse users can pan wide column sets without a
  * trackpad. Vertical scroll stays on the same pane.
  */
-function QueueScrollFrame({ children }) {
+function QueueScrollFrame({ children, freezePatientCol = false }) {
   const scrollerRef = useRef(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
@@ -1067,7 +1250,8 @@ function QueueScrollFrame({ children }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {canLeft && (
+        {/* When Patient is frozen, skip the left edge fade — it would cover the name. */}
+        {canLeft && !freezePatientCol && (
           <div aria-hidden style={{
             position: 'absolute', left: 0, top: 0, bottom: 0, width: 36, zIndex: 2, pointerEvents: 'none',
             background: `linear-gradient(to right, ${palette.backgroundLight.hex} 30%, transparent)`,
@@ -1079,7 +1263,7 @@ function QueueScrollFrame({ children }) {
             background: `linear-gradient(to left, ${palette.backgroundLight.hex} 30%, transparent)`,
           }} />
         )}
-        {chevronBtn('left')}
+        {!freezePatientCol && chevronBtn('left')}
         {chevronBtn('right')}
         <div
           ref={scrollerRef}
@@ -1145,7 +1329,7 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
         cursor: 'pointer', transition: 'background 0.1s',
       }}
     >
-      {activeColumns.map((col) => renderCell(col, referral))}
+      {activeColumns.map((col) => renderCell(col, referral, { isSelected, hovered }))}
     </tr>
   );
 }

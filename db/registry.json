@@ -1360,6 +1360,46 @@
       }
     }
   },
+  "ReferralDrafts": {
+    "pgTable": "referral_drafts",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "owner_user_id": {
+        "column": "owner_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "display_name": {
+        "column": "display_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "draft_number": {
+        "column": "draft_number",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "form_data": {
+        "column": "form_data",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
   "Files": {
     "pgTable": "files",
     "fields": {

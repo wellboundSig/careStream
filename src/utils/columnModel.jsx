@@ -128,8 +128,16 @@ export function FilterInput({ value, onChange, placeholder, options }) {
 
 // ── ColumnPicker ────────────────────────────────────────────────────────────
 
-export function ColumnPicker({ columnDefs, visibleCols, onChange, onClose }) {
+export function ColumnPicker({
+  columnDefs,
+  visibleCols,
+  onChange,
+  onClose,
+  freezePatient = null,
+  onFreezePatientChange = null,
+}) {
   const ref = useRef(null);
+  const showFreezeToggle = typeof freezePatient === 'boolean' && typeof onFreezePatientChange === 'function';
 
   useEffect(() => {
     function handler(e) {
@@ -140,7 +148,7 @@ export function ColumnPicker({ columnDefs, visibleCols, onChange, onClose }) {
   }, [onClose]);
 
   return (
-    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 200, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 220, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Columns</p>
       {columnDefs.map((col) => (
         <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 14px', cursor: col.alwaysOn ? 'default' : 'pointer', opacity: col.alwaysOn ? 0.45 : 1 }}>
@@ -160,6 +168,26 @@ export function ColumnPicker({ columnDefs, visibleCols, onChange, onClose }) {
           <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{col.label}</span>
         </label>
       ))}
+      {showFreezeToggle && (
+        <>
+          <div style={{ height: 1, background: 'var(--color-border)', margin: '8px 0' }} />
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Freeze</p>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 14px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={freezePatient}
+              onChange={(e) => onFreezePatientChange(e.target.checked)}
+              style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13, marginTop: 2 }}
+            />
+            <span>
+              <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex, display: 'block' }}>Freeze Patient column</span>
+              <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.35, display: 'block', marginTop: 2 }}>
+                Keep the patient name visible while scrolling columns
+              </span>
+            </span>
+          </label>
+        </>
+      )}
     </div>
   );
 }

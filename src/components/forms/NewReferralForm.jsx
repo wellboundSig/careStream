@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -22,6 +22,14 @@ import {
   inferAgeGroupFromDob,
 } from '../../utils/validation.js';
 import { DEFAULT_LANGUAGE_CODE, LANGUAGE_OPTIONS } from '../../data/languages.js';
+import { createReferralSource } from '../../api/referralSources.js';
+import {
+  sanitizeSourceName,
+  isSourceBusinessId,
+  isPlausibleSourceLabel,
+  UNKNOWN_SOURCE_ID,
+} from '../../utils/sourceName.js';
+import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -527,7 +535,19 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
-export default function NewReferralForm({ onClose, onSuccess, initialForm = null, forceStage = null, embedded = false, title = null, subtitle = null }) {
+export default function NewReferralForm({
+  onClose,
+  onSuccess,
+  initialForm = null,
+  forceStage = null,
+  embedded = false,
+  title = null,
+  subtitle = null,
+  draftRecordId = null,
+  draftBusinessId = null,
+  draftNumber = null,
+  onDraftChange = null,
+}) {
   const { appUser, appUserId } = useCurrentAppUser();
   const { canAny } = usePermissions();
   const { resolveEntity } = useLookups();
@@ -590,7 +610,9 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
-  const [selectedPhysician, setSelectedPhysician] = useState(null);
+  const [dirty, setDirty] = useState(!!draftRecordId);
+  const [showCloseGate, setShowCloseGate] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
 
   const [form, setForm] = useState(() => ({
     first_name: '',
@@ -622,10 +644,41 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
     county: '',
     entity_id: '',
     code_95: '',
+    _physician: null,
     ...(initialForm || {}),
   }));
 
-  function setField(key, value) {
+  const [selectedPhysician, setSelectedPhysician] = useState(() => form._physician || null);
+
+  function onPhysicianChange(physician) {
+    setDirty(true);
+    setSelectedPhysician(physician);
+    setForm((prev) => ({ ...prev, _physician: physician || null }));
+  }
+
+  const {
+    draftRecId,
+    status: draftStatus,
+    flushDraftSave,
+    discardDraft,
+    deleteDraftQuiet,
+    hasActiveDraft,
+  } = useReferralDraftAutosave({
+    enabled: !embedded && !!appUserId,
+    appUserId,
+    form,
+    dirty,
+    initialDraftRecordId: draftRecordId,
+    initialDraftBusinessId: draftBusinessId,
+    initialDraftNumber: draftNumber,
+  });
+
+  useEffect(() => {
+    onDraftChange?.({ draftRecId, draftStatus, dirty });
+  }, [draftRecId, draftStatus, dirty, onDraftChange]);
+
+  function setField(key, value, { silent = false } = {}) {
+    if (!silent) setDirty(true);
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === 'division') {
@@ -746,10 +799,12 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
   }
 
   function setInsurancePlans(plans) {
+    setDirty(true);
     setForm((prev) => ({ ...prev, insurance_plans: plans }));
   }
 
   function setInsurancePlanDetail(plan, value) {
+    setDirty(true);
     setForm((prev) => ({
       ...prev,
       insurance_plan_details: { ...prev.insurance_plan_details, [plan]: value },
@@ -759,20 +814,74 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
   useEffect(() => {
     if (!appUserId || !marketers.length) return;
     const match = marketers.find((m) => m.user_id === appUserId);
-    if (match) setField('marketer_id', match.id);
+    if (match) setField('marketer_id', match.id, { silent: true });
   }, [appUserId, marketers]);
 
   useEffect(() => {
     if (divisionLocked && form.division !== allowedDivisions[0]) {
-      setField('division', allowedDivisions[0]);
+      setField('division', allowedDivisions[0], { silent: true });
     }
   }, [divisionLocked, allowedDivisions]);
 
+  const needsCloseGate = dirty || hasActiveDraft || !!draftRecId;
+
+  const requestClose = useCallback(() => {
+    if (submitting || closeBusy) return;
+    // Inbound convert keeps its own submission record — no draft gate.
+    if (embedded || !needsCloseGate) {
+      onClose?.();
+      return;
+    }
+    setShowCloseGate(true);
+  }, [submitting, closeBusy, embedded, needsCloseGate, onClose]);
+
+  const keepDraftAndClose = useCallback(async () => {
+    setCloseBusy(true);
+    try {
+      await flushDraftSave();
+      setShowCloseGate(false);
+      onClose?.();
+    } finally {
+      setCloseBusy(false);
+    }
+  }, [flushDraftSave, onClose]);
+
+  const discardDraftAndClose = useCallback(async () => {
+    setCloseBusy(true);
+    try {
+      await discardDraft();
+      setShowCloseGate(false);
+      onClose?.();
+    } catch (err) {
+      setError(`Could not discard draft: ${err.message}`);
+      setShowCloseGate(false);
+    } finally {
+      setCloseBusy(false);
+    }
+  }, [discardDraft, onClose]);
+
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) {
+      if (e.key !== 'Escape') return;
+      if (showCloseGate) {
+        e.preventDefault();
+        return;
+      }
+      requestClose();
+    }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [requestClose, showCloseGate]);
+
+  useEffect(() => {
+    if (!needsCloseGate || embedded) return undefined;
+    function onBeforeUnload(e) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [needsCloseGate, embedded]);
 
   const countyLicence = getLicenceForCounty(form.county);
   const needsLicenceChoice = countyLicence === 'both' && !form.entity_id;
@@ -801,7 +910,15 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
     }
     if (!form.division) errs.division = 'Required';
     if (!form.referral_source_id) errs.referral_source_id = 'Required';
-    if (form.referral_source_id === 'other' && !form.referral_source_other.trim()) errs.referral_source_other = 'Required';
+    if (form.referral_source_id === 'other') {
+      const cleaned = sanitizeSourceName(form.referral_source_other);
+      if (!cleaned) {
+        errs.referral_source_other = 'Enter a real source name (not a dash or special characters alone)';
+      }
+    } else if (form.referral_source_id && !isSourceBusinessId(form.referral_source_id)
+      && !sources.some((s) => s.id === form.referral_source_id)) {
+      errs.referral_source_id = 'Pick a source from the list (or Other with a real name)';
+    }
     if (!form.marketer_id) errs.marketer_id = 'Required';
     if (form.marketer_id === 'other' && !form.marketer_other.trim()) errs.marketer_other = 'Required';
     if (form.division === 'ALF' && !form.facility_id) errs.facility_id = 'Required for ALF referrals';
@@ -908,9 +1025,41 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
         ? form.marketer_other.trim()
         : form.marketer_id;
 
-      const resolvedSource = form.referral_source_id === 'other'
-        ? form.referral_source_other.trim()
-        : form.referral_source_id;
+      let resolvedSource = form.referral_source_id;
+      let otherSourceNote = '';
+      if (form.referral_source_id === 'other') {
+        const rawOther = form.referral_source_other.trim();
+        const safeName = sanitizeSourceName(rawOther);
+        if (!safeName) throw new Error('Invalid referral source name');
+        // Never write free text into referral_source_id.
+        // Short labels → new directory row; prose / notes → Unknown + note.
+        if (isPlausibleSourceLabel(safeName)) {
+          const srcId = `src_${Date.now().toString(36)}`;
+          const srcRec = await createReferralSource({
+            id: srcId,
+            name: safeName,
+            type: 'Other',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          resolvedSource = srcRec.fields?.id || srcId;
+          try {
+            mergeEntities('referralSources', {
+              [srcRec.id]: { _id: srcRec.id, ...srcRec.fields, id: resolvedSource },
+            });
+          } catch { /* non-fatal */ }
+          if (rawOther !== safeName) {
+            otherSourceNote = `Original "Other" source text: ${rawOther}`;
+          }
+        } else {
+          resolvedSource = UNKNOWN_SOURCE_ID;
+          otherSourceNote = `Referral source details (Other): ${rawOther}`;
+        }
+      } else if (!isSourceBusinessId(resolvedSource)
+        && !sources.some((s) => s.id === resolvedSource)) {
+        throw new Error('Referral source must be selected from the directory');
+      }
 
       const referralDate = new Date().toISOString();
       let stage = (form.division === 'Special Needs' && form.code_95 === 'no') ? 'OPWDD Enrollment' : 'Lead Entry';
@@ -962,9 +1111,10 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
 
       // stage_entered_at not a column in Referrals — skip
 
+      const noteStamp = Date.now();
       if (form.initial_notes?.trim()) {
         createNote({
-          id: `note_${Date.now()}`,
+          id: `note_${noteStamp}`,
           patient_id: createdPatientId,
           referral_id: referralCustomId,
           author_id: appUserId || 'unknown',
@@ -974,6 +1124,21 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
           updated_at: new Date().toISOString(),
         }).catch(() => {});
       }
+      if (otherSourceNote) {
+        createNote({
+          id: `note_${noteStamp}_src`,
+          patient_id: createdPatientId,
+          referral_id: referralCustomId,
+          author_id: appUserId || 'unknown',
+          content: otherSourceNote,
+          is_pinned: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
+
+      await deleteDraftQuiet();
+      setDirty(false);
 
       onSuccess?.({
         patient: { _id: patientRecord.id, ...patientRecord.fields },
@@ -1092,9 +1257,17 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
               <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundLight.hex, 0.55) }}>
                 {headerSub}
               </p>
+              {!embedded && dirty && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundLight.hex, 0.45), marginTop: 6 }}>
+                  {draftStatus === 'saving' && 'Saving draft…'}
+                  {draftStatus === 'saved' && 'Draft saved'}
+                  {draftStatus === 'error' && 'Draft save failed — keep this tab open'}
+                  {draftStatus === 'idle' && 'Starting draft…'}
+                </p>
+              )}
             </div>
             {onClose && (
-              <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, background: hexToRgba(palette.backgroundLight.hex, 0.1), border: 'none', color: hexToRgba(palette.backgroundLight.hex, 0.7), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                   <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
@@ -1290,8 +1463,20 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
                 })()}
                 {form.referral_source_id === 'other' && (
                   <div style={{ marginTop: 8 }}>
-                    <Input value={form.referral_source_other} onChange={(v) => setField('referral_source_other', v)} placeholder="Describe the lead source…" hasError={!!errors.referral_source_other} />
-                    {errors.referral_source_other && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.referral_source_other}</p>}
+                    <Input
+                      value={form.referral_source_other}
+                      onChange={(v) => setField('referral_source_other', v)}
+                      placeholder="Source name (e.g. hospital or person)…"
+                      hasError={!!errors.referral_source_other}
+                    />
+                    {errors.referral_source_other && (
+                      <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>
+                        {errors.referral_source_other}
+                      </p>
+                    )}
+                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, lineHeight: 1.4 }}>
+                      Use a short name. Put longer explanations in Initial Notes.
+                    </p>
                   </div>
                 )}
               </FieldBox>
@@ -1391,7 +1576,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
                 <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>
                   Referring / Ordering Physician
                 </p>
-                <PhysicianPicker physicianId={null} onChange={setSelectedPhysician} />
+                <PhysicianPicker physicianId={selectedPhysician?.id || null} onChange={onPhysicianChange} />
                 {selectedPhysician && (
                   <p style={{ fontSize: 11, color: palette.accentGreen.hex, fontWeight: 600, marginTop: 6 }}>
                     Physician will be linked to this referral.
@@ -1481,7 +1666,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
+              <button type="button" onClick={requestClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
                 Cancel
               </button>
               <button
@@ -1505,13 +1690,85 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
       </div>
   );
 
+  const closeGateModal = showCloseGate && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="draft-close-title"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: hexToRgba(palette.backgroundDark.hex, 0.55),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div style={{
+        width: '100%', maxWidth: 400, borderRadius: 14,
+        background: palette.backgroundLight.hex,
+        boxShadow: `0 16px 48px ${hexToRgba(palette.backgroundDark.hex, 0.28)}`,
+        padding: '22px 22px 18px',
+      }}>
+        <h3 id="draft-close-title" style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 8 }}>
+          Leave this referral?
+        </h3>
+        <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.5, marginBottom: 18 }}>
+          Your progress is saved as a draft. Keep it to finish later, or discard it to remove it completely.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            disabled={closeBusy}
+            onClick={keepDraftAndClose}
+            style={{
+              padding: '10px 14px', borderRadius: 8, border: 'none', cursor: closeBusy ? 'not-allowed' : 'pointer',
+              background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
+              fontSize: 13, fontWeight: 650,
+            }}
+          >
+            {closeBusy ? 'Saving…' : 'Keep draft'}
+          </button>
+          <button
+            type="button"
+            disabled={closeBusy}
+            onClick={discardDraftAndClose}
+            style={{
+              padding: '10px 14px', borderRadius: 8, border: 'none', cursor: closeBusy ? 'not-allowed' : 'pointer',
+              background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex,
+              fontSize: 13, fontWeight: 650,
+            }}
+          >
+            Discard draft
+          </button>
+          <button
+            type="button"
+            disabled={closeBusy}
+            onClick={() => setShowCloseGate(false)}
+            style={{
+              padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: 'transparent', color: hexToRgba(palette.backgroundDark.hex, 0.5),
+              fontSize: 12.5, fontWeight: 600,
+            }}
+          >
+            Continue editing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (embedded) {
-    return formCard;
+    return (
+      <>
+        {formCard}
+        {closeGateModal}
+      </>
+    );
   }
 
   return (
     <div
-      onClick={(e) => !isMobile && e.target === e.currentTarget && onClose?.()}
+      onClick={(e) => !isMobile && e.target === e.currentTarget && requestClose()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9990,
         background: isMobile ? 'transparent' : hexToRgba(palette.backgroundDark.hex, 0.5),
@@ -1522,6 +1779,7 @@ export default function NewReferralForm({ onClose, onSuccess, initialForm = null
       }}
     >
       {formCard}
+      {closeGateModal}
     </div>
   );
 }

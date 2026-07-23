@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { SOURCE_TYPES, TYPE_COLORS, NO_ENTITY_TYPES } from './sourceConstants.js';
+import { sanitizeSourceName } from '../../utils/sourceName.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 function Section({ step, title, sub, children }) {
@@ -93,9 +94,11 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
 
   const entityIsNA = NO_ENTITY_TYPES.has(type);
   const entityRequired = !!type && !entityIsNA;
-  const nameErr   = !name.trim();
+  const cleanedName = sanitizeSourceName(name);
+  const cleanedEntity = sanitizeSourceName(sourceEntity);
+  const nameErr   = !cleanedName;
   const typeErr   = !type;
-  const entityErr = entityRequired && !sourceEntity.trim();
+  const entityErr = entityRequired && !cleanedEntity;
   const canSubmit = !nameErr && !typeErr && !entityErr && !saving;
 
   useEffect(() => {
@@ -123,13 +126,15 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
     if (!canSubmit) return;
     setSaving(true);
     try {
+      const safeName = sanitizeSourceName(name);
+      const safeEntity = sanitizeSourceName(sourceEntity);
       const fields = {
-        name: name.trim(),
+        name: safeName,
         type,
         ...(entityIsNA
           ? { source_entity: '' }
-          : sourceEntity.trim()
-            ? { source_entity: sourceEntity.trim() }
+          : safeEntity
+            ? { source_entity: safeEntity }
             : {}),
         ...(marketerId ? { marketer_id: marketerId } : {}),
         ...(!initial && { id: `src_${Date.now().toString(36)}` }),
@@ -220,7 +225,9 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
               />
               {showErrors && nameErr ? (
-                <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>Required. Enter the individual&rsquo;s name.</p>
+                <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>
+                  Required. Use letters/numbers (not a dash or special characters alone).
+                </p>
               ) : (
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5, lineHeight: 1.4 }}>
                   The individual who refers patients. For self-referral or campaign sources, use a short label (e.g. &ldquo;Self&rdquo; or the campaign name).
@@ -278,8 +285,8 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
             {showErrors && entityErr && (
               <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>
                 {type === 'LHCSA' || type === 'CHHA'
-                  ? 'Required — enter the company / agency name for this LHCSA or CHHA.'
-                  : 'Required for this category.'}
+                  ? 'Required. Enter a real company/agency name (not a dash or special characters alone).'
+                  : 'Required. Enter a real name (not a dash or special characters alone).'}
               </p>
             )}
           </Section>
