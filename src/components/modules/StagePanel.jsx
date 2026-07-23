@@ -309,6 +309,7 @@ function DiscardModal({ referral, onConfirm, onCancel }) {
 
 function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   const { canAssignTo } = usePermissions();
+  const { appUserId } = useCurrentAppUser();
   const storeUsers = useCareStore((s) => s.users);
   const storePatients = useCareStore((s) => s.patients);
   const storeUserLanguages = useCareStore((s) => s.userLanguages);
@@ -344,34 +345,55 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
     return set;
   }, [preferredLang, storeUserLanguages, storeLanguages]);
 
-  const allUsers = useMemo(() => (
-    Object.values(storeUsers)
+  const meUser = useMemo(
+    () => (appUserId ? Object.values(storeUsers).find((u) => u.id === appUserId) : null),
+    [storeUsers, appUserId],
+  );
+  const meName = meUser
+    ? `${meUser.first_name || ''} ${meUser.last_name || ''}`.trim() || 'Me'
+    : 'Me';
+
+  const allUsers = useMemo(() => {
+    const list = Object.values(storeUsers)
       .filter((u) => u.status === 'Active' || !u.status)
-      .filter((u) => canAssignTo(u.id))
+      // Always allow assigning to yourself on promote — managers are often intake staff too,
+      // and may not be on their own "can assign to" list.
+      .filter((u) => (appUserId && u.id === appUserId) || canAssignTo(u.id))
       .sort((a, b) => {
+        if (appUserId) {
+          if (a.id === appUserId) return -1;
+          if (b.id === appUserId) return 1;
+        }
         // Speakers of the preferred language float to the top (informational)
         const aSpeak = speakersOfPreferred.has(a.id) ? 0 : 1;
         const bSpeak = speakersOfPreferred.has(b.id) ? 0 : 1;
         if (aSpeak !== bSpeak) return aSpeak - bSpeak;
         return `${a.last_name || ''} ${a.first_name || ''}`.localeCompare(`${b.last_name || ''} ${b.first_name || ''}`);
-      })
-  ), [storeUsers, canAssignTo, speakersOfPreferred]);
+      });
+    // If the signed-in user isn't in the Users store yet, still expose a stub for Myself.
+    if (appUserId && !list.some((u) => u.id === appUserId)) {
+      list.unshift(meUser || { id: appUserId, first_name: 'Me', last_name: '', status: 'Active' });
+    }
+    return list;
+  }, [storeUsers, canAssignTo, speakersOfPreferred, appUserId, meUser]);
 
   const [ownerId, setOwnerId] = useState('');
   const [onlySpeakers, setOnlySpeakers] = useState(false);
   const canSubmit = !!ownerId;
   const selectedOwner = useMemo(
-    () => allUsers.find((u) => u.id === ownerId) || null,
-    [allUsers, ownerId],
+    () => allUsers.find((u) => u.id === ownerId) || (ownerId === appUserId ? meUser : null),
+    [allUsers, ownerId, appUserId, meUser],
   );
   const ownerIsOoo = isUserOoo(selectedOwner);
 
   const visibleUsers = useMemo(() => {
     if (!onlySpeakers || !hasPreferredLanguage) return allUsers;
-    return allUsers.filter((u) => speakersOfPreferred.has(u.id));
-  }, [allUsers, onlySpeakers, hasPreferredLanguage, speakersOfPreferred]);
+    // Keep "me" visible even when the language filter would hide them.
+    return allUsers.filter((u) => speakersOfPreferred.has(u.id) || (appUserId && u.id === appUserId));
+  }, [allUsers, onlySpeakers, hasPreferredLanguage, speakersOfPreferred, appUserId]);
 
   const langLabel = preferredLang?.name || '';
+  const myselfSelected = !!(appUserId && ownerId === appUserId);
 
   return (
     <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -413,12 +435,51 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
             <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 6 }}>
               Assign Owner *
             </p>
+
+            {appUserId && (
+              <button
+                type="button"
+                data-testid="assign-myself"
+                onClick={() => setOwnerId(appUserId)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  width: '100%', marginBottom: 8, padding: '11px 14px', borderRadius: 8, cursor: 'pointer',
+                  border: `1.5px solid ${myselfSelected ? palette.accentGreen.hex : palette.primaryMagenta.hex}`,
+                  background: myselfSelected
+                    ? hexToRgba(palette.accentGreen.hex, 0.1)
+                    : hexToRgba(palette.primaryMagenta.hex, 0.06),
+                  fontFamily: 'inherit', textAlign: 'left',
+                }}
+              >
+                <span>
+                  <span style={{
+                    display: 'block', fontSize: 13.5, fontWeight: 700,
+                    color: myselfSelected ? palette.accentGreen.hex : palette.primaryMagenta.hex,
+                  }}>
+                    Myself
+                  </span>
+                  <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                    Assign to {meName}
+                  </span>
+                </span>
+                {myselfSelected && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: palette.accentGreen.hex,
+                    padding: '3px 8px', borderRadius: 6,
+                    background: hexToRgba(palette.accentGreen.hex, 0.15),
+                  }}>
+                    Selected
+                  </span>
+                )}
+              </button>
+            )}
+
             <div
               data-testid="owner-select"
               style={{
                 flex: 1, overflowY: 'auto', borderRadius: 8,
-                border: `1px solid ${ownerId ? palette.accentGreen.hex : 'var(--color-border)'}`,
-                minHeight: 160, maxHeight: 260,
+                border: `1px solid ${ownerId && !myselfSelected ? palette.accentGreen.hex : 'var(--color-border)'}`,
+                minHeight: 140, maxHeight: 220,
               }}
             >
               {visibleUsers.length === 0 ? (
@@ -430,6 +491,7 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
               ) : visibleUsers.map((u) => {
                 const speaks = hasPreferredLanguage && speakersOfPreferred.has(u.id);
                 const selected = ownerId === u.id;
+                const isMe = !!(appUserId && u.id === appUserId);
                 return (
                   <button
                     key={u.id || u._id}
@@ -448,6 +510,7 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
                       color: palette.backgroundDark.hex,
                     }}>
                       {u.first_name} {u.last_name}
+                      {isMe ? ' (you)' : ''}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                       <OooBadge user={u} />

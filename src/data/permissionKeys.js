@@ -189,9 +189,13 @@ const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 // stage — rather than by internal data table. Note: F2F / MD Orders is treated
 // as a NON-clinical step here, and eligibility lives with Authorization.
 export const PERMISSION_CATEGORIES = [
-  'Access & Modules',
-  'Leads & Intake',
+  'Divisions',
+  'Module Pages',
+  'Workspace',
   'Inbound Submissions',
+  'Leads',
+  'Referrals',
+  'Patients',
   'Eligibility & Authorization',
   'Clinical Review',
   'F2F / MD Orders',
@@ -199,27 +203,38 @@ export const PERMISSION_CATEGORIES = [
   'Scheduling & SOC',
   'Conflicts',
   'Tasks',
-  'Patient Record',
+  'Notes & Files',
+  'Patient Drawer',
   'Directory',
   'Reports',
   'Administration',
   'Developer',
 ];
 
+/** Higher-level families for the permissions UI (search + section headers). */
+export const PERMISSION_CATEGORY_GROUPS = [
+  { label: 'Access', categories: ['Divisions', 'Module Pages', 'Workspace'] },
+  { label: 'Front door', categories: ['Inbound Submissions', 'Leads'] },
+  { label: 'Pipeline', categories: ['Referrals', 'Patients', 'Eligibility & Authorization', 'Clinical Review', 'F2F / MD Orders', 'OPWDD Enrollment', 'Scheduling & SOC'] },
+  { label: 'Day to day', categories: ['Conflicts', 'Tasks', 'Notes & Files', 'Patient Drawer'] },
+  { label: 'Directories', categories: ['Directory'] },
+  { label: 'Admin', categories: ['Reports', 'Administration', 'Developer'] },
+];
+
 // ── Full catalog (UI labels, help text, ordering) ───────────────────────────
 
 export const PERMISSION_CATALOG = [
   // ── Access & Modules ──────────────────────────────────────────────────────
-  { key: K.DIVISION_ALF,  label: 'Access ALF division data',          category: 'Access & Modules', description: 'See patients, referrals, and pipeline data tagged ALF', sort: 1 },
-  { key: K.DIVISION_SN,   label: 'Access Special Needs division data', category: 'Access & Modules', description: 'See patients, referrals, and pipeline data tagged Special Needs', sort: 2 },
-  { key: K.MODULE_INTAKE,        label: 'Open Intake module pages',        category: 'Access & Modules', description: 'Access Leads, Intake, Eligibility, Disenrollment, F2F module pages', sort: 3 },
-  { key: K.MODULE_CLINICAL,      label: 'Open Clinical module pages',      category: 'Access & Modules', description: 'Access Clinical RN Review and Conflict module pages', sort: 4 },
-  { key: K.MODULE_AUTHORIZATION, label: 'Open Authorization module pages', category: 'Access & Modules', description: 'Access Authorization Pending module page', sort: 5 },
-  { key: K.MODULE_SCHEDULING,    label: 'Open Scheduling module pages',    category: 'Access & Modules', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 6 },
-  { key: K.MODULE_ADMIN,         label: 'Open Admin module pages',         category: 'Access & Modules', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 7 },
-  { key: K.MODULE_INBOUND,       label: 'Open Inbound Submissions',        category: 'Access & Modules', description: 'Access the inbound email submissions queue', sort: 7.5 },
-  { key: K.CALENDAR_VIEW,        label: 'View calendar',                   category: 'Access & Modules', description: 'Access the Calendar page with tasks and F2F dates', sort: 8 },
-  { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',          category: 'Access & Modules', description: 'Switch between executive and caseload dashboard views', sort: 9 },
+  { key: K.DIVISION_ALF,  label: 'Access ALF division data',          category: 'Divisions', description: 'See patients, referrals, and pipeline data tagged ALF', sort: 1 },
+  { key: K.DIVISION_SN,   label: 'Access Special Needs division data', category: 'Divisions', description: 'See patients, referrals, and pipeline data tagged Special Needs', sort: 2 },
+  { key: K.MODULE_INTAKE,        label: 'Open Intake module pages',        category: 'Module Pages', description: 'Access Leads, Intake, Eligibility, Disenrollment, F2F module pages', sort: 3 },
+  { key: K.MODULE_CLINICAL,      label: 'Open Clinical module pages',      category: 'Module Pages', description: 'Access Clinical RN Review and Conflict module pages', sort: 4 },
+  { key: K.MODULE_AUTHORIZATION, label: 'Open Authorization module pages', category: 'Module Pages', description: 'Access Authorization Pending module page', sort: 5 },
+  { key: K.MODULE_SCHEDULING,    label: 'Open Scheduling module pages',    category: 'Module Pages', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 6 },
+  { key: K.MODULE_ADMIN,         label: 'Open Admin module pages',         category: 'Module Pages', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 7 },
+  { key: K.MODULE_INBOUND,       label: 'Open Inbound Submissions',        category: 'Module Pages', description: 'Access the inbound email submissions queue', sort: 7.5 },
+  { key: K.CALENDAR_VIEW,        label: 'View calendar',                   category: 'Workspace', description: 'Access the Calendar page with tasks and F2F dates', sort: 8 },
+  { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',          category: 'Workspace', description: 'Switch between executive and caseload dashboard views', sort: 9 },
 
   // ── Inbound Submissions ───────────────────────────────────────────────────
   { key: K.INBOUND_VIEW,              label: 'View inbound submissions',       category: 'Inbound Submissions', description: 'List and open inbound email tickets', sort: 9.1 },
@@ -231,21 +246,21 @@ export const PERMISSION_CATALOG = [
   { key: K.INBOUND_MANAGE,            label: 'Manage all inbound submissions', category: 'Inbound Submissions', description: 'See all tickets (not only assigned), reassign, edit parse suggestions', sort: 9.7 },
 
   // ── Leads & Intake ────────────────────────────────────────────────────────
-  { key: K.LEADS_CREATE,            label: 'Enter new leads',               category: 'Leads & Intake', description: 'Open the New Lead / New Referral form and submit a patient into Lead Entry', sort: 9.5 },
-  { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads & Intake', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
-  { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads & Intake', description: 'Discard a lead with a reason and explanation', sort: 11 },
-  { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads & Intake', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
-  { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Leads & Intake', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
-  { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Leads & Intake', description: 'See referral cards, drawers, and detail panels', sort: 13 },
-  { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Leads & Intake', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
-  { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Leads & Intake', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
-  { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Leads & Intake', description: 'Advance or regress referrals in the pipeline', sort: 15 },
-  { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',          category: 'Leads & Intake', description: 'Move any active referral to Hold stage', sort: 16 },
-  { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',           category: 'Leads & Intake', description: 'Move referrals to Unable to Convert (terminal)', sort: 17 },
-  { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Leads & Intake', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Without this, NTUC requests go through Admin Confirmation first.', sort: 18 },
-  { key: K.REFERRAL_FLAG_URGENT_CARE, label: 'Flag urgent care / pre-assessment', category: 'Leads & Intake', description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface and is visible via the row context menu and the Patient Snapshot.', sort: 19 },
-  { key: K.PATIENT_VIEW, label: 'View patient records',      category: 'Leads & Intake', description: 'See patient list, drawer, and details', sort: 20 },
-  { key: K.PATIENT_EDIT, label: 'Edit patient information',   category: 'Leads & Intake', description: 'Modify demographics, contacts, and insurance', sort: 21 },
+  { key: K.LEADS_CREATE,            label: 'Enter new leads',               category: 'Leads', description: 'Open the New Lead / New Referral form and submit a patient into Lead Entry', sort: 9.5 },
+  { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
+  { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 11 },
+  { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
+  { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
+  { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Referrals', description: 'See referral cards, drawers, and detail panels', sort: 13 },
+  { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Referrals', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
+  { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Referrals', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
+  { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 15 },
+  { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',          category: 'Referrals', description: 'Move any active referral to Hold stage', sort: 16 },
+  { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',           category: 'Referrals', description: 'Move referrals to Unable to Convert (terminal)', sort: 17 },
+  { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Referrals', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Without this, NTUC requests go through Admin Confirmation first.', sort: 18 },
+  { key: K.REFERRAL_FLAG_URGENT_CARE, label: 'Flag urgent care / pre-assessment', category: 'Referrals', description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface and is visible via the row context menu and the Patient Snapshot.', sort: 19 },
+  { key: K.PATIENT_VIEW, label: 'View patient records',      category: 'Patients', description: 'See patient list, drawer, and details', sort: 20 },
+  { key: K.PATIENT_EDIT, label: 'Edit patient information',   category: 'Patients', description: 'Modify demographics, contacts, and insurance', sort: 21 },
 
   // ── Eligibility & Authorization ───────────────────────────────────────────
   { key: K.CLINICAL_ELIGIBILITY, label: 'Run eligibility checks',        category: 'Eligibility & Authorization', description: 'Log insurance/eligibility verification results', sort: 30 },
@@ -297,22 +312,22 @@ export const PERMISSION_CATALOG = [
   { key: K.TASK_ASSIGN,   label: 'Assign tasks to other users', category: 'Tasks', description: 'Pick an assignee when creating or editing tasks', sort: 102 },
   { key: K.TASK_COMPLETE, label: 'Complete tasks',              category: 'Tasks', description: 'Mark tasks as completed', sort: 103 },
 
-  // ── Patient Record (notes, files, and per-tab snapshot editing) ───────────
-  { key: K.FILE_UPLOAD,  label: 'Upload documents',  category: 'Patient Record', description: 'Upload patient files to R2 storage', sort: 110 },
-  { key: K.NOTE_CREATE,  label: 'Create notes',      category: 'Patient Record', description: 'Add freeform notes to patient records', sort: 111 },
-  { key: K.NOTE_PIN,     label: 'Pin / unpin notes', category: 'Patient Record', description: 'Toggle pinned status on notes', sort: 112 },
-  { key: K.SNAPSHOT_EDIT_REFERRAL,         label: 'Edit Referral tab',         category: 'Patient Record', description: 'Modify fields in the Referral tab of the patient drawer',              sort: 113 },
-  { key: K.SNAPSHOT_EDIT_DEMOGRAPHICS,     label: 'Edit Demographics tab',     category: 'Patient Record', description: 'Modify fields in the Demographics tab of the patient drawer',          sort: 114 },
-  { key: K.SNAPSHOT_EDIT_TRIAGE,           label: 'Edit Triage tab',           category: 'Patient Record', description: 'Fill out or edit triage forms in the patient drawer',                   sort: 115 },
-  { key: K.SNAPSHOT_EDIT_F2F,              label: 'Edit Face to Face tab',     category: 'Patient Record', description: 'Log F2F dates and upload documents in the patient drawer',             sort: 116 },
-  { key: K.SNAPSHOT_EDIT_ELIGIBILITY,      label: 'Edit Eligibility tab',      category: 'Patient Record', description: 'Log eligibility checks in the patient drawer',                        sort: 117 },
-  { key: K.SNAPSHOT_EDIT_NOTES,            label: 'Edit Notes tab',            category: 'Patient Record', description: 'Create and pin notes in the patient drawer',                          sort: 118 },
-  { key: K.SNAPSHOT_EDIT_FILES,            label: 'Edit Files tab',            category: 'Patient Record', description: 'Upload and manage files in the patient drawer',                       sort: 119 },
-  { key: K.SNAPSHOT_EDIT_TASKS,            label: 'Edit Tasks tab',            category: 'Patient Record', description: 'Create and complete tasks in the patient drawer',                     sort: 120 },
-  { key: K.SNAPSHOT_EDIT_CLINICAL_REVIEW,  label: 'Edit Clinical Review tab',  category: 'Patient Record', description: 'Interact with the clinical review checklist in the patient drawer',   sort: 121 },
-  { key: K.SNAPSHOT_EDIT_AUTHORIZATIONS,   label: 'Edit Auth tab',             category: 'Patient Record', description: 'Record authorizations in the patient drawer',                        sort: 122 },
-  { key: K.SNAPSHOT_EDIT_CONFLICTS,        label: 'Edit Conflicts tab',        category: 'Patient Record', description: 'Resolve conflicts in the patient drawer',                            sort: 123 },
-  { key: K.SNAPSHOT_EDIT_PHYSICIAN,        label: 'Edit Physician tab',        category: 'Patient Record', description: 'Set the patient\'s physician and run NPI / PECOS / OPRA verification in the patient drawer', sort: 124 },
+  // ── Notes, files & drawer tabs (notes, files, and per-tab snapshot editing) ───────────
+  { key: K.FILE_UPLOAD,  label: 'Upload documents',  category: 'Notes & Files', description: 'Upload patient files to R2 storage', sort: 110 },
+  { key: K.NOTE_CREATE,  label: 'Create notes',      category: 'Notes & Files', description: 'Add freeform notes to patient records', sort: 111 },
+  { key: K.NOTE_PIN,     label: 'Pin / unpin notes', category: 'Notes & Files', description: 'Toggle pinned status on notes', sort: 112 },
+  { key: K.SNAPSHOT_EDIT_REFERRAL,         label: 'Edit Referral tab',         category: 'Patient Drawer', description: 'Modify fields in the Referral tab of the patient drawer',              sort: 113 },
+  { key: K.SNAPSHOT_EDIT_DEMOGRAPHICS,     label: 'Edit Demographics tab',     category: 'Patient Drawer', description: 'Modify fields in the Demographics tab of the patient drawer',          sort: 114 },
+  { key: K.SNAPSHOT_EDIT_TRIAGE,           label: 'Edit Triage tab',           category: 'Patient Drawer', description: 'Fill out or edit triage forms in the patient drawer',                   sort: 115 },
+  { key: K.SNAPSHOT_EDIT_F2F,              label: 'Edit Face to Face tab',     category: 'Patient Drawer', description: 'Log F2F dates and upload documents in the patient drawer',             sort: 116 },
+  { key: K.SNAPSHOT_EDIT_ELIGIBILITY,      label: 'Edit Eligibility tab',      category: 'Patient Drawer', description: 'Log eligibility checks in the patient drawer',                        sort: 117 },
+  { key: K.SNAPSHOT_EDIT_NOTES,            label: 'Edit Notes tab',            category: 'Patient Drawer', description: 'Create and pin notes in the patient drawer',                          sort: 118 },
+  { key: K.SNAPSHOT_EDIT_FILES,            label: 'Edit Files tab',            category: 'Patient Drawer', description: 'Upload and manage files in the patient drawer',                       sort: 119 },
+  { key: K.SNAPSHOT_EDIT_TASKS,            label: 'Edit Tasks tab',            category: 'Patient Drawer', description: 'Create and complete tasks in the patient drawer',                     sort: 120 },
+  { key: K.SNAPSHOT_EDIT_CLINICAL_REVIEW,  label: 'Edit Clinical Review tab',  category: 'Patient Drawer', description: 'Interact with the clinical review checklist in the patient drawer',   sort: 121 },
+  { key: K.SNAPSHOT_EDIT_AUTHORIZATIONS,   label: 'Edit Auth tab',             category: 'Patient Drawer', description: 'Record authorizations in the patient drawer',                        sort: 122 },
+  { key: K.SNAPSHOT_EDIT_CONFLICTS,        label: 'Edit Conflicts tab',        category: 'Patient Drawer', description: 'Resolve conflicts in the patient drawer',                            sort: 123 },
+  { key: K.SNAPSHOT_EDIT_PHYSICIAN,        label: 'Edit Physician tab',        category: 'Patient Drawer', description: 'Set the patient\'s physician and run NPI / PECOS / OPRA verification in the patient drawer', sort: 124 },
 
   // ── Directory (per-page view / create / edit) ─────────────────────────────
   { key: K.DIRECTORY_MARKETERS_VIEW,   label: 'Marketers · view',   category: 'Directory', description: 'Open and browse the Marketers directory', sort: 130 },

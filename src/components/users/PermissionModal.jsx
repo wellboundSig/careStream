@@ -239,13 +239,14 @@ export default function PermissionModal({ user, onClose, onOpenAssignable }) {
           <button onClick={selectNone} style={{ padding: '5px 10px', borderRadius: 6, background: 'none', border: '1px solid var(--color-border)', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>None</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
           <PermissionChecklist
             checked={checked}
             onToggle={toggle}
             onToggleCategory={toggleCategory}
             presetKeys={presetKeys}
             showDescriptions
+            autoFocusSearch
           />
         </div>
 

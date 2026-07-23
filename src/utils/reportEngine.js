@@ -672,15 +672,22 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     || k.startsWith('__actor_name')
   );
 
-  const [patients, marketers, facilities, sources, physicians, campaigns, users] = await Promise.all([
-    needsPatient   ? getLookupMap('Patients')         : Promise.resolve({}),
-    needsMarketer  ? getLookupMap('Marketers')        : Promise.resolve({}),
-    needsFacility  ? getLookupMap('Facilities')       : Promise.resolve({}),
-    needsSource    ? getLookupMap('ReferralSources')  : Promise.resolve({}),
-    needsPhysician ? getLookupMap('Physicians')       : Promise.resolve({}),
-    needsCampaign  ? getLookupMap('Campaigns')        : Promise.resolve({}),
-    needsUsers     ? getLookupMap('Users')            : Promise.resolve({}),
+  const [patients, marketers, legacyFacilities, networkFacilities, sources, physicians, campaigns, users] = await Promise.all([
+    needsPatient   ? getLookupMap('Patients')           : Promise.resolve({}),
+    needsMarketer  ? getLookupMap('Marketers')          : Promise.resolve({}),
+    needsFacility  ? getLookupMap('Facilities')         : Promise.resolve({}),
+    // ALF referrals store NetworkFacilities ids on facility_id — must resolve both tables.
+    needsFacility  ? getLookupMap('NetworkFacilities')  : Promise.resolve({}),
+    needsSource    ? getLookupMap('ReferralSources')    : Promise.resolve({}),
+    needsPhysician ? getLookupMap('Physicians')         : Promise.resolve({}),
+    needsCampaign  ? getLookupMap('Campaigns')          : Promise.resolve({}),
+    needsUsers     ? getLookupMap('Users')              : Promise.resolve({}),
   ]);
+
+  // Prefer network facility names when both tables share a key (same as useLookups).
+  const facilities = needsFacility
+    ? { ...legacyFacilities, ...networkFacilities }
+    : {};
 
   return records.map((row) => {
     const out = { ...row };
@@ -704,7 +711,10 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       out.__marketer_name   = resolve.marketer(m);
       out.__marketer_region = m.region || '—';
     }
-    if (needsFacility)  out.__facility_name  = resolve.facility(facilities[row.facility_id]);
+    if (needsFacility) {
+      const fid = firstId(row.facility_id);
+      out.__facility_name = resolve.facility(facilities[fid]);
+    }
     if (needsSource)    {
       const s = sources[row.referral_source_id] || {};
       out.__source_name = s.name || '—';

@@ -9,11 +9,11 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import {
   PERMISSION_CATALOG,
-  PERMISSION_CATEGORIES,
   PERMISSION_KEYS,
 } from '../../data/permissionKeys.js';
 import { LANGUAGES, languageById } from '../../data/languages.js';
 import RoleChangeDialog from './RoleChangeDialog.jsx';
+import PermissionChecklist from './PermissionChecklist.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -308,8 +308,15 @@ export default function UserSettingsSheet({
           })}
         </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 32px' }}>
+        {/* Body — permissions owns its own scroll so search stays pinned */}
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: section === 'permissions' ? 'hidden' : 'auto',
+          padding: section === 'permissions' ? '16px 24px 16px' : '20px 24px 32px',
+          display: section === 'permissions' ? 'flex' : 'block',
+          flexDirection: 'column',
+        }}>
           {section === 'overview' && (
             <OverviewSection
               user={user}
@@ -871,15 +878,10 @@ function PermissionsSection({ user, existingRecord, presets, appUserId, onToast 
     }
   }
 
-  const grouped = PERMISSION_CATEGORIES.map((cat) => ({
-    category: cat,
-    items: PERMISSION_CATALOG.filter((p) => p.category === cat),
-  })).filter((g) => g.items.length > 0);
-
   return (
-    <div>
-      <SectionTitle title="Permissions" hint="What this person can do in CareStream. Start from a preset, then fine-tune." />
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%' }}>
+      <SectionTitle title="Permissions" hint="Search or jump by section. Start from a preset, then fine-tune." />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', flexShrink: 0 }}>
         <select
           value={selectedPreset}
           onChange={(e) => setSelectedPreset(e.target.value)}
@@ -903,38 +905,18 @@ function PermissionsSection({ user, existingRecord, presets, appUserId, onToast 
         <button type="button" onClick={() => setChecked(new Set())} style={ghostBtn}>None</button>
       </div>
 
-      {grouped.map((group, gi) => {
-        const catKeys = group.items.map((p) => p.key);
-        const allCatChecked = catKeys.every((k) => checked.has(k));
-        const someCatChecked = catKeys.some((k) => checked.has(k)) && !allCatChecked;
-        const color = [palette.primaryMagenta.hex, palette.accentBlue.hex, palette.accentGreen.hex, palette.accentOrange.hex][gi % 4];
-        return (
-          <div key={group.category} style={{ marginBottom: 16 }}>
-            <div onClick={() => toggleCategory(group.category)} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={allCatChecked} ref={(el) => { if (el) el.indeterminate = someCatChecked; }} onChange={() => toggleCategory(group.category)} style={{ accentColor: color }} />
-              <span style={{ fontSize: 10.5, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase', color }}>{group.category}</span>
-            </div>
-            {group.items.map((perm) => {
-              const isChecked = checked.has(perm.key);
-              const differs = presetKeys && (presetKeys.has(perm.key) !== isChecked);
-              return (
-                <label key={perm.key} style={{
-                  display: 'flex', gap: 9, padding: '5px 6px', borderRadius: 6, cursor: 'pointer',
-                  background: differs ? hexToRgba(palette.highlightYellow.hex, 0.12) : 'transparent',
-                }}>
-                  <input type="checkbox" checked={isChecked} onChange={() => toggle(perm.key)} style={{ accentColor: palette.primaryMagenta.hex, marginTop: 2 }} />
-                  <div>
-                    <span style={{ fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{perm.label}</span>
-                    <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 1 }}>{perm.description}</p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        );
-      })}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <PermissionChecklist
+          checked={checked}
+          onToggle={toggle}
+          onToggleCategory={toggleCategory}
+          presetKeys={presetKeys}
+          showDescriptions
+          autoFocusSearch
+        />
+      </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 14, borderTop: '1px solid var(--color-border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
         <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
           {checked.size} of {ALL_PERM_KEYS.length}
           {hasChanges && <span style={{ color: palette.primaryMagenta.hex, fontWeight: 600, marginLeft: 8 }}>Unsaved</span>}

@@ -349,7 +349,7 @@ export default function GuidedReports() {
               background: palette.backgroundLight.hex,
             }}>
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '0 0 10px' }}>
-                Same filters as the sentence — add nested AND/OR when needed. Multi-selects appear as “is any of”.
+                Same filters as the sentence, add nested AND/OR when needed. Multi-selects appear as “is any of”.
               </p>
               <QueryBuilder
                 fields={template.fields}

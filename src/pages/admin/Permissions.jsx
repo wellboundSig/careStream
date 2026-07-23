@@ -398,12 +398,13 @@ function PresetEditor({ preset, onClose, onSaved, onDeleted }) {
         </div>
 
         {/* Checkboxes */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '14px 24px 8px', display: 'flex', flexDirection: 'column' }}>
           <PermissionChecklist
             checked={checked}
             onToggle={toggle}
             onToggleCategory={toggleCategory}
             showDescriptions={false}
+            autoFocusSearch
           />
         </div>
 

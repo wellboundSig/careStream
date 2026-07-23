@@ -103,8 +103,8 @@ describe('Leads permission keys', () => {
     expect(PERMISSION_CATALOG.find((c) => c.key === PERMISSION_KEYS.LEADS_DISCARD)).toBeTruthy();
   });
 
-  it('has "Leads & Intake" in PERMISSION_CATEGORIES', () => {
-    expect(PERMISSION_CATEGORIES).toContain('Leads & Intake');
+  it('has "Leads" in PERMISSION_CATEGORIES', () => {
+    expect(PERMISSION_CATEGORIES).toContain('Leads');
   });
 
   it('promote permission description mentions supervisor', () => {
