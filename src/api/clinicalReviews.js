@@ -103,6 +103,9 @@ export const updateClinicalReview = (id, fields) =>
  * @param {boolean} [input.authRequired]    Managed-care auth flag
  * @param {string}  [input.reviewedBy]      User business id
  * @param {string}  [input.existingId]      Skip the lookup query when known
+ * @param {string}  [input.backfillStartedBy]  Stamp started_by on the known-id
+ *   update path. Pass ONLY when the caller has verified the existing row has
+ *   no started_by (legacy rows that predate the column). Never overwrites.
  * @returns {Promise<{ id: string, fields: object }>}
  */
 export async function upsertClinicalReview({
@@ -112,6 +115,7 @@ export async function upsertClinicalReview({
   authRequired,
   reviewedBy,
   existingId,
+  backfillStartedBy,
 }) {
   if (!referralRecordId) throw new Error('upsertClinicalReview: referralRecordId required');
 
@@ -131,9 +135,12 @@ export async function upsertClinicalReview({
   };
 
   if (existingId) {
-    // Do not touch started_by on the known-id update path — the create path
-    // and optimistic store own the immutable starter stamp.
-    return airtable.update(TABLE, existingId, normaliseFields(payload));
+    // started_by is immutable once set — only the caller-verified legacy
+    // backfill may write it here (rows created before the column existed).
+    const patch = backfillStartedBy
+      ? { ...payload, started_by: backfillStartedBy, started_at: new Date().toISOString() }
+      : payload;
+    return airtable.update(TABLE, existingId, normaliseFields(patch));
   }
 
   const existing = await getClinicalReviewsByReferral(referralRecordId).catch(() => []);

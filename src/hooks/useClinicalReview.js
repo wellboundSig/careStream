@@ -107,6 +107,11 @@ export function useClinicalReview(referralRecordId) {
         authRequired: next.authRequired,
         reviewedBy: appUserId || undefined,
         existingId: existingRow?._id,
+        // Legacy rows predate started_by — stamp the current editor as the
+        // starter so "review in progress by …" can show for this referral.
+        backfillStartedBy: existingRow && !String(existingRow.started_by || '').trim()
+          ? (appUserId || undefined)
+          : undefined,
       });
       if (created && created.id) {
         mergeEntities('clinicalReviews', {
