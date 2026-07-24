@@ -11,6 +11,7 @@ import { useCareStore } from '../store/careStore.js';
 import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
+import SocCompletedStatCard from '../components/common/SocCompletedBreakdownPopup.jsx';
 import { SkeletonStatCard, SkeletonTableRow, SkeletonStageCard, SkeletonRect } from '../components/common/Skeleton.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
@@ -307,10 +308,27 @@ function CaseloadDashboard() {
 
 // ── Executive Dashboard (preserved existing behavior) ─────────────────────────
 
+function linkId(raw) {
+  if (!raw) return '';
+  return String(Array.isArray(raw) ? raw[0] : raw).trim();
+}
+
+function rankByCount(counts, resolveName, resolveImage) {
+  return Object.entries(counts)
+    .map(([id, count]) => {
+      const name = resolveName(id);
+      if (!name || name === '—' || name === id) return null;
+      return { id, name, count, image: resolveImage ? resolveImage(id) : null };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
 function ExecutiveDashboard() {
   const { division } = useOutletContext();
   const { data: referrals, loading } = usePipelineData();
   const { open: openPatient } = usePatientDrawer();
+  const { resolveMarketer, resolveUser, resolveUserImage } = useLookups();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { can } = usePermissions();
@@ -328,6 +346,23 @@ function ExecutiveDashboard() {
     }, {}),
     [filtered],
   );
+
+  // Staff involved in ≥1 SOC Completed — ranked by count for the hover popup.
+  const socStaffBreakdown = useMemo(() => {
+    const marketerCounts = {};
+    const ownerCounts = {};
+    filtered.forEach((r) => {
+      if (r.current_stage !== 'SOC Completed') return;
+      const mid = linkId(r.marketer_id);
+      const oid = linkId(r.intake_owner_id);
+      if (mid) marketerCounts[mid] = (marketerCounts[mid] || 0) + 1;
+      if (oid) ownerCounts[oid] = (ownerCounts[oid] || 0) + 1;
+    });
+    return {
+      marketers: rankByCount(marketerCounts, resolveMarketer),
+      owners: rankByCount(ownerCounts, resolveUser, resolveUserImage),
+    };
+  }, [filtered, resolveMarketer, resolveUser, resolveUserImage]);
 
   const activeCount = filtered.filter((r) => !TERMINAL_STAGES.has(r.current_stage)).length;
 
@@ -380,7 +415,12 @@ function ExecutiveDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
           <StatCard label="Active" value={activeCount} sub="in pipeline" color={palette.primaryMagenta.hex} />
           <StatCard label="New This Week" value={newThisWeek} sub={`${newLastWeek} last week`} delta={wowDelta} color={palette.accentBlue.hex} />
-          <StatCard label="On Hold" value={stageCounts['Hold'] || 0} sub="awaiting" color={palette.highlightYellow.hex} />
+          <SocCompletedStatCard
+            value={stageCounts['SOC Completed'] || 0}
+            sub="start of care"
+            marketers={socStaffBreakdown.marketers}
+            owners={socStaffBreakdown.owners}
+          />
           <StatCard label="Overdue" value={overdueCount} sub="›14 days" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
         </div>
 
@@ -461,7 +501,12 @@ function ExecutiveDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
         <StatCard label="Active Referrals" value={activeCount} sub="currently in pipeline" color={palette.primaryMagenta.hex} />
         <StatCard label="New This Week" value={newThisWeek} sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'} delta={wowDelta} color={palette.accentBlue.hex} />
-        <StatCard label="On Hold" value={stageCounts['Hold'] || 0} sub="awaiting resolution" color={palette.highlightYellow.hex} />
+        <SocCompletedStatCard
+          value={stageCounts['SOC Completed'] || 0}
+          sub="patients under care"
+          marketers={socStaffBreakdown.marketers}
+          owners={socStaffBreakdown.owners}
+        />
         <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
       </div>
 
@@ -555,7 +600,7 @@ function ExecutiveDashboard() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color, delta, alert }) {
+function StatCard({ label, value, sub, color, delta, alert, icon }) {
   const hasDelta = delta !== undefined && delta !== null;
   return (
     <div
@@ -569,9 +614,15 @@ function StatCard({ label, value, sub, color, delta, alert }) {
         borderTop:     `3px solid ${color}`,
         border:        `1px solid var(--color-border)`,
         borderTop:     `3px solid ${color}`,
+        position:      'relative',
       }}
     >
-      <p style={{ fontSize: 11, fontWeight: 650, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>{label}</p>
+      {icon && (
+        <div style={{ position: 'absolute', top: 14, right: 16 }}>
+          {icon}
+        </div>
+      )}
+      <p style={{ fontSize: 11, fontWeight: 650, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase', paddingRight: icon ? 36 : 0 }}>{label}</p>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <p style={{ fontSize: 32, fontWeight: 700, color: alert ? color : palette.backgroundDark.hex, lineHeight: 1 }}>{value}</p>
         {hasDelta && delta !== 0 && (
