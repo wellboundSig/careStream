@@ -13,12 +13,9 @@ import palette, { hexToRgba } from '../../utils/colors.js';
 
 // A "Referral Source" is the PERSON who refers (care manager, discharge planner,
 // PCP, etc.). Each person sits under a category/type (Hospital, CCO, PCP, etc.)
-// and works for a company/entity (e.g. Tri-County Care). All three pieces feed
-// the New Referral picker so users can choose a person and have the type and
-// company auto-fill alongside.
-//
-// Communication methods (Web / Fax / Allscripts) intentionally do NOT live
-// here — those are *how* a person sent us a referral, not *what* they are.
+// and works for a company/entity (e.g. Tri-County Care). An optional default
+// *method* (Word of Mouth, Facebook Ads, etc.) can be set for autofill on
+// New Referral — methods are not people and must not be stored as the name.
 
 function TypeBadge({ type }) {
   const c = TYPE_COLORS[type] || TYPE_COLORS.Other;
@@ -61,6 +58,7 @@ export default function ReferralSources() {
           (s.name || '').toLowerCase().includes(q) ||
           (s.type || '').toLowerCase().includes(q) ||
           (s.source_entity || '').toLowerCase().includes(q) ||
+          (s.method || '').toLowerCase().includes(q) ||
           (resolveMarketer(s.marketer_id) || '').toLowerCase().includes(q),
       );
     }
@@ -104,7 +102,7 @@ export default function ReferralSources() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>Referral Sources</h1>
           <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), maxWidth: 580 }}>
             The people who refer patients to us: care managers, discharge planners, PCPs, and so on.
-            Each row is one person paired with a category and the company they work for.
+            Each row is one person paired with a category, company, and optional default method.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -116,7 +114,7 @@ export default function ReferralSources() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search person, company, type…"
+              placeholder="Search person, company, method…"
               style={{ background: 'none', border: 'none', outline: 'none', fontSize: 13, color: palette.backgroundDark.hex, width: '100%' }}
             />
           </div>
@@ -161,7 +159,7 @@ export default function ReferralSources() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: '1px solid var(--color-border)' }}>
-              {['Person', 'Type', 'Company / Entity', 'Marketer', 'Referrals', 'Admissions', 'Conversion', ''].map((h, i) => (
+              {['Person', 'Type', 'Company / Entity', 'Method', 'Marketer', 'Referrals', 'Admissions', 'Conversion', ''].map((h, i) => (
                 <th
                   key={h || `col-${i}`}
                   style={{
@@ -182,10 +180,10 @@ export default function ReferralSources() {
           </thead>
           <tbody>
             {!hydrated ? (
-              Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={8} />)
+              Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} columns={9} />)
             ) : enriched.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                <td colSpan={9} style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
                   {search.trim() || typeFilter !== 'all'
                     ? 'No sources match your filters.'
                     : 'No referral sources yet. Add the first person who refers to get started.'}
@@ -265,6 +263,9 @@ function SourceRow({ source: src, resolveMarketer, onOpen, onEdit, canEdit }) {
       </td>
       <td style={{ padding: '11px 14px', fontSize: 12.5, color: src.source_entity ? hexToRgba(palette.backgroundDark.hex, 0.7) : hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: src.source_entity ? 'normal' : 'italic' }}>
         {src.source_entity || '—'}
+      </td>
+      <td style={{ padding: '11px 14px', fontSize: 12.5, color: src.method ? hexToRgba(palette.backgroundDark.hex, 0.7) : hexToRgba(palette.backgroundDark.hex, 0.3), fontStyle: src.method ? 'normal' : 'italic' }}>
+        {src.method || '—'}
       </td>
       <td style={{ padding: '11px 14px', fontSize: 12.5, color: isUnassigned ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6), fontWeight: isUnassigned ? 600 : 400, fontStyle: isUnassigned ? 'italic' : 'normal' }}>
         {isUnassigned ? 'Unassigned' : marketerName}

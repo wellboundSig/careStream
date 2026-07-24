@@ -360,6 +360,8 @@ const DESIRED_TABLES = [
       t.text('id'), // primary
       t.link('referral_id', 'Referrals'),
       t.longText('reviewed_by'),
+      t.text('started_by'),
+      t.dateTime('started_at'),
       t.single('decision', ['accept', 'conditional']),
       t.check('auth_required'),
       // Checklist columns — must stay in sync with CLINICAL_CHECKLIST in
@@ -526,6 +528,7 @@ const DESIRED_NEW_FIELDS = {
     // Concurrent presence in Clinical Intake RN Review while still in Intake.
     t.check('in_clinical_review'),
     t.dateTime('clinical_review_pushed_at'),
+    t.text('clinical_review_pushed_by_id'),
     t.dateTime('clinical_review_completed_at'),
     t.text('clinical_review_completed_by_id'),
     // Concurrent presence: Eligibility completion timestamp; participates in

@@ -177,6 +177,12 @@ function MadLibSentence({ template, slots, setSlots, marketerOpts, ownerOpts, so
           Show referral outcomes by source {bits.dateRange} {bits.division}, {bits.sources}.
         </p>
       );
+    case 'method_attribution':
+      return (
+        <p style={sentenceStyle}>
+          Show referral outcomes by method {bits.dateRange} {bits.division}, {bits.sources}.
+        </p>
+      );
     default:
       return <p style={sentenceStyle}>{template.description}</p>;
   }

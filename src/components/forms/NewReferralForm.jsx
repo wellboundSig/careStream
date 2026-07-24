@@ -29,6 +29,7 @@ import {
   isPlausibleSourceLabel,
   UNKNOWN_SOURCE_ID,
 } from '../../utils/sourceName.js';
+import { REFERRAL_METHODS, normalizeReferralMethod } from '../referralSources/sourceConstants.js';
 import {
   normalizePersonNamePart,
   normalizePersonNameFields,
@@ -160,7 +161,7 @@ function Input({ value, onChange, onBlurNormalize, placeholder, type = 'text', h
   );
 }
 
-function Select({ value, onChange, options, placeholder, hasError, disabled }) {
+function Select({ value, onChange, options, placeholder, hasError, disabled, allowBlank, blankLabel }) {
   return (
     <select
       value={value || ''}
@@ -170,7 +171,9 @@ function Select({ value, onChange, options, placeholder, hasError, disabled }) {
       onFocus={(e) => (e.target.style.boxShadow = `0 0 0 1.5px ${palette.primaryMagenta.hex}`)}
       onBlur={(e) => (e.target.style.boxShadow = hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none')}
     >
-      <option value="" disabled>{placeholder || 'Select...'}</option>
+      <option value="" disabled={!allowBlank}>
+        {allowBlank ? (blankLabel || 'Leave blank') : (placeholder || 'Select...')}
+      </option>
       {options.map((opt) => (
         <option key={typeof opt === 'string' ? opt : opt.value} value={typeof opt === 'string' ? opt : opt.value}>
           {typeof opt === 'string' ? opt : opt.label}
@@ -628,6 +631,7 @@ export default function NewReferralForm({
     phone_primary: '',
     referral_source_id: '',
     referral_source_other: '',
+    referral_method: '',
     marketer_id: '',
     marketer_other: '',
     dob: '',
@@ -922,6 +926,8 @@ export default function NewReferralForm({
       const cleaned = sanitizeSourceName(form.referral_source_other);
       if (!cleaned) {
         errs.referral_source_other = 'Enter a real source name (not a dash or special characters alone)';
+      } else if (normalizeReferralMethod(cleaned)) {
+        errs.referral_source_other = 'That looks like a method — use Lead Source “Unknown” and set Referral method instead';
       }
     } else if (form.referral_source_id && !isSourceBusinessId(form.referral_source_id)
       && !sources.some((s) => s.id === form.referral_source_id)) {
@@ -1088,6 +1094,7 @@ export default function NewReferralForm({
         patient_id: createdPatientId,
         marketer_id: resolvedMarketer,
         referral_source_id: resolvedSource,
+        ...(form.referral_method ? { referral_method: form.referral_method } : {}),
         current_stage: stage,
         division: form.division,
         priority: 'Normal',
@@ -1227,25 +1234,48 @@ export default function NewReferralForm({
     ];
   }, [facilityMarketerLinks, marketers]);
 
-  const sourceOptions = [
-    ...sources
-      .filter((s) => s.is_active === undefined || s.is_active === null
-        || String(s.is_active).toUpperCase() === 'TRUE' || s.is_active === true)
+  const sourceOptions = (() => {
+    const active = sources.filter((s) => s.is_active === undefined || s.is_active === null
+      || String(s.is_active).toUpperCase() === 'TRUE' || s.is_active === true);
+    const toOpt = (s) => {
+      const entity = (s.source_entity || '').trim();
+      const type = (s.type || '').trim();
+      const method = (s.method || '').trim();
+      const meta = [type, entity, method].filter(Boolean).join(' · ');
+      return {
+        value: s.id,
+        label: s.name || s.id,
+        sublabel: meta || undefined,
+        searchText: [s.name, type, entity, method, s.email, s.phone].filter(Boolean).join(' '),
+      };
+    };
+    const unknown = active.find((s) => s.id === UNKNOWN_SOURCE_ID);
+    const rest = active
+      .filter((s) => s.id !== UNKNOWN_SOURCE_ID)
       .slice()
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
-      .map((s) => {
-        const entity = (s.source_entity || '').trim();
-        const type = (s.type || '').trim();
-        const meta = [type, entity].filter(Boolean).join(' · ');
-        return {
-          value: s.id,
-          label: s.name || s.id,
-          sublabel: meta || undefined,
-          searchText: [s.name, type, entity, s.email, s.phone].filter(Boolean).join(' '),
-        };
-      }),
-    { value: 'other', label: 'Other', sublabel: 'Free-text lead source', searchText: 'other' },
-  ];
+      .map(toOpt);
+    return [
+      ...(unknown ? [toOpt(unknown)] : [{
+        value: UNKNOWN_SOURCE_ID,
+        label: 'Unknown',
+        sublabel: 'No known referring person',
+        searchText: 'unknown',
+      }]),
+      ...rest,
+      { value: 'other', label: 'Other', sublabel: 'Create a new person / label', searchText: 'other' },
+    ];
+  })();
+
+  function handleSourceChange(sourceId) {
+    setField('referral_source_id', sourceId);
+    if (sourceId === 'other' || !sourceId) {
+      setField('referral_method', '', { silent: true });
+      return;
+    }
+    const src = sources.find((s) => s.id === sourceId);
+    setField('referral_method', (src?.method || '').trim(), { silent: true });
+  }
 
   const servicesForDivision = getServicesForDivision(form.division);
 
@@ -1444,7 +1474,7 @@ export default function NewReferralForm({
               <FieldBox label="Lead Source" required>
                 <SearchSelect
                   value={form.referral_source_id}
-                  onChange={(v) => setField('referral_source_id', v)}
+                  onChange={handleSourceChange}
                   options={sourceOptions}
                   placeholder="Search by person, organization, or type…"
                   searchPlaceholder="Search name, entity, or type…"
@@ -1456,7 +1486,8 @@ export default function NewReferralForm({
                   if (!src) return null;
                   const hasType = !!src.type;
                   const hasEntity = !!(src.source_entity && src.source_entity.trim());
-                  if (!hasType && !hasEntity && !src.email && !src.phone) return null;
+                  const hasMethod = !!(src.method && src.method.trim());
+                  if (!hasType && !hasEntity && !hasMethod && !src.email && !src.phone) return null;
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                       {hasType && (
@@ -1474,6 +1505,15 @@ export default function NewReferralForm({
                           · <strong style={{ color: hexToRgba(palette.backgroundDark.hex, 0.75), fontWeight: 600 }}>{src.source_entity}</strong>
                         </span>
                       )}
+                      {hasMethod && (
+                        <span style={{
+                          fontSize: 10.5, fontWeight: 650, padding: '2px 8px', borderRadius: 20,
+                          background: hexToRgba(palette.accentBlue.hex, 0.12),
+                          color: palette.accentBlue.hex,
+                        }}>
+                          {src.method}
+                        </span>
+                      )}
                       {src.email && (
                         <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{src.email}</span>
                       )}
@@ -1488,7 +1528,7 @@ export default function NewReferralForm({
                     <Input
                       value={form.referral_source_other}
                       onChange={(v) => setField('referral_source_other', v)}
-                      placeholder="Source name (e.g. hospital or person)…"
+                      placeholder="Person or organization name (not a method)…"
                       hasError={!!errors.referral_source_other}
                     />
                     {errors.referral_source_other && (
@@ -1497,10 +1537,22 @@ export default function NewReferralForm({
                       </p>
                     )}
                     <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, lineHeight: 1.4 }}>
-                      Use a short name. Put longer explanations in Initial Notes.
+                      Use a short person/org name. Methods like Word of Mouth belong in Referral method below.
                     </p>
                   </div>
                 )}
+              </FieldBox>
+              <FieldBox label="Referral method">
+                <Select
+                  value={form.referral_method}
+                  onChange={(v) => setField('referral_method', v)}
+                  options={REFERRAL_METHODS.map((m) => ({ value: m, label: m }))}
+                  allowBlank
+                  blankLabel="Leave blank"
+                />
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, lineHeight: 1.4 }}>
+                  How this lead reached us. Autofills when the source has a default method.
+                </p>
               </FieldBox>
               <FieldBox label="Marketer" required>
                 <Select value={form.marketer_id} onChange={(v) => setField('marketer_id', v)} options={marketerOptions} placeholder={facilityMarketerLinks ? 'Select facility marketer…' : 'Select marketer…'} hasError={!!errors.marketer_id} />

@@ -1105,6 +1105,7 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
         extraFields: {
           in_clinical_review: true,
           clinical_review_pushed_at: new Date().toISOString(),
+          ...(actorUserId ? { clinical_review_pushed_by_id: actorUserId } : {}),
           // Clear prior Clinical → Intake return flag when Intake re-pushes.
           returned_from_clinical: false,
           returned_from_clinical_note: null,
@@ -1796,6 +1797,7 @@ function ApproveButton({ enabled, onSelect }) {
 function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
+  const { resolveUser } = useLookups();
   // Checklist + working decision are persisted to ClinicalReview via this
   // shared hook so the drawer Clinical Review tab and this module panel
   // stay in lockstep. `sendBackNote` / `showSendBack` remain local since
@@ -1806,6 +1808,8 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     toggle: toggleItem,
     setDecision,
     clearDecisionLocal,
+    startedBy,
+    startedAt,
   } = useClinicalReview(selectedReferral?._id);
   const [sendBackNote, setSendBackNote] = useState('');
   const [showSendBack, setShowSendBack] = useState(false);
@@ -1955,6 +1959,29 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </span>
             )}
           </div>
+
+          {startedBy && (
+            <div
+              data-testid="clinical-review-started-by"
+              style={{
+                marginBottom: 12, padding: '9px 11px', borderRadius: 8,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.06),
+                border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.16)}`,
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                Review started by
+              </p>
+              <p style={{ fontSize: 13.5, fontWeight: 700, color: palette.backgroundDark.hex, margin: '3px 0 0' }}>
+                {resolveUser(startedBy) || startedBy}
+                {startedAt && (
+                  <span style={{ fontSize: 11.5, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginLeft: 8 }}>
+                    {new Date(startedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
 
           <ClinicalChecklistUI
             checked={checked}

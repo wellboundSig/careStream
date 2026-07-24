@@ -58,7 +58,13 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     toggle: toggleItem,
     setDecision: setLocalDecision,
     clearDecisionLocal,
+    startedBy,
+    startedAt,
   } = useClinicalReview(referral?._id);
+  const startedByName = startedBy ? resolveUser(startedBy) : null;
+  const startedAtLabel = startedAt
+    ? new Date(startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
 
   const isFinalized = !!hasReview;
   const decisionLocked = isFinalized
@@ -93,9 +99,17 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
             <span style={{ fontSize: 13, fontWeight: 700, color: decisionColor }}>{decisionLabel}</span>
             <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>Clinical Review Complete</span>
           </div>
+          {startedByName && (
+            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 2 }}>
+              Started by <strong style={{ fontWeight: 600, color: palette.backgroundDark.hex }}>{startedByName}</strong>
+              {startedAtLabel && (
+                <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.4) }}> · {startedAtLabel}</span>
+              )}
+            </p>
+          )}
           {reviewerName && reviewerName !== reviewedBy && (
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), marginBottom: 2 }}>
-              Reviewed by <strong style={{ fontWeight: 600, color: palette.backgroundDark.hex }}>{reviewerName}</strong>
+              Confirmed by <strong style={{ fontWeight: 600, color: palette.backgroundDark.hex }}>{reviewerName}</strong>
             </p>
           )}
           {reviewDate && (
@@ -108,6 +122,25 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         <div data-testid="clinical-review-pending" style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(palette.accentOrange.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.18)}`, marginBottom: 20 }}>
           <p style={{ fontSize: 13, fontWeight: 650, color: palette.accentOrange.hex, marginBottom: 2 }}>Awaiting Clinical Review</p>
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>This patient is currently in Clinical Intake RN Review.</p>
+          {startedByName && (
+            <p style={{ fontSize: 12.5, color: palette.backgroundDark.hex, marginTop: 8 }}>
+              Started by <strong style={{ fontWeight: 650 }}>{startedByName}</strong>
+              {startedAtLabel && (
+                <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 500 }}> · {startedAtLabel}</span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!isAwaitingReview && !hasReview && startedByName && (
+        <div data-testid="clinical-review-started-by" style={{ padding: '12px 14px', borderRadius: 10, background: hexToRgba(palette.primaryMagenta.hex, 0.06), border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.14)}`, marginBottom: 20 }}>
+          <p style={{ fontSize: 12.5, color: palette.backgroundDark.hex, margin: 0 }}>
+            Checklist started by <strong style={{ fontWeight: 650 }}>{startedByName}</strong>
+            {startedAtLabel && (
+              <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45) }}> · {startedAtLabel}</span>
+            )}
+          </p>
         </div>
       )}
 

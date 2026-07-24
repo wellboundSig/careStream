@@ -146,6 +146,31 @@ describe('buildTeamActivityEvents', () => {
     expect(actions.has('Eligibility Completed')).toBe(true);
   });
 
+  it('surfaces Clinical Review Started with patient from starter stamp', () => {
+    const events = buildTeamActivityEvents({
+      memberIds,
+      users,
+      stores: {
+        referrals: {
+          r1: { id: 'ref_1', _id: 'recR1', patient_id: 'pat_chris' },
+        },
+        clinicalReviews: {
+          c1: {
+            id: 'clr_1',
+            referral_id: 'recR1',
+            started_by: 'usr_van',
+            started_at: '2026-07-22T14:00:00.000Z',
+            reviewed_by: 'usr_other',
+          },
+        },
+      },
+    });
+    const started = events.find((e) => e.action === 'Clinical Review Started');
+    expect(started).toBeTruthy();
+    expect(started.actorId).toBe('usr_van');
+    expect(started.patientId).toBe('pat_chris');
+  });
+
   it('ignores activity from non-members', () => {
     const events = buildTeamActivityEvents({
       memberIds,

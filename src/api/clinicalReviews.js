@@ -15,7 +15,9 @@
  * Airtable shape (created via airtable-apply-schema.js, 2026-05-27):
  *   id              singleLineText  (custom id)
  *   referral_id     multipleRecordLinks → Referrals
- *   reviewed_by     multilineText   (user business id)
+ *   reviewed_by     multilineText   (user business id — last editor)
+ *   started_by      text            (user business id — first saver; immutable)
+ *   started_at      timestamptz     (when checklist row was first created)
  *   decision        singleSelect    (accept | conditional | "")
  *   auth_required   checkbox
  *   ...22 checkbox columns, one per clinical checklist item key.
@@ -129,16 +131,31 @@ export async function upsertClinicalReview({
   };
 
   if (existingId) {
+    // Do not touch started_by on the known-id update path — the create path
+    // and optimistic store own the immutable starter stamp.
     return airtable.update(TABLE, existingId, normaliseFields(payload));
   }
 
   const existing = await getClinicalReviewsByReferral(referralRecordId).catch(() => []);
   if (existing.length > 0) {
-    return airtable.update(TABLE, existing[0].id, normaliseFields(payload));
+    const prior = existing[0].fields || {};
+    const patch = { ...payload };
+    // One-time backfill for legacy rows that predate started_by.
+    if (!prior.started_by && reviewedBy) {
+      patch.started_by = reviewedBy;
+      patch.started_at = prior.started_at || prior.created_at || new Date().toISOString();
+    }
+    return airtable.update(TABLE, existing[0].id, normaliseFields(patch));
   }
 
+  const now = new Date().toISOString();
   return airtable.create(TABLE, normaliseFields({
     id: `clr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
     ...payload,
+    // Immutable starter — who first opened / saved the checklist.
+    ...(reviewedBy ? { started_by: reviewedBy } : {}),
+    started_at: now,
+    created_at: now,
+    updated_at: now,
   }));
 }

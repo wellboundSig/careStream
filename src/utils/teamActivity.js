@@ -341,19 +341,43 @@ export function buildTeamActivityEvents({ memberIds, stores, users, referralById
   }
 
   // ── Clinical / cursory reviews ───────────────────────────────────────────
+  function unwrapLinkId(v) {
+    if (Array.isArray(v)) return v[0] || null;
+    return v || null;
+  }
   for (const r of Object.values(stores.clinicalReviews || {})) {
-    const actorId = tryActor(r.reviewed_by || r.reviewed_by_id || r.completed_by_id);
-    if (!actorId) continue;
-    push(out, {
-      id: `clin_${r._id || r.id}`,
-      actorId,
-      timestamp: r.completed_at || r.created_at || r.updated_at,
-      action: 'Clinical Review',
-      detail: r.decision || r.clinical_review_decision || '',
-      patientId: r.patient_id || patientFromReferral(refMap, r.referral_id),
-      referralId: r.referral_id || null,
-      colorKey: 'Triage Submitted',
-    });
+    const refId = unwrapLinkId(r.referral_id);
+    const patientId = r.patient_id || patientFromReferral(refMap, refId);
+    // Who started the checklist (primary signal for dept activity)
+    const starter = tryActor(r.started_by || r.started_by_id);
+    if (starter && (r.started_at || r.created_at)) {
+      push(out, {
+        id: `clin_start_${r._id || r.id}`,
+        actorId: starter,
+        timestamp: r.started_at || r.created_at,
+        action: 'Clinical Review Started',
+        detail: r.decision ? `Working decision: ${r.decision}` : 'Checklist started',
+        patientId,
+        referralId: refId,
+        colorKey: 'Clinical Review Started',
+      });
+    }
+    // Fallback for legacy rows without started_by — last editor / reviewer
+    if (!starter) {
+      const actorId = tryActor(r.reviewed_by || r.reviewed_by_id || r.completed_by_id);
+      if (actorId) {
+        push(out, {
+          id: `clin_${r._id || r.id}`,
+          actorId,
+          timestamp: r.completed_at || r.created_at || r.updated_at,
+          action: 'Clinical Review',
+          detail: r.decision || r.clinical_review_decision || '',
+          patientId,
+          referralId: refId,
+          colorKey: 'Clinical Review',
+        });
+      }
+    }
   }
   for (const r of Object.values(stores.cursoryReviews || {})) {
     const actorId = tryActor(r.reviewed_by || r.reviewed_by_id || r.completed_by_id);
@@ -533,6 +557,7 @@ export function activityColor(colorKey, palette, hexToRgba) {
     'Authorization': palette.accentBlue.hex,
     'Authorization Obtained': palette.accentBlue.hex,
     'Clinical Review': palette.primaryMagenta.hex,
+    'Clinical Review Started': palette.primaryMagenta.hex,
     'Clinical RN Review Completed': palette.primaryMagenta.hex,
     'Cursory Review': palette.primaryMagenta.hex,
     'SOC Scheduled': palette.accentGreen.hex,

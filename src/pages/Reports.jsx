@@ -63,6 +63,7 @@ const PRESET_ICONS = {
   active_episodes:       Icon.Pills,
   conflict_log:          Icon.Warning,
   source_attribution:    Icon.Link,
+  method_attribution:    Icon.Link,
   support_tickets:       Icon.Ticket,
 };
 

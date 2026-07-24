@@ -29,7 +29,8 @@ export const PRIORITIES   = ['Low', 'Normal', 'High', 'Critical'];
 export const F2F_URGENCY  = ['Green', 'Yellow', 'Orange', 'Red', 'Expired'];
 export const REGIONS      = ['LI', 'Bronx', 'Westchester', 'NYC'];
 // Keep in sync with referralSources/sourceConstants.js (directory catalog).
-export { SOURCE_TYPES } from '../components/referralSources/sourceConstants.js';
+import { SOURCE_TYPES, REFERRAL_METHODS } from '../components/referralSources/sourceConstants.js';
+export { SOURCE_TYPES, REFERRAL_METHODS };
 
 // ── Lookup cache (session-scoped) ─────────────────────────────────────────────
 
@@ -165,6 +166,7 @@ export const TABLE_SCHEMAS = {
           { key: '__facility_name',  label: 'Facility',         type: 'virtual', virtual: true, filterable: false },
           { key: '__source_name',    label: 'Referral Source',  type: 'virtual', virtual: true, filterable: false },
           { key: '__source_type',    label: 'Source Type',      type: 'virtual', virtual: true, filterable: false },
+          { key: 'referral_method',  label: 'Referral Method',  type: 'enum', options: REFERRAL_METHODS, filterable: true },
           { key: '__physician_name', label: 'Physician',        type: 'virtual', virtual: true, filterable: false },
           { key: '__campaign_name',  label: 'Campaign',         type: 'virtual', virtual: true, filterable: false },
           { key: 'marketer_id',      label: 'Marketer ID (raw)',type: 'text',    filterable: true },
@@ -178,6 +180,7 @@ export const TABLE_SCHEMAS = {
       { key: 'priority',       label: 'Priority',    type: 'enum',    options: PRIORITIES },
       { key: 'f2f_urgency',    label: 'F2F Urgency', type: 'enum',    options: F2F_URGENCY },
       { key: 'clinical_review_decision', label: 'Clinical Decision', type: 'enum', options: ['accept', 'conditional', 'decline'] },
+      { key: 'referral_method', label: 'Referral Method', type: 'enum', options: REFERRAL_METHODS },
       { key: 'referral_date',  label: 'Referral Date', type: 'date' },
       { key: 'soc_scheduled_date', label: 'SOC Date', type: 'date' },
       { key: 'soc_completed_date', label: 'SOC Completed', type: 'date' },
@@ -948,7 +951,7 @@ export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, ma
 
   const cols = [
     '__patient_name', 'division', 'current_stage', 'priority', 'referral_date',
-    '__intake_owner', '__marketer_name', '__facility_name', '__source_name',
+    '__intake_owner', '__marketer_name', '__facility_name', '__source_name', 'referral_method',
     'services_requested', 'clinical_review_decision', 'soc_scheduled_date', 'soc_completed_date',
   ];
   const { rows } = await fetchReportData({
@@ -968,6 +971,7 @@ export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, ma
     { key: '__marketer_name', label: 'Marketer' },
     { key: '__facility_name', label: 'Facility' },
     { key: '__source_name', label: 'Source' },
+    { key: 'referral_method', label: 'Method' },
     { key: 'services_requested', label: 'Services' },
     { key: 'clinical_review_decision', label: 'Clinical Decision' },
     { key: 'soc_scheduled_date', label: 'SOC Scheduled' },
@@ -1152,7 +1156,7 @@ export async function runStaffAudit({ dateFrom, dateTo }) {
 export async function runSourceAttribution({ dateFrom, dateTo, division, sourceIds } = {}) {
   const filters = buildReferralParamFilters({ dateFrom, dateTo, division, sourceIds });
 
-  const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: ['__source_name', '__source_type', '__campaign_name'] });
+  const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: ['__source_name', '__source_type', '__campaign_name', 'referral_method'] });
 
   const groups = {};
   for (const row of rows) {
@@ -1161,6 +1165,7 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
       groups[sid] = {
         sourceName: row.__source_name || '—',
         sourceType: row.__source_type || '—',
+        methods:    new Set(),
         campaigns:  new Set(),
         total: 0, soc: 0, ntuc: 0, active: 0,
       };
@@ -1171,11 +1176,13 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
     else if (row.current_stage === 'NTUC')    g.ntuc++;
     else g.active++;
     if (row.__campaign_name && row.__campaign_name !== '—') g.campaigns.add(row.__campaign_name);
+    if (row.referral_method) g.methods.add(row.referral_method);
   }
 
   const columns = [
     { key: 'sourceName',   label: 'Referral Source' },
     { key: 'sourceType',   label: 'Source Type' },
+    { key: 'methods',      label: 'Methods Seen' },
     { key: 'campaigns',    label: 'Campaigns' },
     { key: 'total',        label: 'Total Referrals' },
     { key: 'active',       label: 'Active' },
@@ -1187,12 +1194,72 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
 
   const outputRows = Object.values(groups).map((g) => ({
     ...g,
+    methods:        [...g.methods].join(', ') || '—',
     campaigns:      [...g.campaigns].join(', ') || '—',
     conversionRate: g.total ? `${Math.round((g.soc / g.total) * 100)}%` : '0%',
     ntucRate:       g.total ? `${Math.round((g.ntuc / g.total) * 100)}%` : '0%',
   }));
 
   outputRows.sort((a, b) => b.total - a.total);
+  return { rows: outputRows, columns };
+}
+
+/**
+ * Method Attribution — one row per referral method (how the lead reached us).
+ */
+export async function runMethodAttribution({ dateFrom, dateTo, division, sourceIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, sourceIds });
+  const { rows } = await fetchReportData({
+    tableName: 'Referrals',
+    filters,
+    selectedKeys: ['referral_method', '__source_name'],
+  });
+
+  const groups = {};
+  for (const row of rows) {
+    const method = (row.referral_method || '').trim() || '(Blank)';
+    if (!groups[method]) {
+      groups[method] = { method, total: 0, soc: 0, ntuc: 0, active: 0, sources: new Set() };
+    }
+    const g = groups[method];
+    g.total++;
+    if (row.current_stage === 'SOC Completed') g.soc++;
+    else if (row.current_stage === 'NTUC') g.ntuc++;
+    else g.active++;
+    if (row.__source_name && row.__source_name !== '—') g.sources.add(row.__source_name);
+  }
+
+  const columns = [
+    { key: 'method', label: 'Referral Method' },
+    { key: 'sources', label: 'Sources' },
+    { key: 'total', label: 'Total Referrals' },
+    { key: 'active', label: 'Active' },
+    { key: 'soc', label: 'SOC Completed' },
+    { key: 'ntuc', label: 'NTUC' },
+    { key: 'conversionRate', label: 'SOC Rate' },
+    { key: 'ntucRate', label: 'NTUC Rate' },
+  ];
+
+  const outputRows = Object.values(groups).map((g) => {
+    const listed = [...g.sources].slice(0, 8).join(', ');
+    const more = g.sources.size > 8 ? ` (+${g.sources.size - 8})` : '';
+    return {
+      method: g.method,
+      sources: listed ? `${listed}${more}` : '—',
+      total: g.total,
+      active: g.active,
+      soc: g.soc,
+      ntuc: g.ntuc,
+      conversionRate: g.total ? `${Math.round((g.soc / g.total) * 100)}%` : '0%',
+      ntucRate: g.total ? `${Math.round((g.ntuc / g.total) * 100)}%` : '0%',
+    };
+  });
+
+  outputRows.sort((a, b) => {
+    if (a.method === '(Blank)') return 1;
+    if (b.method === '(Blank)') return -1;
+    return b.total - a.total;
+  });
   return { rows: outputRows, columns };
 }
 
@@ -1743,9 +1810,16 @@ export const PRESETS = [
   {
     id: 'source_attribution',
     title: 'Source & Campaign Attribution',
-    description: 'Total referrals, SOC rate, NTUC rate. Track which channels convert.',
+    description: 'Total referrals, SOC rate, NTUC rate. Track which sources convert.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runSourceAttribution(params); },
+  },
+  {
+    id: 'method_attribution',
+    title: 'Referral Method Attribution',
+    description: 'Outcomes by how the lead reached us (Word of Mouth, Facebook Ads, etc.).',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runMethodAttribution(params); },
   },
   {
     id: 'support_tickets',

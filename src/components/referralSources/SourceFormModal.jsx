@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { SOURCE_TYPES, TYPE_COLORS, NO_ENTITY_TYPES } from './sourceConstants.js';
-import { sanitizeSourceName } from '../../utils/sourceName.js';
+import { SOURCE_TYPES, TYPE_COLORS, NO_ENTITY_TYPES, REFERRAL_METHODS, normalizeReferralMethod } from './sourceConstants.js';
+import { sanitizeSourceName, UNKNOWN_SOURCE_ID } from '../../utils/sourceName.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+
+function isSystemSource(src) {
+  if (!src) return false;
+  if (src.id === UNKNOWN_SOURCE_ID) return true;
+  return String(src.is_system || '').toUpperCase() === 'TRUE' || src.is_system === true;
+}
 
 function Section({ step, title, sub, children }) {
   return (
@@ -82,9 +88,11 @@ function TypeChip({ type, active, onClick }) {
 }
 
 export default function SourceFormModal({ initial, marketers, onSave, onCancel }) {
+  const locked = isSystemSource(initial);
   const [name, setName] = useState(initial?.name || '');
   const [type, setType] = useState(initial?.type || '');
   const [sourceEntity, setSourceEntity] = useState(initial?.source_entity || '');
+  const [method, setMethod] = useState(initial?.method || '');
   const [marketerId, setMarketerId] = useState(initial?.marketer_id || '');
   const [saving, setSaving] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -96,7 +104,8 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
   const entityRequired = !!type && !entityIsNA;
   const cleanedName = sanitizeSourceName(name);
   const cleanedEntity = sanitizeSourceName(sourceEntity);
-  const nameErr   = !cleanedName;
+  const nameIsMethod = !!normalizeReferralMethod(cleanedName);
+  const nameErr   = !cleanedName || nameIsMethod;
   const typeErr   = !type;
   const entityErr = entityRequired && !cleanedEntity;
   const canSubmit = !nameErr && !typeErr && !entityErr && !saving;
@@ -129,14 +138,19 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
       const safeName = sanitizeSourceName(name);
       const safeEntity = sanitizeSourceName(sourceEntity);
       const fields = {
-        name: safeName,
-        type,
-        ...(entityIsNA
-          ? { source_entity: '' }
-          : safeEntity
-            ? { source_entity: safeEntity }
-            : {}),
-        ...(marketerId ? { marketer_id: marketerId } : {}),
+        ...(locked
+          ? {}
+          : {
+              name: safeName,
+              type,
+              ...(entityIsNA
+                ? { source_entity: '' }
+                : safeEntity
+                  ? { source_entity: safeEntity }
+                  : { source_entity: '' }),
+            }),
+        method: method || '',
+        ...(marketerId ? { marketer_id: marketerId } : { marketer_id: '' }),
         ...(!initial && { id: `src_${Date.now().toString(36)}` }),
       };
       await onSave(fields);
@@ -191,9 +205,11 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
               {initial ? (initial.name || 'Unnamed source') : 'Add the person who refers'}
             </h2>
             <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginTop: 4, lineHeight: 1.5 }}>
-              {initial
-                ? 'Update this person\u2019s details. Changes flow into the New Referral picker immediately.'
-                : 'Capture the individual contact, their category, and the company they work for. Marketers will pick this person on the Lead Source field of New Referral.'}
+              {locked
+                ? 'System source — name and category stay locked. You can still set an optional default method or marketer.'
+                : initial
+                  ? 'Update this person\u2019s details. Changes flow into the New Referral picker immediately.'
+                  : 'Capture the individual contact, their category, and the company they work for. Optionally set a default referral method for autofill on New Referral.'}
             </p>
           </div>
           <button
@@ -221,16 +237,21 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
                 onFocus={() => setFocus((f) => ({ ...f, name: true }))}
                 onBlur={() => setFocus((f) => ({ ...f, name: false }))}
                 placeholder="e.g. Judith Campos"
-                style={inputStyle(focus.name, showErrors && nameErr, false)}
+                disabled={locked}
+                style={inputStyle(focus.name, showErrors && nameErr, locked)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
               />
               {showErrors && nameErr ? (
                 <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>
-                  Required. Use letters/numbers (not a dash or special characters alone).
+                  {nameIsMethod
+                    ? 'That is a referral method, not a person. Put it in Default method below (and use Unknown if you have no person).'
+                    : 'Required. Use letters/numbers (not a dash or special characters alone).'}
                 </p>
               ) : (
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5, lineHeight: 1.4 }}>
-                  The individual who refers patients. For self-referral or campaign sources, use a short label (e.g. &ldquo;Self&rdquo; or the campaign name).
+                  {locked
+                    ? 'Locked system label for leads with no known referring person.'
+                    : 'The individual who refers patients. For self-referral or campaign sources, use a short label (e.g. \u201cSelf\u201d or the campaign name). Do not use methods like \u201cWord of Mouth\u201d here.'}
                 </p>
               )}
             </div>
@@ -239,7 +260,12 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
               <FieldLabel required>Category</FieldLabel>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                 {SOURCE_TYPES.map((t) => (
-                  <TypeChip key={t} type={t} active={type === t} onClick={() => setType(t)} />
+                  <TypeChip
+                    key={t}
+                    type={t}
+                    active={type === t}
+                    onClick={() => { if (!locked) setType(t); }}
+                  />
                 ))}
               </div>
               {showErrors && typeErr && (
@@ -279,8 +305,8 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
                       ? 'e.g. Visiting Nurse Service'
                       : 'e.g. Tri-County Care'
               }
-              disabled={entityIsNA}
-              style={inputStyle(focus.ent, showErrors && entityErr, entityIsNA)}
+              disabled={entityIsNA || locked}
+              style={inputStyle(focus.ent, showErrors && entityErr, entityIsNA || locked)}
             />
             {showErrors && entityErr && (
               <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 5 }}>
@@ -293,6 +319,29 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
 
           <Section
             step={3}
+            title="Default method"
+            sub="Optional. How referrals from this person usually reach us — autofills New Referral."
+          >
+            <FieldLabel optional>Referral method</FieldLabel>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              onFocus={() => setFocus((f) => ({ ...f, method: true }))}
+              onBlur={() => setFocus((f) => ({ ...f, method: false }))}
+              style={{ ...inputStyle(focus.method, false, false), cursor: 'pointer', appearance: 'auto' }}
+            >
+              <option value="">Leave blank</option>
+              {REFERRAL_METHODS.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 5, lineHeight: 1.4 }}>
+              Methods (Word of Mouth, Facebook Ads, etc.) are not people — use this field, not the person name.
+            </p>
+          </Section>
+
+          <Section
+            step={4}
             title="Assignment"
             sub="Who on your team owns this relationship?"
           >
@@ -334,6 +383,11 @@ export default function SourceFormModal({ initial, marketers, onSave, onCancel }
                 {!entityIsNA && sourceEntity.trim() && (
                   <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>
                     {sourceEntity.trim()}
+                  </span>
+                )}
+                {method && (
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentBlue.hex, 0.12), color: palette.accentBlue.hex }}>
+                    {method}
                   </span>
                 )}
               </div>

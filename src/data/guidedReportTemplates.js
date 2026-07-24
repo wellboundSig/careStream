@@ -4,6 +4,7 @@ import {
   runIntakeVolume,
   runMarketerPerformance,
   runSourceAttribution,
+  runMethodAttribution,
   runSocCompleted,
   PRESETS,
 } from '../utils/reportEngine.js';
@@ -37,7 +38,7 @@ export const EMPTY_SLOTS = {
 };
 
 /**
- * Six purpose-driven mad-lib templates (v1).
+ * Purpose-driven mad-lib templates (v1).
  * Each has a fixed sentence (rendered in GuidedReports) and a runner.
  */
 export const GUIDED_TEMPLATES = [
@@ -180,6 +181,28 @@ export const GUIDED_TEMPLATES = [
     ],
     async run(slots) {
       return runSourceAttribution({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        sourceIds: slots.sourceIds,
+      });
+    },
+  },
+  {
+    id: 'method_attribution',
+    title: 'Method Attribution',
+    description: 'Referral outcomes by how the lead reached us (Word of Mouth, ads, etc.).',
+    icon: 'source_attribution',
+    dateField: 'referral_date',
+    slots: ['dateRange', 'division', 'sources'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS, ...defaultDateRange() }),
+    fields: [
+      { name: 'referral_date', label: 'Referral date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+      { name: 'referral_source_id', label: 'Source', inputType: 'text' },
+    ],
+    async run(slots) {
+      return runMethodAttribution({
         dateFrom: slots.dateFrom,
         dateTo: slots.dateTo,
         division: slots.division || undefined,

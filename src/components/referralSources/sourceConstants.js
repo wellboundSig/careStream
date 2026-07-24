@@ -37,3 +37,57 @@ export const TYPE_COLORS = {
 // channel) rather than a person inside another company.
 // LHCSA / CHHA always require a company/entity name.
 export const NO_ENTITY_TYPES = new Set(['Self-Referral', 'Campaign', 'Other']);
+
+/**
+ * How a referral reached us — not who referred.
+ * Stored optionally on ReferralSources (default) and on Referrals (stamp).
+ * Blank / leave-blank is always allowed.
+ */
+export const REFERRAL_METHODS = [
+  'Word of Mouth',
+  'Facebook Ads',
+  'Patient Self-Referral',
+  'Website',
+  'Fax',
+  'Email',
+  'Call-In',
+  'Allscripts',
+  'Readmit',
+  'Other',
+];
+
+/** Map messy historical labels → canonical method (or null). */
+export function normalizeReferralMethod(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (REFERRAL_METHODS.includes(s)) return s;
+  const key = s.toLowerCase().replace(/\s+/g, ' ');
+  const aliases = {
+    'word of mouth': 'Word of Mouth',
+    'wom': 'Word of Mouth',
+    'call-in / word of mouth': 'Word of Mouth',
+    'call in / word of mouth': 'Word of Mouth',
+    'facebook': 'Facebook Ads',
+    'facebook ad': 'Facebook Ads',
+    'facebook ads': 'Facebook Ads',
+    'fb ads': 'Facebook Ads',
+    'self referral': 'Patient Self-Referral',
+    'self-referral': 'Patient Self-Referral',
+    'patient self referral': 'Patient Self-Referral',
+    'patient self-referral': 'Patient Self-Referral',
+    'web': 'Website',
+    'website': 'Website',
+    'web lead': 'Website',
+    'fax': 'Fax',
+    'email': 'Email',
+    'e-mail': 'Email',
+    'wellbound email submission': 'Email',
+    'call-in': 'Call-In',
+    'call in': 'Call-In',
+    'allscripts': 'Allscripts',
+    'readmit': 'Readmit',
+    're-admit': 'Readmit',
+    'roc': 'Readmit',
+  };
+  return aliases[key] || '';
+}

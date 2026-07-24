@@ -141,6 +141,9 @@ export function useClinicalReview(referralRecordId) {
   // the click, not the debounced save. See useCursoryReview for the rationale.
   function mirrorToStore(next) {
     const rowId = existingRow?._id || pendingId(referralRecordId);
+    const now = new Date().toISOString();
+    const startedBy = existingRow?.started_by || appUserId || null;
+    const startedAt = existingRow?.started_at || (existingRow?.started_by ? null : now);
     mergeEntities('clinicalReviews', {
       [rowId]: {
         _id: rowId,
@@ -151,6 +154,10 @@ export function useClinicalReview(referralRecordId) {
           ? next.decision
           : null,
         auth_required: next.authRequired === true,
+        reviewed_by: appUserId || existingRow?.reviewed_by || null,
+        // Starter is set once (first save) and never overwritten.
+        ...(startedBy ? { started_by: startedBy } : {}),
+        ...(startedAt ? { started_at: startedAt } : {}),
       },
     });
   }
@@ -240,5 +247,7 @@ export function useClinicalReview(referralRecordId) {
     saving,
     saveError,
     reviewedBy: existingRow?.reviewed_by || null,
+    startedBy: existingRow?.started_by || null,
+    startedAt: existingRow?.started_at || null,
   };
 }

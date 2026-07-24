@@ -11,6 +11,7 @@ import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { inferAgeGroupFromDob } from '../../../utils/validation.js';
 import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 import { isSourceBusinessId } from '../../../utils/sourceName.js';
+import { REFERRAL_METHODS } from '../../referralSources/sourceConstants.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
@@ -38,7 +39,7 @@ function ReadField({ label, value, fullWidth = false }) {
   );
 }
 
-function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false }) {
+function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false, allowBlank = false, blankLabel = 'Leave blank' }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const { can } = usePermissions();
@@ -46,7 +47,7 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
   async function handleChange(e) {
     if (!can(PERMISSION_KEYS.REFERRAL_EDIT)) return;
     const v = e.target.value;
-    if (v === value) { setEditing(false); return; }
+    if (v === (value || '')) { setEditing(false); return; }
     onSave(fieldKey, v);
     setEditing(false);
     if (referralId) updateEntity('referrals', referralId, { [fieldKey]: v });
@@ -62,7 +63,7 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
       <p style={fl()}>{label}</p>
       {editing ? (
         <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
-          <option value="" disabled>Select…</option>
+          <option value="" disabled={!allowBlank}>{allowBlank ? blankLabel : 'Select…'}</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : forceReadOnly ? (
@@ -314,16 +315,28 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
       return;
     }
     const prev = referral.referral_source_id;
+    const prevMethod = referral.referral_method || '';
+    const src = Object.values(storeSources).find((s) => s.id === sourceId);
+    const nextMethod = (src?.method || '').trim();
+    const patch = { referral_source_id: sourceId };
+    if (nextMethod) patch.referral_method = nextMethod;
     onSave('referral_source_id', sourceId);
+    if (nextMethod) onSave('referral_method', nextMethod);
     setEditing(false);
     setQuery('');
-    if (referral._id) updateEntity('referrals', referral._id, { referral_source_id: sourceId });
+    if (referral._id) updateEntity('referrals', referral._id, patch);
     setSaving(true);
     try {
-      await updateReferral(referral._id, { referral_source_id: sourceId });
+      await updateReferral(referral._id, patch);
     } catch {
       onSave('referral_source_id', prev);
-      if (referral._id) updateEntity('referrals', referral._id, { referral_source_id: prev });
+      onSave('referral_method', prevMethod);
+      if (referral._id) {
+        updateEntity('referrals', referral._id, {
+          referral_source_id: prev,
+          referral_method: prevMethod,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -493,6 +506,17 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           </div>
         </div>
         <EditableReferralSource referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
+        <EditableReferralSelect
+          label="Referral method"
+          fieldKey="referral_method"
+          value={referral.referral_method}
+          referralId={referral._id}
+          onSave={handleReferralSave}
+          options={REFERRAL_METHODS}
+          allowBlank
+          blankLabel="Leave blank"
+          readOnly={readOnly}
+        />
         {referral.facility_id && <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />}
 
         <EditableReferralSelect label="Division" fieldKey="division" value={referral.division} referralId={referral._id} onSave={handleReferralSave} options={DIVISIONS} readOnly={readOnly} />

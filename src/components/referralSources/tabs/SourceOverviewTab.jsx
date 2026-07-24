@@ -38,6 +38,7 @@ export default function SourceOverviewTab({ source, marketer, stats }) {
       <InfoRow label="Person" value={source.name} />
       <InfoRow label="Category" value={source.type} />
       <InfoRow label="Company / Entity" value={source.source_entity} />
+      <InfoRow label="Default method" value={source.method} />
       <InfoRow label="Source ID" value={source.id} mono />
 
       <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), margin: '22px 0 10px' }}>

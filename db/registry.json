@@ -368,6 +368,16 @@
         "pg": "text",
         "wire": "text"
       },
+      "method": {
+        "column": "method",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_system": {
+        "column": "is_system",
+        "pg": "text",
+        "wire": "text"
+      },
       "updated_at": {
         "column": "updated_at",
         "pg": "timestamptz",
@@ -803,6 +813,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "referral_method": {
+        "column": "referral_method",
+        "pg": "text",
+        "wire": "text"
+      },
       "facility_id": {
         "column": "facility_id",
         "pg": "text",
@@ -1057,6 +1072,11 @@
         "column": "clinical_review_pushed_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "clinical_review_pushed_by_id": {
+        "column": "clinical_review_pushed_by_id",
+        "pg": "text",
+        "wire": "text"
       },
       "clinical_review_completed_at": {
         "column": "clinical_review_completed_at",
@@ -3994,6 +4014,16 @@
         "column": "reviewed_by",
         "pg": "text",
         "wire": "text"
+      },
+      "started_by": {
+        "column": "started_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "started_at": {
+        "column": "started_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
       },
       "decision": {
         "column": "decision",
