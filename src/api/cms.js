@@ -7,7 +7,10 @@
 //
 // Endpoints:
 //   NPPES NPI Registry:        GET /npi/?version=2.1&number={npi}
+//                             GET /npi/?version=2.1&first_name=&last_name=&state=
 //   Order & Referring dataset: GET /data/dataset/{id}/data?filter[...]=NPI={npi}
+
+import { normalizePhysicianTitle } from '../utils/physicianName.js';
 
 const BASE = import.meta.env.DEV ? '/cms-proxy' : import.meta.env.VITE_CMS_WORKER_URL;
 
@@ -27,6 +30,20 @@ function isTruthyFlag(v) {
   return s === 'y' || s === 'yes' || s === 'true' || s === '1';
 }
 
+function titleCaseName(s) {
+  return String(s || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function pickLocationAddress(result) {
+  const addrs = result?.addresses || [];
+  return addrs.find((a) => a.address_purpose === 'LOCATION') || addrs[0] || {};
+}
+
 /** Raw NPPES lookup. Returns the parsed NPPES response ({ result_count, results }). */
 export async function lookupNpi(npi) {
   const clean = normalizeNpi(npi);
@@ -35,6 +52,53 @@ export async function lookupNpi(npi) {
   });
   if (!res.ok) throw new Error(`NPPES lookup failed (${res.status})`);
   return res.json();
+}
+
+/**
+ * NPPES name search (individuals). Returns up to `limit` compact result cards
+ * for the create-physician wizard.
+ */
+export async function searchNpiProviders({ firstName, lastName, state = 'NY', limit = 12 } = {}) {
+  const first = String(firstName || '').trim();
+  const last = String(lastName || '').trim();
+  if (!last || last.length < 2) {
+    throw new Error('Enter at least a last name (2+ characters) to search NPPES.');
+  }
+  const params = new URLSearchParams({
+    version: '2.1',
+    last_name: last,
+    limit: String(Math.min(Math.max(limit, 1), 50)),
+    enumeration_type: 'NPI-1',
+  });
+  if (first) params.set('first_name', first);
+  const st = String(state || '').trim().toUpperCase();
+  if (st.length === 2) params.set('state', st);
+
+  const res = await fetch(`${BASE}/npi/?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`NPPES search failed (${res.status})`);
+  const body = await res.json();
+  const results = body?.results || [];
+  return results.map((result) => {
+    const basic = result.basic || {};
+    const loc = pickLocationAddress(result);
+    const title = normalizePhysicianTitle(basic.credential);
+    const first_name = titleCaseName(basic.first_name);
+    const last_name = titleCaseName(basic.last_name);
+    return {
+      npi: String(result.number || ''),
+      first_name,
+      last_name,
+      title,
+      label: [first_name, last_name].filter(Boolean).join(' ') + (title ? `, ${title}` : ''),
+      city: titleCaseName(loc.city) || '',
+      state: String(loc.state || '').toUpperCase(),
+      taxonomy: (result.taxonomies || []).find((t) => t.primary)?.desc
+        || (result.taxonomies || [])[0]?.desc
+        || '',
+    };
+  });
 }
 
 /** Raw Order & Referring dataset lookup by NPI. Returns an array of matching rows. */
@@ -116,5 +180,68 @@ export async function verifyPhysicianNpi(npi) {
     flags,
     details,
     checkedAt: new Date().toISOString(),
+    // Raw NPPES result kept for seed builders (addresses live here).
+    _result: result,
+  };
+}
+
+/**
+ * Full create-form seed from CMS: NPPES identity/address/phone + PECOS/OPRA.
+ * Used by the Physicians directory "Add" wizard.
+ *
+ * @returns form fields ready to merge into AddPhysicianModal state, plus
+ *          verification fields to persist on create.
+ */
+export async function buildPhysicianSeedFromNpi(npi) {
+  const verified = await verifyPhysicianNpi(npi);
+  if (verified.npiStatus === 'not_found' || !verified._result) {
+    throw new Error(`No NPPES record found for NPI ${verified.npi}.`);
+  }
+  const result = verified._result;
+  const basic = result.basic || {};
+  const loc = pickLocationAddress(result);
+  const title = normalizePhysicianTitle(basic.credential || verified.details?.credential);
+  const phone = String(loc.telephone_number || '').replace(/\D/g, '').slice(0, 10);
+  const fax = String(loc.fax_number || '').replace(/\D/g, '').slice(0, 10);
+  const zip = String(loc.postal_code || '').replace(/\D/g, '').slice(0, 5);
+  const taxonomy = (result.taxonomies || []).find((t) => t.primary)?.desc
+    || (result.taxonomies || [])[0]?.desc
+    || '';
+
+  return {
+    form: {
+      first_name: titleCaseName(basic.first_name),
+      last_name: titleCaseName(basic.last_name),
+      title,
+      npi: verified.npi,
+      phone,
+      fax,
+      address_street: titleCaseName(loc.address_1),
+      address_city: titleCaseName(loc.city),
+      address_state: String(loc.state || '').toUpperCase(),
+      address_zip: zip,
+      is_pecos_enrolled: !!verified.pecosEnrolled,
+      is_opra_enrolled: !!verified.opraEligible,
+    },
+    verification: {
+      npi_status: verified.npiStatus,
+      npi_checked_at: verified.checkedAt,
+      npi_provider_name: verified.providerName || '',
+      npi_details: verified.details ? JSON.stringify(verified.details) : '',
+      is_pecos_enrolled: verified.pecosEnrolled ? true : null,
+      pecos_last_checked: verified.checkedAt,
+      is_opra_enrolled: verified.opraEligible ? true : null,
+      opra_last_checked: verified.checkedAt,
+      order_refer_flags: JSON.stringify(verified.flags || {}),
+      verification_last_run_at: verified.checkedAt,
+    },
+    meta: {
+      npiStatus: verified.npiStatus,
+      pecosEnrolled: verified.pecosEnrolled,
+      opraEligible: verified.opraEligible,
+      taxonomy,
+      providerName: verified.providerName,
+      checkedAt: verified.checkedAt,
+    },
   };
 }
