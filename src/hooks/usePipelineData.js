@@ -1,15 +1,17 @@
 import { useMemo } from 'react';
 import { useCareStore } from '../store/careStore.js';
 import { resolveStageEnteredAt, daysBetween, daysInPipeline } from '../utils/referralMetrics.js';
+import { useReferralVisibility } from './useReferralVisibility.js';
 
 export function usePipelineData() {
   const patients     = useCareStore((s) => s.patients);
   const referrals    = useCareStore((s) => s.referrals);
   const stageHistory = useCareStore((s) => s.stageHistory);
   const hydrated     = useCareStore((s) => s.hydrated);
+  const { isVisible } = useReferralVisibility();
 
   const data = useMemo(() => {
-    const refs = Object.values(referrals);
+    const refs = Object.values(referrals).filter(isVisible);
     if (!refs.length) return [];
 
     // Build two lookup paths: by custom id (pat_007) AND by Airtable record id (recXXX)
@@ -49,7 +51,7 @@ export function usePipelineData() {
         _days_in_pipeline: daysInPipeline(ref),
       };
     });
-  }, [referrals, patients, stageHistory]);
+  }, [referrals, patients, stageHistory, isVisible]);
 
   return { data, loading: !hydrated, error: null, refetch: () => {} };
 }

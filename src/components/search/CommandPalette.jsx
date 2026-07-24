@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCareStore } from '../../store/careStore.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
+import { useReferralVisibility } from '../../hooks/useReferralVisibility.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 function matchStr(text, q) {
@@ -54,6 +55,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   const storeSources  = useCareStore((s) => s.referralSources);
   const storeMarketers = useCareStore((s) => s.marketers);
   const storeFacilities = useCareStore((s) => s.facilities);
+  const { isVisible } = useReferralVisibility();
 
   const searchData = useMemo(() => {
     const patientMap = {};
@@ -65,6 +67,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     const seenPatients = new Set();
     const enrichedReferrals = [];
     Object.values(referrals)
+      .filter(isVisible)
       .sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0))
       .forEach((r) => {
         const pid = r.patient_id;
@@ -86,7 +89,7 @@ export default function CommandPalette({ isOpen, onClose }) {
       marketers:  Object.values(storeMarketers),
       facilities: Object.values(storeFacilities),
     };
-  }, [patients, referrals, storePhysicians, storeSources, storeMarketers, storeFacilities]);
+  }, [patients, referrals, storePhysicians, storeSources, storeMarketers, storeFacilities, isVisible]);
 
   // Focus input & reset on open
   useEffect(() => {

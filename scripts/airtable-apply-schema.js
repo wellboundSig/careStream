@@ -739,6 +739,9 @@ const DESIRED_PERMISSIONS = [
 
   // Change intake owner (2026-07) — deny-by-default; grant to named supervisors only.
   { id: 'perm_leads_change_intake_owner', key: 'leads.change_intake_owner', label: 'Change intake owner', category: 'Leads', sort_order: 11, description: 'Reassign the intake owner on an existing referral. Writes a timeline event and notifies the new owner.' },
+
+  // View all cases (2026-07) — revoke for marketers who must only see their own pool.
+  { id: 'perm_referral_view_all', key: 'referral.view_all', label: 'View all cases', category: 'Referrals', sort_order: 13, description: 'See every referral in Patients and module queues. Without this, marketers only see their own marketer cases or self-entered leads.' },
 ];
 
 // ---------- Operations ----------

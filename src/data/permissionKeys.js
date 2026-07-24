@@ -20,6 +20,12 @@ export const PERMISSION_KEYS = {
   /** @deprecated Prefer LEADS_CREATE for entering new leads. Kept for back-compat. */
   REFERRAL_CREATE: 'referral.create',
   REFERRAL_VIEW: 'referral.view',
+  /**
+   * See the full caseload (current default). Without this key, Patients /
+   * module queues / search only show referrals where the user is the marketer
+   * or the original lead submitter (lead_created_by_id).
+   */
+  REFERRAL_VIEW_ALL: 'referral.view_all',
   REFERRAL_EDIT: 'referral.edit',
   REFERRAL_EDIT_SOURCE: 'referral.edit_source',
   REFERRAL_TRANSITION: 'referral.transition',
@@ -265,6 +271,7 @@ export const PERMISSION_CATALOG = [
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Referrals', description: 'See referral cards, drawers, and detail panels', sort: 13 },
+  { key: K.REFERRAL_VIEW_ALL,   label: 'View all cases',                   category: 'Referrals', description: 'See every referral in the Patients list and module queues. Without this, marketers only see cases where they are the marketer or the lead they personally entered.', sort: 13.5 },
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Referrals', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
   { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Referrals', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 15 },
@@ -397,7 +404,7 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL,
-      K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
@@ -431,7 +438,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.REFERRAL_VIEW, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW, K.CLINICAL_F2F, K.CLINICAL_ELIGIBILITY,
@@ -455,7 +462,10 @@ export const DEFAULT_PRESETS = [
     description: 'Lead entry and patient visibility. Division access depends on marketer assignment.',
     is_system: true,
     permissions: [
-      K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW,
+      // REFERRAL_VIEW_ALL is included for the default Marketer preset (current
+      // caseload behavior). Revoke individually for marketers who must only
+      // see their own marketer_id / self-entered leads.
+      K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
       K.PATIENT_VIEW,
       K.TASK_VIEW,
       K.NOTE_CREATE,
@@ -473,7 +483,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.REFERRAL_VIEW, K.REFERRAL_TRANSITION,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.SCHEDULING_STAFFING, K.SCHEDULING_ADMIN_CONFIRM, K.SCHEDULING_SOC_SCHEDULE, K.SCHEDULING_SOC_COMPLETE,
@@ -494,7 +504,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.REFERRAL_VIEW,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_ELIGIBILITY,
@@ -516,7 +526,7 @@ export const DEFAULT_PRESETS = [
     description: 'Patient-facing clinical documentation and triage.',
     is_system: true,
     permissions: [
-      K.REFERRAL_VIEW,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE,
