@@ -28,6 +28,8 @@ import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import AuthObtainedIcon from '../common/AuthObtainedIcon.jsx';
 import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
 import OooBadge from '../common/OooBadge.jsx';
+import ClinicalReviewByline from '../common/ClinicalReviewByline.jsx';
+import { useClinicalReviewInProgress } from '../../hooks/useClinicalReviewInProgress.js';
 import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
@@ -121,6 +123,7 @@ export default function ModulePage({ stage }) {
   const { open: openPatient } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
   const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
+  const getReviewInProgress = useClinicalReviewInProgress();
 
   // We track which referral the user clicked by its Airtable record id and
   // DERIVE the live referral object from `allReferrals` on every render. The
@@ -597,6 +600,10 @@ export default function ModulePage({ stage }) {
                 </span>
               )}
             </span>
+            {(() => {
+              const review = getReviewInProgress(referral);
+              return review ? <ClinicalReviewByline name={review.starterName} /> : null;
+            })()}
           </td>
         );
       }

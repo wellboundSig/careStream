@@ -14,6 +14,8 @@ import DivisionBadge from '../common/DivisionBadge.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
+import ClinicalReviewByline from '../common/ClinicalReviewByline.jsx';
+import { useClinicalReviewInProgress } from '../../hooks/useClinicalReviewInProgress.js';
 import { STAGE_SLUGS } from '../../data/stageConfig.js';
 import { buildTeamActivityEvents, activityColor } from '../../utils/teamActivity.js';
 import { fmtCalendarDate, fmtDateTime, daysUntilCalendarDate } from '../../utils/dateFormat.js';
@@ -37,6 +39,7 @@ export default function DepartmentDashboard({ department, scope }) {
   const { open: openPatient } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
   const navigate = useNavigate();
+  const getReviewInProgress = useClinicalReviewInProgress();
   const storeUsers = useCareStore((s) => s.users);
   const storePatients = useCareStore((s) => s.patients);
   const storeReferrals = useCareStore((s) => s.referrals);
@@ -177,6 +180,7 @@ export default function DepartmentDashboard({ department, scope }) {
     switch (col.key) {
       case 'patient': {
         const isMine = !!(appUserId && ref.intake_owner_id && ref.intake_owner_id === appUserId);
+        const review = getReviewInProgress(ref);
         return (
           <td key="patient" style={{ padding: '11px 14px' }}>
             <p
@@ -186,6 +190,7 @@ export default function DepartmentDashboard({ department, scope }) {
               {isMine && <OwnedByMeIcon size={11} />}
               {ref.patientName || ref.patient_id}
             </p>
+            {review && <ClinicalReviewByline name={review.starterName} />}
           </td>
         );
       }

@@ -15,6 +15,8 @@ import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import ChangeIntakeOwnerModal from '../components/referrals/ChangeIntakeOwnerModal.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
+import ClinicalReviewByline from '../components/common/ClinicalReviewByline.jsx';
+import { useClinicalReviewInProgress } from '../hooks/useClinicalReviewInProgress.js';
 import LoadingState from '../components/common/LoadingState.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
@@ -232,9 +234,10 @@ export default function PatientList() {
 
   const colPickerRef = useRef(null);
 
+  const getReviewInProgress = useClinicalReviewInProgress();
   const resolvers = useMemo(
-    () => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity }),
-    [resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]
+    () => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress }),
+    [resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress]
   );
 
   const activeColumns = useMemo(() => COLUMN_DEFS.filter((c) => visibleCols.has(c.key)), [visibleCols]);
@@ -731,16 +734,19 @@ export default function PatientList() {
 // ── Patient row ────────────────────────────────────────────────────────────────
 function PatientRow({ patient, referral, days, totalDays, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
-  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity } = resolvers;
+  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress } = resolvers;
 
   const renderCell = (col) => {
     switch (col.key) {
-      case 'patient':
+      case 'patient': {
+        const review = getReviewInProgress ? getReviewInProgress(referral) : null;
         return (
           <td key="patient" style={{ padding: '11px 14px' }}>
             <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{patient.first_name} {patient.last_name}</p>
+            {review && <ClinicalReviewByline name={review.starterName} />}
           </td>
         );
+      }
       case 'division':
         return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
       case 'licence': {
