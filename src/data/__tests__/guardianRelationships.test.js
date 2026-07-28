@@ -40,4 +40,15 @@ describe('splitContactNameAndRelationship', () => {
   it('does not invent a relationship', () => {
     expect(splitContactNameAndRelationship('Jane Doe').relationship).toBe('');
   });
+
+  it('treats a bare role word as relationship, not a name', () => {
+    expect(splitContactNameAndRelationship('Mom')).toEqual({
+      cleanName: '',
+      relationship: 'Mother',
+    });
+    expect(splitContactNameAndRelationship('Father')).toEqual({
+      cleanName: '',
+      relationship: 'Father',
+    });
+  });
 });

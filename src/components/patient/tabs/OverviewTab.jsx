@@ -37,7 +37,7 @@ const INSURANCE_PLANS = [
   'Aetna Better Health', 'Molina Healthcare', 'Anthem BCBS', 'Humana',
   'Wellcare',
   'Medicaid', 'Medicare', 'Hamaspik', 'VNS Health',
-  'MetroPlus MLTC', 'Fidelis Care at Home', 'Elderplan HomeFirst',
+  'MetroPlus MLTC', 'MetroPlus HMO', 'Fidelis Care at Home', 'Elderplan HomeFirst',
   'Montefiore Diamond Care', 'Healthfirst CompleteCare',
 ];
 
@@ -213,7 +213,7 @@ function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnl
           />
           {locked && !error && (
             <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3, fontStyle: 'italic' }}>
-              Locked to {ageGroup} range — change in the Referral tab to unlock.
+              Locked to {ageGroup} range
             </p>
           )}
           {error && <p style={ve()}>{error}</p>}
@@ -1069,19 +1069,8 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
-      {!readOnly && (
-        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 20 }}>
-          Click any field to edit. Press Enter or click away to save.
-        </p>
-      )}
-
-      {/* ── 1. Patient (the person receiving care) ── */}
+      {/* ── 1. Patient identity ── */}
       <Section title="Patient">
-        <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.4 }}>
-            The patient’s own identity and how to reach them — separate from caregiver contacts below.
-          </p>
-        </div>
         <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <DobField patient={patient} patientId={patientId} onSave={handlePatientSave} referral={referral} readOnly={readOnly} />
@@ -1097,9 +1086,6 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
           options={LANGUAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           readOnly={readOnly}
         />
-        <PhoneField label="Patient Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <EmailField label="Patient Email"        fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EditableField label="Address"           fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
         <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 16px' }}>
           <ZipField value={patient.address_zip?.toString()} cityValue={patient.address_city} stateValue={patient.address_state} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
@@ -1108,29 +1094,19 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
         </div>
       </Section>
 
-      {/* ── Insurance ── */}
-      <Section title="Insurance">
-        <div style={{ gridColumn: '1 / -1' }}>
-          {readOnly ? (
-            <ReadField label="Insurance" value={(() => { try { const plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; return plans.length ? plans.join(', ') : patient.insurance_plan || null; } catch { return patient.insurance_plan || null; } })()} fullWidth />
-          ) : (
-            <InsuranceEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
-          )}
-        </div>
-      </Section>
-
-      {/* Approved Services live on the Authorization tab — that's where the
-          value is established (after the payer authorizes a service set), so
-          we don't surface it in Demographics. */}
-
-      {/* ── 2. Caregiver contacts (known guardians) — not the patient ── */}
-      <Section title="Primary & Emergency Contacts">
+      {/* ── Primary caregiver + emergency (synced; phone/email are not patient demos) ── */}
+      <Section title="Contacts">
         <div style={{ gridColumn: '1 / -1' }}>
           {readOnly ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <ReadField
-                label="Primary contact"
-                value={[patient.primary_contact_name, patient.primary_contact_relationship, patient.primary_contact_phone].filter(Boolean).join(' · ') || null}
+                label="Primary caregiver"
+                value={[
+                  patient.primary_contact_name || patient.emergency_contact_name,
+                  patient.primary_contact_relationship || patient.emergency_contact_relationship,
+                  patient.primary_contact_phone || patient.phone_primary || patient.emergency_contact_phone,
+                  patient.primary_contact_email || patient.email || patient.emergency_contact_email,
+                ].filter(Boolean).join(' · ') || null}
                 fullWidth
               />
               <ReadField
@@ -1141,6 +1117,17 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
             </div>
           ) : (
             <ContactsEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
+          )}
+        </div>
+      </Section>
+
+      {/* ── Insurance ── */}
+      <Section title="Insurance">
+        <div style={{ gridColumn: '1 / -1' }}>
+          {readOnly ? (
+            <ReadField label="Insurance" value={(() => { try { const plans = patient.insurance_plans ? JSON.parse(patient.insurance_plans) : []; return plans.length ? plans.join(', ') : patient.insurance_plan || null; } catch { return patient.insurance_plan || null; } })()} fullWidth />
+          ) : (
+            <InsuranceEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
           )}
         </div>
       </Section>
@@ -1166,6 +1153,8 @@ function ContactsEditor({ patient, patientId, onSave }) {
     patient?.emergency_contact_phone,
     patient?.emergency_contact_email,
     patient?.emergency_contact_relationship,
+    patient?.phone_primary,
+    patient?.email,
   ]);
 
   async function handleSave() {
@@ -1174,7 +1163,7 @@ function ContactsEditor({ patient, patientId, onSave }) {
     setMsg(null);
     try {
       const { primary, emergency } = resolveContactsForSave(draft);
-      // Dual-write mirrors only — never touch patient first/last/phone_primary/email.
+      // Keep mirrors + legacy demos in lockstep (phone_primary / email = caregiver).
       const mirror = {
         primary_contact_name: primary.name,
         primary_contact_phone: primary.phone,
@@ -1184,6 +1173,8 @@ function ContactsEditor({ patient, patientId, onSave }) {
         emergency_contact_phone: emergency.phone,
         emergency_contact_email: emergency.email,
         emergency_contact_relationship: emergency.relationship,
+        phone_primary: primary.phone || '',
+        email: primary.email || '',
       };
       Object.entries(mirror).forEach(([k, v]) => onSave(k, v));
       updateEntity('patients', patientId, mirror);
@@ -1229,7 +1220,7 @@ function ContactsEditor({ patient, patientId, onSave }) {
 
   return (
     <div>
-      <GuardianContactFields value={draft} onChange={setDraft} showEmail />
+      <GuardianContactFields value={draft} onChange={setDraft} showEmail inline />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
         <button
           type="button"

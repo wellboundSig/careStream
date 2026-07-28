@@ -39,6 +39,101 @@ export function toCalendarDateString(value) {
   return `${y}-${mo}-${day}`;
 }
 
+const MONTH_NAME = {
+  jan: 1, january: 1,
+  feb: 2, february: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10,
+  nov: 11, november: 11,
+  dec: 12, december: 12,
+};
+
+function isPlausibleBirthDate(y, m, d) {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return false;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  if (y < 1900 || y > 2100) return false;
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return false;
+  // DOB shouldn't be more than a day in the future (clock skew).
+  const tomorrow = new Date();
+  tomorrow.setHours(23, 59, 59, 999);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return dt.getTime() <= tomorrow.getTime();
+}
+
+function ymd(y, m, d) {
+  if (!isPlausibleBirthDate(y, m, d)) return '';
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Parse a pasted / typed birth date in common staff formats → YYYY-MM-DD.
+ * US-first for numeric dates (MM/DD/YYYY). Returns '' if unusable.
+ *
+ * Examples: 3/5/1990, 03-05-1990, 1990-03-05, March 5 1990, 03051990, 19900305
+ */
+export function parseFlexibleBirthDate(raw) {
+  if (raw == null) return '';
+  let s = String(raw).trim();
+  if (!s) return '';
+
+  // Strip time / timezone crumbs from ISO-ish pastes
+  s = s.replace(/T[\d:.]+.*$/, '').trim();
+  s = s.replace(/\s+/g, ' ');
+
+  // Already YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return ymd(Number(m[1]), Number(m[2]), Number(m[3]));
+
+  // YYYY/MM/DD or YYYY.MM.DD
+  m = s.match(/^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/);
+  if (m) return ymd(Number(m[1]), Number(m[2]), Number(m[3]));
+
+  // Compact 8-digit: try YYYYMMDD when the leading year is plausible, else MMDDYYYY
+  if (/^\d{8}$/.test(s)) {
+    const asYmd = ymd(Number(s.slice(0, 4)), Number(s.slice(4, 6)), Number(s.slice(6, 8)));
+    if (asYmd) return asYmd;
+    return ymd(Number(s.slice(4, 8)), Number(s.slice(0, 2)), Number(s.slice(2, 4)));
+  }
+
+  // MM/DD/YYYY (US) — also -, ., space separators
+  m = s.match(/^(\d{1,2})[/.\-\s](\d{1,2})[/.\-\s](\d{4})$/);
+  if (m) return ymd(Number(m[3]), Number(m[1]), Number(m[2]));
+
+  // MM/DD/YY → assume 19xx if yy >= 30 else 20xx (DOB heuristic)
+  m = s.match(/^(\d{1,2})[/.\-\s](\d{1,2})[/.\-\s](\d{2})$/);
+  if (m) {
+    const yy = Number(m[3]);
+    const year = yy >= 30 ? 1900 + yy : 2000 + yy;
+    return ymd(year, Number(m[1]), Number(m[2]));
+  }
+
+  // "March 5, 1990" / "Mar 5 1990" / "5 March 1990"
+  m = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const mo = MONTH_NAME[m[1].toLowerCase()];
+    if (mo) return ymd(Number(m[3]), mo, Number(m[2]));
+  }
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})$/);
+  if (m) {
+    const mo = MONTH_NAME[m[2].toLowerCase()];
+    if (mo) return ymd(Number(m[3]), mo, Number(m[1]));
+  }
+
+  // Last resort: Date.parse (local) — only accept if it round-trips cleanly
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) {
+    return ymd(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
+  }
+  return '';
+}
+
 /** Today's date as YYYY-MM-DD in local calendar time (not UTC). */
 export function todayCalendarDate() {
   return toCalendarDateString(new Date());

@@ -57,13 +57,18 @@ export function normalizeGuardianRelationship(raw) {
 }
 
 /**
- * Pull a parenthetical role out of a contact name.
+ * Pull a role out of a contact name.
  * "John Smith (Father)" → { cleanName: "John Smith", relationship: "Father" }
- * Never inventes a relationship when none is found; cleanName is always set.
+ * "Mom" / "Father" alone → { cleanName: "", relationship: "Mother"/"Father" }
+ * Never invents a relationship when none is found.
  */
 export function splitContactNameAndRelationship(rawName) {
   const original = String(rawName || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   if (!original) return { cleanName: '', relationship: '' };
+
+  // Whole string is just a relationship label (common lead-entry shorthand).
+  const wholeRel = normalizeGuardianRelationship(original);
+  if (wholeRel) return { cleanName: '', relationship: wholeRel };
 
   // Trailing or mid "(Role)" — take the last parenthetical that maps to a relationship
   const re = /\(([^)]+)\)/g;
@@ -84,6 +89,10 @@ export function splitContactNameAndRelationship(rawName) {
   }
   // Strip leftover empty parens
   cleanName = cleanName.replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
+
+  // If stripping the paren left only a role word, treat as role-only.
+  const leftoverRel = normalizeGuardianRelationship(cleanName);
+  if (leftoverRel) return { cleanName: '', relationship: leftoverRel };
 
   return { cleanName: cleanName || original, relationship: lastRel };
 }
