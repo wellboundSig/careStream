@@ -24,6 +24,7 @@ import ConflictsTab from './tabs/ConflictsTab.jsx';
 import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
 import PhysicianTab from './tabs/PhysicianTab.jsx';
 import FilePreviewPane from '../common/FilePreviewPane.jsx';
+import FileSourceProviderBadge from '../common/FileSourceProviderBadge.jsx';
 import { openSignedFile } from '../../utils/r2Upload.js';
 
 const HEADER_TEXT = '#F7F7FA';
@@ -285,11 +286,14 @@ export default function PatientDrawer() {
                 <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {sideFile.file_name || 'File'}
                 </p>
-                {sideFile.category && (
-                  <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '2px 0 0' }}>
-                    {sideFile.category}
-                  </p>
-                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  {sideFile.category && (
+                    <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+                      {sideFile.category}
+                    </span>
+                  )}
+                  <FileSourceProviderBadge file={sideFile} />
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <button

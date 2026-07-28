@@ -427,6 +427,7 @@ CREATE TABLE IF NOT EXISTS "files" (
   "r2_key" text,
   "r2_url" text,
   "category" text,
+  "physician_id" text,
   "created_at" timestamptz DEFAULT now(),
   "f2f_visit_date" text,
   "opwdd_case_id" text,
@@ -442,6 +443,7 @@ CREATE INDEX IF NOT EXISTS "idx_files_id" ON "files" ("id");
 CREATE INDEX IF NOT EXISTS "idx_files_patient_id" ON "files" ("patient_id");
 CREATE INDEX IF NOT EXISTS "idx_files_referral_id" ON "files" ("referral_id");
 CREATE INDEX IF NOT EXISTS "idx_files_uploaded_by_id" ON "files" ("uploaded_by_id");
+CREATE INDEX IF NOT EXISTS "idx_files_physician_id" ON "files" ("physician_id");
 CREATE INDEX IF NOT EXISTS "idx_files_opwdd_case_id" ON "files" ("opwdd_case_id");
 CREATE INDEX IF NOT EXISTS "idx_files_verified_current_by_id" ON "files" ("verified_current_by_id");
 CREATE INDEX IF NOT EXISTS "idx_files_authorization_id" ON "files" ("authorization_id");

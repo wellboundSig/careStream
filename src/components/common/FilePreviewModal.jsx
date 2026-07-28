@@ -2,12 +2,13 @@ import { useEffect } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { useSignedFileUrl } from '../../hooks/useSignedFileUrl.js';
 import FilePreviewPane, { getFileKind } from './FilePreviewPane.jsx';
+import FileSourceProviderBadge from './FileSourceProviderBadge.jsx';
 
 // Shared, inline file preview modal. Used by FilesTab and F2FTab so staff can
 // SEE the file (PDF or image) without having to bounce out to a new tab.
 //
 // Props:
-//   file:    { file_name, file_type, r2_url, category? }
+//   file:    { file_name, file_type, r2_url, category?, physician_id? }
 //   onClose: () => void
 //   onOpenToSide: optional () => void — open beside patient snapshot instead
 
@@ -49,11 +50,14 @@ export default function FilePreviewModal({ file, onClose, onOpenToSide }) {
             <p style={{ fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex, wordBreak: 'break-all', lineHeight: 1.3 }}>
               {file.file_name}
             </p>
-            {file.category && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
-                {file.category}
-              </p>
-            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              {file.category && (
+                <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+                  {file.category}
+                </span>
+              )}
+              <FileSourceProviderBadge file={file} />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
             {onOpenToSide && (

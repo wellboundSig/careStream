@@ -1528,6 +1528,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "physician_id": {
+        "column": "physician_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",

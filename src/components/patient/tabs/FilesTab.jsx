@@ -9,6 +9,7 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
+import FileSourceProviderBadge from '../../common/FileSourceProviderBadge.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
@@ -243,22 +244,10 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           : {}),
       };
 
-      // Try with physician_id first. If Airtable rejects it (field not yet
-      // added to the Files table), fall back to saving without it.
-      let created;
-      if (pendingPhysician?.id) {
-        try {
-          created = await createFile({ ...baseFields, physician_id: pendingPhysician.id });
-        } catch (e) {
-          if (e.message?.includes('Unknown field name')) {
-            created = await createFile(baseFields);
-          } else {
-            throw e;
-          }
-        }
-      } else {
-        created = await createFile(baseFields);
-      }
+      const created = await createFile({
+        ...baseFields,
+        ...(pendingPhysician?.id ? { physician_id: pendingPhysician.id } : {}),
+      });
 
       setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
 
@@ -565,26 +554,52 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
             </div>
           )}
 
-          {/* Physician association */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Associated Physician</p>
-              {pendingPhysician && (
-                <button onClick={() => setPendingPhysician(null)} style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          {/* Source provider — independent of the patient's PCP / referral physician */}
+          <div style={{
+            marginBottom: 16,
+            padding: 12,
+            borderRadius: 10,
+            border: `1.5px solid ${pendingPhysician
+              ? hexToRgba(palette.accentBlue.hex, 0.35)
+              : hexToRgba(palette.backgroundDark.hex, 0.12)}`,
+            background: pendingPhysician
+              ? hexToRgba(palette.accentBlue.hex, 0.05)
+              : hexToRgba(palette.backgroundDark.hex, 0.02),
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+              <p style={{
+                fontSize: 11, fontWeight: 750, letterSpacing: '0.05em', textTransform: 'uppercase',
+                color: pendingPhysician ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
+                margin: 0,
+              }}>
+                Provider this file came from
+              </p>
+              {pendingPhysician ? (
+                <button
+                  type="button"
+                  onClick={() => setPendingPhysician(null)}
+                  style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+                >
                   Clear
                 </button>
+              ) : (
+                <span style={{
+                  fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+                  background: hexToRgba(palette.backgroundDark.hex, 0.06),
+                  color: hexToRgba(palette.backgroundDark.hex, 0.45),
+                }}>
+                  Optional
+                </span>
               )}
             </div>
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8, lineHeight: 1.4 }}>
+              Who authored or sent this document. Leave blank if unknown.
+            </p>
             <PhysicianPicker
               physicianId={pendingPhysician?.id || null}
               onChange={setPendingPhysician}
               compact
             />
-            {!pendingPhysician && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 5 }}>
-                Optional
-              </p>
-            )}
           </div>
 
           {uploadError && (
@@ -754,12 +769,13 @@ function GroupedFileList({
         if (!g || !g.match(f)) return false;
       }
       if (q) {
-        const hay = [f.file_name, f.category, f.document_subtype].filter(Boolean).join(' ').toLowerCase();
+        const fromProvider = f.physician_id ? resolvePhysician?.(f.physician_id) : '';
+        const hay = [f.file_name, f.category, f.document_subtype, fromProvider].filter(Boolean).join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [files, categoryFilter, search, groupDefs]);
+  }, [files, categoryFilter, search, groupDefs, resolvePhysician]);
 
   // Sort remaining files within each group by newest first
   const groups = useMemo(() => {
@@ -876,7 +892,6 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
   // Private R2: a file is viewable/downloadable as long as we have its key
   // (we mint a short-lived signed URL on demand).
   const canPreview = !!(file.r2_key && String(file.r2_key).trim());
-  const physicianName = file.physician_id ? resolvePhysician?.(file.physician_id) : null;
   const opwddSubtypeLabel = file.document_subtype
     ? OPWDD_CHECKLIST_BY_KEY[file.document_subtype]?.label || file.document_subtype
     : null;
@@ -915,11 +930,7 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
               {isExpired ? 'Expired ' : 'Valid through '}{validThrough.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           )}
-          {physicianName && physicianName !== '—' && (
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), color: palette.primaryDeepPlum.hex }}>
-              Dr. {physicianName}
-            </span>
-          )}
+          <FileSourceProviderBadge file={file} resolvePhysician={resolvePhysician} size="sm" />
           {file.file_size && (
             <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{formatBytes(file.file_size)}</span>
           )}
