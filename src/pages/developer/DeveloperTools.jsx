@@ -11,9 +11,10 @@ import registry from '../../../db/registry.json';
 // plan Phase 8). Works against EITHER backend (Airtable legacy, wellbound-api/
 // Aurora) because it goes through the same wrapper as the rest of the app.
 // Excel-style interactions: cell selection, arrow-key navigation, double-click
-// or Enter to edit, drag the fill handle to copy a value down/up, row-header
-// selection + typed confirmation to delete. Every write is server-access-
-// logged (api_access_log) on the new backend.
+// or Enter to edit, drag the fill handle to copy a value down/up, row/column
+// header selection (Shift+click for ranges) + Cmd/Ctrl+C to copy as TSV,
+// row-header selection + typed confirmation to delete. Every write is
+// server-access-logged (api_access_log) on the new backend.
 
 const TABLE_NAMES = Object.keys(registry).sort();
 // Continuous scroll: rows render in chunks as you scroll (no pagination), so
@@ -39,6 +40,21 @@ function displayValue(v) {
   if (v === null || v === undefined) return '';
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
+}
+
+/** Escape a cell for tab-separated paste into Excel / Sheets. */
+function tsvCell(v) {
+  const s = displayValue(v);
+  if (/[\t\n\r"]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function rangeBounds(sel) {
+  if (!sel) return null;
+  return {
+    lo: Math.min(sel.start, sel.end),
+    hi: Math.max(sel.start, sel.end),
+  };
 }
 
 /** Parse a draft string back into a typed value for the given field. */
@@ -88,6 +104,8 @@ export default function DeveloperTools() {
 
   // Excel-style interaction state.
   const [sel, setSel] = useState(null);            // { r, c } — page-row index + column index
+  const [rowSel, setRowSel] = useState(null);      // { start, end } — page-row indices (inclusive)
+  const [colSel, setColSel] = useState(null);      // { start, end } — column indices (inclusive)
   const [editing, setEditing] = useState(null);    // { r, c }
   const [draft, setDraft] = useState('');
   const [fillEnd, setFillEnd] = useState(null);    // row index the fill drag currently covers
@@ -115,6 +133,8 @@ export default function DeveloperTools() {
     setVisibleCount(SCROLL_CHUNK);
     setSortCol(null);
     setSel(null);
+    setRowSel(null);
+    setColSel(null);
     setEditing(null);
     setSelectedRowId(null);
     airtable.fetchAll(tableName)
@@ -440,10 +460,124 @@ export default function DeveloperTools() {
     window.addEventListener('mouseup', onUp);
   }
 
-  // ── Keyboard navigation (arrows, Enter, Escape, F2) ───────────────────────
+  // ── Selection helpers (row / column / cell — mutually exclusive) ──────────
+  function clearStructuralSelection() {
+    setRowSel(null);
+    setColSel(null);
+    setSelectedRowId(null);
+  }
+
+  function selectCell(r, c) {
+    clearStructuralSelection();
+    setSel({ r, c });
+    gridRef.current?.focus();
+  }
+
+  function selectRowHeader(r, { shiftKey } = {}) {
+    setSel(null);
+    setEditing(null);
+    setColSel(null);
+    const next = (shiftKey && rowSel)
+      ? { start: rowSel.start, end: r }
+      : { start: r, end: r };
+    setRowSel(next);
+    const lo = Math.min(next.start, next.end);
+    const hi = Math.max(next.start, next.end);
+    // Delete only applies to a single selected row.
+    setSelectedRowId(lo === hi ? (pageRows[lo]?._id ?? null) : null);
+    gridRef.current?.focus();
+  }
+
+  function selectColHeader(c, { shiftKey } = {}) {
+    setSel(null);
+    setEditing(null);
+    setRowSel(null);
+    setSelectedRowId(null);
+    if (!shiftKey && colSel && colSel.start === c && colSel.end === c) {
+      setColSel(null);
+      return;
+    }
+    setColSel((prev) => {
+      if (shiftKey && prev) return { start: prev.start, end: c };
+      return { start: c, end: c };
+    });
+    gridRef.current?.focus();
+  }
+
+  function toggleSort(field) {
+    if (sortCol === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(field); setSortDir('asc'); }
+  }
+
+  function buildCopyText() {
+    const rowBounds = rangeBounds(rowSel);
+    if (rowBounds) {
+      return pageRows
+        .slice(rowBounds.lo, rowBounds.hi + 1)
+        .map((row) => fieldNames.map((f) => tsvCell(row[f])).join('\t'))
+        .join('\n');
+    }
+    const colBounds = rangeBounds(colSel);
+    if (colBounds) {
+      const cols = fieldNames.slice(colBounds.lo, colBounds.hi + 1);
+      const header = cols.map(tsvCell).join('\t');
+      const body = filtered
+        .map((row) => cols.map((f) => tsvCell(row[f])).join('\t'))
+        .join('\n');
+      return body ? `${header}\n${body}` : header;
+    }
+    if (sel) {
+      const row = pageRows[sel.r];
+      const field = fieldNames[sel.c];
+      if (row && field) return tsvCell(row[field]);
+    }
+    return null;
+  }
+
+  async function copySelection() {
+    const text = buildCopyText();
+    if (text === null || text === undefined) {
+      showToast('Nothing selected to copy', 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      const rowBounds = rangeBounds(rowSel);
+      const colBounds = rangeBounds(colSel);
+      if (rowBounds) {
+        const n = rowBounds.hi - rowBounds.lo + 1;
+        showToast(`Copied ${n} row${n === 1 ? '' : 's'}`);
+      } else if (colBounds) {
+        const n = colBounds.hi - colBounds.lo + 1;
+        showToast(`Copied ${n} column${n === 1 ? '' : 's'} (${filtered.length} rows)`);
+      } else {
+        showToast('Copied cell');
+      }
+    } catch (err) {
+      console.error('[DeveloperTools] clipboard write failed:', err);
+      showToast('Copy failed — check clipboard permissions', 'error');
+    }
+  }
+
+  const hasCopyableSelection = !!(rowSel || colSel || sel);
+
+  // ── Keyboard navigation (arrows, Enter, Escape, F2, Cmd/Ctrl+C) ───────────
   function onGridKeyDown(e) {
     if (editing) return; // the input handles its own keys
-    if (!sel) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+      if (!hasCopyableSelection) return;
+      e.preventDefault();
+      copySelection();
+      return;
+    }
+    if (!sel) {
+      if (e.key === 'Escape') {
+        setRowSel(null);
+        setColSel(null);
+        setSelectedRowId(null);
+      }
+      return;
+    }
     const move = (dr, dc) => {
       e.preventDefault();
       setSel(({ r, c }) => ({
@@ -467,6 +601,11 @@ export default function DeveloperTools() {
     return r >= lo && r <= hi;
   };
 
+  const rowBounds = rangeBounds(rowSel);
+  const colBounds = rangeBounds(colSel);
+  const isRowInSelection = (r) => rowBounds && r >= rowBounds.lo && r <= rowBounds.hi;
+  const isColInSelection = (c) => colBounds && c >= colBounds.lo && c <= colBounds.hi;
+
   const tableMatches = tableQuery.trim()
     ? TABLE_NAMES.filter((t) => t.toLowerCase().includes(tableQuery.trim().toLowerCase()))
     : [];
@@ -484,8 +623,9 @@ export default function DeveloperTools() {
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>Developer Tools</h1>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0' }}>
-          Raw database grid. Click a cell, Enter or double-click to edit, drag the corner handle to copy down.
-          Drag a column edge to resize. Use <strong>+ Add row</strong> to insert. Click a row number to select; double-click it to expand. All changes are audit-logged.
+          Raw database grid. Click a cell, Enter or double-click to edit, drag the corner handle to fill down.
+          Click a row number or column header to select (Shift+click for a range); <strong>⌘/Ctrl+C</strong> copies as TSV for Excel.
+          Double-click a column header to sort. Drag a column edge to resize. Double-click a row number to expand. All changes are audit-logged.
         </p>
       </div>
 
@@ -550,6 +690,21 @@ export default function DeveloperTools() {
           + Add row
         </button>
 
+        <button
+          type="button"
+          onClick={copySelection}
+          disabled={!hasCopyableSelection}
+          title="Copy selection (⌘/Ctrl+C)"
+          style={{
+            ...btn,
+            fontWeight: 600,
+            opacity: hasCopyableSelection ? 1 : 0.45,
+            cursor: hasCopyableSelection ? 'pointer' : 'default',
+          }}
+        >
+          Copy selection
+        </button>
+
         {selectedRowId && (
           <button
             onClick={() => { setConfirmingDelete(true); setDeleteText(''); }}
@@ -580,24 +735,30 @@ export default function DeveloperTools() {
                 background: HEADER_BG, border: `1px solid ${GRID_LINE}`, fontSize: 11.5,
                 color: hexToRgba(palette.backgroundDark.hex, 0.45), padding: '7px 4px',
               }}>#</th>
-              {fieldNames.map((f) => {
+              {fieldNames.map((f, c) => {
                 const w = colWidths[f] || COL_W;
+                const colSelected = isColInSelection(c);
                 return (
                   <th
                     key={f}
-                    onClick={() => {
-                      if (colResizeRef.current) return; // don't sort mid-resize
-                      if (sortCol === f) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-                      else { setSortCol(f); setSortDir('asc'); }
+                    onClick={(e) => {
+                      if (colResizeRef.current) return; // don't select mid-resize
+                      selectColHeader(c, { shiftKey: e.shiftKey });
+                    }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      if (colResizeRef.current) return;
+                      toggleSort(f);
                     }}
                     style={{
                       position: 'sticky', top: 0, zIndex: 2, width: w, minWidth: w, maxWidth: w,
-                      background: HEADER_BG, border: `1px solid ${GRID_LINE}`,
+                      background: colSelected ? SELECT_BLUE : HEADER_BG,
+                      border: `1px solid ${GRID_LINE}`,
                       fontSize: 12, fontWeight: 650, textAlign: 'left', padding: '7px 10px',
                       cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      color: palette.backgroundDark.hex, userSelect: 'none',
+                      color: colSelected ? '#fff' : palette.backgroundDark.hex, userSelect: 'none',
                     }}
-                    title={f}
+                    title={`${f} — click to select column · Shift+click for range · double-click to sort`}
                   >
                     {f}{sortCol === f ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                     <div
@@ -616,12 +777,20 @@ export default function DeveloperTools() {
           </thead>
           <tbody>
             {pageRows.map((row, r) => {
-              const rowSelected = selectedRowId === row._id;
+              const rowSelected = isRowInSelection(r) || selectedRowId === row._id;
               const rowExpanded = expandedRows.has(row._id);
               return (
                 <tr key={row._id}>
                   <td
-                    onClick={() => { setSelectedRowId(rowSelected ? null : row._id); setSel(null); setEditing(null); }}
+                    onClick={(e) => {
+                      // Toggle off when clicking the same single-selected row without Shift.
+                      if (!e.shiftKey && rowSel && rowSel.start === r && rowSel.end === r) {
+                        setRowSel(null);
+                        setSelectedRowId(null);
+                        return;
+                      }
+                      selectRowHeader(r, { shiftKey: e.shiftKey });
+                    }}
                     onDoubleClick={() => {
                       setExpandedRows((prev) => {
                         const next = new Set(prev);
@@ -629,7 +798,7 @@ export default function DeveloperTools() {
                         return next;
                       });
                     }}
-                    title="Click to select · double-click to expand/collapse the row"
+                    title="Click to select row · Shift+click for range · double-click to expand/collapse"
                     style={{
                       position: 'sticky', left: 0, zIndex: 1, width: ROW_NUM_W, minWidth: ROW_NUM_W,
                       background: rowSelected ? SELECT_BLUE : HEADER_BG,
@@ -645,6 +814,7 @@ export default function DeveloperTools() {
                     const isSel = sel && sel.r === r && sel.c === c;
                     const isEditing = editing && editing.r === r && editing.c === c;
                     const fillHighlight = fillDragRef.current?.c === c && inFillRange(r);
+                    const structHighlight = isRowInSelection(r) || isColInSelection(c);
                     const shown = displayValue(row[f]);
                     // Layout-stable base: border stays 1px and padding stays
                     // constant in EVERY state; selection/editing draw an inset
@@ -681,15 +851,19 @@ export default function DeveloperTools() {
                     return (
                       <td
                         key={f}
-                        onClick={() => { setSel({ r, c }); setSelectedRowId(null); gridRef.current?.focus(); }}
-                        onDoubleClick={() => { setSel({ r, c }); startEdit(r, c); }}
+                        onClick={() => { selectCell(r, c); }}
+                        onDoubleClick={() => { selectCell(r, c); startEdit(r, c); }}
                         onMouseEnter={() => { if (fillDragRef.current) setFillEnd(r); }}
                         title={shown}
                         style={{
                           ...baseCell,
                           padding: '5px 9px',
                           boxShadow: isSel ? `inset 0 0 0 2px ${SELECT_BLUE}` : 'none',
-                          background: fillHighlight ? FILL_BG : rowSelected ? 'rgba(26,115,232,0.05)' : '#fff',
+                          background: fillHighlight
+                            ? FILL_BG
+                            : structHighlight
+                              ? 'rgba(26,115,232,0.08)'
+                              : '#fff',
                           cursor: 'cell', userSelect: 'none',
                         }}
                       >

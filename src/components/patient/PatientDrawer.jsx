@@ -269,11 +269,11 @@ export default function PatientDrawer() {
           top: 0,
           right: 0,
           bottom: 0,
-          left: (split || isMobile) ? 0 : 'auto',
+          // Full-bleed on mobile / split preview; otherwise dock to the right.
           // Prefer 100% over 100vw — vw includes scrollbar gutter and causes
           // sideways rubber-banding on iOS Safari.
+          left: (split || isMobile) ? 0 : 'auto',
           width: (split || isMobile) ? '100%' : 'min(560px, 100%)',
-          right: (split || isMobile) ? 0 : undefined,
           background: split ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
           zIndex: 1001,
           display: 'flex',

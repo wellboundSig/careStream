@@ -451,10 +451,11 @@ export const DEFAULT_PRESETS = [
   {
     id: 'preset_clinical_rn',
     name: 'Clinical RN',
-    description: 'Clinical intake review, triage, F2F management, and conflict resolution.',
+    description: 'Clinical intake review, triage, F2F management, conflict resolution, and lead entry.',
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
+      K.LEADS_CREATE, K.REFERRAL_CREATE,
       K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
@@ -543,9 +544,10 @@ export const DEFAULT_PRESETS = [
   {
     id: 'preset_field_nurse',
     name: 'Field Nurse',
-    description: 'Patient-facing clinical documentation and triage.',
+    description: 'Patient-facing clinical documentation, triage, and lead entry.',
     is_system: true,
     permissions: [
+      K.LEADS_CREATE, K.REFERRAL_CREATE,
       K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
@@ -555,6 +557,25 @@ export const DEFAULT_PRESETS = [
       K.FILE_UPLOAD,
       K.DIRECTORY_CLINICIANS_VIEW, K.DIRECTORY_PHYSICIANS_VIEW, K.DIRECTORY_FACILITIES_VIEW,
       K.SNAPSHOT_EDIT_TRIAGE, K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,
+    ],
+  },
+  {
+    id: 'preset_coc_nurse',
+    name: 'COC Nurse',
+    description: 'Continuity-of-care nursing — patient visibility, notes/files, and lead entry.',
+    is_system: true,
+    permissions: [
+      K.DIVISION_ALF, K.DIVISION_SN,
+      K.LEADS_CREATE, K.REFERRAL_CREATE,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.REFERRAL_FLAG_URGENT_CARE,
+      K.PATIENT_VIEW,
+      K.TASK_VIEW, K.NOTE_CREATE, K.NOTE_MENTION_ACCOUNT_MANAGER,
+      K.FILE_UPLOAD,
+      K.CONFLICT_FLAG,
+      K.DIRECTORY_FACILITIES_VIEW, K.DIRECTORY_PHYSICIANS_VIEW, K.DIRECTORY_CLINICIANS_VIEW,
+      K.MODULE_SCHEDULING, K.SCHEDULING_SOC_PENDING_LOG,
+      K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,
     ],
   },
 ];
