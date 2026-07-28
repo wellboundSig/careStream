@@ -10,13 +10,16 @@
 import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordActivity } from '../api/activityLog.js';
 
-/** @typedef {'wound'|'insulin'|'both'|''|null|undefined} UrgentCareType */
+/** @typedef {'wound'|'insulin'|'injection'|'both'|''|null|undefined} UrgentCareType */
 
 export const URGENT_CARE_TYPE_OPTIONS = [
   { value: 'wound', label: 'Wound care' },
   { value: 'insulin', label: 'Insulin' },
+  { value: 'injection', label: 'Injection' },
   { value: 'both', label: 'Both' },
 ];
+
+const URGENT_CARE_TYPE_VALUES = new Set(URGENT_CARE_TYPE_OPTIONS.map((o) => o.value));
 
 const TYPE_LABELS = Object.fromEntries(
   URGENT_CARE_TYPE_OPTIONS.map((o) => [o.value, o.label]),
@@ -33,12 +36,11 @@ export function urgentCareTypeLabel(type) {
 
 /**
  * @param {object|null|undefined} referral
- * @returns {'wound'|'insulin'|'both'|''}
+ * @returns {'wound'|'insulin'|'injection'|'both'|''}
  */
 export function getUrgentCareType(referral) {
   const t = referral?.urgent_care_type;
-  if (t === 'wound' || t === 'insulin' || t === 'both') return t;
-  return '';
+  return URGENT_CARE_TYPE_VALUES.has(t) ? t : '';
 }
 
 /**
@@ -50,7 +52,7 @@ export function getUrgentCareType(referral) {
  * @param {string} args.actorUserId       usr_xxx — the current user.
  * @param {string} [args.note]            Optional context, persisted to
  *                                        `urgent_care_note` when setting.
- * @param {UrgentCareType} [args.type]    wound | insulin | both when marking.
+ * @param {UrgentCareType} [args.type]    wound | insulin | injection | both when marking.
  * @returns {Promise<void>}
  */
 export async function setUrgentCare({ referral, next, actorUserId, note, type }) {
@@ -108,7 +110,7 @@ export async function setUrgentCare({ referral, next, actorUserId, note, type })
  */
 export async function setUrgentCareType({ referral, type, actorUserId }) {
   if (!referral?._id) throw new Error('setUrgentCareType: missing referral record id');
-  const nextType = type === 'wound' || type === 'insulin' || type === 'both' ? type : '';
+  const nextType = URGENT_CARE_TYPE_VALUES.has(type) ? type : '';
   const updates = { urgent_care_type: nextType };
 
   if (nextType && !isUrgentCare(referral)) {

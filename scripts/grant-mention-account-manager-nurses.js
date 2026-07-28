@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Grant `note.mention_account_manager` to Active nurses:
- *   Clinical RN (rol_005), COC Nurse (rol_014), Field (rol_013).
+ * Grant `note.mention_account_manager` to:
+ *   - Rafi Barides (usr_001)
+ *   - Active nurses: Clinical RN (rol_005), COC Nurse (rol_014), Field (rol_013)
  *
  * Usage (from careStream/):
  *   node scripts/grant-mention-account-manager-nurses.js           # dry-run
@@ -33,6 +34,7 @@ try {
 const APPLY = process.argv.includes('--apply');
 const PERM = 'note.mention_account_manager';
 const ROLE_IDS = ['rol_005', 'rol_014', 'rol_013']; // Clinical RN, COC Nurse, Field
+const EXTRA_USER_IDS = ['usr_001']; // Rafi Barides
 
 const resourceArn = process.env.WB_CLUSTER_ARN;
 const secretArn = process.env.WB_SECRET_ARN;
@@ -76,99 +78,119 @@ function parsePerms(raw) {
   }
 }
 
-async function main() {
-  console.log(APPLY ? 'APPLY mode — will write Aurora' : 'DRY RUN — pass --apply to write');
-  console.log(`Database: ${database}`);
-  console.log(`Key: ${PERM}`);
-  console.log(`Roles: ${ROLE_IDS.join(', ')}`);
-
+async function ensureCatalog() {
   const catalog = await query(
     `SELECT rec_id FROM permissions WHERE key = :k LIMIT 1`,
     [{ name: 'k', value: { stringValue: PERM } }],
   );
-  if (!catalog.length) {
-    if (APPLY) {
-      const now = new Date().toISOString();
-      await exec(
-        `INSERT INTO permissions (id, key, label, category, sort_order, description, created_at, updated_at)
-         VALUES (
-           'perm_note_mention_account_manager',
-           :k,
-           'Mention Account manager info',
-           'Notes & Files',
-           113,
-           'In notes, @mention Account manager info to append to the SOC Completed Pending Log column',
-           CAST(:now AS timestamptz),
-           CAST(:now AS timestamptz)
-         )`,
-        [
-          { name: 'k', value: { stringValue: PERM } },
-          { name: 'now', value: { stringValue: now } },
-        ],
-      );
-      console.log('  + Inserted permissions catalog row');
-    } else {
-      console.log('  (would insert permissions catalog row)');
-    }
+  if (catalog.length) return;
+  if (!APPLY) {
+    console.log('  (would insert permissions catalog row)');
+    return;
+  }
+  const now = new Date().toISOString();
+  await exec(
+    `INSERT INTO permissions (id, key, label, category, sort_order, description, created_at, updated_at)
+     VALUES (
+       'perm_note_mention_account_manager',
+       :k,
+       'Mention Account manager info',
+       'Notes & Files',
+       113,
+       'In notes, @mention Account manager info to append to the SOC Completed Pending Log column',
+       CAST(:now AS timestamptz),
+       CAST(:now AS timestamptz)
+     )`,
+    [
+      { name: 'k', value: { stringValue: PERM } },
+      { name: 'now', value: { stringValue: now } },
+    ],
+  );
+  console.log('  + Inserted permissions catalog row');
+}
+
+async function grantUser(u) {
+  const rows = await query(
+    `SELECT rec_id, permissions::text AS permissions
+     FROM user_permissions
+     WHERE user_id = :uid
+     LIMIT 1`,
+    [{ name: 'uid', value: { stringValue: u.id } }],
+  );
+  const existing = rows[0];
+  if (!existing) {
+    console.log(`  = ${u.first_name} ${u.last_name}: no user_permissions row (fail-open)`);
+    return 'skipped';
   }
 
-  const users = await query(
-    `SELECT u.rec_id, u.id, u.first_name, u.last_name, u.role_id, u.status
+  const keys = parsePerms(existing.permissions);
+  if (keys.includes(PERM)) {
+    console.log(`  = ${u.first_name} ${u.last_name}: already has ${PERM}`);
+    return 'already';
+  }
+
+  const next = [...keys, PERM];
+  if (!APPLY) {
+    console.log(`  → ${u.first_name} ${u.last_name}: would add ${PERM}`);
+    return 'updated';
+  }
+
+  const now = new Date().toISOString();
+  await exec(
+    `UPDATE user_permissions
+     SET permissions = CAST(:perms AS jsonb),
+         updated_at = CAST(:now AS timestamptz)
+     WHERE rec_id = :rid`,
+    [
+      { name: 'perms', value: { stringValue: JSON.stringify(next) } },
+      { name: 'now', value: { stringValue: now } },
+      { name: 'rid', value: { stringValue: existing.rec_id } },
+    ],
+  );
+  console.log(`  ✓ ${u.first_name} ${u.last_name}: granted ${PERM}`);
+  return 'updated';
+}
+
+async function main() {
+  console.log(APPLY ? 'APPLY mode — will write Aurora' : 'DRY RUN — pass --apply to write');
+  console.log(`Database: ${database}`);
+  console.log(`Key: ${PERM}`);
+
+  await ensureCatalog();
+
+  const byRole = await query(
+    `SELECT u.id, u.first_name, u.last_name, u.role_id
      FROM users u
      WHERE u.role_id IN (${ROLE_IDS.map((_, i) => `:r${i}`).join(', ')})
        AND coalesce(trim(u.status), 'Active') = 'Active'
      ORDER BY u.role_id, u.last_name, u.first_name`,
     ROLE_IDS.map((rid, i) => ({ name: `r${i}`, value: { stringValue: rid } })),
   );
-  console.log(`Active nurses: ${users.length}`);
+
+  const extras = await query(
+    `SELECT u.id, u.first_name, u.last_name, u.role_id
+     FROM users u
+     WHERE u.id IN (${EXTRA_USER_IDS.map((_, i) => `:u${i}`).join(', ')})`,
+    EXTRA_USER_IDS.map((id, i) => ({ name: `u${i}`, value: { stringValue: id } })),
+  );
+
+  const seen = new Set();
+  const users = [...extras, ...byRole].filter((u) => {
+    if (seen.has(u.id)) return false;
+    seen.add(u.id);
+    return true;
+  });
+
+  console.log(`Targets: ${users.length} (Rafi + Active nurses)`);
 
   let updated = 0;
   let already = 0;
   let skipped = 0;
-
   for (const u of users) {
-    const rows = await query(
-      `SELECT rec_id, permissions::text AS permissions
-       FROM user_permissions
-       WHERE user_id = :uid
-       LIMIT 1`,
-      [{ name: 'uid', value: { stringValue: u.id } }],
-    );
-    const existing = rows[0];
-    if (!existing) {
-      console.log(`  = ${u.first_name} ${u.last_name} (${u.role_id}): no user_permissions row (fail-open)`);
-      skipped += 1;
-      continue;
-    }
-
-    const keys = parsePerms(existing.permissions);
-    if (keys.includes(PERM)) {
-      console.log(`  = ${u.first_name} ${u.last_name}: already has ${PERM}`);
-      already += 1;
-      continue;
-    }
-
-    const next = [...keys, PERM];
-    if (!APPLY) {
-      console.log(`  → ${u.first_name} ${u.last_name}: would add ${PERM}`);
-      updated += 1;
-      continue;
-    }
-
-    const now = new Date().toISOString();
-    await exec(
-      `UPDATE user_permissions
-       SET permissions = CAST(:perms AS jsonb),
-           updated_at = CAST(:now AS timestamptz)
-       WHERE rec_id = :rid`,
-      [
-        { name: 'perms', value: { stringValue: JSON.stringify(next) } },
-        { name: 'now', value: { stringValue: now } },
-        { name: 'rid', value: { stringValue: existing.rec_id } },
-      ],
-    );
-    console.log(`  ✓ ${u.first_name} ${u.last_name}: granted ${PERM}`);
-    updated += 1;
+    const result = await grantUser(u);
+    if (result === 'updated') updated += 1;
+    else if (result === 'already') already += 1;
+    else skipped += 1;
   }
 
   console.log(`Done. granted/would-grant=${updated} already=${already} no-row-skip=${skipped}`);

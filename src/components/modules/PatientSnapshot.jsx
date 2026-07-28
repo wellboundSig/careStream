@@ -219,7 +219,7 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
               value={urgentType}
               disabled={busy || !referral?._id}
               onChange={(e) => changeType(e.target.value)}
-              title="Wound care, Insulin, or Both"
+              title="Wound care, Insulin, Injection, or Both"
               style={{
                 fontSize: 11.5, fontFamily: 'inherit', padding: '3px 6px',
                 borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`,

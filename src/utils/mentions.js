@@ -121,18 +121,29 @@ export function listMentionCandidates(usersMap, {
 export function filterUsersByQuery(users, query) {
   const q = (query || '').trim().toLowerCase();
   if (!q) return users.slice(0, 8);
-  return users
-    .filter((u) => {
-      const full = userDisplayName(u).toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      // Match common shorthand for the AM target ("account", "am", "manager")
-      if (u.id === ACCOUNT_MANAGER_INFO_MENTION_ID) {
-        return full.includes(q)
-          || 'account manager info'.includes(q)
-          || 'am'.startsWith(q)
-          || q === 'am';
-      }
-      return full.includes(q) || email.includes(q) || (u.id || '').toLowerCase().includes(q);
-    })
-    .slice(0, 8);
+
+  const matches = (u) => {
+    const full = userDisplayName(u).toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    if (u.id === ACCOUNT_MANAGER_INFO_MENTION_ID) {
+      // Searchable like a person, but it's a thing — match common shorthand.
+      const hay = [
+        full,
+        'account manager info',
+        'account manager',
+        'account',
+        'manager',
+        'info',
+        'am',
+        'ami',
+      ];
+      return hay.some((h) => h.includes(q) || q.includes(h));
+    }
+    return full.includes(q) || email.includes(q) || (u.id || '').toLowerCase().includes(q);
+  };
+
+  // Keep special targets pinned at the top of filtered results.
+  const specials = users.filter((u) => u.isSpecial && matches(u));
+  const people = users.filter((u) => !u.isSpecial && matches(u));
+  return [...specials, ...people].slice(0, 8);
 }

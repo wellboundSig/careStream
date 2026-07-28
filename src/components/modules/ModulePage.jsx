@@ -755,7 +755,7 @@ export default function ModulePage({ stage }) {
           >
             <select
               value={current}
-              title="Urgent care type — Wound care, Insulin, or Both"
+              title="Urgent care type — Wound care, Insulin, Injection, or Both"
               onChange={async (e) => {
                 const next = e.target.value;
                 try {
@@ -1777,8 +1777,8 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
             />
           )}
-          {/* Urgent care: pick wound / insulin / both when marking. Always
-              present — not gated at the UI layer. */}
+          {/* Urgent care: pick wound / insulin / injection / both when marking.
+              Always present — not gated at the UI layer. */}
           {urgent ? (
             <>
               <MenuItem

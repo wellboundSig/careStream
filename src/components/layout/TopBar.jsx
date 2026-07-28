@@ -235,12 +235,11 @@ function NotificationBell() {
   const wrapperRef = useRef(null);
 
   const storeNotifications = useCareStore((s) => s.notifications);
-  const storeTasks = useCareStore((s) => s.tasks);
   const storePatients = useCareStore((s) => s.patients);
   const storeReferrals = useCareStore((s) => s.referrals);
 
-  const { inbox, unreadCount, openTaskCount } = useMemo(() => {
-    if (!appUserId) return { inbox: [], unreadCount: 0, openTaskCount: 0 };
+  const { inbox, unreadCount } = useMemo(() => {
+    if (!appUserId) return { inbox: [], unreadCount: 0 };
     const mine = Object.values(storeNotifications || {})
       .filter((n) => n.recipient_user_id === appUserId)
       .sort((a, b) => {
@@ -252,12 +251,8 @@ function NotificationBell() {
       .slice(0, 12);
 
     const unread = mine.filter((n) => !(n.is_read === true || n.is_read === 'true')).length;
-    const openTasks = Object.values(storeTasks || {}).filter(
-      (t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled',
-    ).length;
-
-    return { inbox: mine, unreadCount: unread, openTaskCount: openTasks };
-  }, [appUserId, storeNotifications, storeTasks]);
+    return { inbox: mine, unreadCount: unread };
+  }, [appUserId, storeNotifications]);
 
   useEffect(() => {
     if (!open) return;
@@ -485,25 +480,6 @@ function NotificationBell() {
                 );
               })
             )}
-          </div>
-
-          <div
-            onClick={() => { setOpen(false); navigate('/tasks'); }}
-            style={{
-              padding: '10px 14px',
-              cursor: 'pointer',
-              textAlign: 'center',
-              fontSize: 12, fontWeight: 650,
-              color: palette.accentBlue.hex,
-              borderTop: `1px solid var(--color-border)`,
-              transition: 'background 0.1s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.accentBlue.hex, 0.05))}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            {openTaskCount > 0
-              ? `View tasks (${openTaskCount} open) →`
-              : 'View all tasks →'}
           </div>
         </div>
       )}
