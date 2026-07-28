@@ -1030,43 +1030,28 @@ export default function NewReferralForm({
         ...(form.address_city && { address_city: form.address_city }),
         ...(form.address_state && { address_state: form.address_state }),
         ...(form.address_zip && { address_zip: form.address_zip }),
-        // Dual-write mirrors — known_guardians links are created right after.
+        // Emergency contact dual-write — primary contact is demographics phone/email.
         ...(() => {
-          const primaryParsed = splitContactNameAndRelationship(form.primary_contact_name);
+          const patientName = `${named.first_name || ''} ${named.last_name || ''}`.trim();
           const emergencyRaw = form.emergency_same_as_primary
-            ? (form.primary_contact_name || form.emergency_contact_name)
+            ? (patientName || form.emergency_contact_name)
             : form.emergency_contact_name;
           const emergencyParsed = splitContactNameAndRelationship(emergencyRaw);
-          const primaryPhone = form.primary_contact_phone
-            || (form.emergency_same_as_primary ? form.emergency_contact_phone : '');
           const emergencyPhone = form.emergency_same_as_primary
-            ? (form.primary_contact_phone || form.emergency_contact_phone)
+            ? form.phone_primary
             : form.emergency_contact_phone;
+          const emergencyEmail = form.emergency_same_as_primary
+            ? form.email
+            : form.emergency_contact_email;
           return {
-            ...(primaryParsed.cleanName && {
-              primary_contact_name: normalizeContactName(primaryParsed.cleanName),
-            }),
-            ...(primaryPhone && { primary_contact_phone: primaryPhone }),
-            ...(form.primary_contact_email && { primary_contact_email: form.primary_contact_email }),
-            ...((form.primary_contact_relationship || primaryParsed.relationship) && {
-              primary_contact_relationship: form.primary_contact_relationship || primaryParsed.relationship,
-            }),
             ...(emergencyParsed.cleanName && {
               emergency_contact_name: normalizeContactName(emergencyParsed.cleanName),
             }),
             ...(emergencyPhone && { emergency_contact_phone: emergencyPhone }),
-            ...((form.emergency_same_as_primary ? form.primary_contact_email : form.emergency_contact_email)
-              && {
-                emergency_contact_email: form.emergency_same_as_primary
-                  ? form.primary_contact_email
-                  : form.emergency_contact_email,
-              }),
-            ...((form.emergency_contact_relationship || emergencyParsed.relationship
-              || (form.emergency_same_as_primary && form.primary_contact_relationship)) && {
+            ...(emergencyEmail && { emergency_contact_email: emergencyEmail }),
+            ...((form.emergency_contact_relationship || emergencyParsed.relationship) && {
               emergency_contact_relationship:
-                form.emergency_contact_relationship
-                || emergencyParsed.relationship
-                || (form.emergency_same_as_primary ? form.primary_contact_relationship : ''),
+                form.emergency_contact_relationship || emergencyParsed.relationship,
             }),
           };
         })(),
@@ -1076,25 +1061,12 @@ export default function NewReferralForm({
       const createdPatientId = patientRecord.fields?.id || patientCustomId;
 
       // System of record: known_guardians + patient_guardians (non-fatal if API lags).
-      const primaryName = form.primary_contact_name;
-      const primaryPhone = form.primary_contact_phone;
-      if (primaryName || primaryPhone) {
-        savePatientContactSlot({
-          patientBusinessId: createdPatientId,
-          patientRecordId: patientRecord.id,
-          slot: 'primary',
-          name: primaryName,
-          phone: primaryPhone,
-          email: form.primary_contact_email,
-          relationship: form.primary_contact_relationship,
-          source: 'new_referral',
-        }).catch((err) => console.warn('New referral: primary guardian sync failed', err));
-      }
+      const patientName = `${named.first_name || ''} ${named.last_name || ''}`.trim();
       const emergencyName = form.emergency_same_as_primary
-        ? (form.primary_contact_name || form.emergency_contact_name)
+        ? (patientName || form.emergency_contact_name)
         : form.emergency_contact_name;
       const emergencyPhone = form.emergency_same_as_primary
-        ? (form.primary_contact_phone || form.emergency_contact_phone)
+        ? form.phone_primary
         : form.emergency_contact_phone;
       if (emergencyName || emergencyPhone) {
         savePatientContactSlot({
@@ -1103,10 +1075,8 @@ export default function NewReferralForm({
           slot: 'emergency',
           name: emergencyName,
           phone: emergencyPhone,
-          email: form.emergency_same_as_primary ? form.primary_contact_email : form.emergency_contact_email,
-          relationship: form.emergency_same_as_primary
-            ? (form.primary_contact_relationship || form.emergency_contact_relationship)
-            : form.emergency_contact_relationship,
+          email: form.emergency_same_as_primary ? form.email : form.emergency_contact_email,
+          relationship: form.emergency_contact_relationship,
           source: 'new_referral',
         }).catch((err) => console.warn('New referral: emergency guardian sync failed', err));
       }
@@ -1795,13 +1765,12 @@ export default function NewReferralForm({
               <div style={{ gridColumn: '1 / -1' }}>
                 <GuardianContactFields
                   showEmail
+                  primarySource={{
+                    name: `${form.first_name || ''} ${form.last_name || ''}`.trim(),
+                    phone: form.phone_primary || '',
+                    email: form.email || '',
+                  }}
                   value={{
-                    primary: {
-                      name: form.primary_contact_name,
-                      phone: form.primary_contact_phone,
-                      email: form.primary_contact_email,
-                      relationship: form.primary_contact_relationship,
-                    },
                     emergency: {
                       name: form.emergency_contact_name,
                       phone: form.emergency_contact_phone,
@@ -1814,10 +1783,6 @@ export default function NewReferralForm({
                     setDirty(true);
                     setForm((prev) => ({
                       ...prev,
-                      primary_contact_name: next.primary?.name || '',
-                      primary_contact_phone: next.primary?.phone || '',
-                      primary_contact_email: next.primary?.email || '',
-                      primary_contact_relationship: next.primary?.relationship || '',
                       emergency_contact_name: next.emergency?.name || '',
                       emergency_contact_phone: next.emergency?.phone || '',
                       emergency_contact_email: next.emergency?.email || '',

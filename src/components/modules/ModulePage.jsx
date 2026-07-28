@@ -1180,10 +1180,12 @@ export default function ModulePage({ stage }) {
             setSearch={setSearch}
             isPendingLogView={isPendingLogView}
             canPendingLog={canPendingLog}
+            isSocCompleted
             onTogglePendingLog={toggleSocCompletedView}
             onOpenPatient={handleRowOpen}
             onOpenFiles={(r) => handleRowOpenTab(r, 'files')}
             onOpenNotes={(r) => handleRowOpenTab(r, 'notes')}
+            onOpenConflicts={(r) => handleRowOpenTab(r, 'conflicts')}
             resolveFacility={resolveFacility}
             resolveMarketer={resolveMarketer}
             resolveUser={resolveUser}
@@ -1199,9 +1201,11 @@ export default function ModulePage({ stage }) {
             setSearch={setSearch}
             isPendingLogView={false}
             canPendingLog={false}
+            isSocCompleted={false}
             onOpenPatient={handleRowOpen}
             onOpenFiles={(r) => handleRowOpenTab(r, 'files')}
             onOpenNotes={(r) => handleRowOpenTab(r, 'notes')}
+            onOpenConflicts={(r) => handleRowOpenTab(r, 'conflicts')}
             resolveFacility={resolveFacility}
             resolveMarketer={resolveMarketer}
             resolveUser={resolveUser}

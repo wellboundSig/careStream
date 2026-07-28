@@ -101,6 +101,15 @@ export default function AppShell() {
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
   const canScheduling = canAny(PERMISSION_KEYS.MODULE_SCHEDULING, PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG);
   const canPatients = canAny(PERMISSION_KEYS.REFERRAL_VIEW, PERMISSION_KEYS.REFERRAL_VIEW_ALL, PERMISSION_KEYS.MODULE_INTAKE);
+  // Conflict module + drawer are day-to-day for marketers / clinical / schedulers.
+  const canConflicts = canAny(
+    PERMISSION_KEYS.MODULE_CLINICAL,
+    PERMISSION_KEYS.CONFLICT_FLAG,
+    PERMISSION_KEYS.CONFLICT_RESOLVE,
+    PERMISSION_KEYS.SNAPSHOT_EDIT_CONFLICTS,
+    PERMISSION_KEYS.REFERRAL_VIEW,
+    PERMISSION_KEYS.REFERRAL_VIEW_ALL,
+  );
   const isPopOut = isPopOutWindow();
   const roleName = appUser?.role_id ? resolveRole(appUser.role_id) : '';
   const isUnassigned = !!(
@@ -200,6 +209,11 @@ export default function AppShell() {
         flexDirection: 'column',
         height: '100dvh',
         maxHeight: '100dvh',
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        overflowX: 'hidden',
+        overscrollBehaviorX: 'none',
         background: palette.backgroundLight.hex,
         paddingTop: 'env(safe-area-inset-top, 0px)',
       }}>
@@ -229,7 +243,11 @@ export default function AppShell() {
 
         <main style={{
           flex: 1,
+          minWidth: 0,
           overflowY: 'auto',
+          overflowX: 'hidden',
+          overscrollBehaviorX: 'none',
+          touchAction: 'pan-y',
           WebkitOverflowScrolling: 'touch',
           paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
         }}>
@@ -302,6 +320,16 @@ export default function AppShell() {
               </span>
               NEW
             </button>
+          )}
+
+          {canConflicts && (
+            <MobileNavItem to="/modules/conflict" label="CONFLICTS">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </MobileNavItem>
           )}
 
           {canScheduling && (

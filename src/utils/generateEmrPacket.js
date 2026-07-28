@@ -368,10 +368,12 @@ async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
   }
   s.gap();
 
+  // Primary contact = patient demographics (phone/email/name). Named
+  // primary_contact_* mirrors (e.g. from triage caregiver) win when present.
   s.sectionHeader('Primary Contact');
-  s.row('Name', p.primary_contact_name);
-  s.row('Phone', p.primary_contact_phone);
-  s.row('Email', p.primary_contact_email);
+  s.row('Name', p.primary_contact_name || [p.first_name, p.last_name].filter(Boolean).join(' '));
+  s.row('Phone', p.primary_contact_phone || p.phone_primary);
+  s.row('Email', p.primary_contact_email || p.email);
   s.row('Relation', p.primary_contact_relationship);
   s.gap();
 

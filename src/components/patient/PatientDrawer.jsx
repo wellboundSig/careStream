@@ -47,11 +47,12 @@ export const DRAWER_TABS = [
   { id: 'conflicts', label: 'Conflicts' },
 ];
 
-/** Mobile tab order — Files & Notes first after Referral for thumb reach. */
+/** Mobile tab order — Files, Notes, Conflicts up front for field marketers. */
 const MOBILE_DRAWER_TABS = [
   { id: 'overview', label: 'Referral' },
   { id: 'files', label: 'Files' },
   { id: 'notes', label: 'Notes' },
+  { id: 'conflicts', label: 'Conflicts' },
   { id: 'demographics', label: 'Demographics' },
   { id: 'f2f', label: 'Face to Face' },
   { id: 'triage', label: 'Triage' },
@@ -61,7 +62,6 @@ const MOBILE_DRAWER_TABS = [
   { id: 'tasks', label: 'Tasks' },
   { id: 'clinical_review', label: 'Clinical Review' },
   { id: 'authorizations', label: 'Auth' },
-  { id: 'conflicts', label: 'Conflicts' },
 ];
 
 const TAB_EDIT_PERMISSIONS = {
@@ -270,7 +270,10 @@ export default function PatientDrawer() {
           right: 0,
           bottom: 0,
           left: (split || isMobile) ? 0 : 'auto',
-          width: (split || isMobile) ? '100vw' : 'min(560px, 100vw)',
+          // Prefer 100% over 100vw — vw includes scrollbar gutter and causes
+          // sideways rubber-banding on iOS Safari.
+          width: (split || isMobile) ? '100%' : 'min(560px, 100%)',
+          right: (split || isMobile) ? 0 : undefined,
           background: split ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
           zIndex: 1001,
           display: 'flex',
@@ -279,6 +282,9 @@ export default function PatientDrawer() {
           transform: animated ? 'translateX(0)' : ((split || isMobile) ? 'none' : 'translateX(100%)'),
           transition: (split || isMobile) ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           overflow: 'hidden',
+          overflowX: 'hidden',
+          overscrollBehaviorX: 'none',
+          touchAction: isMobile ? 'pan-y' : undefined,
           opacity: animated ? 1 : 0,
           paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
         }}
@@ -369,8 +375,17 @@ export default function PatientDrawer() {
           boxShadow: split ? `-6px 0 24px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
         }}>
           <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} isMobile={isMobile} />
-          <ScrollableTabBar tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
+          {isMobile ? (
+            <MobileDrawerTabBar tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
+          ) : (
+            <ScrollableTabBar tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
+          )}
+          <div style={{
+            flex: 1, overflowY: 'auto', overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorX: 'none',
+            touchAction: 'pan-y',
+          }}>
             {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
           </div>
         </div>
@@ -463,25 +478,28 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
         )}
         {f2f && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: hexToRgba(f2f.color, 0.28), color: f2f.color }}>{f2f.label}</span>}
       </div>
-      <div style={{ display: 'flex', gap: 7, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: isMobile ? 'nowrap' : 'wrap' }}>
         {(isMobile
-          ? [{ label: 'Files', tab: 'files' }, { label: 'Notes', tab: 'notes' }, { label: '+ Task', tab: 'tasks', action: 'new' }]
+          // Primary tabs (Referral/Files/Notes/Conflicts) live in MobileDrawerTabBar —
+          // keep only + Task here so the header doesn’t force sideways scroll.
+          ? [{ label: '+ Task', tab: 'tasks', action: 'new' }]
           : [{ label: 'Add Note', tab: 'notes' }, { label: 'Files', tab: 'files' }, { label: '+ Task', tab: 'tasks', action: 'new' }]
         ).map((a) => (
           <button key={a.tab} onClick={() => a.action === 'new' ? onNewTask() : setActiveTab(a.tab)}
             style={{
-              flex: isMobile ? 1 : undefined,
+              flex: isMobile ? undefined : undefined,
               height: isMobile ? 36 : 28,
-              padding: '0 12px',
+              padding: isMobile ? '0 14px' : '0 12px',
               borderRadius: 7,
               background: hexToRgba(HEADER_TEXT, 0.1),
               border: 'none',
-              fontSize: isMobile ? 13 : 12,
+              fontSize: 12,
               fontWeight: 650,
               color: hexToRgba(HEADER_TEXT, 0.85),
               cursor: 'pointer',
               transition: 'background 0.12s',
               WebkitTapHighlightColor: 'transparent',
+              minWidth: 0,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.35))}
             onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(HEADER_TEXT, 0.1))}
@@ -492,7 +510,207 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
   );
 }
 
-// ── Scrollable TabBar with arrow buttons + click-and-drag scroll ────────────
+// ── Mobile tab bar: primary chips + More sheet (no sideways scroll) ─────────
+
+const MOBILE_PRIMARY_TAB_IDS = ['overview', 'files', 'notes', 'conflicts'];
+
+function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const primary = tabs.filter((t) => MOBILE_PRIMARY_TAB_IDS.includes(t.id));
+  const moreTabs = tabs.filter((t) => !MOBILE_PRIMARY_TAB_IDS.includes(t.id));
+  const activeInMore = moreTabs.some((t) => t.id === activeTab);
+  const activeMoreLabel = moreTabs.find((t) => t.id === activeTab)?.label;
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    function onKey(e) {
+      if (e.key === 'Escape') setMoreOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [moreOpen]);
+
+  function pick(id) {
+    setActiveTab(id);
+    setMoreOpen(false);
+  }
+
+  return (
+    <>
+      <div style={{
+        flexShrink: 0,
+        borderBottom: `1px solid var(--color-border)`,
+        background: palette.backgroundLight.hex,
+        padding: '8px 10px',
+        display: 'flex',
+        gap: 6,
+        overflow: 'hidden',
+      }}>
+        {primary.map((tab) => {
+          const isActive = tab.id === activeTab;
+          const isComplete = tabComplete[tab.id] === true;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => pick(tab.id)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 36,
+                borderRadius: 8,
+                border: 'none',
+                padding: '0 4px',
+                fontSize: 12,
+                fontWeight: isActive ? 750 : 600,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+                background: isActive
+                  ? hexToRgba(palette.primaryMagenta.hex, 0.12)
+                  : hexToRgba(palette.backgroundDark.hex, 0.04),
+                color: isActive
+                  ? palette.primaryMagenta.hex
+                  : isComplete
+                    ? palette.accentGreen.hex
+                    : hexToRgba(palette.backgroundDark.hex, 0.55),
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 3,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {tab.label}
+              </span>
+              {isComplete && !isActive && (
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
+                  <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+          );
+        })}
+        {moreTabs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            style={{
+              flex: '0 0 auto',
+              height: 36,
+              minWidth: 64,
+              borderRadius: 8,
+              border: activeInMore
+                ? `1.5px solid ${hexToRgba(palette.primaryMagenta.hex, 0.45)}`
+                : '1.5px solid transparent',
+              padding: '0 10px',
+              fontSize: 12,
+              fontWeight: activeInMore ? 750 : 650,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+              background: activeInMore
+                ? hexToRgba(palette.primaryMagenta.hex, 0.12)
+                : hexToRgba(palette.backgroundDark.hex, 0.04),
+              color: activeInMore
+                ? palette.primaryMagenta.hex
+                : hexToRgba(palette.backgroundDark.hex, 0.55),
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+            }}
+          >
+            <span style={{ maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeInMore ? activeMoreLabel : 'More'}
+            </span>
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+              <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {moreOpen && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setMoreOpen(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1100,
+            background: hexToRgba(palette.backgroundDark.hex, 0.45),
+            display: 'flex', alignItems: 'flex-end',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
+        >
+          <div style={{
+            width: '100%',
+            maxHeight: '70dvh',
+            background: palette.backgroundLight.hex,
+            borderRadius: '16px 16px 0 0',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: `0 -8px 32px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+          }}>
+            <div style={{
+              padding: '14px 16px 10px',
+              borderBottom: `1px solid var(--color-border)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 750, color: palette.backgroundDark.hex }}>
+                More tabs
+              </p>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: 'none',
+                  background: hexToRgba(palette.backgroundDark.hex, 0.06),
+                  color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                  fontSize: 18, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '6px 0 12px' }}>
+              {moreTabs.map((tab) => {
+                const isActive = tab.id === activeTab;
+                const isComplete = tabComplete[tab.id] === true;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => pick(tab.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', textAlign: 'left',
+                      padding: '14px 18px', border: 'none',
+                      background: isActive ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'transparent',
+                      color: isActive ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
+                      fontSize: 15, fontWeight: isActive ? 700 : 550, fontFamily: 'inherit',
+                      cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    <span>{tab.label}</span>
+                    {isComplete && (
+                      <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+                        <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
+                        <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Desktop Scrollable TabBar with arrow buttons + click-and-drag scroll ───
 
 function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
   const scrollRef = useRef(null);

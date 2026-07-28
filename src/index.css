@@ -18,6 +18,10 @@
 
 html, body {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   font-family: var(--font-family);
   font-size: 14px;
   line-height: 1.5;
@@ -32,6 +36,9 @@ body {
 
 #root {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }

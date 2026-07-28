@@ -1,7 +1,8 @@
+import { useMemo, useState } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
 import { isDocumentationDeferred } from '../../utils/documentationDeferred.js';
-import { getUrgentCareType, urgentCareTypeLabel } from '../../utils/urgentCare.js';
+import { getUrgentCareType, isUrgentCare, urgentCareTypeLabel } from '../../utils/urgentCare.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 
@@ -17,16 +18,32 @@ export default function MobileSocQueue({
   setSearch,
   isPendingLogView,
   canPendingLog,
+  isSocCompleted = false,
   onTogglePendingLog,
   onOpenPatient,
   onOpenFiles,
   onOpenNotes,
+  onOpenConflicts,
   resolveFacility,
   resolveMarketer,
   resolveUser,
   resolvePhysician,
   pcpByReferralId,
 }) {
+  // SOC Completed mobile: default to “needs docs” so marketers see follow-ups first.
+  const showNeedsDocsToggle = !!isSocCompleted || !!(canPendingLog || isPendingLogView);
+  const [needsDocsOnly, setNeedsDocsOnly] = useState(true);
+
+  const waitingDocsCount = useMemo(
+    () => (referrals || []).filter((r) => isDocumentationDeferred(r)).length,
+    [referrals],
+  );
+
+  const visibleReferrals = useMemo(() => {
+    if (!showNeedsDocsToggle || !needsDocsOnly) return referrals || [];
+    return (referrals || []).filter((r) => isDocumentationDeferred(r));
+  }, [referrals, showNeedsDocsToggle, needsDocsOnly]);
+
   return (
     <div style={{
       minHeight: '100%',
@@ -55,16 +72,91 @@ export default function MobileSocQueue({
                 background: hexToRgba(stageColor || palette.accentGreen.hex, 0.14),
                 color: stageColor || palette.accentGreen.hex,
               }}>
-                {referrals.length}
+                {visibleReferrals.length}
+                {showNeedsDocsToggle && needsDocsOnly && referrals.length !== visibleReferrals.length
+                  ? ` / ${referrals.length}`
+                  : ''}
               </span>
             </div>
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.4 }}>
               {isPendingLogView
-                ? 'Facility, docs wait, and account-manager follow-ups'
-                : 'Start of care completed — tap a patient for files or notes'}
+                ? 'SOC date, urgent type, facility, docs wait, and AM follow-ups'
+                : canPendingLog
+                  ? 'SOC completed — date, urgent type, facility, and quick actions'
+                  : (meta?.description || 'Tap a patient for files, notes, or conflicts')}
             </p>
           </div>
         </div>
+
+        {showNeedsDocsToggle && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={needsDocsOnly}
+            onClick={() => setNeedsDocsOnly((v) => !v)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 10,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: needsDocsOnly
+                ? `1.5px solid ${hexToRgba(palette.accentOrange.hex, 0.45)}`
+                : `1px solid var(--color-border)`,
+              background: needsDocsOnly
+                ? hexToRgba(palette.accentOrange.hex, 0.1)
+                : hexToRgba(palette.backgroundDark.hex, 0.03),
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              WebkitTapHighlightColor: 'transparent',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <p style={{
+                margin: 0, fontSize: 13.5, fontWeight: 750,
+                color: needsDocsOnly ? palette.accentOrange.hex : palette.backgroundDark.hex,
+              }}>
+                Needs docs only
+              </p>
+              <p style={{
+                margin: '2px 0 0', fontSize: 11.5,
+                color: hexToRgba(palette.backgroundDark.hex, 0.45),
+              }}>
+                {waitingDocsCount} waiting
+                {!needsDocsOnly ? ' · showing everyone' : ''}
+              </p>
+            </div>
+            <span
+              aria-hidden
+              style={{
+                flexShrink: 0,
+                width: 44,
+                height: 26,
+                borderRadius: 13,
+                padding: 2,
+                background: needsDocsOnly
+                  ? palette.accentOrange.hex
+                  : hexToRgba(palette.backgroundDark.hex, 0.18),
+                transition: 'background 0.15s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: needsDocsOnly ? 'flex-end' : 'flex-start',
+              }}
+            >
+              <span style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                background: palette.backgroundLight.hex,
+                boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+              }} />
+            </span>
+          </button>
+        )}
 
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -137,21 +229,33 @@ export default function MobileSocQueue({
 
       {/* Cards */}
       <div style={{ padding: '12px 12px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {referrals.length === 0 ? (
+        {visibleReferrals.length === 0 ? (
           <div style={{
             padding: '40px 20px', textAlign: 'center',
             background: palette.backgroundLight.hex, borderRadius: 14,
             border: `1px solid var(--color-border)`,
           }}>
             <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, margin: 0 }}>
-              {search ? 'No matches' : 'No completed SOCs yet'}
+              {search
+                ? 'No matches'
+                : showNeedsDocsToggle && needsDocsOnly
+                  ? 'No one waiting on docs'
+                  : (canPendingLog || isPendingLogView)
+                    ? 'No completed SOCs yet'
+                    : `No patients in ${meta?.displayName || 'this queue'}`}
             </p>
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '6px 0 0' }}>
-              {search ? 'Try a different name.' : 'Patients appear here once SOC is confirmed.'}
+              {search
+                ? 'Try a different name.'
+                : showNeedsDocsToggle && needsDocsOnly
+                  ? 'Turn off “Needs docs only” to see everyone.'
+                  : (canPendingLog || isPendingLogView)
+                    ? 'Patients appear here once SOC is confirmed.'
+                    : 'They’ll show up when routed here.'}
             </p>
           </div>
         ) : (
-          referrals.map((ref) => (
+          visibleReferrals.map((ref) => (
             <SocCard
               key={ref._id}
               referral={ref}
@@ -159,6 +263,7 @@ export default function MobileSocQueue({
               onOpen={() => onOpenPatient?.(ref)}
               onFiles={() => onOpenFiles?.(ref)}
               onNotes={() => onOpenNotes?.(ref)}
+              onConflicts={() => onOpenConflicts?.(ref)}
               resolveFacility={resolveFacility}
               resolveMarketer={resolveMarketer}
               resolveUser={resolveUser}
@@ -178,6 +283,7 @@ function SocCard({
   onOpen,
   onFiles,
   onNotes,
+  onConflicts,
   resolveFacility,
   resolveMarketer,
   resolveUser,
@@ -188,17 +294,30 @@ function SocCard({
   const facility = referral.facility_id ? resolveFacility?.(referral.facility_id) : null;
   const marketer = referral.marketer_id ? resolveMarketer?.(referral.marketer_id) : null;
   const waitingDocs = isDocumentationDeferred(referral);
+  const urgent = isUrgentCare(referral);
   const urgentType = getUrgentCareType(referral);
   const urgentLabel = urgentCareTypeLabel(urgentType);
   const amInfo = String(referral.account_manager_info || '').trim();
   const clinicalNote = String(referral.returned_from_clinical_note || '').trim();
-  const notePreview = (amInfo || clinicalNote).slice(0, 120);
+  const noteParts = [];
+  if (clinicalNote) noteParts.push(clinicalNote);
+  if (amInfo) noteParts.push(amInfo);
+  const noteFull = noteParts.join('\n\n');
+  const notePreview = noteFull.slice(0, 160);
   const pcpId = pcpByReferralId?.[referral.id] || referral.physician_id;
   const pcp = pcpId ? resolvePhysician?.(pcpId) : null;
   const rn = resolveUser?.(referral.clinical_review_completed_by_id || referral.clinical_review_by);
   const workStage = referral.current_stage && referral.current_stage !== 'SOC Completed'
     ? referral.current_stage
     : null;
+  const socDate = referral.soc_completed_date
+    ? (fmtCalendarDate(referral.soc_completed_date) || String(referral.soc_completed_date).slice(0, 10))
+    : null;
+  const addedRaw = referral._stage_entered_at || referral.soc_completed_date || null;
+  const addedDate = addedRaw
+    ? (fmtCalendarDate(addedRaw) || String(addedRaw).slice(0, 10))
+    : null;
+  const episode = referral.episode_type || 'SOC';
 
   return (
     <article
@@ -220,16 +339,20 @@ function SocCard({
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0, lineHeight: 1.25 }}>
               {name}
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7, alignItems: 'center' }}>
               <DivisionBadge division={referral.division} size="small" />
-              {referral.soc_completed_date && (
-                <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 550 }}>
-                  SOC {fmtCalendarDate(referral.soc_completed_date)}
-                </span>
+              <Chip>{episode}</Chip>
+              {socDate && (
+                <Chip strong color={palette.accentGreen.hex}>
+                  SOC {socDate}
+                </Chip>
+              )}
+              {!socDate && addedDate && (
+                <Chip>Added {addedDate}</Chip>
               )}
               {workStage && (
                 <span style={{
@@ -243,33 +366,61 @@ function SocCard({
               )}
             </div>
           </div>
-          {urgentLabel && (
+          {(urgent || urgentLabel) && (
             <span style={{
               flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
               color: palette.primaryMagenta.hex,
               background: hexToRgba(palette.primaryMagenta.hex, 0.1),
               border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`,
-              borderRadius: 6, padding: '3px 7px',
+              borderRadius: 6, padding: '3px 7px', textAlign: 'center', lineHeight: 1.25,
             }}>
-              {urgentLabel.toUpperCase()}
+              {urgentLabel ? urgentLabel.toUpperCase() : 'URGENT'}
             </span>
           )}
         </div>
 
-        {pendingLog ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {facility && facility !== '—' && (
-              <MetaRow label="Facility" value={facility} />
+        {/* Key dates — SOC + urgent callouts for marketers */}
+        {(socDate || urgent || pendingLog) && (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8,
+            padding: '8px 10px', borderRadius: 8,
+            background: hexToRgba(palette.backgroundDark.hex, 0.03),
+          }}>
+            {(socDate || pendingLog) && (
+              <DateStat label="SOC completed" value={socDate || '—'} emphasize={!!socDate} />
             )}
-            {referral.insurance_plan && (
-              <MetaRow label="Insurance" value={referral.insurance_plan} />
+            {pendingLog && (
+              <DateStat label="Added to module" value={addedDate || '—'} />
             )}
-            {pcp && pcp !== '—' && <MetaRow label="PCP" value={pcp} />}
-            {marketer && marketer !== '—' && <MetaRow label="Marketer" value={marketer} />}
-            {rn && rn !== '—' && <MetaRow label="Clinical RN" value={rn} />}
+            {urgent && (
+              <DateStat
+                label="Urgent type"
+                value={urgentLabel || 'Flagged'}
+                emphasize
+                danger
+              />
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {facility && facility !== '—' && (
+            <MetaRow label="Facility" value={facility} />
+          )}
+          {referral.insurance_plan && (
+            <MetaRow label="Insurance" value={referral.insurance_plan} />
+          )}
+          {pcp && pcp !== '—' && <MetaRow label="PCP" value={pcp} />}
+          {marketer && marketer !== '—' && <MetaRow label="Marketer" value={marketer} />}
+          {rn && rn !== '—' && <MetaRow label="Clinical RN" value={rn} />}
+          {!pendingLog && !workStage && (
+            <div style={{ marginTop: 2 }}>
+              <StageBadge stage="SOC Completed" size="small" />
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {waitingDocs && (
               <span style={{
-                alignSelf: 'flex-start', marginTop: 4,
                 fontSize: 11, fontWeight: 750, color: palette.accentOrange.hex,
                 background: hexToRgba(palette.accentOrange.hex, 0.12),
                 borderRadius: 6, padding: '3px 8px',
@@ -277,27 +428,26 @@ function SocCard({
                 Waiting for docs
               </span>
             )}
-            {notePreview && (
-              <p style={{
-                fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6),
-                margin: '6px 0 0', lineHeight: 1.4,
-                display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            {urgent && !urgentLabel && (
+              <span style={{
+                fontSize: 11, fontWeight: 750, color: palette.primaryMagenta.hex,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+                borderRadius: 6, padding: '3px 8px',
               }}>
-                {notePreview}{(amInfo || clinicalNote).length > 120 ? '…' : ''}
-              </p>
+                Urgent care
+              </span>
             )}
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            {facility && facility !== '—' && (
-              <span style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>{facility}</span>
-            )}
-            {marketer && marketer !== '—' && (
-              <span style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>· {marketer}</span>
-            )}
-            {!workStage && <StageBadge stage="SOC Completed" size="small" />}
-          </div>
-        )}
+          {notePreview && (
+            <p style={{
+              fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6),
+              margin: '6px 0 0', lineHeight: 1.4, whiteSpace: 'pre-wrap',
+              display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>
+              {notePreview}{noteFull.length > 160 ? '…' : ''}
+            </p>
+          )}
+        </div>
       </button>
 
       <div style={{
@@ -306,9 +456,49 @@ function SocCard({
       }}>
         <ActionBtn label="Open" onClick={onOpen} primary />
         <ActionBtn label="Files" onClick={onFiles} />
-        <ActionBtn label="Notes" onClick={onNotes} last />
+        <ActionBtn label="Notes" onClick={onNotes} />
+        <ActionBtn label="Conflicts" onClick={onConflicts || onOpen} last />
       </div>
     </article>
+  );
+}
+
+function DateStat({ label, value, emphasize, danger }) {
+  return (
+    <div style={{ minWidth: '30%', flex: '1 1 30%' }}>
+      <p style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+        color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '0 0 2px',
+      }}>
+        {label}
+      </p>
+      <p style={{
+        fontSize: 13.5, fontWeight: emphasize ? 750 : 600, margin: 0,
+        color: danger
+          ? palette.primaryMagenta.hex
+          : emphasize
+            ? palette.backgroundDark.hex
+            : hexToRgba(palette.backgroundDark.hex, 0.75),
+      }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function Chip({ children, strong, color }) {
+  const c = color || hexToRgba(palette.backgroundDark.hex, 0.55);
+  return (
+    <span style={{
+      fontSize: 11.5,
+      fontWeight: strong ? 750 : 600,
+      color: c,
+      background: color ? hexToRgba(color, 0.12) : hexToRgba(palette.backgroundDark.hex, 0.06),
+      borderRadius: 5,
+      padding: '2px 7px',
+    }}>
+      {children}
+    </span>
   );
 }
 
@@ -330,7 +520,7 @@ function ActionBtn({ label, onClick, primary, last }) {
         flex: 1, height: 44, border: 'none',
         borderRight: last ? 'none' : `1px solid var(--color-border)`,
         background: 'transparent', cursor: 'pointer',
-        fontSize: 13, fontWeight: primary ? 750 : 650, fontFamily: 'inherit',
+        fontSize: 12, fontWeight: primary ? 750 : 650, fontFamily: 'inherit',
         color: primary ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
         WebkitTapHighlightColor: 'transparent',
       }}
