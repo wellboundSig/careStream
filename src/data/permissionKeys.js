@@ -15,6 +15,8 @@ export const PERMISSION_KEYS = {
   /** Reassign intake_owner_id after promote — deny-by-default; grant individually. */
   LEADS_CHANGE_INTAKE_OWNER: 'leads.change_intake_owner',
   INTAKE_EMR_INITIAL: 'intake.emr_initial',
+  /** Advance Intake → EMR without F2F/clinical; both completed after SOC. */
+  INTAKE_ADVANCE_WITHOUT_F2F: 'intake.advance_without_f2f',
 
   // Referrals
   /** @deprecated Prefer LEADS_CREATE for entering new leads. Kept for back-compat. */
@@ -45,6 +47,8 @@ export const PERMISSION_KEYS = {
   CLINICAL_RN_UNLOCK: 'clinical.rn_unlock',
   CLINICAL_F2F: 'clinical.f2f',
   CLINICAL_ELIGIBILITY: 'clinical.eligibility',
+  /** Optum real-time Auto Check — deny-by-default until enrollment is ready. */
+  CLINICAL_ELIGIBILITY_OPTUM_AUTO: 'clinical.eligibility_optum_auto',
 
   // Authorization
   AUTH_SUBMIT: 'auth.submit',
@@ -83,6 +87,8 @@ export const PERMISSION_KEYS = {
   // Notes
   NOTE_CREATE: 'note.create',
   NOTE_PIN: 'note.pin',
+  /** @mention “Account manager info” in notes → appends to Pending Log column. */
+  NOTE_MENTION_ACCOUNT_MANAGER: 'note.mention_account_manager',
 
   // Conflicts
   CONFLICT_FLAG: 'conflict.flag',
@@ -94,6 +100,10 @@ export const PERMISSION_KEYS = {
   SCHEDULING_ADMIN_CONFIRM: 'scheduling.admin_confirm',
   SCHEDULING_SOC_SCHEDULE: 'scheduling.soc_schedule',
   SCHEDULING_SOC_COMPLETE: 'scheduling.soc_complete',
+  /** See / toggle the SOC Completed “Pending Log” alternate queue. */
+  SCHEDULING_SOC_PENDING_LOG: 'scheduling.soc_pending_log',
+  /** Open SOC Completed on Pending Log by default (unless the user saved a preference). */
+  SCHEDULING_SOC_PENDING_LOG_DEFAULT: 'scheduling.soc_pending_log_default',
 
   // Calendar
   CALENDAR_VIEW: 'calendar.view',
@@ -189,6 +199,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.AUTH_DELETE_RESPONSE,
   K.CLINICAL_RN_UNLOCK,
   K.LEADS_CHANGE_INTAKE_OWNER,
+  K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
 ]);
 
 /**
@@ -198,6 +209,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
  */
 export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.LEADS_CHANGE_INTAKE_OWNER,
+  K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -269,6 +281,7 @@ export const PERMISSION_CATALOG = [
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 11 },
   { key: K.LEADS_CHANGE_INTAKE_OWNER, label: 'Change intake owner',       category: 'Leads', description: 'Reassign the intake owner on an existing referral (writes a timeline event and notifies the new owner). Deny-by-default — grant only to named supervisors.', sort: 11.5 },
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
+  { key: K.INTAKE_ADVANCE_WITHOUT_F2F, label: 'Advance to EMR without F2F / clinical', category: 'Leads', description: 'Push a referral from Intake straight to EMR Onboarding before F2F and clinical review. Both are completed after SOC; a 30-day paperwork clock starts when SOC is scheduled.', sort: 12.2 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
   { key: K.REFERRAL_VIEW,       label: 'View referral details',            category: 'Referrals', description: 'See referral cards, drawers, and detail panels', sort: 13 },
   { key: K.REFERRAL_VIEW_ALL,   label: 'View all cases',                   category: 'Referrals', description: 'See every referral in the Patients list and module queues. Without this, marketers only see cases where they are the marketer or the lead they personally entered.', sort: 13.5 },
@@ -284,6 +297,7 @@ export const PERMISSION_CATALOG = [
 
   // ── Eligibility & Authorization ───────────────────────────────────────────
   { key: K.CLINICAL_ELIGIBILITY, label: 'Run eligibility checks',        category: 'Eligibility & Authorization', description: 'Log insurance/eligibility verification results', sort: 30 },
+  { key: K.CLINICAL_ELIGIBILITY_OPTUM_AUTO, label: 'Optum Auto Check (beta)', category: 'Eligibility & Authorization', description: 'Run real-time Optum 270/271 eligibility Auto Check. Deny-by-default — grant only while Optum enrollment is being validated.', sort: 30.5 },
   { key: K.AUTH_SUBMIT, label: 'Submit prior authorizations',            category: 'Eligibility & Authorization', description: 'Create authorization records for managed care', sort: 31 },
   { key: K.AUTH_DECIDE, label: 'Record auth approval or denial',         category: 'Eligibility & Authorization', description: 'Mark authorizations as approved or denied', sort: 32 },
   { key: K.AUTH_REQUEST_SCA, label: 'Request Single Case Agreement',     category: 'Eligibility & Authorization', description: 'Open an SCA tracking record after an SPN denial', sort: 33 },
@@ -320,6 +334,8 @@ export const PERMISSION_CATALOG = [
   { key: K.SCHEDULING_ADMIN_CONFIRM, label: 'Admin Confirmation stage actions',  category: 'Scheduling & SOC', description: 'Confirm patients in Admin Confirmation', sort: 81 },
   { key: K.SCHEDULING_SOC_SCHEDULE,  label: 'Schedule Start of Care',            category: 'Scheduling & SOC', description: 'Set SOC dates and create episodes', sort: 82 },
   { key: K.SCHEDULING_SOC_COMPLETE,  label: 'Mark SOC completed',                category: 'Scheduling & SOC', description: 'Finalize SOC and generate EMR packets', sort: 83 },
+  { key: K.SCHEDULING_SOC_PENDING_LOG, label: 'SOC Completed — Pending Log view', category: 'Scheduling & SOC', description: 'Access the Pending Log alternate queue on SOC Completed (facility, insurance, docs wait, clinical note, etc.)', sort: 84 },
+  { key: K.SCHEDULING_SOC_PENDING_LOG_DEFAULT, label: 'SOC Completed — Pending Log as default', category: 'Scheduling & SOC', description: 'Open SOC Completed on the Pending Log view by default. Requires Pending Log view access. User preference still wins after they toggle.', sort: 85 },
 
   // ── Conflicts ─────────────────────────────────────────────────────────────
   { key: K.CONFLICT_FLAG,             label: 'Flag conflicts',             category: 'Conflicts', description: 'Create conflict records on referrals', sort: 90 },
@@ -336,6 +352,7 @@ export const PERMISSION_CATALOG = [
   { key: K.FILE_UPLOAD,  label: 'Upload documents',  category: 'Notes & Files', description: 'Upload patient files to R2 storage', sort: 110 },
   { key: K.NOTE_CREATE,  label: 'Create notes',      category: 'Notes & Files', description: 'Add freeform notes to patient records', sort: 111 },
   { key: K.NOTE_PIN,     label: 'Pin / unpin notes', category: 'Notes & Files', description: 'Toggle pinned status on notes', sort: 112 },
+  { key: K.NOTE_MENTION_ACCOUNT_MANAGER, label: 'Mention Account manager info', category: 'Notes & Files', description: 'In notes, @mention “Account manager info” to append the note to the SOC Completed Pending Log column (multiple entries allowed)', sort: 113 },
   { key: K.SNAPSHOT_EDIT_REFERRAL,         label: 'Edit Referral tab',         category: 'Patient Drawer', description: 'Modify fields in the Referral tab of the patient drawer',              sort: 113 },
   { key: K.SNAPSHOT_EDIT_DEMOGRAPHICS,     label: 'Edit Demographics tab',     category: 'Patient Drawer', description: 'Modify fields in the Demographics tab of the patient drawer',          sort: 114 },
   { key: K.SNAPSHOT_EDIT_TRIAGE,           label: 'Edit Triage tab',           category: 'Patient Drawer', description: 'Fill out or edit triage forms in the patient drawer',                   sort: 115 },
@@ -403,7 +420,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL,
+      K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL, K.INTAKE_ADVANCE_WITHOUT_F2F,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
@@ -444,7 +461,7 @@ export const DEFAULT_PRESETS = [
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW, K.CLINICAL_F2F, K.CLINICAL_ELIGIBILITY,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.FILE_UPLOAD, K.FILE_UPLOAD_F2F,
-      K.NOTE_CREATE, K.NOTE_PIN,
+      K.NOTE_CREATE, K.NOTE_PIN, K.NOTE_MENTION_ACCOUNT_MANAGER,
       K.CONFLICT_FLAG, K.CONFLICT_RESOLVE,
       K.REPORT_VIEW,
       K.DIRECTORY_CLINICIANS_VIEW, K.DIRECTORY_PHYSICIANS_VIEW,
@@ -466,11 +483,13 @@ export const DEFAULT_PRESETS = [
       // caseload behavior). Revoke individually for marketers who must only
       // see their own marketer_id / self-entered leads.
       K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.TASK_VIEW,
       K.NOTE_CREATE,
       K.FILE_UPLOAD,
       K.MODULE_INBOUND, K.INBOUND_VIEW, K.INBOUND_CONVERT_LEAD, K.INBOUND_CONVERT_REFERRAL,
+      K.MODULE_SCHEDULING, K.SCHEDULING_SOC_PENDING_LOG,
       K.DIRECTORY_MARKETERS_VIEW, K.DIRECTORY_FACILITIES_VIEW,
       K.DIRECTORY_CAMPAIGNS_VIEW, K.DIRECTORY_REFERRAL_SOURCES_VIEW, K.DIRECTORY_PHYSICIANS_VIEW,
       K.SNAPSHOT_EDIT_NOTES, K.SNAPSHOT_EDIT_FILES,
@@ -487,6 +506,7 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.SCHEDULING_STAFFING, K.SCHEDULING_ADMIN_CONFIRM, K.SCHEDULING_SOC_SCHEDULE, K.SCHEDULING_SOC_COMPLETE,
+      K.SCHEDULING_SOC_PENDING_LOG,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_ASSIGN, K.TASK_COMPLETE, K.CALENDAR_VIEW,
       K.NOTE_CREATE,
       K.CONFLICT_FLAG,
@@ -530,7 +550,7 @@ export const DEFAULT_PRESETS = [
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE,
-      K.NOTE_CREATE,
+      K.NOTE_CREATE, K.NOTE_MENTION_ACCOUNT_MANAGER,
       K.CONFLICT_FLAG,
       K.FILE_UPLOAD,
       K.DIRECTORY_CLINICIANS_VIEW, K.DIRECTORY_PHYSICIANS_VIEW, K.DIRECTORY_FACILITIES_VIEW,

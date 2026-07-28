@@ -9,6 +9,13 @@ import { createSocRescheduleLog } from '../../api/socRescheduleLog.js';
 import { updateEpisode } from '../../api/episodes.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
+import {
+  isDocumentationDeferred,
+  documentationDeferredStartFields,
+  documentationDueFieldsForSocDate,
+  maybeClearDocumentationDeferred,
+  needsPostSocClinical,
+} from '../../utils/documentationDeferred.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -783,7 +790,17 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
       const expiration = addCalendarDays(receivedDate, 90);
       // Optimistic so the F2F section + Push-to-Clinical-RN gate reflect the
       // new date instantly (both read selectedReferral / the store).
-      await updateReferralOptimistic(selectedReferral._id, { f2f_date: receivedDate, f2f_expiration: expiration });
+      const f2fFields = {
+        f2f_date: receivedDate,
+        f2f_expiration: expiration,
+        f2f_date_logged_by_id: appUserId || 'unknown',
+        f2f_date_logged_at: new Date().toISOString(),
+      };
+      await updateReferralOptimistic(selectedReferral._id, f2fFields);
+      await maybeClearDocumentationDeferred(
+        { ...selectedReferral, ...f2fFields },
+        { actorUserId: appUserId },
+      );
       triggerDataRefresh();
       setShowDatePicker(false); setReceivedDate('');
     } catch {} finally { setSaving(false); }
@@ -1068,14 +1085,110 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
               Eligibility is completed concurrently from the patient drawer, so
               there is no linear "Push to Eligibility" button here anymore. SN
               referrals still get a quick link to the triage form. */}
-          {isSN && (
-            <PanelSection title="Actions">
+          <PanelSection title="Actions">
+            {isSN && (
               <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />
-            </PanelSection>
-          )}
+            )}
+            {canPerm(PERMISSION_KEYS.INTAKE_ADVANCE_WITHOUT_F2F)
+              && selectedReferral?.current_stage === 'Intake'
+              && !isDocumentationDeferred(selectedReferral) && (
+              <AdvanceWithoutF2FButton
+                referral={selectedReferral}
+                actorUserId={appUserId}
+                onSelectedReferralLeftModule={onSelectedReferralLeftModule}
+              />
+            )}
+            {isDocumentationDeferred(selectedReferral) && (
+              <div style={{
+                marginTop: 8, padding: '8px 10px', borderRadius: 7,
+                background: hexToRgba(palette.accentOrange.hex, 0.1),
+                border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`,
+              }}>
+                <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: palette.accentOrange.hex }}>
+                  Docs deferred — F2F + clinical after SOC
+                </p>
+                {selectedReferral.documentation_due_date && (
+                  <p style={{ margin: '3px 0 0', fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
+                    Due {fmtCalendarDate(selectedReferral.documentation_due_date)}
+                  </p>
+                )}
+              </div>
+            )}
+          </PanelSection>
         </>
       )}
     </Panel>
+  );
+}
+
+/** Permission-gated fast-track: Intake → EMR without F2F or clinical (both after SOC). */
+function AdvanceWithoutF2FButton({ referral, actorUserId, onSelectedReferralLeftModule }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function handleAdvance() {
+    if (!referral?._id || busy) return;
+    const ok = window.confirm(
+      'Advance this referral to EMR Onboarding without F2F and without clinical review?\n\n'
+      + 'Both will be completed AFTER SOC. A 30-day paperwork clock starts when SOC is scheduled.',
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    const result = attemptTransition({
+      referral,
+      toStage: 'EMR Onboarding',
+      context: {
+        note: '[Advanced without F2F / clinical — both due after SOC]',
+        actorUserId,
+        extraFields: {
+          ...documentationDeferredStartFields(actorUserId),
+          in_clinical_review: false,
+        },
+      },
+    });
+    if (!result.allowed) {
+      setErr(result.reason || 'Cannot advance');
+      setBusy(false);
+      return;
+    }
+    onSelectedReferralLeftModule?.();
+    try {
+      await applyTransition({ referral, result, context: { actorUserId } });
+      triggerDataRefresh();
+    } catch (e) {
+      setErr(e.message || 'Advance failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        type="button"
+        onClick={handleAdvance}
+        disabled={busy}
+        style={{
+          width: '100%',
+          padding: '9px 12px',
+          borderRadius: 8,
+          border: 'none',
+          background: busy ? hexToRgba(palette.accentOrange.hex, 0.65) : palette.accentOrange.hex,
+          color: palette.backgroundLight.hex,
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: busy ? 'wait' : 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        {busy ? 'Advancing…' : 'Advance to EMR without F2F / clinical →'}
+      </button>
+      <p style={{ margin: '5px 0 0', fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.35 }}>
+        Schedules the case now; F2F + clinical review are completed after SOC (30-day clock).
+      </p>
+      {err && <p style={{ margin: '4px 0 0', fontSize: 11, color: palette.primaryMagenta.hex }}>{err}</p>}
+    </div>
   );
 }
 
@@ -1429,12 +1542,17 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
       const expiration = addCalendarDays(receivedDate, 90);
       // Optimistic — drawer F2F indicator + Push-to-Clinical-RN gate read from
       // the store; raw updateReferral leaves them stale until the next sync.
-      await updateReferralOptimistic(selectedReferral._id, {
+      const f2fFields = {
         f2f_date:       receivedDate,
         f2f_expiration: expiration,
         f2f_date_logged_by_id: appUserId || 'unknown',
         f2f_date_logged_at: new Date().toISOString(),
-      });
+      };
+      await updateReferralOptimistic(selectedReferral._id, f2fFields);
+      await maybeClearDocumentationDeferred(
+        { ...selectedReferral, ...f2fFields },
+        { actorUserId: appUserId },
+      );
       triggerDataRefresh();
       setShowDatePicker(false);
       setReceivedDate('');
@@ -1859,37 +1977,43 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const now = new Date().toISOString();
-    // Clinical RN's confirm is now ALWAYS the exit from this module —
-    // patient moves to EMR Onboarding regardless of where eligibility stands.
-    // Eligibility can still be completed concurrently from the patient drawer;
-    // EMR Onboarding gates on its own readiness, not on us. We bypass
-    // onInitiateTransition because Clinical Intake RN Review is a
-    // protectedExit stage and the RN's Confirm IS the sanctioned exit — it
-    // must not pop a generic move modal.
+    const clinicalFields = {
+      clinical_review_decision: decision,
+      clinical_review_by: appUserId || 'unknown',
+      clinical_review_at: now,
+      clinical_review_completed_at: now,
+      clinical_review_completed_by_id: appUserId || 'unknown',
+      in_clinical_review: false,
+    };
+
+    // Deferred post-SOC clinical: case is already at/after EMR. Stamp only —
+    // do not bounce them back to EMR Onboarding.
+    const alreadyPastClinicalGate = [
+      'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed',
+    ].includes(selectedReferral.current_stage);
+    if (alreadyPastClinicalGate && (isDocumentationDeferred(selectedReferral) || needsPostSocClinical(selectedReferral))) {
+      try {
+        await updateReferralOptimistic(selectedReferral._id, clinicalFields);
+        await maybeClearDocumentationDeferred(
+          { ...selectedReferral, ...clinicalFields },
+          { actorUserId: appUserId },
+        );
+        triggerDataRefresh();
+      } catch {}
+      return;
+    }
+
+    // Clinical RN's confirm is the exit from this module → EMR Onboarding.
     const result = attemptTransition({
       referral: selectedReferral,
       toStage: 'EMR Onboarding',
       context: {
         note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
         actorUserId: appUserId,
-        extraFields: {
-          clinical_review_decision: decision,
-          clinical_review_by: appUserId || 'unknown',
-          clinical_review_at: now,
-          clinical_review_completed_at: now,
-          clinical_review_completed_by_id: appUserId || 'unknown',
-          in_clinical_review: false,
-        },
+        extraFields: clinicalFields,
       },
     });
     if (!result.allowed) return;
-    // Clear the selection BEFORE awaiting the network write so the panel
-    // collapses on the same render the optimistic store update lands. If we
-    // wait until after the await, the panel keeps rendering the patient for
-    // the round-trip window, the user thinks the click did nothing, clicks
-    // again, and the second click is a silent no-op because the patient's
-    // current_stage is already 'EMR Onboarding'. On rare failure, the
-    // optimistic update rolls back and the patient reappears in the queue.
     onSelectedReferralLeftModule?.();
     await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
     triggerDataRefresh();
@@ -2904,6 +3028,9 @@ function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
         soc_scheduled_at: now,
         soc_scheduled_by_id: appUserId || 'unknown',
         updated_at: now,
+        ...(isDocumentationDeferred(referral)
+          ? documentationDueFieldsForSocDate(newDate)
+          : {}),
       });
 
       // Keep the linked episode in sync when one exists.
@@ -3104,6 +3231,10 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
           soc_scheduled_date: socDate,
           soc_scheduled_at: new Date().toISOString(),
           soc_scheduled_by_id: appUserId || 'unknown',
+          // 30-day paperwork clock for deferred F2F/clinical cases
+          ...(isDocumentationDeferred(selectedReferral)
+            ? documentationDueFieldsForSocDate(socDate)
+            : {}),
         },
         extraSideEffects: [
           { type: 'createEpisode', patientId: selectedReferral.patient_id, referralRecordId: selectedReferral._id, socDate },
@@ -3229,7 +3360,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               as a reference copy. */}
           {actualStage === 'Pre-SOC' && (
             <PanelSection title="Step 1 — Schedule SOC">
-              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Packet (reference)'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
               {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
               <div style={{ marginTop: 10 }}>
@@ -3247,7 +3378,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               {socDateDisplay && <InfoRow label="Scheduled for" value={socDateDisplay} highlight={palette.accentGreen.hex} />}
 
               <div style={{ marginTop: 10 }}>
-                <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+                <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
                 {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
               </div>
 

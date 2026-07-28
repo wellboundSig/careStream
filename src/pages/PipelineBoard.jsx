@@ -116,20 +116,19 @@ export default function PipelineBoard() {
     // Conflict creation is a bespoke pre-step; the move itself goes through the
     // shared transition engine (same path as ModulePage + PatientList).
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
-      const patientRecordId = referral?.patient?._id;
       const patientCustomId = referral?.patient?.id || referral?.patient_id;
       const referralCustomId = referral?.id;
-      const createdByUserRecordId = appUser?._id;
-      if (!patientRecordId || !referralCustomId || !createdByUserRecordId) {
+      if (!patientCustomId || !referralCustomId || !appUserId) {
+        showToast('Cannot send to Conflict — missing patient/referral/user linkage', 'error');
         return;
       }
       try {
         await flagConflict({
           referral,
-          patientRecordId,
+          patientRecordId: referral?.patient?._id,
           patientCustomId,
           referralCustomId,
-          createdByUserRecordId,
+          createdByUserRecordId: appUser?._id,
           actorUserId: appUserId,
           sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
           category: noteOrPayload.category,
@@ -139,7 +138,7 @@ export default function PipelineBoard() {
         });
       } catch (err) {
         console.error('Conflict create failed:', err);
-        showToast('Failed to create Conflict record — not moved', 'error');
+        showToast(err?.message || 'Failed to create Conflict record — not moved', 'error');
         return;
       }
     }

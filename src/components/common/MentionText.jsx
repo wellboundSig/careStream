@@ -1,4 +1,8 @@
-import { parseMentionSegments } from '../../utils/mentions.js';
+import {
+  ACCOUNT_MANAGER_INFO_MENTION_ID,
+  isSpecialMentionId,
+  parseMentionSegments,
+} from '../../utils/mentions.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /**
@@ -22,13 +26,22 @@ export default function MentionText({
         if (seg.type === 'text') {
           return <span key={i}>{seg.value}</span>;
         }
-        const resolved = resolveUser ? resolveUser(seg.userId) : null;
-        const label = (resolved && resolved !== seg.userId ? resolved : null) || seg.label || 'Someone';
-        const isYou = highlightUserId && seg.userId === highlightUserId;
+        const special = isSpecialMentionId(seg.userId)
+          || seg.userId === ACCOUNT_MANAGER_INFO_MENTION_ID;
+        const resolved = special ? null : (resolveUser ? resolveUser(seg.userId) : null);
+        const label = special
+          ? (seg.label || 'Account manager info')
+          : ((resolved && resolved !== seg.userId ? resolved : null) || seg.label || 'Someone');
+        const isYou = !special && highlightUserId && seg.userId === highlightUserId;
+        const accent = special
+          ? palette.accentOrange.hex
+          : isYou
+            ? palette.primaryMagenta.hex
+            : palette.accentBlue.hex;
         return (
           <span
             key={i}
-            title={label}
+            title={special ? 'Routed to Pending Log · Account manager info' : label}
             style={{
               display: 'inline',
               padding: '1px 7px',
@@ -37,15 +50,9 @@ export default function MentionText({
               fontWeight: 650,
               fontSize: '0.92em',
               lineHeight: 1.45,
-              background: isYou
-                ? hexToRgba(palette.primaryMagenta.hex, 0.14)
-                : hexToRgba(palette.accentBlue.hex, 0.12),
-              color: isYou ? palette.primaryMagenta.hex : palette.accentBlue.hex,
-              boxShadow: `inset 0 0 0 1px ${
-                isYou
-                  ? hexToRgba(palette.primaryMagenta.hex, 0.22)
-                  : hexToRgba(palette.accentBlue.hex, 0.2)
-              }`,
+              background: hexToRgba(accent, special || isYou ? 0.14 : 0.12),
+              color: accent,
+              boxShadow: `inset 0 0 0 1px ${hexToRgba(accent, 0.22)}`,
               whiteSpace: 'nowrap',
             }}
           >

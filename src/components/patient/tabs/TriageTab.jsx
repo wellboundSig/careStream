@@ -1142,12 +1142,15 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
   // ── Print ─────────────────────────────────────────────────────────────────
 
   function handlePrint() {
+    const escape = (t) => String(t ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Patient';
     const type = triageType === 'pediatric' ? 'Pediatric' : 'Adult';
     const win = window.open('', '_blank', 'width=800,height=900');
     const formEl = document.getElementById('triage-form-content');
     win.document.write(`
-      <html><head><title>${type} Triage — ${name}</title>
+      <html><head><title>${escape(type)} Triage — ${escape(name)}</title>
       <style>
         body { font-family: -apple-system, sans-serif; padding: 32px; color: #0B0B10; }
         h1 { font-size: 18px; margin-bottom: 4px; }
@@ -1156,8 +1159,8 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
         p { font-size: 13px; margin: 0; padding: 6px 0; border-bottom: 1px solid #eee; }
         .section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #999; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-bottom: 10px; }
       </style></head><body>
-      <h1>${type} Special Needs Triage Form</h1>
-      <div class="meta">Patient: ${name}${filledByName ? ` · Filled by ${filledByName}` : ''}${filledAt ? ` · ${formatDateTime(filledAt)}` : ''}</div>
+      <h1>${escape(type)} Special Needs Triage Form</h1>
+      <div class="meta">Patient: ${escape(name)}${filledByName ? ` · Filled by ${escape(filledByName)}` : ''}${filledAt ? ` · ${escape(formatDateTime(filledAt))}` : ''}</div>
       ${formEl ? formEl.innerHTML : '<p>Form content unavailable.</p>'}
       </body></html>
     `);

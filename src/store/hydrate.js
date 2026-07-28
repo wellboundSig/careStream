@@ -84,6 +84,29 @@ export async function hydrateNotificationsForUser(userId) {
   }
 }
 
+/** Wait briefly for Clerk so we don't hydrate unauthenticated → empty store. */
+async function waitForClerkToken(maxMs = 10000) {
+  if (typeof window === 'undefined') return null;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      const session = window.Clerk?.session;
+      if (session) {
+        const token = await session.getToken();
+        if (token) return token;
+      }
+    } catch {
+      // keep waiting
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  try {
+    return (await window.Clerk?.session?.getToken?.()) || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Batched hydrate (wellbound-api only): all tables in ONE round trip via
  * POST /hydrate. Returns results in the same { key, data } shape, or null if
@@ -93,25 +116,31 @@ async function batchedHydrate() {
   const apiUrl = import.meta.env.VITE_API_URL;
   if (!apiUrl) return null;
   try {
-    const token = typeof window !== 'undefined' && window.Clerk?.session
-      ? await window.Clerk.session.getToken()
-      : null;
+    const token = await waitForClerkToken();
+    if (!token) {
+      console.warn('[hydrate] No Clerk token yet — skipping batched hydrate');
+      return null;
+    }
     const res = await fetch(`${apiUrl.replace(/\/$/, '')}/hydrate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ tables: TABLES.map((t) => t.table) }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[hydrate] Batched hydrate failed: HTTP ${res.status}`);
+      return null;
+    }
     const data = await res.json();
     if (!data?.tables) return null;
     return TABLES.map(({ key, table }) => ({
       key,
       data: normalize(data.tables[table]?.records || []),
     }));
-  } catch {
+  } catch (err) {
+    console.warn('[hydrate] Batched hydrate error:', err?.message || err);
     return null;
   }
 }
@@ -127,7 +156,13 @@ export async function hydrateStore() {
   });
 
   try {
-    let results = await batchedHydrate();
+    // One automatic retry — covers Clerk token race + brief 429s from
+    // double-mounted Vite tabs without trapping the user on an error screen.
+    let results = null;
+    for (let attempt = 0; attempt < 2 && !results; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 800));
+      results = await batchedHydrate();
+    }
 
     if (results) {
       useCareStore.setState({ hydrationProgress: { done: TABLES.length, total: TABLES.length } });

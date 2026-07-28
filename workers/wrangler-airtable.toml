@@ -18,6 +18,10 @@ id = "b77ee316b57e4d7f961e375f6977339c"
 # Set AIRTABLE_DUAL_WRITE = "false" after Airtable decommission (Phase 7).
 [vars]
 API_URL = "https://wzfb4i68yh.execute-api.us-east-2.amazonaws.com"
+# New Clerk signups land as Unassigned with empty permissions until a manager
+# assigns a real role. Override in the dashboard only if you intentionally want
+# a different default — never point this at rol_001 (Administrator) in prod.
+DEFAULT_ROLE_ID = "rol_016"
 # Fail-closed JWT enforcement on the (legacy) data proxy + SSE. The frontend
 # now talks to wellbound-api directly, so nothing legitimate hits these paths
 # without a Clerk token anyway.

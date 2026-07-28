@@ -7,6 +7,7 @@ import SplitView from './SplitView.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import HydrationScreen from '../common/HydrationScreen.jsx';
+import WaitingRoom from '../common/WaitingRoom.jsx';
 import RealtimeToasts from '../common/RealtimeToasts.jsx';
 import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -23,7 +24,10 @@ import { startRealtime, stopRealtime } from '../../store/realtime.js';
 import { isPopOutWindow, openPopOut } from '../../utils/windowManager.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
+import { useLookups } from '../../hooks/useLookups.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+
+const UNASSIGNED_ROLE_ID = 'rol_016';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -60,10 +64,16 @@ export default function AppShell() {
   const { open: openDrawer } = usePatientDrawer();
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
-  const { appUserId } = useCurrentAppUser();
+  const { appUser, appUserId, appUserName } = useCurrentAppUser();
   const { canAny, hasDivision } = usePermissions();
+  const { resolveRole } = useLookups();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
   const isPopOut = isPopOutWindow();
+  const roleName = appUser?.role_id ? resolveRole(appUser.role_id) : '';
+  const isUnassigned = !!(
+    appUser?.role_id === UNASSIGNED_ROLE_ID
+    || String(roleName).toLowerCase() === 'unassigned'
+  );
 
   const [division, setDivision] = useState('All');
   const [roleMode, setRoleMode] = useState(() => localStorage.getItem('carestream_rolemode') || 'intake');
@@ -138,6 +148,11 @@ export default function AppShell() {
   // Show branded loading screen until the store is ready.
   // All hooks are above — this is safe per Rules of Hooks.
   if (!hydrated) return <HydrationScreen />;
+
+  // Pending manager setup — no modules / patient data until role is assigned.
+  if (isUnassigned) {
+    return <WaitingRoom userName={appUserName} />;
+  }
 
   const newReferralModal = showNewReferral && (
     <NewReferralForm

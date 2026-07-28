@@ -338,6 +338,7 @@ CREATE TABLE IF NOT EXISTS "referrals" (
   "urgent_care_marked_at" timestamptz,
   "urgent_care_marked_by_id" text,
   "urgent_care_note" text,
+  "urgent_care_type" text,
   "eligibility_recheck_requested_at" text,
   "eligibility_recheck_return_stage" text,
   "emr_onboarded_at" text,

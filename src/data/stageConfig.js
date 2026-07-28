@@ -167,15 +167,22 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'F2F/MD Orders Pending',
   },
   'Clinical Intake RN Review': {
-    description: 'Skilled need + safety review by clinical RN. Patients may be here concurrent with Intake (via in_clinical_review) until Confirm fires.',
+    description: 'Skilled need + safety review by clinical RN. Patients may be here concurrent with Intake (via in_clinical_review) until Confirm fires. Also lists deferred-documentation cases still needing post-SOC clinical.',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryMagenta.hex,
     protected: true,
-    matchReferral: (r) =>
-      r.current_stage === 'Clinical Intake RN Review' ||
-      r.in_clinical_review === true ||
-      r.in_clinical_review === 'true',
+    matchReferral: (r) => {
+      if (
+        r.current_stage === 'Clinical Intake RN Review'
+        || r.in_clinical_review === true
+        || r.in_clinical_review === 'true'
+      ) return true;
+      // Post-SOC clinical for fast-tracked cases (still open until cleared)
+      const deferred = (r.documentation_deferred === true || r.documentation_deferred === 'true')
+        && !r.documentation_cleared_at;
+      return deferred && !r.clinical_review_completed_at;
+    },
   },
   'Authorization Pending': {
     description: 'Supportive sub-module of Eligibility. Lists patients with an active Authorizations row (current_stage stays Eligibility).',

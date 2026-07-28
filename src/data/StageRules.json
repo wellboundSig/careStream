@@ -49,6 +49,7 @@
         "Clinical Intake RN Review",
         "Eligibility Verification",
         "F2F/MD Orders Pending",
+        "EMR Onboarding",
         "OPWDD Enrollment",
         "Conflict",
         "Hold"
@@ -58,7 +59,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Completing the cursory review and pushing to Clinical RN moves the patient to Clinical Intake RN Review (it leaves Intake). Eligibility is completed concurrently from the patient drawer."
+      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Completing the cursory review and pushing to Clinical RN moves the patient to Clinical Intake RN Review (it leaves Intake). Eligibility is completed concurrently from the patient drawer. With permission, Intake may advance to EMR Onboarding without F2F/clinical (both completed after SOC)."
     },
 
     "Eligibility Verification": {

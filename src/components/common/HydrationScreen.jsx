@@ -1,5 +1,6 @@
 import { useUser } from '@clerk/react';
 import { useCareStore } from '../../store/careStore.js';
+import { hydrateStore } from '../../store/hydrate.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 export default function HydrationScreen() {
@@ -71,12 +72,37 @@ export default function HydrationScreen() {
           fontSize: 12.5,
           fontWeight: 450,
           letterSpacing: '0.02em',
+          maxWidth: 360,
+          textAlign: 'center',
+          lineHeight: 1.45,
+          padding: '0 16px',
         }}
       >
-        {error
-          ? 'Something went wrong — please refresh.'
-          : `Loading CareStream\u2026`}
+        {error || 'Loading CareStream\u2026'}
       </p>
+
+      {error && (
+        <button
+          type="button"
+          onClick={() => {
+            useCareStore.setState({ hydrationError: null, hydrated: false, hydrating: false });
+            hydrateStore();
+          }}
+          style={{
+            marginTop: 4,
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: palette.accentGreen.hex,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 650,
+            cursor: 'pointer',
+          }}
+        >
+          Retry
+        </button>
+      )}
 
       <style>{`
         @keyframes hydration-pulse {

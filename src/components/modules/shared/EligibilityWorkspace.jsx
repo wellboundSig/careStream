@@ -36,6 +36,7 @@ import {
   ORDER_RANK_OPTIONS,
   VERIFICATION_STATUS,
   VERIFICATION_STATUS_OPTIONS,
+  VERIFICATION_SOURCE,
   VERIFICATION_SOURCE_OPTIONS,
   CONFLICT_SOURCE_MODULE,
   DISENROLLMENT_FLAG_TYPE,
@@ -56,6 +57,7 @@ import { generateConflictId, CONFLICT_SEVERITY, CONFLICT_SEVERITY_OPTIONS } from
 import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
+import OptumAutoCheckPanel from './OptumAutoCheckPanel.jsx';
 import { tokens, inputStyle, primaryBtn, secondaryBtn, smallActionBtn, sectionHeading, cardStyle, STATUS_PILL_MAP } from './workspaceStyles.js';
 
 /**
@@ -255,10 +257,12 @@ export default function EligibilityWorkspace({
           <InsuranceCard
             key={ins._id}
             t={t}
+            patient={patient}
             insurance={ins}
             verification={latestVerByInsurance.get(ins._id)}
             isEditing={editingInsuranceId === ins._id}
             readOnly={!canEdit}
+            canAutoCheck={can(PERMISSION_KEYS.CLINICAL_ELIGIBILITY_OPTUM_AUTO)}
             resolveUser={resolveUser}
             onEdit={() => setEditingInsuranceId(ins._id)}
             onCancel={() => setEditingInsuranceId(null)}
@@ -275,6 +279,7 @@ export default function EligibilityWorkspace({
             patientBusinessId={patient.id}
             verifierRecordId={appUserId}
             referralId={referral?.id}
+            referral={referral}
           />
         ))}
       </div>
@@ -367,14 +372,24 @@ export default function EligibilityWorkspace({
                       // even if a follow-on LIFO / re-check transition is skipped.
                       await updateReferralOptimistic(referral._id, fields);
 
-                      if (clinicalReviewDone) {
+                      // LIFO → EMR when clinical is done, OR when Intake
+                      // fast-tracked without clinical (docs deferred post-SOC).
+                      const deferredDocs = referral?.documentation_deferred === true
+                        || referral?.documentation_deferred === 'true';
+                      const alreadyAtOrPastEmr = [
+                        'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC',
+                        'SOC Scheduled', 'SOC Completed',
+                      ].includes(referral?.current_stage);
+                      if (!alreadyAtOrPastEmr && (clinicalReviewDone || deferredDocs)) {
                         const result = attemptTransition({
                           referral: { ...referral, ...fields },
                           toStage: 'EMR Onboarding',
                           context: {
                             system: true,
                             actorUserId: appUserId,
-                            note: '[Eligibility complete — clinical already done → EMR Onboarding]',
+                            note: clinicalReviewDone
+                              ? '[Eligibility complete — clinical already done → EMR Onboarding]'
+                              : '[Eligibility complete — deferred clinical/F2F post-SOC → EMR Onboarding]',
                             extraFields: fields,
                           },
                         });
@@ -747,9 +762,9 @@ function WsBtn({ variant = 'default', label, onClick, disabled, testId }) {
 
 // ── InsuranceCard with verify form ─────────────────────────────────────────
 function InsuranceCard({
-  t, insurance, verification, isEditing, readOnly, resolveUser,
+  t, patient, insurance, verification, isEditing, readOnly, canAutoCheck = false, resolveUser,
   onEdit, onCancel, onSaved, onSendToConflict,
-  appUserId, appUserName, patientRecordId, patientBusinessId, verifierRecordId, referralId,
+  appUserId, appUserName, patientRecordId, patientBusinessId, verifierRecordId, referralId, referral,
 }) {
   const suggestion = normalizeInsuranceCategory({ rawLabel: insurance.payer_display_name });
 
@@ -763,12 +778,23 @@ function InsuranceCard({
   const [noteText, setNoteText] = useState(verification?.note_text || '');
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState(null);
+  const [autoOpen, setAutoOpen] = useState(false);
 
   function openWithDefaultSources() {
     if (sources.length === 0) {
       const defaults = suggestSourceForCategory(payerType);
       if (defaults.length > 0) setSources(defaults);
     }
+    onEdit?.();
+  }
+
+  function applyOptumSuggestion({ status: nextStatus, note }) {
+    if (nextStatus) setStatus(nextStatus);
+    setSources((prev) => (prev.includes(VERIFICATION_SOURCE.OPTUM) ? prev : [...prev, VERIFICATION_SOURCE.OPTUM]));
+    if (note) {
+      setNoteText((prev) => (prev?.trim() ? `${prev.trim()}\n${note}` : note));
+    }
+    setAutoOpen(false);
     onEdit?.();
   }
 
@@ -891,11 +917,30 @@ function InsuranceCard({
                 style={smallActionBtn(t, { color: palette.accentGreen.hex, filled: !verification })}>
                 {verification ? 'Update Check' : 'Log Check'}
               </button>
+              {canAutoCheck && (
+                <button
+                  type="button"
+                  onClick={() => setAutoOpen((v) => !v)}
+                  data-testid="auto-check-btn"
+                  style={smallActionBtn(t, { color: palette.accentBlue.hex, filled: autoOpen })}
+                >
+                  {autoOpen ? 'Hide Auto Check' : 'Auto Check'}
+                </button>
+              )}
               <button onClick={onSendToConflict} data-testid="send-conflict-btn"
                 style={smallActionBtn(t, { color: palette.primaryMagenta.hex })}>
                 Send to Conflict
               </button>
             </div>
+          )}
+          {canAutoCheck && autoOpen && !readOnly && (
+            <OptumAutoCheckPanel
+              patient={patient}
+              insurance={insurance}
+              referral={referral}
+              onApplySuggestion={applyOptumSuggestion}
+              onClose={() => setAutoOpen(false)}
+            />
           )}
         </div>
       )}
@@ -951,12 +996,31 @@ function InsuranceCard({
 
           {error && <p style={{ fontSize: t.fontMuted, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
 
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={onCancel} disabled={saving} style={secondaryBtn(t)}>Cancel</button>
             <button onClick={save} disabled={saving} style={primaryBtn(t, { disabled: saving })} data-testid="save-verification">
               {saving ? 'Saving' : 'Save Check'}
             </button>
+            {canAutoCheck && (
+              <button
+                type="button"
+                onClick={() => setAutoOpen((v) => !v)}
+                data-testid="auto-check-btn-edit"
+                style={smallActionBtn(t, { color: palette.accentBlue.hex, filled: autoOpen })}
+              >
+                {autoOpen ? 'Hide Auto Check' : 'Auto Check'}
+              </button>
+            )}
           </div>
+          {canAutoCheck && autoOpen && (
+            <OptumAutoCheckPanel
+              patient={patient}
+              insurance={insurance}
+              referral={referral}
+              onApplySuggestion={applyOptumSuggestion}
+              onClose={() => setAutoOpen(false)}
+            />
+          )}
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import { getPhysician } from '../api/physicians.js';
-import { getFilesByPatient } from '../api/patientFiles.js';
+import { getFilesByPatient, getFilesByReferral } from '../api/patientFiles.js';
 import { getNotesByPatient } from '../api/notes.js';
 import { getStageHistory } from '../api/stageHistory.js';
 import { getConflictsByReferral } from '../api/conflicts.js';
@@ -106,6 +106,18 @@ function downloadBlob(bytes, filename, mime = 'application/pdf') {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+function fileKind(file) {
+  const name = (file.file_name || '').toLowerCase();
+  const type = (file.file_type || '').toLowerCase();
+  const ext = name.includes('.') ? name.split('.').pop() : '';
+  if (ext === 'pdf' || type.includes('pdf')) return 'pdf';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || type.startsWith('image/')) {
+    if (ext === 'png' || type.includes('png')) return 'png';
+    return 'jpg';
+  }
+  return 'other';
+}
+
 async function fetchFileBytes(file) {
   // Prefer inline signed URL for ZIP packing (attachment disposition is irrelevant
   // here). S3 bucket CORS must allow GET from the CareStream origin — without it
@@ -143,6 +155,38 @@ async function fetchFileBytes(file) {
     throw new Error(msg);
   }
   return res.arrayBuffer();
+}
+
+/** Load every patient file once (for ZIP folder + merged PDF). */
+async function loadPatientFileBytes(files) {
+  const usedNames = new Set();
+  const loaded = [];
+  const failed = [];
+
+  // Assign unique names first (avoid Promise.all races on the shared Set).
+  const planned = files.map((file) => ({
+    file,
+    zipName: uniqueZipName(usedNames, file.file_name || `file_${file._id || 'unknown'}`),
+    kind: fileKind(file),
+  }));
+
+  // Bounded concurrency — large packets shouldn't open 40 signed GETs at once.
+  const concurrency = 4;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < planned.length) {
+      const i = cursor++;
+      const item = planned[i];
+      try {
+        const bytes = await fetchFileBytes(item.file);
+        loaded.push({ ...item, bytes });
+      } catch (err) {
+        failed.push({ name: item.zipName, reason: err?.message || 'Download failed', file: item.file });
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, planned.length) }, () => worker()));
+  return { loaded, failed };
 }
 
 // ── jsPDF section document builder ────────────────────────────────────────────
@@ -278,7 +322,7 @@ async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
 
   if (fileCount > 0) {
     s.bodyText(
-      `${fileCount} patient file${fileCount === 1 ? '' : 's'} are included separately in this ZIP download (folder: Patient_Files).`,
+      `${fileCount} patient file${fileCount === 1 ? '' : 's'}: embedded in EMR_Onboarding_Complete.pdf when possible, and also in the Patient_Files folder as originals.`,
       { size: 8, color: INK.muted },
     );
     s.gap(3);
@@ -345,7 +389,10 @@ async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
   if (fileCount > 0) {
     s.gap();
     s.sectionHeader('Patient Files in This ZIP');
-    s.bodyText('See the Patient_Files folder for original uploads.', { size: 8, color: INK.muted });
+    s.bodyText(
+      'Open EMR_Onboarding_Complete.pdf for one long packet, or Patient_Files/ for each original upload.',
+      { size: 8, color: INK.muted },
+    );
   }
 
   s.paintFooter();
@@ -620,9 +667,59 @@ async function appendPdfBytes(merged, bytes) {
   for (const page of pages) merged.addPage(page);
 }
 
+async function appendImageFile(merged, bytes, kind) {
+  const page = merged.addPage([612, 792]); // letter points
+  let image;
+  try {
+    image = kind === 'png'
+      ? await merged.embedPng(bytes)
+      : await merged.embedJpg(bytes);
+  } catch {
+    try {
+      image = kind === 'png'
+        ? await merged.embedJpg(bytes)
+        : await merged.embedPng(bytes);
+    } catch {
+      return false;
+    }
+  }
+
+  const { width, height } = image.scale(1);
+  const maxW = 552;
+  const maxH = 700;
+  const scale = Math.min(maxW / width, maxH / height, 1);
+  const w = width * scale;
+  const h = height * scale;
+  page.drawImage(image, {
+    x: (612 - w) / 2,
+    y: (792 - h) / 2,
+    width: w,
+    height: h,
+  });
+  return true;
+}
+
+function buildFileDividerPdf(file, { status, detail } = {}) {
+  const s = createSectionDoc('Patient File');
+  s.sectionHeader(file.file_name || 'Untitled file');
+  const meta = [
+    file.category || null,
+    file.created_at ? `Uploaded ${fmtDateTime(file.created_at)}` : null,
+    file.file_type || null,
+  ].filter(Boolean).join(' · ');
+  if (meta) s.bodyText(meta, { size: 8, color: INK.muted });
+  s.gap(2);
+  if (status) s.bodyText(status, { bold: true, size: 9 });
+  if (detail) {
+    s.gap(1);
+    s.bodyText(detail, { size: 8, color: INK.muted });
+  }
+  s.paintFooter();
+  return s.doc.output('arraybuffer');
+}
+
 /**
- * Build the house-made EMR onboarding PDF (cover + optional file list + notes + timeline).
- * Patient uploads are NOT embedded — they ship as original files in the ZIP.
+ * House packet: cover + optional file list + notes + timeline (no embeds).
  */
 async function buildHousePacketPdf({
   referral,
@@ -647,15 +744,114 @@ async function buildHousePacketPdf({
   return merged.save();
 }
 
+/**
+ * One long PDF: house sections + each patient file embedded (PDF pages / images).
+ * Non-embeddable or failed files get a divider page explaining why.
+ */
+async function buildCompletePacketPdf({
+  houseBytes,
+  loaded,
+  failed,
+}) {
+  const merged = await PDFDocument.create();
+  await appendPdfBytes(merged, houseBytes);
+
+  if (loaded.length === 0 && failed.length === 0) {
+    return merged.save();
+  }
+
+  await appendPdfBytes(merged, buildFileDividerPdf(
+    { file_name: 'Attached patient documents', category: 'Packet', created_at: null },
+    {
+      status: 'Documents below',
+      detail: 'Original uploads are also in the Patient_Files folder of this ZIP.',
+    },
+  ));
+
+  for (const item of loaded) {
+    const { file, bytes, kind } = item;
+    try {
+      if (kind === 'pdf') {
+        await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        await appendPdfBytes(merged, bytes);
+      } else if (kind === 'png' || kind === 'jpg') {
+        await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        const ok = await appendImageFile(merged, bytes, kind);
+        if (!ok) {
+          await appendPdfBytes(merged, buildFileDividerPdf(file, {
+            status: 'Could not embed image',
+            detail: 'See Patient_Files/ for the original, or open it from the Files tab.',
+          }));
+        }
+      } else {
+        await appendPdfBytes(merged, buildFileDividerPdf(file, {
+          status: 'Not embeddable in PDF',
+          detail: `Type “${file.file_type || file.file_name || 'unknown'}” is in Patient_Files/ as the original.`,
+        }));
+      }
+    } catch (err) {
+      await appendPdfBytes(merged, buildFileDividerPdf(file, {
+        status: 'Could not embed file',
+        detail: err?.message || 'See Patient_Files/ or the Files tab.',
+      }));
+    }
+  }
+
+  for (const f of failed) {
+    await appendPdfBytes(merged, buildFileDividerPdf(f.file || { file_name: f.name }, {
+      status: 'Could not include file',
+      detail: f.reason || 'Download failed. Open this file from the patient Files tab.',
+    }));
+  }
+
+  return merged.save();
+}
+
+async function collectPatientFiles(referral) {
+  const patientIds = [...new Set([
+    referral.patient_id,
+    referral.patient?.id,
+    referral.patient?._id,
+  ].filter(Boolean).map(String))];
+
+  const referralIds = [...new Set([
+    referral.id,
+    referral._id,
+  ].filter(Boolean).map(String))];
+
+  const queries = [
+    ...patientIds.map((id) => getFilesByPatient(id).catch(() => [])),
+    ...referralIds.map((id) => getFilesByReferral(id).catch(() => [])),
+  ];
+  const batches = await Promise.all(queries);
+  const byKey = new Map();
+  for (const recs of batches) {
+    for (const r of recs) {
+      const fields = r.fields || r;
+      const key = r.id || fields.id || `${fields.r2_key || ''}|${fields.file_name || ''}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { _id: r.id, ...fields });
+      }
+    }
+  }
+  return [...byKey.values()].sort(
+    (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0),
+  );
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Generate and download the EMR Onboarding Packet.
  *
- * - Always builds a clean house-made PDF (demographics, notes, timeline).
- * - If the patient has ANY uploaded files, downloads a ZIP named with the
- *   patient name containing that PDF + every original patient file.
- * - If there are no files, downloads the PDF alone.
+ * - Always builds a house PDF (demographics, notes, timeline).
+ * - If the patient has uploaded files, downloads a ZIP with:
+ *     • EMR_Onboarding_Complete.pdf — house packet + embedded patient docs
+ *     • Patient_Files/ — original uploads as separate files
+ * - If there are no files, downloads the house PDF alone.
+ *
+ * All StagePanel entry points call this same function so Intake / EMR /
+ * Pre-SOC / SOC Scheduled stay in sync.
  *
  * @param {object} referral
  * @param {Function|object} resolveSourceOrOpts  legacy resolveSource fn, or opts bag
@@ -676,16 +872,12 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   const referralId = referral.id || referral._id;
   const patient = referral.patient || {};
 
-  const [fileRecs, noteRecs, historyRecs, conflictRecs] = await Promise.all([
-    patientId ? getFilesByPatient(patientId).catch(() => []) : Promise.resolve([]),
+  const [files, noteRecs, historyRecs, conflictRecs] = await Promise.all([
+    collectPatientFiles(referral),
     patientId ? getNotesByPatient(patientId).catch(() => []) : Promise.resolve([]),
     referralId ? getStageHistory(referralId).catch(() => []) : Promise.resolve([]),
     referralId ? getConflictsByReferral(referralId).catch(() => []) : Promise.resolve([]),
   ]);
-
-  const files = fileRecs
-    .map((r) => ({ _id: r.id, ...r.fields }))
-    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
 
   const notes = noteRecs
     .map((r) => ({ _id: r.id, ...r.fields }))
@@ -712,7 +904,7 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     referral, history, notes, conflicts, triage, resolveUser, resolveMarketer, isPediatric,
   });
 
-  const packetBytes = await buildHousePacketPdf({
+  const houseBytes = await buildHousePacketPdf({
     referral,
     resolveSource,
     resolveUser,
@@ -722,33 +914,38 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     files,
   });
 
-  const { last, first } = patientNameParts(patient);
+  const nameSource = (patient.first_name || patient.last_name)
+    ? patient
+    : {
+      first_name: (referral.patientName || '').split(' ')[0],
+      last_name: (referral.patientName || '').split(' ').slice(1).join(' '),
+    };
+  const { last, first } = patientNameParts(nameSource);
   const nameStem = first ? `${last}_${first}` : last;
   const dateStr = new Date().toISOString().split('T')[0];
 
   // No uploads → clean PDF only.
   if (files.length === 0) {
-    downloadBlob(packetBytes, `${nameStem}_EMR_Onboarding_${dateStr}.pdf`, 'application/pdf');
+    downloadBlob(houseBytes, `${nameStem}_EMR_Onboarding_${dateStr}.pdf`, 'application/pdf');
     return;
   }
 
-  // Any patient files → ZIP with house packet + every original upload.
+  const { loaded, failed } = await loadPatientFileBytes(files);
+  const completeBytes = await buildCompletePacketPdf({
+    houseBytes,
+    loaded,
+    failed,
+  });
+
+  // ZIP: one long merged PDF + original uploads in a folder.
   const zip = new JSZip();
-  zip.file('EMR_Onboarding_Packet.pdf', packetBytes);
+  zip.file('EMR_Onboarding_Complete.pdf', completeBytes);
+  zip.file('EMR_Onboarding_Packet.pdf', houseBytes);
 
   const filesFolder = zip.folder('Patient_Files');
-  const usedNames = new Set();
-  const failed = [];
-
-  await Promise.all(files.map(async (file) => {
-    const zipName = uniqueZipName(usedNames, file.file_name || `file_${file._id || 'unknown'}`);
-    try {
-      const bytes = await fetchFileBytes(file);
-      filesFolder.file(zipName, bytes);
-    } catch (err) {
-      failed.push({ name: zipName, reason: err?.message || 'Download failed' });
-    }
-  }));
+  for (const item of loaded) {
+    filesFolder.file(item.zipName, item.bytes);
+  }
 
   if (failed.length > 0) {
     const lines = [

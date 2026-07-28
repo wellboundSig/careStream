@@ -13,7 +13,7 @@
  *   CLERK_WEBHOOK_SECRET  — Clerk webhook signing secret (whsec_...)
  *
  * Required Worker Variable (plain text, not secret):
- *   DEFAULT_ROLE_ID       — role_id assigned to new users (e.g. rol_001)
+ *   DEFAULT_ROLE_ID       — role_id assigned to new users (default: rol_016 Unassigned)
  *   CLERK_ISSUER          — Clerk Frontend API origin, e.g.
  *                           https://clerk.wellboundcarestream.com (used to verify
  *                           session JWTs on the data proxy). Defaults to that.
@@ -213,6 +213,10 @@ async function handleClerkWebhook(request, env) {
         });
       } else if (event.type === 'user.created') {
         if (!sharedNextId) sharedNextId = await backendNextUserId(backend);
+        // Unassigned until a manager sets role + permissions. Explicit
+        // permissions:[] is required — a missing UserPermissions row would
+        // still open-grant in the SPA (migration safety).
+        const roleId = env.DEFAULT_ROLE_ID || 'rol_016';
         const fields = {
           id:              sharedNextId,
           clerk_user_id:   clerkId,
@@ -222,12 +226,30 @@ async function handleClerkWebhook(request, env) {
           clerk_image_url: imageUrl,
           status:          'Active',
           scope:           'Main',
-          role_id:         env.DEFAULT_ROLE_ID || 'rol_001',
+          role_id:         roleId,
         };
         await fetch(`${backend.base}/${encodeURIComponent('Users')}`, {
           method: 'POST',
           headers: { ...backend.headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ fields }),
+        });
+        const now = new Date().toISOString();
+        await fetch(`${backend.base}/${encodeURIComponent('UserPermissions')}`, {
+          method: 'POST',
+          headers: { ...backend.headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              id: `up_${sharedNextId}`,
+              user_id: sharedNextId,
+              permissions: '[]',
+              allowed_assignees: '[]',
+              updated_at: now,
+              created_at: now,
+              updated_by: 'system:clerk-webhook',
+            },
+          }),
+        }).catch((err) => {
+          console.error(`[clerk-webhook] ${backend.name} UserPermissions seed failed:`, err.message);
         });
       }
     } catch (err) {

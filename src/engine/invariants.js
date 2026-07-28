@@ -83,8 +83,15 @@ export function assertReferralInvariants(referral, world = {}) {
     }
   }
 
-  // 3. Anything at/after EMR Onboarding must carry a clinical review decision.
-  if (POST_CLINICAL_STAGES.has(stage) && !VALID_CLINICAL_DECISIONS.has(referral.clinical_review_decision)) {
+  // 3. Anything at/after EMR Onboarding must carry a clinical review decision —
+  //    unless this is a deferred-documentation fast-track (F2F + clinical after SOC).
+  const deferredDocs = referral.documentation_deferred === true
+    || referral.documentation_deferred === 'true';
+  if (
+    POST_CLINICAL_STAGES.has(stage)
+    && !VALID_CLINICAL_DECISIONS.has(referral.clinical_review_decision)
+    && !deferredDocs
+  ) {
     violations.push({
       code: 'CLINICAL_DECISION_REQUIRED',
       severity: 'error',

@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { createNote } from '../../api/notes.js';
 import { createMentionNotifications } from '../../store/mutations.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
-import { extractMentionUserIds } from '../../utils/mentions.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { extractUserMentionIds } from '../../utils/mentions.js';
+import { routeNoteToAccountManagerInfo } from '../../utils/accountManagerInfo.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import MentionComposer from '../common/MentionComposer.jsx';
 
@@ -12,6 +15,8 @@ function generateId() {
 
 export default function QuickNoteModal({ patient, referral, onClose, onSaved }) {
   const { appUserId, appUserName } = useCurrentAppUser();
+  const { can } = usePermissions();
+  const canMentionAm = can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER);
   const [composerEmpty, setComposerEmpty] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -43,7 +48,7 @@ export default function QuickNoteModal({ patient, referral, onClose, onSaved }) 
       };
       await createNote(fields);
 
-      const mentioned = extractMentionUserIds(text);
+      const mentioned = extractUserMentionIds(text);
       if (mentioned.length) {
         const patientLabel = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
         createMentionNotifications({
@@ -55,6 +60,15 @@ export default function QuickNoteModal({ patient, referral, onClose, onSaved }) 
           noteContent: text,
           actorName: appUserName,
           patientLabel,
+        });
+      }
+
+      if (canMentionAm) {
+        await routeNoteToAccountManagerInfo({
+          content: text,
+          referral,
+          patientId: patient.id,
+          actorName: appUserName,
         });
       }
 
@@ -84,9 +98,14 @@ export default function QuickNoteModal({ patient, referral, onClose, onSaved }) 
             ref={composerRef}
             rows={4}
             excludeUserId={appUserId}
+            includeAccountManagerInfo={canMentionAm}
             onSubmit={submit}
             onEmptyChange={setComposerEmpty}
-            placeholder="Write a note… Type @ to mention staff (Cmd+Enter to save)"
+            placeholder={
+              canMentionAm
+                ? 'Write a note… @ staff or Account manager info (Cmd+Enter to save)'
+                : 'Write a note… Type @ to mention staff (Cmd+Enter to save)'
+            }
           />
           {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginTop: 6 }}>{error}</p>}
           <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 6 }}>

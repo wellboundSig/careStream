@@ -103,12 +103,12 @@ describe('EligibilityTab — verification form', () => {
     expect(availity.checked).toBe(true);
   });
 
-  it('no longer offers Phone / Fax / eMedNY / Optum as sources (2026-06 spec)', async () => {
+  it('no longer offers Phone / Fax / eMedNY as sources; Optum is available', async () => {
     const card = await openFirstEdit();
     expect(within(card).queryByTestId('source-phone')).toBeNull();
     expect(within(card).queryByTestId('source-fax')).toBeNull();
     expect(within(card).queryByTestId('source-emedny')).toBeNull();
-    expect(within(card).queryByTestId('source-optum')).toBeNull();
+    expect(within(card).getByTestId('source-optum')).toBeTruthy();
   });
 
   // D.3 Insurance type selector distinguishes Medicare vs Medicare Managed

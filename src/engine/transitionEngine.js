@@ -150,8 +150,22 @@ export async function applyTransition({ referral, result, context = {} }) {
     await context.flagConflict(context.conflictPayload);
   }
 
+  // Prefer the live store row (stable rec_id) over a possibly-stale enriched
+  // snapshot captured when the transition modal opened.
+  const storeRef = (() => {
+    try {
+      const map = useCareStore.getState().referrals || {};
+      if (referral?._id && map[referral._id]) return map[referral._id];
+      if (referral?.id) {
+        return Object.values(map).find((r) => r?.id === referral.id) || null;
+      }
+    } catch { /* store unavailable in tests */ }
+    return null;
+  })();
+  const writeTarget = storeRef || referral;
+
   // The single authoritative write.
-  await updateReferralOptimistic(referral._id, result.fieldUpdates);
+  await updateReferralOptimistic(writeTarget._id || writeTarget.id, result.fieldUpdates);
 
   // Audit (StageHistory + optional timeline Note) — always.
   recordTransition({

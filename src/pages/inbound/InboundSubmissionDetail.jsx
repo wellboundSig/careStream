@@ -12,6 +12,7 @@ import { parseInboundEmail } from '../../lib/inboundParse.js';
 import ParseSuggestionChips from '../../components/inbound/ParseSuggestionChips.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { isUserOoo, oooOptionSuffix, oooWindowLabel } from '../../utils/outOfOffice.js';
+import { sanitizeBasicHtml } from '../../utils/sanitizeHtml.js';
 
 const ghostBtn = {
   padding: '8px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
@@ -23,14 +24,6 @@ const primaryBtn = {
   background: palette.primaryMagenta.hex, fontSize: 13, fontWeight: 650,
   color: '#fff', cursor: 'pointer',
 };
-
-function sanitizeBasicHtml(html) {
-  return String(html || '')
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/\son\w+="[^"]*"/gi, '')
-    .replace(/\son\w+='[^']*'/gi, '')
-    .replace(/javascript:/gi, '');
-}
 
 function readParsed(sub) {
   if (!sub?.parsed) return null;

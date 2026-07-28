@@ -11,7 +11,8 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
-import { extractMentionUserIds } from '../../../utils/mentions.js';
+import { extractUserMentionIds } from '../../../utils/mentions.js';
+import { routeNoteToAccountManagerInfo } from '../../../utils/accountManagerInfo.js';
 import LoadingState from '../../common/LoadingState.jsx';
 import MentionComposer from '../../common/MentionComposer.jsx';
 import MentionText from '../../common/MentionText.jsx';
@@ -84,7 +85,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
       setError(`Failed to save note: ${err.message}`);
     });
 
-    const mentioned = extractMentionUserIds(content);
+    const mentioned = extractUserMentionIds(content);
     if (mentioned.length) {
       const patientLabel = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
       createMentionNotifications({
@@ -96,6 +97,17 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
         noteContent: content,
         actorName: appUserName,
         patientLabel,
+      });
+    }
+
+    if (can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER)) {
+      routeNoteToAccountManagerInfo({
+        content,
+        referral,
+        patientId: patient.id,
+        actorName: appUserName,
+      }).catch((err) => {
+        console.warn('[accountManagerInfo] failed to append:', err?.message || err);
       });
     }
 
@@ -153,9 +165,14 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
           ref={composerRef}
           rows={3}
           excludeUserId={appUserId}
+          includeAccountManagerInfo={can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER)}
           onSubmit={submitNote}
           onEmptyChange={setComposerEmpty}
-          placeholder="Write a note… Type @ to mention staff (Cmd+Enter to save)"
+          placeholder={
+            can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER)
+              ? 'Write a note… @ staff or Account manager info (Cmd+Enter to save)'
+              : 'Write a note… Type @ to mention staff (Cmd+Enter to save)'
+          }
         />
 
         {error && (

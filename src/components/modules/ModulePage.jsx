@@ -13,6 +13,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import {
   MODULE_COLUMN_DEFS,
+  SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS,
   useColumnVisibility,
   useColumnFilters,
   ColumnPicker,
@@ -20,6 +21,7 @@ import {
   FilterIcon,
   ColsIcon,
 } from '../../utils/columnModel.jsx';
+import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
@@ -34,7 +36,19 @@ import StagePanel from './StagePanel.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
-import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
+import {
+  setUrgentCare,
+  setUrgentCareType,
+  isUrgentCare,
+  getUrgentCareType,
+  urgentCareTypeLabel,
+  URGENT_CARE_TYPE_OPTIONS,
+} from '../../utils/urgentCare.js';
+import {
+  isDocumentationDeferred,
+  documentationFilterStatus,
+  daysUntilDocumentationDue,
+} from '../../utils/documentationDeferred.js';
 import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate } from '../../utils/dateFormat.js';
@@ -118,14 +132,16 @@ export default function ModulePage({ stage }) {
     resolveMarketer,
     resolveSource,
     resolveFacility,
+    resolvePhysician,
     resolveEntity = (id) => id || '—',
   } = useLookups();
   const { open: openPatient } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
   const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
+  const { prefs, save: savePrefs } = usePreferences();
   const getReviewInProgress = useClinicalReviewInProgress();
 
-  // We track which referral the user clicked by its Airtable record id and
+  // We track which referral the user clicked by its store row key (rec_id) and
   // DERIVE the live referral object from `allReferrals` on every render. The
   // right-hand panel + toolbar previously held a snapshot from click-time,
   // which meant any in-flight optimistic update to the store (Schedule SOC,
@@ -148,13 +164,33 @@ export default function ModulePage({ stage }) {
   const [freezePatientCol, setFreezePatientCol] = useState(readFreezePatientPref);
   const colPickerRef = useRef(null);
 
-  const { visibleCols, setVisibleCols, activeColumns } = useColumnVisibility(MODULE_COLUMN_DEFS);
+  const isSocCompleted = stage === 'SOC Completed';
+  const canPendingLog = isSocCompleted && canPerm(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG);
+  const canPendingLogDefault = canPendingLog && canPerm(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG_DEFAULT);
+  const savedSocView = prefs?.socCompletedView;
+  const socCompletedView = !canPendingLog
+    ? 'standard'
+    : (savedSocView === 'pending_log' || savedSocView === 'standard')
+      ? savedSocView
+      : (canPendingLogDefault ? 'pending_log' : 'standard');
+  const isPendingLogView = canPendingLog && socCompletedView === 'pending_log';
+  const columnDefs = isPendingLogView ? SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS : MODULE_COLUMN_DEFS;
+
+  const { visibleCols, setVisibleCols, activeColumns } = useColumnVisibility(columnDefs);
 
   function setFreezePatient(next) {
     setFreezePatientCol(next);
     try { localStorage.setItem(FREEZE_PATIENT_KEY, next ? '1' : '0'); } catch { /* ignore */ }
   }
-  const { colFilters, setColFilter, clearFilters, showFilters, setShowFilters, hasActiveFilters } = useColumnFilters(MODULE_COLUMN_DEFS);
+  const { colFilters, setColFilter, clearFilters, showFilters, setShowFilters, hasActiveFilters } = useColumnFilters(columnDefs);
+
+  function toggleSocCompletedView() {
+    if (!canPendingLog) return;
+    const next = isPendingLogView ? 'standard' : 'pending_log';
+    savePrefs({ socCompletedView: next });
+    setSortField(next === 'pending_log' ? 'added_to_module' : 'days');
+    setSortDir('desc');
+  }
 
   const meta = STAGE_META[stage] || {};
 
@@ -193,9 +229,9 @@ export default function ModulePage({ stage }) {
   // ── Stage referrals with column filters ───────────────────────────────────
   // Decorate each referral with concurrent-presence flags so the per-stage
   // matchReferral predicate (see STAGE_META) can read them without having to
-  // import the auth/disen stores itself. Auth rows use the custom referral_id
-  // (text "ref_xxx"); disenrollment flag rows use multipleRecordLinks
-  // (array of Airtable record IDs), so we match on both shapes.
+  // import the auth/disen stores itself. Auth rows use referral business id
+  // (text "ref_xxx"); disenrollment flags may key by business id or row key,
+  // so we match on both shapes.
   const authStore = useCareStore((s) => s.authorizations) || {};
   const disenStore = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
   const storeUsers = useCareStore((s) => s.users) || {};
@@ -227,6 +263,32 @@ export default function ModulePage({ stage }) {
       _hasOpenDisenrollmentFlag: refRecIdsWithDisen.has(r._id) || refCustomIdsWithDisen.has(r.id),
     }));
   }, [allReferrals, authStore, disenStore]);
+
+  const triageAdultStore = useCareStore((s) => s.triageAdult);
+  const triagePedStore = useCareStore((s) => s.triagePediatric);
+
+  /**
+   * referral business id → doctor display name.
+   * Prefer triage PCP (Special Needs); fall back to referral.physician_id
+   * (ALF / referring physician — what most SOC Completed rows actually have).
+   */
+  const pcpByReferralId = useMemo(() => {
+    const map = {};
+    for (const t of Object.values(triageAdultStore || {})) {
+      if (t?.referral_id && t.pcp_name) map[t.referral_id] = String(t.pcp_name).trim();
+    }
+    for (const t of Object.values(triagePedStore || {})) {
+      if (t?.referral_id && t.pcp_name) map[t.referral_id] = String(t.pcp_name).trim();
+    }
+    return map;
+  }, [triageAdultStore, triagePedStore]);
+
+  function resolvePcpName(referral) {
+    const fromTriage = referral?.id ? pcpByReferralId[referral.id] : '';
+    if (fromTriage) return fromTriage;
+    const fromPhysician = resolvePhysician?.(referral?.physician_id);
+    return fromPhysician && fromPhysician !== '—' ? fromPhysician : '';
+  }
 
   const stageReferrals = useMemo(() => {
     // Prefer the modern predicate when present; fall back to the legacy
@@ -282,6 +344,11 @@ export default function ModulePage({ stage }) {
           if (wantsNonUrgent) return !isUrgentCare(r);
           return true; // partial typing — don't filter yet
         }
+        if (key === 'urgent_care_type') {
+          const label = urgentCareTypeLabel(getUrgentCareType(r)).toLowerCase();
+          const raw = getUrgentCareType(r);
+          return label.includes(q) || raw.includes(q);
+        }
         if (key === 'emr_onboarded') {
           const v = q.trim();
           const onboarded = !!(r.emr_onboarded_at || r.emr_initial_onboarded_at);
@@ -290,6 +357,28 @@ export default function ModulePage({ stage }) {
           if (wantsYes) return onboarded;
           if (wantsNo) return !onboarded;
           return true;
+        }
+        if (key === 'post_soc_docs') {
+          const v = q.trim().replace(/\s+/g, '_');
+          const status = documentationFilterStatus(r);
+          const open = isDocumentationDeferred(r);
+          if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
+          if (v === 'no' || v === 'n' || v === 'false') return !open;
+          if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
+          if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
+          if (v === 'overdue') return status === 'overdue';
+          if (!v) return true;
+          return status.includes(v) || (open && 'deferred'.includes(v));
+        }
+        if (key === 'waiting_docs') {
+          const v = q.trim();
+          const waiting = isDocumentationDeferred(r);
+          if (v === 'yes' || v === 'y' || v === 'true') return waiting;
+          if (v === 'no' || v === 'n' || v === 'false') return !waiting;
+          return true;
+        }
+        if (key === 'episode_type') {
+          return 'soc'.includes(q) || q === 'soc' || q === 's';
         }
         let cellVal = '';
         switch (key) {
@@ -300,6 +389,8 @@ export default function ModulePage({ stage }) {
           case 'owner': cellVal = resolveUser(r.intake_owner_id) || ''; break;
           case 'insurance': cellVal = r.patient?.insurance_plan || ''; break;
           case 'facility': cellVal = resolveFacility(r.facility_id) || ''; break;
+          case 'pcp': cellVal = resolvePcpName(r) || ''; break;
+          case 'clinical_rn': cellVal = resolveUser(r.clinical_review_completed_by_id || r.clinical_review_by) || ''; break;
           default: return true;
         }
         return cellVal.toLowerCase().includes(q);
@@ -317,6 +408,16 @@ export default function ModulePage({ stage }) {
         const vb = daysInPipeline(b);
         return sortDir === 'desc' ? vb - va : va - vb;
       }
+      if (sortField === 'added_to_module') {
+        const va = new Date(a._stage_entered_at || a.soc_completed_date || 0).getTime();
+        const vb = new Date(b._stage_entered_at || b.soc_completed_date || 0).getTime();
+        return sortDir === 'desc' ? vb - va : va - vb;
+      }
+      if (sortField === 'soc_completed_date') {
+        const va = new Date(a.soc_completed_date || 0).getTime();
+        const vb = new Date(b.soc_completed_date || 0).getTime();
+        return sortDir === 'desc' ? vb - va : va - vb;
+      }
       if (sortField === 'name') {
         const va = (a.patientName || '').toLowerCase();
         const vb = (b.patientName || '').toLowerCase();
@@ -328,7 +429,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta, hasDivision]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId]);
 
   // Distinct values per filterable column for datalist suggestions
   const colOptions = useMemo(() => {
@@ -339,12 +440,19 @@ export default function ModulePage({ stage }) {
         : (r) => r.current_stage === stage;
     const base = decoratedReferrals.filter(predicate);
     const opts = {};
-    MODULE_COLUMN_DEFS.filter((c) => c.filterable).forEach((col) => {
+    columnDefs.filter((c) => c.filterable).forEach((col) => {
       const vals = new Set();
       base.forEach((r) => {
         switch (col.key) {
           case 'urgent': vals.add('yes'); vals.add('no'); break;
+          case 'urgent_care_type':
+            URGENT_CARE_TYPE_OPTIONS.forEach((o) => vals.add(o.label));
+            break;
           case 'emr_onboarded': vals.add('yes'); vals.add('no'); break;
+          case 'post_soc_docs':
+            vals.add('yes'); vals.add('no');
+            vals.add('waiting_docs'); vals.add('waiting_clinical'); vals.add('overdue');
+            break;
           case 'division': if (r.division) vals.add(r.division); break;
           case 'licence': {
             const v = resolveEntity(r.entity_id);
@@ -356,16 +464,20 @@ export default function ModulePage({ stage }) {
           case 'owner': { const v = resolveUser(r.intake_owner_id); if (v && v !== r.intake_owner_id && v !== '—') vals.add(v); break; }
           case 'insurance': { const v = r.patient?.insurance_plan; if (v) vals.add(v); break; }
           case 'facility': { const v = resolveFacility(r.facility_id); if (v && v !== '—') vals.add(v); break; }
+          case 'pcp': { const v = resolvePcpName(r); if (v) vals.add(v); break; }
+          case 'clinical_rn': {
+            const v = resolveUser(r.clinical_review_completed_by_id || r.clinical_review_by);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
+          case 'episode_type': vals.add('SOC'); break;
+          case 'waiting_docs': vals.add('yes'); vals.add('no'); break;
         }
       });
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, meta]);
-
-  // Triage completion status
-  const triageAdultStore = useCareStore((s) => s.triageAdult);
-  const triagePedStore = useCareStore((s) => s.triagePediatric);
+  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, columnDefs, pcpByReferralId]);
 
   const triageStatus = useMemo(() => {
     const snRefIds = new Set(
@@ -453,21 +565,20 @@ export default function ModulePage({ stage }) {
     // interception, field updates, stage-entry effects, audit, and the
     // leaving-Conflict auto-resolve — is owned by the transition engine.
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
-      const patientRecordId = referral?.patient?._id;
+      // Conflicts.patient_id / created_by_id are Aurora text (pat_… / usr_…), not rec_ids.
       const patientCustomId = referral?.patient?.id || referral?.patient_id;
       const referralCustomId = referral?.id;
-      const createdByUserRecordId = appUser?._id;
-      if (!patientRecordId || !referralCustomId || !createdByUserRecordId) {
+      if (!patientCustomId || !referralCustomId || !appUserId) {
         showToast('Cannot send to Conflict — missing patient/referral/user linkage', 'error');
         return;
       }
       try {
         await flagConflict({
           referral,
-          patientRecordId,
+          patientRecordId: referral?.patient?._id,
           patientCustomId,
           referralCustomId,
-          createdByUserRecordId,
+          createdByUserRecordId: appUser?._id,
           actorUserId: appUserId,
           sourceModule: inferConflictSourceModuleFromStage(stage),
           category: noteOrPayload.category,
@@ -477,7 +588,7 @@ export default function ModulePage({ stage }) {
         });
       } catch (err) {
         console.error('Conflict create failed:', err);
-        showToast('Failed to create Conflict record — not moved', 'error');
+        showToast(err?.message || 'Failed to create Conflict record — not moved', 'error');
         return;
       }
     }
@@ -498,8 +609,9 @@ export default function ModulePage({ stage }) {
     }
     try {
       await applyTransition({ referral, result, context: { actorUserId: appUserId } });
-    } catch {
-      showToast('Failed to move patient — change reverted', 'error');
+    } catch (err) {
+      console.error('Stage move failed after conflict create:', err);
+      showToast(err?.message || 'Failed to move patient — change reverted', 'error');
       return;
     }
     setSelectedReferralId(null);
@@ -539,12 +651,181 @@ export default function ModulePage({ stage }) {
       ...extra,
     });
     switch (col.key) {
+      case 'added_to_module': {
+        const raw = referral._stage_entered_at || referral.soc_completed_date || null;
+        return (
+          <td key="added_to_module" style={td({ maxWidth: 130, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.75) })}>
+            {raw ? (fmtCalendarDate(raw) || String(raw).slice(0, 10)) : '—'}
+          </td>
+        );
+      }
+      case 'episode_type':
+        return (
+          <td key="episode_type" style={td({ maxWidth: 80, fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.7) })}>
+            SOC
+          </td>
+        );
+      case 'soc_completed_date': {
+        const raw = referral.soc_completed_date || null;
+        return (
+          <td key="soc_completed_date" style={td({ maxWidth: 130, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.75) })}>
+            {raw ? (fmtCalendarDate(raw) || String(raw).slice(0, 10)) : '—'}
+          </td>
+        );
+      }
+      case 'waiting_docs': {
+        const waiting = isDocumentationDeferred(referral);
+        return (
+          <td key="waiting_docs" style={td({ maxWidth: 110, textAlign: 'left' })}>
+            {waiting ? (
+              <span style={{
+                fontSize: 10.5, fontWeight: 750, color: palette.accentOrange.hex,
+                padding: '2px 7px', borderRadius: 20,
+                background: hexToRgba(palette.accentOrange.hex, 0.12),
+                border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`,
+              }}>
+                Yes
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>No</span>
+            )}
+          </td>
+        );
+      }
+      case 'pcp':
+        return (
+          <td key="pcp" style={td({ maxWidth: 160, fontSize: 12.5 })}>
+            {resolvePcpName(referral) || '—'}
+          </td>
+        );
+      case 'account_manager_info': {
+        // Nurse @Account manager info notes append here; keep clinical
+        // send-back text visible above if present (separate workflow).
+        const amLog = String(referral.account_manager_info || '').trim();
+        const clinicalNote = String(referral.returned_from_clinical_note || '').trim();
+        const parts = [];
+        if (clinicalNote) parts.push(clinicalNote);
+        if (amLog) parts.push(amLog);
+        const note = parts.join('\n\n');
+        return (
+          <td
+            key="account_manager_info"
+            title={note || undefined}
+            style={td({
+              maxWidth: 320,
+              minWidth: 180,
+              height: 'auto',
+              minHeight: QUEUE_ROW_HEIGHT,
+              whiteSpace: 'pre-wrap',
+              overflow: 'visible',
+              textOverflow: 'clip',
+              fontSize: 12,
+              color: note ? hexToRgba(palette.backgroundDark.hex, 0.8) : hexToRgba(palette.backgroundDark.hex, 0.25),
+              lineHeight: 1.35,
+              paddingTop: 8,
+              paddingBottom: 8,
+            })}
+          >
+            {note || '—'}
+          </td>
+        );
+      }
+      case 'clinical_rn': {
+        const name = resolveUser(referral.clinical_review_completed_by_id || referral.clinical_review_by);
+        return (
+          <td key="clinical_rn" style={td({ maxWidth: 150, fontSize: 12.5 })}>
+            {name && name !== '—' ? name : '—'}
+          </td>
+        );
+      }
       case 'urgent':
         return (
           <td key="urgent" style={td({ padding: '0 10px', textAlign: 'center', width: 40, maxWidth: 40 })}>
             {urgent ? <UrgentCareIcon size={14} title="Urgent care required" /> : <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.2), fontSize: 11 }}>—</span>}
           </td>
         );
+      case 'urgent_care_type': {
+        const current = getUrgentCareType(referral);
+        return (
+          <td
+            key="urgent_care_type"
+            style={td({ maxWidth: 140, overflow: 'visible' })}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <select
+              value={current}
+              title="Urgent care type — Wound care, Insulin, or Both"
+              onChange={async (e) => {
+                const next = e.target.value;
+                try {
+                  await setUrgentCareType({
+                    referral,
+                    type: next || '',
+                    actorUserId: appUserId,
+                  });
+                } catch (err) {
+                  showToast(`Urgent type update failed: ${err.message}`, 'error');
+                }
+              }}
+              style={{
+                width: '100%',
+                maxWidth: 130,
+                fontSize: 12,
+                fontFamily: 'inherit',
+                padding: '3px 6px',
+                borderRadius: 6,
+                border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+                background: current ? hexToRgba(palette.primaryMagenta.hex, 0.06) : 'transparent',
+                color: current
+                  ? palette.backgroundDark.hex
+                  : hexToRgba(palette.backgroundDark.hex, 0.4),
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">—</option>
+              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </td>
+        );
+      }
+      case 'post_soc_docs': {
+        const status = documentationFilterStatus(referral);
+        if (status === 'none' || status === 'cleared') {
+          return (
+            <td key="post_soc_docs" style={td({ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) })}>—</td>
+          );
+        }
+        const daysLeft = daysUntilDocumentationDue(referral);
+        const label = status === 'overdue'
+          ? 'Overdue'
+          : status === 'waiting_docs'
+            ? 'Need F2F'
+            : 'Need clinical';
+        const color = status === 'overdue'
+          ? palette.primaryMagenta.hex
+          : palette.accentOrange.hex;
+        const title = [
+          'Deferred documentation (F2F + clinical after SOC)',
+          referral.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : null,
+          daysLeft != null ? (daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`) : null,
+        ].filter(Boolean).join(' · ');
+        return (
+          <td key="post_soc_docs" style={td({ maxWidth: 120 })} title={title}>
+            <span style={{
+              fontSize: 10.5, fontWeight: 750, letterSpacing: '0.02em',
+              color, padding: '2px 7px', borderRadius: 20,
+              background: hexToRgba(color, 0.12),
+              border: `1px solid ${hexToRgba(color, 0.3)}`,
+              whiteSpace: 'nowrap',
+            }}>
+              {label}{daysLeft != null ? ` · ${daysLeft < 0 ? `${Math.abs(daysLeft)}d` : `${daysLeft}d`}` : ''}
+            </span>
+          </td>
+        );
+      }
       case 'patient': {
         const hasFile = fileUploadFlags.has(referral.patient_id);
         const name = referral.patientName || referral.patient_id || '—';
@@ -586,6 +867,20 @@ export default function ModulePage({ stage }) {
             >
               {isMine && <OwnedByMeIcon size={11} />}
               {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
+              {isDocumentationDeferred(referral) && (
+                <span
+                  title="Deferred docs — F2F + clinical after SOC"
+                  style={{
+                    flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                    color: palette.accentOrange.hex,
+                    background: hexToRgba(palette.accentOrange.hex, 0.12),
+                    border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`,
+                    borderRadius: 4, padding: '1px 4px',
+                  }}
+                >
+                  DOCS
+                </span>
+              )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
               {authObtainedAt && (
                 <span title={authObtainedTitle} style={{ display: 'inline-flex', flexShrink: 0 }}>
@@ -733,6 +1028,26 @@ export default function ModulePage({ stage }) {
       }
       case 'facility': {
         const fac = referral.facility_id ? resolveFacility(referral.facility_id) : '—';
+        // Pending Log: show the full facility name (wrap, no ellipsis truncate).
+        if (isPendingLogView) {
+          return (
+            <td
+              key="facility"
+              title={fac}
+              style={td({
+                fontSize: 12.5,
+                color: hexToRgba(palette.backgroundDark.hex, 0.7),
+                maxWidth: 320,
+                whiteSpace: 'normal',
+                overflow: 'visible',
+                textOverflow: 'clip',
+                lineHeight: 1.35,
+              })}
+            >
+              {fac}
+            </td>
+          );
+        }
         return (
           <td key="facility" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), maxWidth: 160 })} title={fac}>
             {fac}
@@ -795,13 +1110,23 @@ export default function ModulePage({ stage }) {
             setChangeOwnerTarget(contextMenu.referral);
             setContextMenu(null);
           }}
-          onToggleUrgent={async () => {
+          onMarkUrgent={async (type) => {
             const ref = contextMenu.referral;
             setContextMenu(null);
             try {
-              const next = !isUrgentCare(ref);
-              await setUrgentCare({ referral: ref, next, actorUserId: appUserId });
-              showToast(`${ref.patientName || ref.patient_id} ${next ? 'flagged urgent care' : 'urgent care cleared'}`);
+              await setUrgentCare({ referral: ref, next: true, actorUserId: appUserId, type });
+              const label = urgentCareTypeLabel(type);
+              showToast(`${ref.patientName || ref.patient_id} flagged urgent care${label ? ` (${label})` : ''}`);
+            } catch (err) {
+              showToast(`Urgent care toggle failed: ${err.message}`, 'error');
+            }
+          }}
+          onClearUrgent={async () => {
+            const ref = contextMenu.referral;
+            setContextMenu(null);
+            try {
+              await setUrgentCare({ referral: ref, next: false, actorUserId: appUserId });
+              showToast(`${ref.patientName || ref.patient_id} urgent care cleared`);
             } catch (err) {
               showToast(`Urgent care toggle failed: ${err.message}`, 'error');
             }
@@ -993,26 +1318,48 @@ export default function ModulePage({ stage }) {
               {freezePatientCol ? 'Pinned' : 'Pin patient'}
             </button>
 
-            {/* Column picker */}
-            <div ref={colPickerRef} style={{ position: 'relative', flexShrink: 0 }}>
+            {/* SOC Completed — Pending Log alternate view */}
+            {canPendingLog && (
               <button
-                onClick={() => setShowColPicker((v) => !v)}
-                title="Customize columns"
-                style={{ height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, border: `1px solid ${showColPicker ? palette.primaryMagenta.hex : 'var(--color-border)'}`, background: showColPicker ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none', fontSize: 12, fontWeight: 600, color: showColPicker ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer', transition: 'all 0.12s' }}
+                type="button"
+                onClick={toggleSocCompletedView}
+                data-testid="soc-completed-view-toggle"
+                title={isPendingLogView ? 'Switch back to the standard SOC Completed queue' : 'Open the Pending Log (facility, docs wait, clinical note, …)'}
+                style={{
+                  height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
+                  border: `1px solid ${isPendingLogView ? palette.accentOrange.hex : 'var(--color-border)'}`,
+                  background: isPendingLogView ? palette.accentOrange.hex : 'none',
+                  fontSize: 12, fontWeight: 650,
+                  color: isPendingLogView ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  cursor: 'pointer', transition: 'all 0.12s',
+                }}
               >
-                <ColsIcon /> Columns
+                {isPendingLogView ? 'Standard view' : 'Pending Log'}
               </button>
-              {showColPicker && (
-                <ColumnPicker
-                  columnDefs={MODULE_COLUMN_DEFS}
-                  visibleCols={visibleCols}
-                  onChange={setVisibleCols}
-                  onClose={() => setShowColPicker(false)}
-                  freezePatient={freezePatientCol}
-                  onFreezePatientChange={setFreezePatient}
-                />
-              )}
-            </div>
+            )}
+
+            {/* Column picker (standard queue only — Pending Log has a fixed column set) */}
+            {!isPendingLogView && (
+              <div ref={colPickerRef} style={{ position: 'relative', flexShrink: 0 }}>
+                <button
+                  onClick={() => setShowColPicker((v) => !v)}
+                  title="Customize columns"
+                  style={{ height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, border: `1px solid ${showColPicker ? palette.primaryMagenta.hex : 'var(--color-border)'}`, background: showColPicker ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none', fontSize: 12, fontWeight: 600, color: showColPicker ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer', transition: 'all 0.12s' }}
+                >
+                  <ColsIcon /> Columns
+                </button>
+                {showColPicker && (
+                  <ColumnPicker
+                    columnDefs={MODULE_COLUMN_DEFS}
+                    visibleCols={visibleCols}
+                    onChange={setVisibleCols}
+                    onClose={() => setShowColPicker(false)}
+                    freezePatient={freezePatientCol}
+                    onFreezePatientChange={setFreezePatient}
+                  />
+                )}
+              </div>
+            )}
 
             {/* Send to Conflict */}
             {stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC' && (() => {
@@ -1152,6 +1499,7 @@ export default function ModulePage({ stage }) {
                         activeColumns={activeColumns}
                         renderCell={renderCell}
                         isSelected={selectedReferral?._id === ref._id}
+                        flexibleHeight={isPendingLogView}
                         onClick={() => handleRowSelect(ref)}
                         onDoubleClick={() => handleRowOpen(ref)}
                         onContextMenu={(e) => handleRowContextMenu(e, ref)}
@@ -1370,14 +1718,15 @@ function QueueScrollFrame({ children, freezePatientCol = false }) {
   );
 }
 
-function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, onDoubleClick, onContextMenu }) {
+function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, onDoubleClick, onContextMenu, flexibleHeight = false }) {
   const [hovered, setHovered] = useState(false);
   return (
     <tr
       onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
-        height: QUEUE_ROW_HEIGHT,
+        height: flexibleHeight ? 'auto' : QUEUE_ROW_HEIGHT,
+        minHeight: QUEUE_ROW_HEIGHT,
         background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.06) : hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent',
         cursor: 'pointer', transition: 'background 0.1s',
       }}
@@ -1387,10 +1736,11 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   );
 }
 
-function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, onToggleUrgent, onDismiss }) {
+function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, onMarkUrgent, onClearUrgent, onDismiss }) {
   const ref = useRef(null);
   const isSN = referral.division === 'Special Needs';
   const urgent = isUrgentCare(referral);
+  const urgentType = getUrgentCareType(referral);
   useEffect(() => {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
@@ -1427,15 +1777,59 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
             />
           )}
-          {/* Urgent care toggle is ALWAYS present in the context menu — the
-              user explicitly requested it never be hidden behind a permission
-              gate at the UI layer. */}
-          <MenuItem
-            label={urgent ? 'Clear urgent care / pre-assessment' : 'Mark urgent care / pre-assessment'}
-            onClick={onToggleUrgent}
-            accent={palette.primaryMagenta.hex}
-            icon={<UrgentCareIcon size={14} muted={!urgent} title={urgent ? 'Clear urgent care' : 'Mark urgent care'} />}
-          />
+          {/* Urgent care: pick wound / insulin / both when marking. Always
+              present — not gated at the UI layer. */}
+          {urgent ? (
+            <>
+              <MenuItem
+                label={`Clear urgent care${urgentType ? ` (${urgentCareTypeLabel(urgentType)})` : ''}`}
+                onClick={onClearUrgent}
+                accent={palette.primaryMagenta.hex}
+                icon={<UrgentCareIcon size={14} muted={false} title="Clear urgent care" />}
+              />
+              <div style={{
+                padding: '6px 12px 2px',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                color: hexToRgba(palette.backgroundDark.hex, 0.4),
+              }}>
+                Change type
+              </div>
+              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
+                <MenuItem
+                  key={o.value}
+                  label={o.label}
+                  onClick={() => onMarkUrgent(o.value)}
+                  accent={urgentType === o.value ? palette.primaryMagenta.hex : undefined}
+                  icon={<UrgentCareIcon size={14} muted={urgentType !== o.value} title={o.label} />}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <div style={{
+                padding: '6px 12px 2px',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                color: hexToRgba(palette.backgroundDark.hex, 0.4),
+              }}>
+                Mark urgent care
+              </div>
+              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
+                <MenuItem
+                  key={o.value}
+                  label={o.label}
+                  onClick={() => onMarkUrgent(o.value)}
+                  accent={palette.primaryMagenta.hex}
+                  icon={<UrgentCareIcon size={14} muted title={o.label} />}
+                />
+              ))}
+            </>
+          )}
         </div>
       </div>
     </>

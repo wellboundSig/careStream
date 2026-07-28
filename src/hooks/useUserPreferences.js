@@ -14,7 +14,13 @@ export function useUserPreferences() {
   // Stable ref so callbacks never stale-close over the record ID
   const recordIdRef = useRef(null);
 
-  const [prefs, setPrefs] = useState({ subnavEnabled: false, pinnedPages: [], splitScreenEnabled: false, dashboardMode: 'executive' });
+  const [prefs, setPrefs] = useState({
+    subnavEnabled: false,
+    pinnedPages: [],
+    splitScreenEnabled: false,
+    dashboardMode: 'executive',
+    socCompletedView: null,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +36,7 @@ export function useUserPreferences() {
             pinnedPages:        safeParseJSON(rec.fields.pinned_pages, []),
             splitScreenEnabled: rec.fields.split_screen_enabled ?? false,
             dashboardMode:      rec.fields.dashboard_mode || 'executive',
+            socCompletedView:   rec.fields.soc_completed_view || null,
           });
         }
       })

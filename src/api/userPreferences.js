@@ -1,12 +1,13 @@
 /**
- * Airtable table required: "UserPreferences"
+ * UserPreferences — Aurora via wellbound-api (Airtable-compatible wire).
  *
  * Fields:
- *   clerk_user_id        — Single line text   (unique per user)
- *   subnav_enabled       — Checkbox
- *   pinned_pages         — Long text          (JSON array of route path strings)
- *   split_screen_enabled — Checkbox
- *   dashboard_mode       — Single line text   ('executive' | 'caseload')
+ *   clerk_user_id        — text
+ *   subnav_enabled       — checkbox/boolean
+ *   pinned_pages         — JSON array of route path strings
+ *   split_screen_enabled — checkbox/boolean
+ *   dashboard_mode       — 'executive' | 'caseload'
+ *   soc_completed_view   — 'standard' | 'pending_log'
  */
 import airtable from './airtable.js';
 
@@ -27,6 +28,7 @@ export async function createPreferences(clerkUserId, fields) {
     pinned_pages:         JSON.stringify(fields.pinnedPages ?? []),
     split_screen_enabled: fields.splitScreenEnabled ?? false,
     dashboard_mode:       fields.dashboardMode ?? 'executive',
+    soc_completed_view:   fields.socCompletedView || null,
   });
 }
 
@@ -36,5 +38,6 @@ export async function updatePreferences(recordId, fields) {
   if (fields.pinnedPages        !== undefined) payload.pinned_pages         = JSON.stringify(fields.pinnedPages);
   if (fields.splitScreenEnabled !== undefined) payload.split_screen_enabled = fields.splitScreenEnabled;
   if (fields.dashboardMode      !== undefined) payload.dashboard_mode       = fields.dashboardMode;
+  if (fields.socCompletedView   !== undefined) payload.soc_completed_view   = fields.socCompletedView || null;
   return airtable.update(TABLE, recordId, payload);
 }

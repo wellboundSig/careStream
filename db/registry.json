@@ -1123,6 +1123,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "account_manager_info": {
+        "column": "account_manager_info",
+        "pg": "text",
+        "wire": "text"
+      },
       "returned_from_clinical_at": {
         "column": "returned_from_clinical_at",
         "pg": "timestamptz",
@@ -1150,6 +1155,41 @@
       },
       "urgent_care_note": {
         "column": "urgent_care_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "urgent_care_type": {
+        "column": "urgent_care_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "documentation_deferred": {
+        "column": "documentation_deferred",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "documentation_deferred_at": {
+        "column": "documentation_deferred_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "documentation_deferred_by_id": {
+        "column": "documentation_deferred_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "documentation_due_date": {
+        "column": "documentation_due_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "documentation_cleared_at": {
+        "column": "documentation_cleared_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "documentation_cleared_by_id": {
+        "column": "documentation_cleared_by_id",
         "pg": "text",
         "wire": "text"
       },
@@ -2774,6 +2814,11 @@
       },
       "dashboard_mode": {
         "column": "dashboard_mode",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_completed_view": {
+        "column": "soc_completed_view",
         "pg": "text",
         "wire": "text"
       },

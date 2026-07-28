@@ -12,19 +12,12 @@ import { parsedToFormPrefill } from '../../lib/inboundParse.js';
 import ParseSuggestionChips from '../../components/inbound/ParseSuggestionChips.jsx';
 import NewReferralForm from '../../components/forms/NewReferralForm.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { sanitizeBasicHtml } from '../../utils/sanitizeHtml.js';
 
 function readParsed(sub) {
   if (!sub?.parsed) return null;
   if (typeof sub.parsed === 'object') return sub.parsed;
   try { return JSON.parse(sub.parsed); } catch { return null; }
-}
-
-function sanitizeBasicHtml(html) {
-  return String(html || '')
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/\son\w+="[^"]*"/gi, '')
-    .replace(/\son\w+='[^']*'/gi, '')
-    .replace(/javascript:/gi, '');
 }
 
 export default function InboundConvertWorkspace() {

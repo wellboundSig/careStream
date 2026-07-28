@@ -79,11 +79,24 @@ function optimisticDelete(entityKey, tableName, recordId) {
 export function updateReferralOptimistic(recordId, fields) {
   // lead_created_by_id is immutable once set — strip overwrite attempts.
   const safe = { ...fields };
+  // Resolve store key: callers sometimes pass a stale/enriched object whose
+  // `_id` no longer matches the referrals map (e.g. after a re-hydrate), while
+  // the business `id` (ref_…) is still stable. Fall back to id lookup so stage
+  // moves (esp. Send to Conflict) don't fail after the Conflict row already
+  // wrote successfully.
+  const map = useCareStore.getState().referrals || {};
+  let key = recordId;
+  if (!map[key] && recordId) {
+    const hit = Object.values(map).find(
+      (r) => r?.id === recordId || r?._id === recordId,
+    );
+    if (hit?._id) key = hit._id;
+  }
   if ('lead_created_by_id' in safe) {
-    const current = useCareStore.getState().referrals?.[recordId];
+    const current = map[key];
     if (current?.lead_created_by_id) delete safe.lead_created_by_id;
   }
-  return optimisticUpdate('referrals', 'Referrals', recordId, safe);
+  return optimisticUpdate('referrals', 'Referrals', key, safe);
 }
 
 export function updatePatientOptimistic(recordId, fields) {
@@ -124,11 +137,12 @@ export async function createMentionNotifications({
   actorName,
   patientLabel,
 }) {
-  const ids = [...new Set((mentionedUserIds || []).filter((id) => id && id !== actorUserId))];
-  if (ids.length === 0) return [];
-
   const { createNotification } = await import('../api/notifications.js');
-  const { mentionPlainPreview } = await import('../utils/mentions.js');
+  const { mentionPlainPreview, isSpecialMentionId } = await import('../utils/mentions.js');
+  const ids = [...new Set(
+    (mentionedUserIds || []).filter((id) => id && id !== actorUserId && !isSpecialMentionId(id)),
+  )];
+  if (ids.length === 0) return [];
   const now = new Date().toISOString();
   const preview = mentionPlainPreview(noteContent, 120);
   const title = `${actorName || 'Someone'} mentioned you`;

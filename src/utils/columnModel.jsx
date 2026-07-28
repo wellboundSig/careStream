@@ -41,14 +41,49 @@ export const MODULE_COLUMN_DEFS = [
   // Urgent care lives at the END so it doesn't crowd the patient label
   // (the row's name already carries the small red cross when flagged).
   { key: 'urgent',    label: 'Urgent',     defaultOn: true, filterable: true, tooltip: 'Patient flagged as requiring urgent / pre-SOC care. Filter accepts yes / no.' },
+  {
+    key: 'post_soc_docs',
+    label: 'Post-SOC Docs',
+    defaultOn: true,
+    filterable: true,
+    tooltip: 'Deferred F2F/clinical cases. Filter: waiting_docs · waiting_clinical · overdue · yes (any open) · no',
+  },
+];
+
+/**
+ * SOC Completed — Pending Log alternate queue.
+ * Fixed column set for account-manager / scheduling follow-up.
+ */
+export const SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS = [
+  { key: 'added_to_module', label: 'Added to module', defaultOn: true, alwaysOn: true, filterable: false, sortField: 'added_to_module', tooltip: 'Date the patient entered SOC Completed' },
+  { key: 'patient', label: 'Patient', defaultOn: true, alwaysOn: true, filterable: false, sortField: 'name' },
+  { key: 'facility', label: 'Facility', defaultOn: true, filterable: true },
+  { key: 'episode_type', label: 'SOC / ROC', defaultOn: true, filterable: true, tooltip: 'Episode type — currently always SOC' },
+  { key: 'insurance', label: 'Insurance', defaultOn: true, filterable: true },
+  { key: 'urgent', label: 'Urgent care', defaultOn: true, filterable: true, tooltip: 'Urgent / pre-SOC care flag. Filter: yes / no' },
+  { key: 'urgent_care_type', label: 'Urgent type', defaultOn: true, filterable: true, tooltip: 'Wound care, Insulin, or Both. Editable inline.' },
+  { key: 'soc_completed_date', label: 'SOC completed', defaultOn: true, filterable: false, sortField: 'soc_completed_date', tooltip: 'Date Start of Care was completed' },
+  { key: 'waiting_docs', label: 'Waiting for docs', defaultOn: true, filterable: true, tooltip: 'Deferred F2F/clinical still outstanding. Filter: yes / no' },
+  { key: 'pcp', label: 'PCP', defaultOn: true, filterable: true, tooltip: 'Triage PCP when present; otherwise the referral physician' },
+  { key: 'marketer', label: 'Marketer', defaultOn: true, filterable: true },
+  { key: 'account_manager_info', label: 'Account manager info', defaultOn: true, filterable: false, tooltip: 'Notes from nurses via @Account manager info (multiple entries). May also show a clinical send-back note.' },
+  { key: 'clinical_rn', label: 'Clinical Intake RN', defaultOn: true, filterable: true },
 ];
 
 // ── Hooks ───────────────────────────────────────────────────────────────────
+
+function defsSignature(columnDefs) {
+  return (columnDefs || []).map((c) => c.key).join('|');
+}
 
 export function useColumnVisibility(columnDefs) {
   const [visibleCols, setVisibleCols] = useState(
     () => new Set(columnDefs.filter((c) => c.defaultOn).map((c) => c.key))
   );
+  const sig = defsSignature(columnDefs);
+  useEffect(() => {
+    setVisibleCols(new Set(columnDefs.filter((c) => c.defaultOn).map((c) => c.key)));
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps -- reset when column set changes
   const activeColumns = useMemo(
     () => columnDefs.filter((c) => visibleCols.has(c.key)),
     [columnDefs, visibleCols]
@@ -63,6 +98,10 @@ export function useColumnFilters(columnDefs) {
   );
   const [colFilters, setColFilters] = useState({ ...defaultFilters });
   const [showFilters, setShowFilters] = useState(false);
+  const sig = defsSignature(columnDefs);
+  useEffect(() => {
+    setColFilters({ ...defaultFilters });
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setColFilter(key, val) {
     setColFilters((prev) => ({ ...prev, [key]: val }));
@@ -71,7 +110,7 @@ export function useColumnFilters(columnDefs) {
     setColFilters({ ...defaultFilters });
   }
   const hasActiveFilters = useMemo(
-    () => Object.values(colFilters).some((v) => v.trim()),
+    () => Object.values(colFilters).some((v) => String(v || '').trim()),
     [colFilters]
   );
 

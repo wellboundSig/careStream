@@ -23,6 +23,11 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate } from '../utils/dateFormat.js';
+import {
+  isDocumentationDeferred,
+  documentationFilterStatus,
+  daysUntilDocumentationDue,
+} from '../utils/documentationDeferred.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
 
@@ -41,6 +46,13 @@ const COLUMN_DEFS = [
   { key: 'referral_source', label: 'Referral Source',   defaultOn: true, filterable: true  },
   { key: 'facility',        label: 'Facility',          defaultOn: true, filterable: true  },
   { key: 'physician',       label: 'Physician',         defaultOn: true, filterable: true  },
+  {
+    key: 'post_soc_docs',
+    label: 'Post-SOC Docs',
+    defaultOn: true,
+    filterable: true,
+    tooltip: 'Deferred F2F/clinical. Filter: waiting_docs · waiting_clinical · overdue · yes · no',
+  },
 ];
 
 const DEFAULT_COL_FILTERS = Object.fromEntries(
@@ -351,6 +363,23 @@ export default function PatientList() {
         }
 
         const q = val.toLowerCase();
+        if (key === 'post_soc_docs') {
+          const v = q.trim().replace(/\s+/g, '_');
+          const status = documentationFilterStatus(ref);
+          const open = isDocumentationDeferred(ref);
+          if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') { if (!open) return false; continue; }
+          if (v === 'no' || v === 'n' || v === 'false') { if (open) return false; continue; }
+          if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') {
+            if (!(status === 'waiting_docs' || status === 'overdue')) return false;
+            continue;
+          }
+          if (v === 'waiting_clinical' || v === 'clinical') {
+            if (!(status === 'waiting_clinical' || status === 'overdue')) return false;
+            continue;
+          }
+          if (v === 'overdue') { if (status !== 'overdue') return false; continue; }
+          continue;
+        }
         let cellVal = '';
         switch (key) {
           case 'division':       cellVal = (p.division || '').toLowerCase(); break;
@@ -417,22 +446,20 @@ export default function PatientList() {
     // Conflict creation is a bespoke pre-step; the move goes through the shared
     // transition engine (same path as ModulePage + PipelineBoard).
     if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
-      const patientRecordId = patient?._id || referral?.patient?._id;
       const patientCustomId = patient?.id || referral?.patient_id;
       const referralCustomId = referral?.id;
-      const createdByUserRecordId = appUser?._id;
-      if (!patientRecordId || !referralCustomId || !createdByUserRecordId) {
-        showToast('Failed to create Conflict record — not moved', 'error');
+      if (!patientCustomId || !referralCustomId || !appUserId) {
+        showToast('Cannot send to Conflict — missing patient/referral/user linkage', 'error');
         setTransitioning(false);
         return;
       }
       try {
         await flagConflict({
           referral,
-          patientRecordId,
+          patientRecordId: patient?._id || referral?.patient?._id,
           patientCustomId,
           referralCustomId,
-          createdByUserRecordId,
+          createdByUserRecordId: appUser?._id,
           actorUserId: appUserId,
           sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
           category: noteOrPayload.category,
@@ -442,7 +469,7 @@ export default function PatientList() {
         });
       } catch (err) {
         console.error('Conflict create failed:', err);
-        showToast('Failed to create Conflict record — not moved', 'error');
+        showToast(err?.message || 'Failed to create Conflict record — not moved', 'error');
         setTransitioning(false);
         return;
       }
@@ -850,6 +877,25 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
             {referral?.physician_id ? resolvePhysician(referral.physician_id) : '—'}
           </td>
         );
+      case 'post_soc_docs': {
+        const status = documentationFilterStatus(referral);
+        if (status === 'none' || status === 'cleared') {
+          return <td key="post_soc_docs" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        }
+        const daysLeft = daysUntilDocumentationDue(referral);
+        const label = status === 'overdue' ? 'Overdue' : status === 'waiting_docs' ? 'Need F2F' : 'Need clinical';
+        const color = status === 'overdue' ? palette.primaryMagenta.hex : palette.accentOrange.hex;
+        return (
+          <td key="post_soc_docs" style={{ padding: '11px 14px' }} title={referral?.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : 'Deferred docs'}>
+            <span style={{
+              fontSize: 10.5, fontWeight: 750, color, padding: '2px 7px', borderRadius: 20,
+              background: hexToRgba(color, 0.12), border: `1px solid ${hexToRgba(color, 0.3)}`,
+            }}>
+              {label}{daysLeft != null ? ` · ${daysLeft < 0 ? `${Math.abs(daysLeft)}d` : `${daysLeft}d`}` : ''}
+            </span>
+          </td>
+        );
+      }
       default:
         return <td key={col.key} />;
     }

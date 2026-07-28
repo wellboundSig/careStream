@@ -2,20 +2,35 @@
  * handler.js — Lambda entry for wellbound-api (Airtable-compatible data API).
  *
  * Deployed behind an API Gateway HTTP API with TWO route classes:
- *   1. `ANY /{proxy+}`  — JWT authorizer (Clerk OIDC issuer). Claims arrive in
- *      event.requestContext.authorizer.jwt.claims. This is the browser path.
- *   2. `ANY /internal/{proxy+}` — no JWT authorizer; guarded here by
- *      x-internal-key (env INTERNAL_API_KEY). Used by the Clerk-webhook worker
- *      and the field-support worker (no Clerk session). Same handlers.
+ *   1. `ANY /{proxy+}`  — JWT verified in-Lambda (Clerk OIDC).
+ *   2. `ANY /internal/{proxy+}` — guarded by x-internal-key.
  *
- * Every request is access-logged to api_access_log (HIPAA access accounting).
- * Failures to log never fail the request (logged to CloudWatch instead).
+ * Access control (additive, production-safe):
+ *   - Internal callers unrestricted.
+ *   - Revoked / Unassigned users cannot read PHI or write anything.
+ *   - Existing staff with real roles keep prior behavior.
+ *
+ * Rate limits (per warm container, per actor):
+ *   - POST /hydrate: 10/min
+ *   - other routes: 180/min
  */
 
+import { gzipSync } from 'node:zlib';
 import { query } from './db.js';
 import { authenticate } from './clerkJwt.js';
 import { publishChanges } from './events.js';
 import { listRecords, getRecord, createRecords, updateRecords, deleteRecord, metaTables, hydrateTables, invalidateHotCache, ApiError } from './records.js';
+import {
+  resolveCaller,
+  assertCanWrite,
+  assertHasPermission,
+  filterReadResult,
+  filterHydrateResult,
+  AccessDeniedError,
+  LOCKED_READ_ALLOWLIST,
+} from './accessControl.js';
+import { allowHydrate, allowGeneral } from './rateLimit.js';
+import { runOptumEligibilityCheck } from './optumEligibility.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://wellboundcarestream.com',
@@ -26,33 +41,38 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:5174',
 ]);
 
+const GZIP_MIN_BYTES = 1024;
+
 function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.has(origin) ? origin : 'https://wellboundcarestream.com';
   return {
     'Access-Control-Allow-Origin': allow,
-    // PUT included because OPTIONS preflights for /files/upload/* can land on
-    // this Lambda (API GW routes OPTIONS via the ANY catch-all).
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Key',
     'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin',
+    'Vary': 'Origin, Accept-Encoding',
   };
 }
 
-function json(statusCode, body, origin) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-    body: JSON.stringify(body),
-  };
+function acceptsGzip(event) {
+  const ae = event?.headers?.['accept-encoding'] || event?.headers?.['Accept-Encoding'] || '';
+  return String(ae).toLowerCase().includes('gzip');
 }
 
-// Access accounting. The CloudWatch line (synchronous stdout, always flushed)
-// is the authoritative audit record; the api_access_log DB row is the
-// queryable copy and is written WITHOUT await so responses don't pay the
-// ~80-120ms Data API insert on every call. Unawaited inserts complete while
-// the container handles subsequent requests (steady traffic) — worst case a
-// final insert is lost at container teardown, which the CloudWatch line covers.
+function json(statusCode, body, origin, event) {
+  const raw = JSON.stringify(body);
+  const headers = { 'Content-Type': 'application/json', ...corsHeaders(origin) };
+  if (event && acceptsGzip(event) && Buffer.byteLength(raw, 'utf8') >= GZIP_MIN_BYTES) {
+    return {
+      statusCode,
+      isBase64Encoded: true,
+      headers: { ...headers, 'Content-Encoding': 'gzip' },
+      body: gzipSync(raw).toString('base64'),
+    };
+  }
+  return { statusCode, headers, body: raw };
+}
+
 function logAccess({ actorSub, actorUserId, method, table, rowRecId, rowCount, querySummary, status }) {
   const entry = {
     actorSub: actorSub || null, method, table, rowRecId: rowRecId || null,
@@ -69,8 +89,6 @@ function logAccess({ actorSub, actorUserId, method, table, rowRecId, rowCount, q
 }
 
 export async function handler(event) {
-  // EventBridge warmer ping — keeps a container (and its JWKS cache) hot so
-  // real users don't pay cold-start latency.
   if (event?.warmer) return { statusCode: 200, body: 'warm' };
 
   const origin = event.headers?.origin || event.headers?.Origin || '';
@@ -80,81 +98,132 @@ export async function handler(event) {
     return { statusCode: 204, headers: corsHeaders(origin) };
   }
 
-  // ── Resolve caller identity ────────────────────────────────────────────────
-  // Clerk session tokens carry no `aud` claim by default, so verification runs
-  // in-Lambda (clerkJwt.js) rather than relying on an APIGW JWT authorizer.
   let rawPath = event.rawPath || '/';
   let actorSub = null;
+  let claims = null;
 
   if (rawPath.startsWith('/internal/')) {
     const key = event.headers?.['x-internal-key'] || event.headers?.['X-Internal-Key'];
     if (!process.env.INTERNAL_API_KEY || key !== process.env.INTERNAL_API_KEY) {
-      return json(401, { error: { type: 'UNAUTHORIZED', message: 'Invalid internal key' } }, origin);
+      return json(401, { error: { type: 'UNAUTHORIZED', message: 'Invalid internal key' } }, origin, event);
     }
     actorSub = `internal:${event.headers?.['x-internal-caller'] || 'unknown'}`;
     rawPath = rawPath.slice('/internal'.length);
   } else {
-    const claims = await authenticate(event);
+    claims = await authenticate(event);
     if (!claims) {
-      return json(401, { error: { type: 'UNAUTHORIZED', message: 'Missing or invalid token' } }, origin);
+      return json(401, { error: { type: 'UNAUTHORIZED', message: 'Missing or invalid token' } }, origin, event);
     }
     actorSub = claims.sub;
   }
 
-  // Metadata shim (Support's listTablesAndColumns expects /meta/tables).
-  if (rawPath === '/meta/tables' && method === 'GET') {
-    return json(200, metaTables(), origin);
-  }
+  // Pass full JWT claims so accessControl can resolve pk_test (localhost)
+  // sessions by email / fail-open for the test issuer when clerk_user_id
+  // doesn't match the live Users row.
+  const caller = await resolveCaller(actorSub, claims || {});
 
-  // Batched hydrate (Phase 8): whole app boot in one round trip.
-  if (rawPath === '/hydrate' && method === 'POST') {
-    let hydrateBody = null;
-    try { hydrateBody = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : event.body); }
-    catch { return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin); }
-    try {
-      const result = await hydrateTables(hydrateBody?.tables);
-      logAccess({
-        actorSub, method, table: '(hydrate)', rowCount: hydrateBody?.tables?.length, status: 200,
-      });
-      return json(200, result, origin);
-    } catch (err) {
-      const status = err instanceof ApiError ? err.status : 500;
-      if (status === 500) console.error('[wellbound-api hydrate]', err);
-      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin);
+  // Rate limits (skip for internal workers — webhooks / scripts).
+  if (caller.kind !== 'internal') {
+    const ok = rawPath === '/hydrate' && method === 'POST'
+      ? allowHydrate(actorSub)
+      : allowGeneral(actorSub);
+    if (!ok) {
+      logAccess({ actorSub, method, table: rawPath, status: 429 });
+      return json(429, {
+        error: { type: 'RATE_LIMITED', message: 'Too many requests — slow down and retry shortly' },
+      }, origin, event);
     }
   }
 
-  // Strip optional stage prefix and split /{table}[/{recId}]
+  if (rawPath === '/meta/tables' && method === 'GET') {
+    return json(200, metaTables(), origin, event);
+  }
+
+  // Optum real-time eligibility (270/271). Secrets stay on the Lambda.
+  // Deny-by-default: clinical.eligibility_optum_auto (explicit grant only).
+  if (rawPath === '/eligibility/optum-check' && method === 'POST') {
+    try {
+      await assertHasPermission(caller, 'clinical.eligibility_optum_auto');
+      let body = null;
+      try {
+        body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
+      } catch {
+        return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event);
+      }
+      const result = await runOptumEligibilityCheck(body || {});
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(optum-eligibility)',
+        status: result.ok ? 200 : 502,
+      });
+      return json(result.ok ? 200 : 502, result, origin, event);
+    } catch (err) {
+      const status = err instanceof AccessDeniedError ? err.status : 500;
+      if (status === 500) console.error('[wellbound-api optum]', err);
+      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
+  }
+
+  if (rawPath === '/hydrate' && method === 'POST') {
+    let hydrateBody = null;
+    try { hydrateBody = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : event.body); }
+    catch { return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event); }
+    try {
+      if (caller.revoked) throw new AccessDeniedError('Account revoked');
+      const raw = await hydrateTables(hydrateBody?.tables);
+      const result = await filterHydrateResult(caller, raw);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(hydrate)',
+        rowCount: hydrateBody?.tables?.length, status: 200,
+      });
+      return json(200, result, origin, event);
+    } catch (err) {
+      const status = err instanceof AccessDeniedError || err instanceof ApiError ? err.status : 500;
+      if (status === 500) console.error('[wellbound-api hydrate]', err);
+      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
+  }
+
   const parts = rawPath.replace(/^\/+/, '').split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
-    return json(404, { error: { type: 'NOT_FOUND', message: 'Specify a table' } }, origin);
+    return json(404, { error: { type: 'NOT_FOUND', message: 'Specify a table' } }, origin, event);
   }
   const [tableName, recId] = parts;
   const qs = event.queryStringParameters || {};
   let body = null;
   if (event.body) {
     try { body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : event.body); }
-    catch { return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin); }
+    catch { return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event); }
   }
 
   let status = 200;
   let result;
   try {
     if (method === 'GET' && !recId) {
-      result = await listRecords(tableName, qs);
+      result = filterReadResult(caller, tableName, await listRecords(tableName, qs));
     } else if (method === 'GET') {
+      if (caller.locked && caller.kind !== 'internal' && !LOCKED_READ_ALLOWLIST.has(tableName)) {
+        throw new ApiError(404, 'NOT_FOUND', `Record not found`);
+      }
       result = await getRecord(tableName, recId);
+      // Self-scope Users / UserPermissions for locked callers.
+      if (caller.locked && caller.kind !== 'internal') {
+        const filtered = filterReadResult(caller, tableName, { records: [result] });
+        if (!filtered.records?.length) throw new ApiError(404, 'NOT_FOUND', 'Record not found');
+        result = filtered.records[0];
+      }
     } else if (method === 'POST') {
+      assertCanWrite(caller);
       result = await createRecords(tableName, body);
     } else if (method === 'PATCH') {
+      assertCanWrite(caller);
       result = await updateRecords(tableName, recId || null, body);
     } else if (method === 'DELETE' && recId) {
+      assertCanWrite(caller);
       result = await deleteRecord(tableName, recId);
     } else {
       throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Unsupported ${method}`);
     }
 
-    // Realtime push + hot-cache invalidation on every successful write.
     if (method === 'POST' || method === 'PATCH' || method === 'DELETE') {
       invalidateHotCache(tableName);
       const action = method === 'POST' ? 'created' : method === 'PATCH' ? 'updated' : 'deleted';
@@ -162,20 +231,20 @@ export async function handler(event) {
       await publishChanges(ids.map((id) => ({ table: tableName, recId: id, action, actorSub })));
     }
   } catch (err) {
-    status = err instanceof ApiError ? err.status : 500;
-    const type = err instanceof ApiError ? err.type : 'SERVER_ERROR';
+    status = (err instanceof AccessDeniedError || err instanceof ApiError) ? err.status : 500;
+    const type = err.type || (err instanceof AccessDeniedError ? 'FORBIDDEN' : 'SERVER_ERROR');
     if (status === 500) console.error('[wellbound-api]', err);
     logAccess({
-      actorSub, method, table: tableName, rowRecId: recId,
+      actorSub, actorUserId: caller.userId, method, table: tableName, rowRecId: recId,
       querySummary: qs.filterByFormula, status,
     });
-    return json(status, { error: { type, message: err.message } }, origin);
+    return json(status, { error: { type, message: err.message } }, origin, event);
   }
 
   logAccess({
-    actorSub, method, table: tableName, rowRecId: recId,
+    actorSub, actorUserId: caller.userId, method, table: tableName, rowRecId: recId,
     rowCount: result?.records?.length ?? (result?.id ? 1 : null),
     querySummary: qs.filterByFormula, status,
   });
-  return json(status, result, origin);
+  return json(status, result, origin, event);
 }

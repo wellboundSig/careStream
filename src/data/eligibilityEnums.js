@@ -77,15 +77,14 @@ export const VERIFICATION_SOURCE = Object.freeze({
   OTHER:             'other',
 });
 
-// Pickable sources (2026-06 spec): ePACES and eMedNY are the same NY Medicaid
-// system, so they're collapsed into one option; Optum is dropped (Availity
-// covers those checks); Phone/Fax/Other are dropped (any conflict goes through
-// the Conflict module/flow instead). The removed enum constants are kept for
-// back-compat display of legacy records.
+// Pickable sources: ePACES and eMedNY are the same NY Medicaid system, so
+// they're collapsed into one option. Optum is available for Auto Check + manual
+// logging. Phone/Fax/Other stay out of the picker (conflicts go through Conflict).
 export const VERIFICATION_SOURCE_OPTIONS = [
   { value: VERIFICATION_SOURCE.WAYSTAR,           label: 'Waystar',           hint: 'Typically used for straight Medicare' },
   { value: VERIFICATION_SOURCE.AVAILITY,          label: 'Availity',          hint: 'Multi-payer clearinghouse' },
   { value: VERIFICATION_SOURCE.EPACES,            label: 'ePACES / eMedNY',   hint: 'NY Medicaid eligibility portal' },
+  { value: VERIFICATION_SOURCE.OPTUM,             label: 'Optum',             hint: 'Real-time 270/271 Auto Check' },
   { value: VERIFICATION_SOURCE.COMMERCIAL_PORTAL, label: 'Commercial Portal', hint: 'Plan-specific web portal' },
 ];
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import {
+  ACCOUNT_MANAGER_INFO_MENTION_ID,
   filterUsersByQuery,
-  listMentionableUsers,
+  listMentionCandidates,
   userDisplayName,
 } from '../../utils/mentions.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -217,9 +218,12 @@ function serializeEditor(root) {
 
 function createPillEl(user) {
   const label = userDisplayName(user);
+  const special = user?.id === ACCOUNT_MANAGER_INFO_MENTION_ID || user?.isSpecial;
+  const accent = special ? palette.accentOrange.hex : palette.accentBlue.hex;
   const span = document.createElement('span');
   span.setAttribute(PILL_ATTR, user.id);
   span.setAttribute('data-mention-label', label);
+  if (special) span.setAttribute('data-mention-special', '1');
   span.contentEditable = 'false';
   span.textContent = `@${label}`;
   span.style.cssText = [
@@ -230,9 +234,9 @@ function createPillEl(user) {
     'font-weight:650',
     'font-size:0.92em',
     'line-height:1.45',
-    `background:${hexToRgba(palette.accentBlue.hex, 0.12)}`,
-    `color:${palette.accentBlue.hex}`,
-    `box-shadow:inset 0 0 0 1px ${hexToRgba(palette.accentBlue.hex, 0.22)}`,
+    `background:${hexToRgba(accent, 0.12)}`,
+    `color:${accent}`,
+    `box-shadow:inset 0 0 0 1px ${hexToRgba(accent, 0.22)}`,
     'white-space:nowrap',
     'user-select:none',
     'cursor:pointer',
@@ -247,6 +251,8 @@ const MentionComposer = forwardRef(function MentionComposer(
     onSubmit,
     onEmptyChange,
     excludeUserId = null,
+    /** When true, @picker includes “Account manager info” (nurses). */
+    includeAccountManagerInfo = false,
     style = {},
   },
   ref,
@@ -259,8 +265,11 @@ const MentionComposer = forwardRef(function MentionComposer(
   const [isEmpty, setIsEmpty] = useState(true);
 
   const candidates = useMemo(
-    () => listMentionableUsers(storeUsers, { excludeId: excludeUserId }),
-    [storeUsers, excludeUserId],
+    () => listMentionCandidates(storeUsers, {
+      excludeId: excludeUserId,
+      includeAccountManagerInfo,
+    }),
+    [storeUsers, excludeUserId, includeAccountManagerInfo],
   );
 
   const suggestions = useMemo(
@@ -530,12 +539,14 @@ const MentionComposer = forwardRef(function MentionComposer(
               fontSize: 12.5,
               color: hexToRgba(palette.backgroundDark.hex, 0.45),
             }}>
-              No staff match “{menu.query}”
+              No matches for “{menu.query}”
             </div>
           ) : (
             suggestions.map((u, i) => {
               const active = i === (menu.index || 0);
               const name = userDisplayName(u);
+              const special = u.id === ACCOUNT_MANAGER_INFO_MENTION_ID || u.isSpecial;
+              const accent = special ? palette.accentOrange.hex : palette.accentBlue.hex;
               const initials = name
                 .split(' ')
                 .filter(Boolean)
@@ -560,7 +571,7 @@ const MentionComposer = forwardRef(function MentionComposer(
                     padding: '9px 12px',
                     border: 'none',
                     background: active
-                      ? hexToRgba(palette.accentBlue.hex, 0.1)
+                      ? hexToRgba(accent, 0.1)
                       : 'transparent',
                     cursor: 'pointer',
                     textAlign: 'left',
@@ -579,12 +590,12 @@ const MentionComposer = forwardRef(function MentionComposer(
                   ) : (
                     <div style={{
                       width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                      background: hexToRgba(palette.accentBlue.hex, 0.14),
-                      color: palette.accentBlue.hex,
+                      background: hexToRgba(accent, 0.14),
+                      color: accent,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 10.5, fontWeight: 800,
                     }}>
-                      {initials || '?'}
+                      {special ? 'AM' : (initials || '?')}
                     </div>
                   )}
                   <div style={{ minWidth: 0, flex: 1 }}>
@@ -595,13 +606,13 @@ const MentionComposer = forwardRef(function MentionComposer(
                     }}>
                       {name}
                     </p>
-                    {u.email && (
+                    {(u.email || special) && (
                       <p style={{
                         fontSize: 11, margin: '1px 0 0',
                         color: hexToRgba(palette.backgroundDark.hex, 0.45),
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>
-                        {u.email}
+                        {special ? 'Adds note to Pending Log column' : u.email}
                       </p>
                     )}
                   </div>

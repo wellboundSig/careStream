@@ -3,7 +3,14 @@ import palette, { hexToRgba } from '../../utils/colors.js';
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
 import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
-import { setUrgentCare, isUrgentCare } from '../../utils/urgentCare.js';
+import {
+  setUrgentCare,
+  setUrgentCareType,
+  isUrgentCare,
+  getUrgentCareType,
+  urgentCareTypeLabel,
+  URGENT_CARE_TYPE_OPTIONS,
+} from '../../utils/urgentCare.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
 
@@ -127,8 +134,10 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   const flags = computeSnapshotFlags(patient, referral, triageData, insuranceChecks);
   const { appUserId } = useCurrentAppUser();
   const urgent = isUrgentCare(referral);
+  const urgentType = getUrgentCareType(referral);
   const hospDate = recentHospitalizationDate(referral);
   const [busy, setBusy] = useState(false);
+  const [pickType, setPickType] = useState(false);
 
   // We intentionally do NOT gate the toggle on a permission check at the UI
   // layer. The user explicitly asked for the urgent care control to always be
@@ -136,11 +145,12 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   // optimistically updates the store and reverts on rejection. Permission
   // enforcement happens server-side (or via Worker policies) — this UI is the
   // surface, not the guard.
-  async function toggleUrgent() {
+  async function markUrgent(type) {
     if (!referral?._id || busy) return;
     setBusy(true);
     try {
-      await setUrgentCare({ referral, next: !urgent, actorUserId: appUserId });
+      await setUrgentCare({ referral, next: true, actorUserId: appUserId, type });
+      setPickType(false);
     } catch {
       // Optimistic mutation reverts on failure; nothing more to do.
     } finally {
@@ -148,38 +158,153 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
     }
   }
 
+  async function clearUrgent() {
+    if (!referral?._id || busy) return;
+    setBusy(true);
+    try {
+      await setUrgentCare({ referral, next: false, actorUserId: appUserId });
+      setPickType(false);
+    } catch {
+      // no-op
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeType(type) {
+    if (!referral?._id || busy) return;
+    setBusy(true);
+    try {
+      await setUrgentCareType({ referral, type, actorUserId: appUserId });
+    } catch {
+      // no-op
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {/* Urgent care toggle — always rendered, always clickable. */}
-      <button
-        type="button"
-        onClick={toggleUrgent}
-        disabled={busy || !referral?._id}
-        title={urgent ? 'Click to clear the urgent care flag' : 'Click to flag this patient for urgent care'}
+      {/* Urgent care — pick subtype when marking; editable while flagged. */}
+      <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '5px 8px',
           marginBottom: 2,
           borderRadius: 7,
-          border: 'none',
-          textAlign: 'left',
-          cursor: busy ? 'wait' : 'pointer',
           background: urgent ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent',
-          color: urgent ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
-          fontFamily: 'inherit',
-          fontWeight: urgent ? 650 : 550,
-          fontSize: 11.5,
-          transition: 'background 0.12s',
           opacity: busy ? 0.6 : 1,
         }}
-        onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = urgent ? hexToRgba(palette.primaryMagenta.hex, 0.16) : hexToRgba(palette.backgroundDark.hex, 0.05); }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = urgent ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent'; }}
       >
-        <UrgentCareIcon size={13} muted={!urgent} />
-        <span>{urgent ? 'Urgent care required' : 'Mark urgent care'}</span>
-      </button>
+        {urgent ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '5px 8px' }}>
+            <button
+              type="button"
+              onClick={clearUrgent}
+              disabled={busy || !referral?._id}
+              title="Click to clear the urgent care flag"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                border: 'none', background: 'transparent', padding: 0,
+                textAlign: 'left', cursor: busy ? 'wait' : 'pointer',
+                color: palette.primaryMagenta.hex, fontFamily: 'inherit',
+                fontWeight: 650, fontSize: 11.5,
+              }}
+            >
+              <UrgentCareIcon size={13} />
+              <span>
+                Urgent care
+                {urgentType ? ` · ${urgentCareTypeLabel(urgentType)}` : ''}
+              </span>
+            </button>
+            <select
+              value={urgentType}
+              disabled={busy || !referral?._id}
+              onChange={(e) => changeType(e.target.value)}
+              title="Wound care, Insulin, or Both"
+              style={{
+                fontSize: 11.5, fontFamily: 'inherit', padding: '3px 6px',
+                borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`,
+                background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
+                cursor: busy ? 'wait' : 'pointer',
+              }}
+            >
+              <option value="">Type…</option>
+              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        ) : pickType ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 6px' }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+              textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4),
+              padding: '2px 2px 4px',
+            }}>
+              Mark urgent care
+            </div>
+            {URGENT_CARE_TYPE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                disabled={busy || !referral?._id}
+                onClick={() => markUrgent(o.value)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '5px 6px', borderRadius: 6, border: 'none',
+                  background: 'transparent', textAlign: 'left',
+                  cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                  fontSize: 11.5, fontWeight: 600,
+                  color: hexToRgba(palette.backgroundDark.hex, 0.7),
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.1); }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <UrgentCareIcon size={12} muted />
+                {o.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPickType(false)}
+              style={{
+                border: 'none', background: 'transparent', padding: '4px 6px',
+                fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4),
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPickType(true)}
+            disabled={busy || !referral?._id}
+            title="Click to flag this patient for urgent care"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '5px 8px',
+              borderRadius: 7,
+              border: 'none',
+              textAlign: 'left',
+              cursor: busy ? 'wait' : 'pointer',
+              background: 'transparent',
+              color: hexToRgba(palette.backgroundDark.hex, 0.5),
+              fontFamily: 'inherit',
+              fontWeight: 550,
+              fontSize: 11.5,
+              width: '100%',
+            }}
+            onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05); }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <UrgentCareIcon size={13} muted />
+            <span>Mark urgent care</span>
+          </button>
+        )}
+      </div>
 
       {/* Recent hospitalization indicator — shown when the cursory review
           flagged a hospitalization within the last 14 days. Informational

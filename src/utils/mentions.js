@@ -1,12 +1,31 @@
 /**
  * Note @mention tokens: @[Display Name](user_id)
  * Stable for storage, parseable for pills + notification fan-out.
+ *
+ * Special (non-user) targets use ids under `special:` — e.g. Account manager
+ * info, which routes the note body into the Pending Log column.
  */
 
 export const MENTION_TOKEN_RE = /@\[([^\]]+)\]\(([^)\s]+)\)/g;
 
+/** Synthetic mention target — routes note text to referral.account_manager_info. */
+export const ACCOUNT_MANAGER_INFO_MENTION_ID = 'special:account_manager_info';
+
+export const ACCOUNT_MANAGER_INFO_MENTION = {
+  id: ACCOUNT_MANAGER_INFO_MENTION_ID,
+  first_name: 'Account manager',
+  last_name: 'info',
+  status: 'Active',
+  isSpecial: true,
+};
+
+export function isSpecialMentionId(id) {
+  return typeof id === 'string' && id.startsWith('special:');
+}
+
 export function userDisplayName(user) {
   if (!user) return 'Unknown';
+  if (user.id === ACCOUNT_MANAGER_INFO_MENTION_ID) return 'Account manager info';
   const name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
   return name || user.email || user.id || 'Unknown';
 }
@@ -18,7 +37,7 @@ export function serializeMention(user) {
   return `@[${label}](${id})`;
 }
 
-/** Unique user ids mentioned in content (order preserved). */
+/** Unique mention target ids in content (users + specials; order preserved). */
 export function extractMentionUserIds(content) {
   if (!content) return [];
   const ids = [];
@@ -32,6 +51,15 @@ export function extractMentionUserIds(content) {
     ids.push(id);
   }
   return ids;
+}
+
+/** User ids only — excludes special: targets (for notification fan-out). */
+export function extractUserMentionIds(content) {
+  return extractMentionUserIds(content).filter((id) => !isSpecialMentionId(id));
+}
+
+export function mentionMentionsAccountManagerInfo(content) {
+  return extractMentionUserIds(content).includes(ACCOUNT_MANAGER_INFO_MENTION_ID);
 }
 
 /**
@@ -76,6 +104,20 @@ export function listMentionableUsers(usersMap, { excludeId = null } = {}) {
     });
 }
 
+/**
+ * Mention picker candidates: optional special targets first, then Active staff.
+ * @param {object} usersMap
+ * @param {{ excludeId?: string|null, includeAccountManagerInfo?: boolean }} [opts]
+ */
+export function listMentionCandidates(usersMap, {
+  excludeId = null,
+  includeAccountManagerInfo = false,
+} = {}) {
+  const users = listMentionableUsers(usersMap, { excludeId });
+  if (!includeAccountManagerInfo) return users;
+  return [ACCOUNT_MANAGER_INFO_MENTION, ...users];
+}
+
 export function filterUsersByQuery(users, query) {
   const q = (query || '').trim().toLowerCase();
   if (!q) return users.slice(0, 8);
@@ -83,6 +125,13 @@ export function filterUsersByQuery(users, query) {
     .filter((u) => {
       const full = userDisplayName(u).toLowerCase();
       const email = (u.email || '').toLowerCase();
+      // Match common shorthand for the AM target ("account", "am", "manager")
+      if (u.id === ACCOUNT_MANAGER_INFO_MENTION_ID) {
+        return full.includes(q)
+          || 'account manager info'.includes(q)
+          || 'am'.startsWith(q)
+          || q === 'am';
+      }
       return full.includes(q) || email.includes(q) || (u.id || '').toLowerCase().includes(q);
     })
     .slice(0, 8);

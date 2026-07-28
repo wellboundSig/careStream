@@ -6,10 +6,9 @@ import { CONFLICT_SOURCE_MODULE, CONFLICT_REASON_OPTIONS } from '../data/eligibi
 import { managedConflictCategoryLabel } from '../data/conflictCategories.js';
 
 // Conflict severity (2026-06-12): consolidated from 4 levels (Low/Medium/High/
-// Critical) down to 2 (Low/High). The Airtable column is `multilineText`, so
-// the DB itself doesn't constrain values — legacy rows still hold Medium /
-// Critical strings. Use `normalizeSeverity` at every DISPLAY site to fold
-// those legacy values into the new 2-level scale (Medium → Low,
+// Critical) down to 2 (Low/High). Aurora stores plain text — legacy rows still
+// hold Medium / Critical strings. Use `normalizeSeverity` at every DISPLAY site
+// to fold those legacy values into the new 2-level scale (Medium → Low,
 // Critical → High) so the UI never shows the retired labels.
 export const CONFLICT_SEVERITY = Object.freeze({
   LOW: 'Low',
@@ -36,12 +35,7 @@ export function normalizeSeverity(severity) {
   return severity;
 }
 
-/**
- * Mint a domain id for a Conflict row. The Airtable `id` column on
- * Conflicts is plain text (not auto-numbered), so we generate one
- * here in the same shape used elsewhere in the codebase
- * (e.g. `note_<timestamp>_<rand>`).
- */
+/** Mint a domain id for a Conflict row (`conflicts.id` text on Aurora). */
 export function generateConflictId() {
   return `conf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -177,16 +171,16 @@ export function inferConflictSourceModuleFromStage(stage) {
 }
 
 /**
- * Create a Conflict record + audit log entry.
+ * Create a Conflict record + audit log entry on Aurora.
  *
- * - `patient_id` and `created_by_id` are Airtable record IDs (rec...).
- * - `referral_id` is the referral custom id (ref_...).
+ * - `patient_id` / `created_by_id` are business ids (pat_… / usr_…).
+ * - `referral_id` is the referral business id (ref_…).
  */
 export async function flagConflict({
   referral,
-  patientRecordId, // legacy arg (ignored; Conflicts.patient_id is text)
+  patientRecordId, // legacy arg (ignored; conflicts.patient_id is pat_… text)
   referralCustomId,
-  createdByUserRecordId, // legacy arg (ignored; Conflicts.created_by_id is text)
+  createdByUserRecordId, // legacy arg (ignored; conflicts.created_by_id is usr_… text)
   actorUserId,
   patientCustomId,
   sourceModule,
@@ -200,36 +194,27 @@ export async function flagConflict({
     ? sourceModule
     : CONFLICT_SOURCE_MODULE.OTHER;
 
-  // Guardrail: if some caller accidentally passes patient ids into a single-select field,
-  // coerce to a valid option instead of triggering Airtable "create new option" errors.
+  // Guardrail: never store a patient id in source_module.
   const normalizedSourceModule = (safeSourceModule || '').startsWith('pat_')
     ? CONFLICT_SOURCE_MODULE.OTHER
     : safeSourceModule;
 
   const record = {
-    // Domain id (the visible primary key column on Conflicts).
-    // Airtable doesn't auto-generate this, so we mint one here.
     id: generateConflictId(),
-    // Live Airtable schema: patient_id is singleLineText (stores pat_###)
     patient_id: patientCustomId,
     referral_id: referralCustomId,
     source_module: normalizedSourceModule,
-    // source_stage captures the EXACT stage the patient was on at the moment
-    // the conflict was created so "Resolve and Return to Source" can ship
-    // them back. Added 2026-05-20 alongside Conflicts.source_stage column.
+    // source_stage = stage at flag time (for Resolve & Return to Source).
     ...(referral?.current_stage ? { source_stage: referral.current_stage } : {}),
     type: category,
     severity,
     description,
-    // New writes default to "Open" (added to Conflicts.status enum 2026-05-20).
-    // Legacy rows may show "Unaddressed" or "In Progress" — UI treats all of
-    // those as actionable. See ConflictPanel for the rendering logic.
+    // New writes default to "Open". Legacy rows may show "Unaddressed" /
+    // "In Progress" — UI treats all of those as actionable.
     status: 'Open',
     flagged_by_id: actorUserId || 'unknown',
-    // Live Airtable schema: conflict_reasons is multilineText (store comma-separated or single)
     conflict_reasons: category,
     details: description,
-    // Live Airtable schema: created_by_id is singleLineText (stores usr_###)
     created_by_id: actorUserId || 'unknown',
     resolution_status: 'open',
     created_at: now,
