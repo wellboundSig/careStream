@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { STAGE_SLUGS, STAGE_META, ROLE_MODES, ALL_STAGES } from '../stageConfig.js';
+import { STAGE_SLUGS, STAGE_META, ROLE_MODES, ALL_STAGES, isSocCompletedReferral } from '../stageConfig.js';
 import StageRules from '../StageRules.json';
 import { PANE_NAV } from '../paneRoutes.js';
 
@@ -90,5 +90,37 @@ describe('SOC consolidation — metrics compatibility', () => {
     expect(StageRules.stages['Pre-SOC'].terminal).toBe(false);
     expect(StageRules.stages['SOC Scheduled'].terminal).toBe(false);
     expect(StageRules.stages['SOC Completed'].terminal).toBe(true);
+  });
+});
+
+describe('SOC Completed concurrent membership (soc_completed_date)', () => {
+  it('counts stage SOC Completed', () => {
+    expect(isSocCompletedReferral({ current_stage: 'SOC Completed' })).toBe(true);
+  });
+
+  it('keeps patients with a completion stamp when current_stage returns to Intake', () => {
+    expect(isSocCompletedReferral({
+      current_stage: 'Intake',
+      soc_completed_date: '2026-07-20',
+    })).toBe(true);
+    expect(STAGE_META['SOC Completed'].matchReferral({
+      current_stage: 'Intake',
+      soc_completed_date: '2026-07-20',
+    })).toBe(true);
+  });
+
+  it('does not count Intake without a completion stamp', () => {
+    expect(isSocCompletedReferral({ current_stage: 'Intake' })).toBe(false);
+  });
+
+  it('drops NTUC / Discarded even if a stamp remains', () => {
+    expect(isSocCompletedReferral({
+      current_stage: 'NTUC',
+      soc_completed_date: '2026-07-20',
+    })).toBe(false);
+    expect(isSocCompletedReferral({
+      current_stage: 'Discarded Leads',
+      soc_completed_date: '2026-07-20',
+    })).toBe(false);
   });
 });

@@ -26,6 +26,8 @@ import PhysicianTab from './tabs/PhysicianTab.jsx';
 import FilePreviewPane from '../common/FilePreviewPane.jsx';
 import FileSourceProviderBadge from '../common/FileSourceProviderBadge.jsx';
 import { openSignedFile } from '../../utils/r2Upload.js';
+import { ageFromDob, daysUntilCalendarDate, fmtCalendarDate } from '../../utils/dateFormat.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 
 const HEADER_TEXT = '#F7F7FA';
 
@@ -39,6 +41,23 @@ export const DRAWER_TABS = [
   { id: 'notes', label: 'Notes' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'files', label: 'Files' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'clinical_review', label: 'Clinical Review' },
+  { id: 'authorizations', label: 'Auth' },
+  { id: 'conflicts', label: 'Conflicts' },
+];
+
+/** Mobile tab order — Files & Notes first after Referral for thumb reach. */
+const MOBILE_DRAWER_TABS = [
+  { id: 'overview', label: 'Referral' },
+  { id: 'files', label: 'Files' },
+  { id: 'notes', label: 'Notes' },
+  { id: 'demographics', label: 'Demographics' },
+  { id: 'f2f', label: 'Face to Face' },
+  { id: 'triage', label: 'Triage' },
+  { id: 'physician', label: 'Physician' },
+  { id: 'eligibility', label: 'Eligibility' },
+  { id: 'timeline', label: 'Timeline' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'clinical_review', label: 'Clinical Review' },
   { id: 'authorizations', label: 'Auth' },
@@ -61,14 +80,10 @@ const TAB_EDIT_PERMISSIONS = {
   conflicts:       PERMISSION_KEYS.SNAPSHOT_EDIT_CONFLICTS,
 };
 
-function calcAge(dob) {
-  if (!dob) return null;
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
-}
-
 function getF2FStatus(f2fExpiration) {
   if (!f2fExpiration) return null;
-  const days = Math.ceil((new Date(f2fExpiration) - Date.now()) / 86400000);
+  const days = daysUntilCalendarDate(f2fExpiration);
+  if (days == null) return null;
   if (days < 0) return { label: 'F2F Expired', color: palette.primaryMagenta.hex, days };
   if (days <= 7) return { label: `F2F ${days}d`, color: palette.primaryMagenta.hex, days };
   if (days <= 14) return { label: `F2F ${days}d`, color: palette.accentOrange.hex, days };
@@ -81,6 +96,8 @@ export default function PatientDrawer() {
     isOpen, patient: ctxPatient, referral: ctxReferral, activeTab, setActiveTab, close,
     sideFile, clearSideFile,
   } = usePatientDrawer();
+  const isMobile = useIsMobile();
+  const tabs = isMobile ? MOBILE_DRAWER_TABS : DRAWER_TABS;
 
   // The drawer context only tracks WHICH patient/referral is open (captured at
   // open() time). The DATA shown must come from the live zustand store —
@@ -135,15 +152,15 @@ export default function PatientDrawer() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
         e.preventDefault();
         setActiveTab((current) => {
-          const idx = DRAWER_TABS.findIndex((t) => t.id === current);
-          const next = e.key === 'ArrowRight' ? (idx + 1) % DRAWER_TABS.length : (idx - 1 + DRAWER_TABS.length) % DRAWER_TABS.length;
-          return DRAWER_TABS[next].id;
+          const idx = tabs.findIndex((t) => t.id === current);
+          const next = e.key === 'ArrowRight' ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
+          return tabs[next].id;
         });
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, close, setActiveTab, sideFile, clearSideFile]);
+  }, [isOpen, close, setActiveTab, sideFile, clearSideFile, tabs]);
 
   // Tab completeness — computed from patient + referral + store data
   const storeInsChecks = useCareStore((s) => s.insuranceChecks);
@@ -183,7 +200,7 @@ export default function PatientDrawer() {
       if (!triageRecord) {
         result.triage = false;
       } else {
-        const age = calcAge(p.dob);
+        const age = ageFromDob(p.dob);
         const type = age !== null && age < 18 ? 'pediatric' : 'adult';
         const check = isTriageComplete(triageRecord, type);
         result.triage = check.complete === true && check.missing.length === 0;
@@ -238,8 +255,10 @@ export default function PatientDrawer() {
   if (!visible) return null;
 
   const f2f = referral ? getF2FStatus(referral.f2f_expiration) : null;
-  const age = patient ? calcAge(patient.dob) : null;
-  const split = !!sideFile;
+  const age = patient ? ageFromDob(patient.dob) : null;
+  // Desktop: side-by-side preview. Mobile: full-screen file overlay (below).
+  const split = !!sideFile && !isMobile;
+  const mobileFileOpen = !!sideFile && isMobile;
 
   return (
     <>
@@ -250,17 +269,18 @@ export default function PatientDrawer() {
           top: 0,
           right: 0,
           bottom: 0,
-          left: split ? 0 : 'auto',
-          width: split ? '100vw' : 'min(560px, 100vw)',
+          left: (split || isMobile) ? 0 : 'auto',
+          width: (split || isMobile) ? '100vw' : 'min(560px, 100vw)',
           background: split ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
           zIndex: 1001,
           display: 'flex',
           flexDirection: 'row',
-          boxShadow: split ? 'none' : `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-          transform: animated ? 'translateX(0)' : (split ? 'none' : 'translateX(100%)'),
-          transition: split ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: (split || isMobile) ? 'none' : `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+          transform: animated ? 'translateX(0)' : ((split || isMobile) ? 'none' : 'translateX(100%)'),
+          transition: (split || isMobile) ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           overflow: 'hidden',
           opacity: animated ? 1 : 0,
+          paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
         }}
       >
         {split && (
@@ -348,27 +368,78 @@ export default function PatientDrawer() {
           minWidth: split ? 320 : 0,
           boxShadow: split ? `-6px 0 24px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
         }}>
-          <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} />
-          <ScrollableTabBar tabs={DRAWER_TABS} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} isMobile={isMobile} />
+          <ScrollableTabBar tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
             {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
           </div>
         </div>
       </div>
+
+      {/* Mobile: full-screen file viewer over the patient sheet */}
+      {mobileFileOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1002,
+          background: palette.backgroundLight.hex,
+          display: 'flex', flexDirection: 'column',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            padding: '12px 14px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0,
+          }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+                Document
+              </p>
+              <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sideFile.file_name || 'File'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => openSignedFile(sideFile)}
+                style={{
+                  padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  background: hexToRgba(palette.primaryDeepPlum.hex, 0.08),
+                  color: palette.primaryDeepPlum.hex, fontSize: 13, fontWeight: 650,
+                }}
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                onClick={clearSideFile}
+                style={{
+                  padding: '8px 12px', borderRadius: 8, border: `1px solid var(--color-border)`, cursor: 'pointer',
+                  background: hexToRgba(palette.backgroundDark.hex, 0.04),
+                  color: hexToRgba(palette.backgroundDark.hex, 0.65), fontSize: 13, fontWeight: 650,
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <FilePreviewPane file={sideFile} fill />
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNewTask }) {
+function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNewTask, isMobile }) {
   const name = patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Unknown Patient';
   return (
-    <div style={{ background: palette.primaryDeepPlum.hex, padding: '16px 20px 14px', flexShrink: 0 }}>
+    <div style={{ background: palette.primaryDeepPlum.hex, padding: isMobile ? '14px 16px 12px' : '16px 20px 14px', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: HEADER_TEXT, lineHeight: 1.2, marginBottom: 4, wordBreak: 'break-word' }}>{name}</h2>
+          <h2 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: HEADER_TEXT, lineHeight: 1.2, marginBottom: 4, wordBreak: 'break-word' }}>{name}</h2>
           {patient?.dob && (
             <p style={{ fontSize: 12, color: hexToRgba(HEADER_TEXT, 0.55), marginBottom: 0 }}>
-              {new Date(patient.dob).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              {fmtCalendarDate(patient.dob)}
               {age !== null && ` · Age ${age}`}
               {patient.gender && ` · ${patient.gender}`}
             </p>
@@ -393,9 +464,25 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
         {f2f && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: hexToRgba(f2f.color, 0.28), color: f2f.color }}>{f2f.label}</span>}
       </div>
       <div style={{ display: 'flex', gap: 7, marginTop: 14 }}>
-        {[{ label: 'Add Note', tab: 'notes' }, { label: 'Files', tab: 'files' }, { label: '+ Task', tab: 'tasks', action: 'new' }].map((a) => (
+        {(isMobile
+          ? [{ label: 'Files', tab: 'files' }, { label: 'Notes', tab: 'notes' }, { label: '+ Task', tab: 'tasks', action: 'new' }]
+          : [{ label: 'Add Note', tab: 'notes' }, { label: 'Files', tab: 'files' }, { label: '+ Task', tab: 'tasks', action: 'new' }]
+        ).map((a) => (
           <button key={a.tab} onClick={() => a.action === 'new' ? onNewTask() : setActiveTab(a.tab)}
-            style={{ height: 28, padding: '0 12px', borderRadius: 7, background: hexToRgba(HEADER_TEXT, 0.1), border: 'none', fontSize: 12, fontWeight: 600, color: hexToRgba(HEADER_TEXT, 0.85), cursor: 'pointer', transition: 'background 0.12s' }}
+            style={{
+              flex: isMobile ? 1 : undefined,
+              height: isMobile ? 36 : 28,
+              padding: '0 12px',
+              borderRadius: 7,
+              background: hexToRgba(HEADER_TEXT, 0.1),
+              border: 'none',
+              fontSize: isMobile ? 13 : 12,
+              fontWeight: 650,
+              color: hexToRgba(HEADER_TEXT, 0.85),
+              cursor: 'pointer',
+              transition: 'background 0.12s',
+              WebkitTapHighlightColor: 'transparent',
+            }}
             onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.35))}
             onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(HEADER_TEXT, 0.1))}
           >{a.label}</button>

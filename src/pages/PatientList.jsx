@@ -28,6 +28,7 @@ import {
   documentationFilterStatus,
   daysUntilDocumentationDue,
 } from '../utils/documentationDeferred.js';
+import { useIsMobile } from '../hooks/useIsMobile.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
 
@@ -209,6 +210,7 @@ export default function PatientList() {
   const { division } = useOutletContext();
   const { data: patients, loading: pLoading } = usePatients();
   const { data: enriched, loading: eLoading } = usePipelineData();
+  const isMobile = useIsMobile();
   const {
     resolveMarketer,
     resolveSource,
@@ -217,7 +219,7 @@ export default function PatientList() {
     resolveUser,
     resolveEntity = (id) => id || '—',
   } = useLookups();
-  const { open: openDrawer } = usePatientDrawer();
+  const { open: openPatient } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
   const location = useLocation();
   const { can, hasDivision } = usePermissions();
@@ -516,6 +518,149 @@ export default function PatientList() {
 
   if (pLoading || eLoading) return <LoadingState message="Loading patients…" />;
 
+  // ── Mobile: searchable card list → patient sheet (files / notes) ───────────
+  if (isMobile) {
+    return (
+      <>
+        {showNewReferral && (
+          <NewReferralForm
+            onClose={() => setShowNewReferral(false)}
+            onSuccess={({ patient, referral }) => {
+              triggerDataRefresh();
+              setShowNewReferral(false);
+              openPatient(patient, referral, 'files');
+            }}
+          />
+        )}
+        <div style={{ padding: '14px 14px 24px' }}>
+          <div style={{ marginBottom: 12 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 750, color: palette.backgroundDark.hex, margin: '0 0 2px' }}>Patients</h1>
+            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0 }}>
+              {filtered.length} patients · tap for files & notes
+            </p>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: hexToRgba(palette.backgroundDark.hex, 0.04),
+            border: `1px solid var(--color-border)`,
+            borderRadius: 10, padding: '0 12px', height: 44, marginBottom: 10,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" />
+              <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, Medicaid, Medicare…"
+              style={{
+                background: 'none', border: 'none', outline: 'none', flex: 1,
+                fontSize: 15, color: palette.backgroundDark.hex, fontFamily: 'inherit',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <select
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              style={{
+                height: 36, padding: '0 10px', borderRadius: 8, flex: '1 1 auto', minWidth: 140,
+                border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex,
+                fontSize: 13, fontFamily: 'inherit', color: palette.backgroundDark.hex,
+              }}
+            >
+              <option value="">All stages</option>
+              {ALL_STAGE_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              height: 36, padding: '0 12px', borderRadius: 8,
+              border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex,
+              fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6),
+            }}>
+              <input type="checkbox" checked={showActive} onChange={(e) => setShowActive(e.target.checked)} style={{ accentColor: palette.primaryMagenta.hex }} />
+              Active
+            </label>
+          </div>
+
+          {filtered.length === 0 ? (
+            <EmptyState title="No patients found" subtitle={search ? 'Try a different search.' : 'No patient records yet.'} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filtered.map((row) => {
+                const ref = refByPatientId[row.id];
+                const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.id;
+                return (
+                  <article
+                    key={row._id || row.id}
+                    style={{
+                      background: palette.backgroundLight.hex,
+                      borderRadius: 14,
+                      border: `1px solid var(--color-border)`,
+                      overflow: 'hidden',
+                      boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.04)}`,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openPatient(buildPatient(row), ref, 'files')}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                        background: 'transparent', padding: '14px 14px 10px', cursor: 'pointer',
+                        fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                        <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>{name}</p>
+                        {ref?.current_stage && <StageBadge stage={ref.current_stage} size="small" />}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
+                        <DivisionBadge division={row.division || ref?.division} size="small" />
+                        {ref?.referral_date && (
+                          <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                            {fmtDate(ref.referral_date)}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                    <div style={{
+                      display: 'flex', borderTop: `1px solid var(--color-border)`,
+                      background: hexToRgba(palette.backgroundDark.hex, 0.015),
+                    }}>
+                      {[
+                        { label: 'Open', tab: 'overview', primary: true },
+                        { label: 'Files', tab: 'files' },
+                        { label: 'Notes', tab: 'notes' },
+                      ].map((a, i, arr) => (
+                        <button
+                          key={a.tab}
+                          type="button"
+                          onClick={() => openPatient(buildPatient(row), ref, a.tab)}
+                          style={{
+                            flex: 1, height: 44, border: 'none',
+                            borderRight: i < arr.length - 1 ? `1px solid var(--color-border)` : 'none',
+                            background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 13, fontWeight: a.primary ? 750 : 650,
+                            color: a.primary ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+                            WebkitTapHighlightColor: 'transparent',
+                          }}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div style={{ padding: '22px 28px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={() => contextMenu && setContextMenu(null)}>
@@ -653,7 +798,7 @@ export default function PatientList() {
                         totalDays={totalDays}
                         resolvers={resolvers}
                         activeColumns={activeColumns}
-                        onDoubleClick={() => openDrawer(buildPatient(patient), ref || null)}
+                        onDoubleClick={() => openPatient(buildPatient(patient), ref || null)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({
@@ -691,8 +836,8 @@ export default function PatientList() {
               referral_id: r?.id || null,
             }}
             canChangeOwner={canChangeIntakeOwner}
-            onOpen={() => { if (p) openDrawer(buildPatient(p), r || null); setContextMenu(null); }}
-            onTriage={() => { if (p) openDrawer(buildPatient(p), r || null, 'triage'); setContextMenu(null); }}
+            onOpen={() => { if (p) openPatient(buildPatient(p), r || null); setContextMenu(null); }}
+            onTriage={() => { if (p) openPatient(buildPatient(p), r || null, 'triage'); setContextMenu(null); }}
             onNote={() => { if (p) setNoteTarget({ patient: p, referral: r }); setContextMenu(null); }}
             onChangeOwner={() => {
               if (r) setChangeOwnerTarget({ referral: r, patientName: contextMenu.patientName });
@@ -734,7 +879,7 @@ export default function PatientList() {
           onClose={() => setShowNewReferral(false)}
           onSuccess={({ patient, referral }) => {
             triggerDataRefresh();
-            openDrawer(buildPatient(patient), referral);
+            openPatient(buildPatient(patient), referral);
           }}
         />
       )}

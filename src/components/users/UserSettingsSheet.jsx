@@ -17,6 +17,7 @@ import PermissionChecklist from './PermissionChecklist.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { isSocCompletedReferral } from '../../data/stageConfig.js';
 
 const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
 const ALL_PERM_KEYS = Object.values(PERMISSION_KEYS);
@@ -175,7 +176,7 @@ export default function UserSettingsSheet({
   const roleName = resolveRole(user.role_id);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
   const activeCases = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
-  const completed = referrals.filter((r) => r.current_stage === 'SOC Completed');
+  const completed = referrals.filter((r) => isSocCompletedReferral(r));
   const ntuc = referrals.filter((r) => r.current_stage === 'NTUC');
 
   async function confirmRoleChange(choice) {

@@ -10,6 +10,13 @@ import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/confl
 import { STAGE_META } from '../data/stageConfig.js';
 
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
+
+/** Prefer STAGE_META.matchReferral so concurrent stages (e.g. SOC Completed) stay visible. */
+function cardsForStage(stage, referrals) {
+  const match = STAGE_META[stage]?.matchReferral;
+  if (typeof match === 'function') return referrals.filter(match);
+  return referrals.filter((r) => r.current_stage === stage);
+}
 import ContextMenu from '../components/pipeline/ContextMenu.jsx';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
@@ -328,7 +335,7 @@ export default function PipelineBoard() {
                   <PipelineStage
                     key={stage}
                     stage={stage}
-                    cards={filtered.filter((r) => r.current_stage === stage)}
+                    cards={cardsForStage(stage, filtered)}
                     canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
                     isBeingDragged={(id) => id === draggingId}
                     activeDragFromStage={draggingFrom}
@@ -349,7 +356,7 @@ export default function PipelineBoard() {
             <RowGroupLabel label={SPECIAL_GROUP.label} color={SPECIAL_GROUP.color} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, minHeight: 80 }}>
               {SPECIAL_GROUP.stages.map((stage) => (
-                <PipelineStage key={stage} stage={stage} cards={filtered.filter((r) => r.current_stage === stage)} canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false} isBeingDragged={(id) => id === draggingId} activeDragFromStage={draggingFrom} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onContextMenu={handleContextMenu} onDrop={handleDrop} onInitiateTransition={initiateTransition} />
+                <PipelineStage key={stage} stage={stage} cards={cardsForStage(stage, filtered)} canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false} isBeingDragged={(id) => id === draggingId} activeDragFromStage={draggingFrom} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onContextMenu={handleContextMenu} onDrop={handleDrop} onInitiateTransition={initiateTransition} />
               ))}
             </div>
           </section>
@@ -362,7 +369,7 @@ export default function PipelineBoard() {
                 <PipelineStage
                   key={stage}
                   stage={stage}
-                  cards={filtered.filter((r) => r.current_stage === stage)}
+                  cards={cardsForStage(stage, filtered)}
                   canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
                   isBeingDragged={(id) => id === draggingId}
                   activeDragFromStage={draggingFrom}

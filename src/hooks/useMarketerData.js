@@ -3,6 +3,7 @@ import { getReferrals } from '../api/referrals.js';
 import { getMarketerFacilities, getFacilities } from '../api/marketerFacilities.js';
 import { useCareStore } from '../store/careStore.js';
 import airtable from '../api/airtable.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 export function useMarketerData(marketer) {
   const [referrals, setReferrals] = useState([]);
@@ -58,12 +59,13 @@ export function useMarketerData(marketer) {
       .finally(() => setLoading(false));
   }, [marketer?.id]);
 
+  const admittedCount = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const stats = {
     total:      referrals.length,
     active:     referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
-    admitted:   referrals.filter((r) => r.current_stage === 'SOC Completed').length,
+    admitted:   admittedCount,
     ntuc:       referrals.filter((r) => r.current_stage === 'NTUC').length,
-    convRate:   referrals.length ? Math.round((referrals.filter((r) => r.current_stage === 'SOC Completed').length / referrals.length) * 100) : 0,
+    convRate:   referrals.length ? Math.round((admittedCount / referrals.length) * 100) : 0,
     lastReferral: referrals.reduce((latest, r) => {
       if (!r.referral_date) return latest;
       return !latest || new Date(r.referral_date) > new Date(latest) ? r.referral_date : latest;

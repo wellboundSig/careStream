@@ -241,35 +241,59 @@ export default function PhysicianPicker({ physicianId, physicianName, onChange, 
   // ── SELECTED MODE ────────────────────────────────────────────────────────────
   if (mode === 'selected' && selected) {
     const addr = selected._notInDb ? null : phyAddress(selected);
+    // Neutral selected card — no tinted overlays (readable in nested forms).
     return (
-      <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.4)}`, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: compact ? '8px 12px' : '10px 14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+      <div style={{
+        borderRadius: 8,
+        border: `1px solid var(--color-border)`,
+        background: palette.backgroundLight.hex,
+        padding: compact ? '9px 12px' : '10px 14px',
+        boxShadow: `inset 3px 0 0 ${palette.primaryDeepPlum.hex}`,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke={palette.accentGreen.hex} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex }}>
                 {selected._notInDb ? selected.display : phyDisplayName(selected)}
               </span>
               {selected.npi && !selected._notInDb && (
-                <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), background: hexToRgba(palette.backgroundDark.hex, 0.06), padding: '1px 6px', borderRadius: 4 }}>NPI {selected.npi}</span>
+                <span style={{
+                  fontSize: 10.5, fontWeight: 600, letterSpacing: '0.02em',
+                  color: hexToRgba(palette.backgroundDark.hex, 0.5),
+                  border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.12)}`,
+                  padding: '1px 6px', borderRadius: 4,
+                }}>
+                  NPI {selected.npi}
+                </span>
               )}
             </div>
             {!selected._notInDb && (selected.phone || selected.fax) && (
-              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginTop: 1 }}>
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginTop: 3 }}>
                 {selected.phone && `Ph: ${selected.phone}`}
                 {selected.phone && selected.fax && '  ·  '}
                 {selected.fax && `Fax: ${selected.fax}`}
               </p>
             )}
-            {addr && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 1 }}>{addr}</p>}
+            {addr && (
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
+                {addr}
+              </p>
+            )}
           </div>
           <button
+            type="button"
             onClick={handleClear}
-            style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = palette.primaryMagenta.hex)}
-            onMouseLeave={(e) => (e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.45))}
+            style={{
+              fontSize: 12, fontWeight: 600,
+              color: hexToRgba(palette.backgroundDark.hex, 0.5),
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '2px 0', flexShrink: 0, whiteSpace: 'nowrap',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = palette.primaryMagenta.hex; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = hexToRgba(palette.backgroundDark.hex, 0.5); }}
           >
-            × Change
+            Change
           </button>
         </div>
       </div>

@@ -27,6 +27,7 @@ import { updateReferralOptimistic, createNoteOptimistic } from '../../../store/m
 import { useCareStore, mergeEntities } from '../../../store/careStore.js';
 import palette, { hexToRgba }  from '../../../utils/colors.js';
 import { oooOptionSuffix } from '../../../utils/outOfOffice.js';
+import { fmtCalendarDateShort } from '../../../utils/dateFormat.js';
 
 import {
   INSURANCE_CATEGORY,
@@ -542,7 +543,7 @@ export default function EligibilityWorkspace({
                 {f.note}
               </p>
               <p style={{ fontSize: t.fontMuted, color: '#888', marginTop: 2 }}>
-                Follow-up {f.follow_up_date ? new Date(f.follow_up_date).toLocaleDateString() : 'TBD'}
+                Follow-up {f.follow_up_date ? fmtCalendarDateShort(f.follow_up_date, 'TBD') : 'TBD'}
                 {f.follow_up_owner_user_id ? ` · ${resolveUser(f.follow_up_owner_user_id)}` : ''}
               </p>
             </div>

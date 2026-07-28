@@ -22,6 +22,7 @@ import {
   ORDER_RANK,
   BILLING_MODEL,
 } from '../eligibilityEnums.js';
+import { ageFromDob } from '../../utils/dateFormat.js';
 
 // ── normalizeInsuranceCategory ───────────────────────────────────────────────
 /**
@@ -146,14 +147,7 @@ export function deriveSuggestedBillingModel({ category, dob, config } = {}) {
 }
 
 export function computeAge(dob) {
-  if (!dob) return null;
-  const d = dob instanceof Date ? dob : new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age;
+  return ageFromDob(dob);
 }
 
 // ── validateInsuranceEntry ───────────────────────────────────────────────────

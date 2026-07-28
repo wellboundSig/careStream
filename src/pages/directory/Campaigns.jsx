@@ -8,14 +8,13 @@ import { canViewDirectory, canCreateDirectory } from '../../data/directoryPermis
 import { createCampaign } from '../../api/campaigns.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { fmtCalendarDate } from '../../utils/dateFormat.js';
 
 const STATUS_COLORS = {
   Active:    { bg: hexToRgba(palette.accentGreen.hex, 0.14),      text: palette.accentGreen.hex },
   Paused:    { bg: hexToRgba(palette.highlightYellow.hex, 0.2),   text: '#7A5F00' },
   Completed: { bg: hexToRgba(palette.backgroundDark.hex, 0.08),   text: hexToRgba(palette.backgroundDark.hex, 0.5) },
 };
-
-function fmtDate(d) { if (!d) return null; return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
 
 export default function Campaigns() {
   const { resolveMarketer } = useLookups();
@@ -105,7 +104,7 @@ export default function Campaigns() {
                       {rc && <span style={{ fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: rc.bg, color: rc.text }}>{camp.region}</span>}
                     </div>
                     <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
-                      {[fmtDate(camp.start_date), fmtDate(camp.end_date)].filter(Boolean).join(' → ')}
+                      {[fmtCalendarDate(camp.start_date, null), fmtCalendarDate(camp.end_date, null)].filter(Boolean).join(' → ')}
                     </p>
                     {mktIds.length > 0 && (
                       <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 4 }}>

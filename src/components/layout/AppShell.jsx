@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation, NavLink } from 'react-router-dom';
+import { UserButton } from '@clerk/react';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
 import SubNav from './SubNav.jsx';
 import SplitView from './SplitView.jsx';
+import NotificationBell from './NotificationBell.jsx';
 import PatientDrawer from '../patient/PatientDrawer.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import HydrationScreen from '../common/HydrationScreen.jsx';
@@ -28,6 +30,7 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 
 const UNASSIGNED_ROLE_ID = 'rol_016';
+const NAV_TEXT = '#F7F7FA';
 
 function getBreadcrumbs(pathname) {
   const map = {
@@ -58,6 +61,34 @@ function getBreadcrumbs(pathname) {
 
 const NAV_TEXT_POPOUT = '#F7F7FA';
 
+function MobileNavItem({ to, end, label, children }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      style={({ isActive }) => ({
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '8px 0 10px',
+        gap: 3,
+        textDecoration: 'none',
+        color: isActive ? '#ffffff' : hexToRgba('#ffffff', 0.45),
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.04em',
+        borderTop: isActive ? `2px solid ${palette.accentGreen.hex}` : '2px solid transparent',
+        WebkitTapHighlightColor: 'transparent',
+      })}
+    >
+      {children}
+      {label}
+    </NavLink>
+  );
+}
+
 export default function AppShell() {
   useTheme();
   const { prefs, save, reorderPins } = usePreferences();
@@ -68,6 +99,8 @@ export default function AppShell() {
   const { canAny, hasDivision } = usePermissions();
   const { resolveRole } = useLookups();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
+  const canScheduling = canAny(PERMISSION_KEYS.MODULE_SCHEDULING, PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG);
+  const canPatients = canAny(PERMISSION_KEYS.REFERRAL_VIEW, PERMISSION_KEYS.REFERRAL_VIEW_ALL, PERMISSION_KEYS.MODULE_INTAKE);
   const isPopOut = isPopOutWindow();
   const roleName = appUser?.role_id ? resolveRole(appUser.role_id) : '';
   const isUnassigned = !!(
@@ -81,8 +114,6 @@ export default function AppShell() {
   const location = useLocation();
   const breadcrumbs = getBreadcrumbs(location.pathname);
 
-  // Coerce division to what the user can actually see. Users with only ALF
-  // (or only SPN) were stuck on "All" until they clicked the sidebar chip.
   useEffect(() => {
     const alf = hasDivision('ALF');
     const sn = hasDivision('Special Needs');
@@ -94,7 +125,6 @@ export default function AppShell() {
       if (division !== 'Special Needs') setDivision('Special Needs');
       return;
     }
-    // Both (or neither during early load) — leave "All" / current selection alone.
   }, [hasDivision, division]);
 
   const splitEnabled = prefs.splitScreenEnabled || false;
@@ -114,7 +144,6 @@ export default function AppShell() {
     return () => { stopSync(); stopRealtime(); };
   }, []);
 
-  // Only the main window runs sync polling + SSE; pop-outs receive via BroadcastChannel
   useEffect(() => {
     if (hydrated && !isPopOut) {
       startSync();
@@ -122,14 +151,12 @@ export default function AppShell() {
     }
   }, [hydrated]);
 
-  // Recipient-scoped notification inbox (after we know who is signed in)
   useEffect(() => {
     if (hydrated && appUserId) {
       hydrateNotificationsForUser(appUserId);
     }
   }, [hydrated, appUserId]);
 
-  // Ctrl+N / Cmd+N — open New Lead form from anywhere (desktop only)
   useEffect(() => {
     if (!hydrated || isMobile || !canEnterLead) return;
     function onKey(e) {
@@ -145,11 +172,8 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [hydrated, isMobile, canEnterLead]);
 
-  // Show branded loading screen until the store is ready.
-  // All hooks are above — this is safe per Rules of Hooks.
   if (!hydrated) return <HydrationScreen />;
 
-  // Pending manager setup — no modules / patient data until role is assigned.
   if (isUnassigned) {
     return <WaitingRoom userName={appUserName} />;
   }
@@ -159,96 +183,138 @@ export default function AppShell() {
       onClose={() => setShowNewReferral(false)}
       onSuccess={({ patient, referral }) => {
         triggerDataRefresh();
-        if (!isMobile) openDrawer(patient, referral);
+        // Mobile: land on Files so upload is one tap away after create.
+        openDrawer(patient, referral, isMobile ? 'files' : undefined);
       }}
     />
   );
 
-  // Realtime in-app notifications (task assignments etc.) — main window only.
   const realtimeToasts = !isPopOut && <RealtimeToasts />;
 
   // ── Mobile layout ─────────────────────────────────────────────────────────
   if (isMobile) {
+    const mobileDivision = division === 'All' ? 'All' : division;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: palette.backgroundLight.hex }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        maxHeight: '100dvh',
+        background: palette.backgroundLight.hex,
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}>
 
         {/* Mobile top bar */}
         <div style={{
           height: 52, flexShrink: 0,
           background: palette.primaryDeepPlum.hex,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 16px',
+          padding: '0 12px 0 14px',
+          zIndex: 210,
         }}>
           <img src="/logo-cs.png" alt="CareStream" style={{ height: 26, objectFit: 'contain' }} />
-          {canEnterLead && (
-          <button
-            onClick={() => setShowNewReferral(true)}
-            style={{
-              padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              background: palette.accentGreen.hex,
-              color: palette.backgroundLight.hex,
-              fontSize: 13, fontWeight: 700,
-            }}
-          >
-            + New Lead
-          </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NotificationBell variant="mobile" />
+            <div style={{
+              width: 34, height: 34, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: hexToRgba(NAV_TEXT, 0.08),
+              border: `1px solid ${hexToRgba(NAV_TEXT, 0.15)}`,
+              overflow: 'hidden',
+            }}>
+              <UserButton afterSignOutUrl="/sign-in" />
+            </div>
+          </div>
         </div>
 
-        {/* Page content — padded at bottom to avoid overlap with bottom nav */}
-        <main style={{ flex: 1, overflowY: 'auto', paddingBottom: 72 }}>
-          <Outlet context={{ division: 'All', roleMode: 'intake' }} />
+        <main style={{
+          flex: 1,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+        }}>
+          <Outlet context={{ division: mobileDivision, roleMode }} />
         </main>
 
-        {/* Mobile bottom nav — Dashboard only */}
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
+        {/* Bottom nav — primary mobile jobs */}
+        <nav style={{
+          position: 'fixed',
+          bottom: 0, left: 0, right: 0,
           background: palette.primaryDeepPlum.hex,
           borderTop: `1px solid ${hexToRgba('#ffffff', 0.1)}`,
           display: 'flex',
+          alignItems: 'stretch',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           zIndex: 200,
         }}>
-          <NavLink
-            to="/"
-            end
-            style={({ isActive }) => ({
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '10px 0 12px', gap: 3, border: 'none', background: 'none', cursor: 'pointer',
-              color: isActive ? '#ffffff' : hexToRgba('#ffffff', 0.45),
-              textDecoration: 'none', fontSize: 10, fontWeight: 650, letterSpacing: '0.04em',
-              borderTop: isActive ? `2px solid ${palette.accentGreen.hex}` : '2px solid transparent',
-              transition: 'color 0.15s',
-            })}
-          >
+          <MobileNavItem to="/" end label="HOME">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
               <path d="M9 21V12h6v9"/>
             </svg>
-            DASHBOARD
-          </NavLink>
+          </MobileNavItem>
+
+          {(canPatients !== false) && (
+            <MobileNavItem to="/patients" label="PATIENTS">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+              </svg>
+            </MobileNavItem>
+          )}
 
           {canEnterLead && (
-          <button
-            onClick={() => setShowNewReferral(true)}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '10px 0 12px', gap: 3, border: 'none', background: 'none', cursor: 'pointer',
-              color: hexToRgba('#ffffff', 0.45),
-              fontSize: 10, fontWeight: 650, letterSpacing: '0.04em',
-              borderTop: '2px solid transparent',
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="16"/>
-              <line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-            NEW LEAD
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowNewReferral(true)}
+              aria-label="New lead"
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px 0 8px',
+                gap: 2,
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                color: '#ffffff',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                borderTop: '2px solid transparent',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <span style={{
+                width: 48, height: 48, borderRadius: 16, marginTop: -18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: palette.accentGreen.hex,
+                color: palette.backgroundLight.hex,
+                boxShadow: `0 6px 16px ${hexToRgba(palette.accentGreen.hex, 0.45)}`,
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </span>
+              NEW
+            </button>
           )}
-        </div>
 
+          {canScheduling && (
+            <MobileNavItem to="/modules/soc-completed" label="COMPLETED">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+            </MobileNavItem>
+          )}
+        </nav>
+
+        <PatientDrawer />
         {newReferralModal}
         {realtimeToasts}
       </div>
@@ -351,7 +417,7 @@ export default function AppShell() {
 
       <PatientDrawer />
       {newReferralModal}
-        {realtimeToasts}
+      {realtimeToasts}
     </div>
   );
 }

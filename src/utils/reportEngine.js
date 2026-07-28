@@ -9,6 +9,8 @@
 import airtable from '../api/airtable.js';
 import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
+import { daysUntilCalendarDate } from './dateFormat.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -866,9 +868,9 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division, marke
     g.total++;
     const stage = row.current_stage || 'Unknown';
     g.stageBreak[stage] = (g.stageBreak[stage] || 0) + 1;
-    if (stage === 'NTUC')          g.ntuc++;
-    if (stage === 'SOC Completed') g.soc++;
-    if (stage === 'Hold')          g.hold++;
+    if (stage === 'NTUC') g.ntuc++;
+    if (isSocCompletedReferral(row)) g.soc++;
+    if (stage === 'Hold') g.hold++;
     if (!['NTUC','SOC Completed','Hold'].includes(stage)) g.active++;
   }
 
@@ -998,7 +1000,7 @@ export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, ma
       { label: 'Referrals in range', value: rows.length },
       { label: 'Intake owners', value: Object.keys(byOwner).length },
       { label: 'Reached Clinical+', value: rows.filter((r) => !!r.clinical_review_decision || ['Clinical Intake RN Review', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed'].includes(r.current_stage)).length },
-      { label: 'SOC completed', value: rows.filter((r) => r.current_stage === 'SOC Completed').length },
+      { label: 'SOC completed', value: rows.filter((r) => isSocCompletedReferral(r)).length },
     ],
     charts: [
       {
@@ -1172,9 +1174,9 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
     }
     const g = groups[sid];
     g.total++;
-    if (row.current_stage === 'SOC Completed') g.soc++;
-    else if (row.current_stage === 'NTUC')    g.ntuc++;
-    else g.active++;
+    if (row.current_stage === 'NTUC') g.ntuc++;
+    if (isSocCompletedReferral(row)) g.soc++;
+    if (row.current_stage !== 'NTUC' && row.current_stage !== 'SOC Completed') g.active++;
     if (row.__campaign_name && row.__campaign_name !== '—') g.campaigns.add(row.__campaign_name);
     if (row.referral_method) g.methods.add(row.referral_method);
   }
@@ -1223,9 +1225,9 @@ export async function runMethodAttribution({ dateFrom, dateTo, division, sourceI
     }
     const g = groups[method];
     g.total++;
-    if (row.current_stage === 'SOC Completed') g.soc++;
-    else if (row.current_stage === 'NTUC') g.ntuc++;
-    else g.active++;
+    if (row.current_stage === 'NTUC') g.ntuc++;
+    if (isSocCompletedReferral(row)) g.soc++;
+    if (row.current_stage !== 'NTUC' && row.current_stage !== 'SOC Completed') g.active++;
     if (row.__source_name && row.__source_name !== '—') g.sources.add(row.__source_name);
   }
 
@@ -1441,8 +1443,9 @@ export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }
  * Start of Care — patients with SOC completed in a date range.
  */
 export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds } = {}) {
+  // Durable stamp: include cases sent back to Intake for post-SOC work.
   const filters = [
-    { field: 'current_stage', operator: 'eq', value: 'SOC Completed' },
+    { field: 'soc_completed_date', operator: 'not_empty' },
     ...buildReferralParamFilters({
       dateFrom,
       dateTo,
@@ -1452,8 +1455,6 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
       dateField: 'soc_completed_date',
     }),
   ];
-  // If SOC completed date is empty on older rows, also allow referral_date fallback
-  // by not requiring not_empty — between on empty SOC date simply won't match.
 
   const cols = [
     '__patient_name', '__patient_dob', 'division', 'current_stage',
@@ -1461,12 +1462,13 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
     '__marketer_name', '__intake_owner', '__facility_name', '__source_name',
     'services_requested',
   ];
-  const { rows } = await fetchReportData({
+  const { rows: fetched } = await fetchReportData({
     tableName: 'Referrals',
     filters,
     selectedKeys: cols,
     sort: [{ field: 'soc_completed_date', direction: 'desc' }],
   });
+  const rows = fetched.filter((r) => isSocCompletedReferral(r));
 
   const columns = [
     { key: '__patient_name', label: 'Patient' },
@@ -1618,11 +1620,10 @@ export const PRESETS = [
         sort: [{ field: 'f2f_expiration', direction: 'asc' }],
       });
 
-      const today = Date.now();
       const enriched = rows.map((r) => ({
         ...r,
         days_until_expiry: r.f2f_expiration
-          ? Math.ceil((new Date(r.f2f_expiration) - today) / 86400000)
+          ? daysUntilCalendarDate(r.f2f_expiration)
           : null,
       }));
 

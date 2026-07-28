@@ -1,4 +1,5 @@
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { parseCalendarDate } from '../../../utils/dateFormat.js';
 import LoadingState from '../../common/LoadingState.jsx';
 
 function initials(first, last) {
@@ -43,7 +44,7 @@ export default function FacilityMarketersTab({ marketerLinks, marketerDetails, l
               </div>
               {link.assigned_date && (
                 <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0 }}>
-                  Since {new Date(link.assigned_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                  Since {parseCalendarDate(link.assigned_date)?.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) || '—'}
                 </p>
               )}
             </div>

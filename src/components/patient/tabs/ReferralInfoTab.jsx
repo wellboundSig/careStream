@@ -473,7 +473,7 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
       )}
       <Section title="Referral Info">
         <ReadField label="Referral ID" value={referral.id} />
-        <ReadField label="Referral Date" value={referral.referral_date ? new Date(referral.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null} />
+        <ReadField label="Referral Date" value={referral.referral_date ? fmtCalendarDate(referral.referral_date, null) : null} />
         <ReadField label="Marketer" value={resolveMarketer(referral.marketer_id)} />
         <ReadField
           label="Lead submitted by"

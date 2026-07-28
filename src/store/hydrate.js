@@ -38,6 +38,8 @@ const TABLES = [
   { key: 'roles',              table: 'Roles' },
   { key: 'facilities',         table: 'Facilities' },
   { key: 'physicians',         table: 'Physicians' },
+  { key: 'knownGuardians',     table: 'KnownGuardians' },
+  { key: 'patientGuardians',   table: 'PatientGuardians' },
   { key: 'campaigns',          table: 'Campaigns' },
   { key: 'marketerFacilities', table: 'MarketerFacilities' },
   { key: 'campaignMarketers',  table: 'CampaignMarketers' },

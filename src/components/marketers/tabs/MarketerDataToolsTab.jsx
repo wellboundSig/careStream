@@ -5,11 +5,7 @@ import { FilterInput } from '../../../utils/columnModel.jsx';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 
 // Read the metric pre-computed by usePipelineData (single source of truth —
 // see src/utils/referralMetrics.js).
@@ -146,7 +142,7 @@ export default function MarketerDataToolsTab({ referrals }) {
                     <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveFacility(ref.facility_id) || '—'}</td>
                     <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>{ref.priority || 'Normal'}</td>
                     <td style={{ padding: '8px 10px', fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>{services}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtDate(ref.referral_date)}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtCalendarDate(ref.referral_date)}</td>
                   </tr>
                 );
               })}

@@ -31,6 +31,7 @@ import { createNoteOptimistic, createTaskOptimistic, updateReferralOptimistic } 
 import { flagConflict } from '../../../utils/conflictFlagging.js';
 import { isMedicareNoAuthRequired } from '../../../data/policies/authorizationPolicies.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { fmtCalendarDate, todayCalendarDate } from '../../../utils/dateFormat.js';
 import {
   DIVISION,
   AUDIT_ACTION,
@@ -896,7 +897,7 @@ function ServiceLineRow({ t, division, line, onChange, onRemove }) {
             </Field>
           </div>
           <Field t={t} label="Date approval received">
-            <input type="date" value={line.approval_received_date} max={new Date().toISOString().split('T')[0]} onChange={(e) => onChange({ approval_received_date: e.target.value })} style={inputStyle(t)} />
+            <input type="date" value={line.approval_received_date} max={todayCalendarDate()} onChange={(e) => onChange({ approval_received_date: e.target.value })} style={inputStyle(t)} />
           </Field>
         </>
       )}
@@ -985,8 +986,7 @@ function decisionLabel(line) {
 }
 
 function fmt(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtCalendarDate(d, '');
 }
 
 function Field({ t, label, children }) {

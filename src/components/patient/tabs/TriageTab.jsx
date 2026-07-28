@@ -48,12 +48,14 @@ import { updateReferral } from '../../../api/referrals.js';
 import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { openCaseForReferral } from '../../../store/opwddOrchestration.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
+import { syncTriageCaregiversToGuardians } from '../../../utils/knownGuardians.js';
 import { mergeEntities, useCareStore } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { todayCalendarDate } from '../../../utils/dateFormat.js';
 import { formatPhysicianName } from '../../../utils/physicianName.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -632,7 +634,7 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
           />
         </Field>
         <Field label="Date of Last PCP Visit" required error={missing.has('pcp_last_visit')}>
-          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={new Date().toISOString().split('T')[0]} disabled={disabled} />
+          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={todayCalendarDate()} disabled={disabled} />
         </Field>
         <Field label="PCP Phone Number" required error={missing.has('pcp_phone')}>
           <SmartPhoneInput value={data.pcp_phone} onChange={(v) => set({ ...data, pcp_phone: v })} disabled={disabled} forceValidate={forceValidate} />
@@ -826,7 +828,7 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
           />
         </Field>
         <Field label="Date of Last PCP Visit" required error={missing.has('pcp_last_visit')}>
-          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={new Date().toISOString().split('T')[0]} disabled={disabled} />
+          <SmartDateInput value={data.pcp_last_visit} onChange={(v) => set({ ...data, pcp_last_visit: v })} max={todayCalendarDate()} disabled={disabled} />
         </Field>
         <Field label="PCP Phone Number" required error={missing.has('pcp_phone')}>
           <SmartPhoneInput value={data.pcp_phone} onChange={(v) => set({ ...data, pcp_phone: v })} disabled={disabled} forceValidate={forceValidate} />
@@ -880,11 +882,14 @@ function buildDemographicSeed(patient, formType) {
   if (formType === 'adult') {
     seed.insurance_plan_name = patient?.insurance_plan || '';
   } else {
-    // Pediatric: emergency contact name + phone come from the patient record.
+    // Pediatric: seed from patient primary / emergency contact mirrors.
     const ecPhone = String(patient?.emergency_contact_phone || '').replace(/\D/g, '').slice(0, 10);
+    const pcPhone = String(patient?.primary_contact_phone || '').replace(/\D/g, '').slice(0, 10);
     if (patient?.emergency_contact_name) seed.emergency_contact_name = patient.emergency_contact_name;
     if (ecPhone)                          seed.emergency_contact_phone = ecPhone;
-    if (patient?.phone_primary)           seed.primary_caregiver_phone = phoneDigits;
+    if (patient?.primary_contact_name)    seed.primary_caregiver_name = patient.primary_contact_name;
+    if (pcPhone)                          seed.primary_caregiver_phone = pcPhone;
+    else if (patient?.phone_primary)      seed.primary_caregiver_phone = phoneDigits;
   }
   return seed;
 }
@@ -1030,6 +1035,12 @@ export default function TriageTab({ patient, referral, readOnly = false }) {
       mergeEntities(storeKey, { [saved.id]: { _id: saved.id, ...saved.fields } });
       setSavingStatus('Saved');
       setTimeout(() => setSavingStatus((s) => (s === 'Saved' ? '' : s)), 1800);
+      // Sync caregiver / emergency contacts into known_guardians (non-fatal).
+      syncTriageCaregiversToGuardians({
+        patient,
+        triageType,
+        data: payload,
+      }).catch((err) => console.warn('[TriageTab] guardian sync failed', err));
       // Refresh consumers (PatientDrawer tabComplete dot, snapshot, etc.)
       triggerDataRefresh();
     } catch (err) {

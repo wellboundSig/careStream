@@ -22,6 +22,7 @@ import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { todayCalendarDate } from '../../../utils/dateFormat.js';
 
 function isTrue(v) { return v === true || v === 'true'; }
 
@@ -59,7 +60,7 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
     return () => { cancelled = true; };
   }, [patientBusinessId]);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCalendarDate();
 
   function persist(fields) {
     if (!recordId) return;

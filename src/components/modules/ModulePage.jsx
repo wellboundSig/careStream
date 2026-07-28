@@ -5,7 +5,7 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
-import { STAGE_META } from '../../data/stageConfig.js';
+import { STAGE_META, isSocCompletedReferral } from '../../data/stageConfig.js';
 import { canMoveFromTo, needsModal } from '../../utils/stageTransitions.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../../utils/conflictFlagging.js';
@@ -50,8 +50,10 @@ import {
   daysUntilDocumentationDue,
 } from '../../utils/documentationDeferred.js';
 import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
+import MobileSocQueue from '../mobile/MobileSocQueue.jsx';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
-import { fmtCalendarDate, daysUntilCalendarDate } from '../../utils/dateFormat.js';
+import { fmtCalendarDate, daysUntilCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
 /** Uniform queue row height — every module table row is this tall. */
 const QUEUE_ROW_HEIGHT = 48;
@@ -140,6 +142,7 @@ export default function ModulePage({ stage }) {
   const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
   const { prefs, save: savePrefs } = usePreferences();
   const getReviewInProgress = useClinicalReviewInProgress();
+  const isMobile = useIsMobile();
 
   // We track which referral the user clicked by its store row key (rec_id) and
   // DERIVE the live referral object from `allReferrals` on every render. The
@@ -414,8 +417,8 @@ export default function ModulePage({ stage }) {
         return sortDir === 'desc' ? vb - va : va - vb;
       }
       if (sortField === 'soc_completed_date') {
-        const va = new Date(a.soc_completed_date || 0).getTime();
-        const vb = new Date(b.soc_completed_date || 0).getTime();
+        const va = parseCalendarDate(a.soc_completed_date)?.getTime() ?? 0;
+        const vb = parseCalendarDate(b.soc_completed_date)?.getTime() ?? 0;
         return sortDir === 'desc' ? vb - va : va - vb;
       }
       if (sortField === 'name') {
@@ -528,6 +531,10 @@ export default function ModulePage({ stage }) {
 
   function handleRowSelect(referral) { setSelectedReferralId(referral?._id || null); }
   function handleRowOpen(referral) { setSelectedReferralId(referral?._id || null); openPatient(buildPatient(referral), referral); }
+  function handleRowOpenTab(referral, tab) {
+    setSelectedReferralId(referral?._id || null);
+    openPatient(buildPatient(referral), referral, tab);
+  }
   function handleRowContextMenu(e, referral) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, referral }); }
 
   function showToast(message, type = 'success') {
@@ -882,6 +889,34 @@ export default function ModulePage({ stage }) {
                 </span>
               )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+              {isSocCompleted && referral.current_stage && referral.current_stage !== 'SOC Completed' && (
+                <span
+                  title={`Also working in ${referral.current_stage}`}
+                  style={{
+                    flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                    color: palette.accentBlue.hex,
+                    background: hexToRgba(palette.accentBlue.hex, 0.12),
+                    border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.35)}`,
+                    borderRadius: 4, padding: '1px 4px', whiteSpace: 'nowrap',
+                  }}
+                >
+                  also {referral.current_stage === 'Intake' ? 'Intake' : referral.current_stage}
+                </span>
+              )}
+              {!isSocCompleted && isSocCompletedReferral(referral) && (
+                <span
+                  title={`SOC completed ${referral.soc_completed_date || ''} — still on Completed list`}
+                  style={{
+                    flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                    color: palette.accentGreen.hex,
+                    background: hexToRgba(palette.accentGreen.hex, 0.12),
+                    border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                    borderRadius: 4, padding: '1px 4px',
+                  }}
+                >
+                  SOC
+                </span>
+              )}
               {authObtainedAt && (
                 <span title={authObtainedTitle} style={{ display: 'inline-flex', flexShrink: 0 }}>
                   <AuthObtainedIcon size={13} title={authObtainedTitle} />
@@ -1096,6 +1131,86 @@ export default function ModulePage({ stage }) {
       default:
         return <td key={col.key} style={td()} />;
     }
+  }
+
+  // ── Mobile: card queue (SOC Completed / Pending Log first-class) ───────────
+  if (isMobile) {
+    return (
+      <>
+        {showNewReferral && (
+          <NewReferralForm
+            key={activeDraft?.id || 'new-lead'}
+            draftRecordId={activeDraft?.id || null}
+            draftBusinessId={activeDraft?.fields?.id || null}
+            draftNumber={activeDraft?.fields?.draft_number || null}
+            initialForm={activeDraft?.fields?.form_data || null}
+            onClose={() => {
+              setShowNewReferral(false);
+              setActiveDraft(null);
+              refreshDraftCount();
+            }}
+            onSuccess={({ patient, referral }) => {
+              setActiveDraft(null);
+              refreshDraftCount();
+              refetch?.();
+              openPatient(patient, referral, 'files');
+            }}
+          />
+        )}
+        {toast && (
+          <div style={{
+            position: 'fixed',
+            bottom: 'calc(88px + env(safe-area-inset-bottom, 0px))',
+            left: 16, right: 16, zIndex: 9997,
+            background: toast.type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex,
+            color: palette.backgroundLight.hex, padding: '12px 16px', borderRadius: 10,
+            fontSize: 13, fontWeight: 550,
+            boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+            textAlign: 'center',
+          }}>
+            {toast.message}
+          </div>
+        )}
+        {isSocCompleted ? (
+          <MobileSocQueue
+            meta={meta}
+            stageColor={stageColor}
+            referrals={stageReferrals}
+            search={search}
+            setSearch={setSearch}
+            isPendingLogView={isPendingLogView}
+            canPendingLog={canPendingLog}
+            onTogglePendingLog={toggleSocCompletedView}
+            onOpenPatient={handleRowOpen}
+            onOpenFiles={(r) => handleRowOpenTab(r, 'files')}
+            onOpenNotes={(r) => handleRowOpenTab(r, 'notes')}
+            resolveFacility={resolveFacility}
+            resolveMarketer={resolveMarketer}
+            resolveUser={resolveUser}
+            resolvePhysician={resolvePhysician}
+            pcpByReferralId={pcpByReferralId}
+          />
+        ) : (
+          <MobileSocQueue
+            meta={meta}
+            stageColor={stageColor}
+            referrals={stageReferrals}
+            search={search}
+            setSearch={setSearch}
+            isPendingLogView={false}
+            canPendingLog={false}
+            onOpenPatient={handleRowOpen}
+            onOpenFiles={(r) => handleRowOpenTab(r, 'files')}
+            onOpenNotes={(r) => handleRowOpenTab(r, 'notes')}
+            resolveFacility={resolveFacility}
+            resolveMarketer={resolveMarketer}
+            resolveUser={resolveUser}
+            resolvePhysician={resolvePhysician}
+            pcpByReferralId={pcpByReferralId}
+          />
+        )}
+      </>
+    );
   }
 
   return (

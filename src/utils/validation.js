@@ -1,6 +1,7 @@
 import { parsePhoneNumber } from 'libphonenumber-js';
 import isEmail from 'validator/lib/isEmail.js';
 import zipcodes from 'zipcodes';
+import { parseCalendarDate, todayCalendarDate, toCalendarDateString } from './dateFormat.js';
 
 /**
  * Normalizes and validates a US phone number.
@@ -65,11 +66,9 @@ export function validateEmail(raw) {
 
 export const PEDIATRIC_MAX_AGE = 18;
 
-function toIsoDate(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+function asLocalToday(today = new Date()) {
+  if (today instanceof Date) return today;
+  return parseCalendarDate(today) || new Date();
 }
 
 /**
@@ -78,8 +77,9 @@ function toIsoDate(d) {
  * counts as Adult.
  */
 export function getAdultCutoffDate(today = new Date()) {
-  const cutoff = new Date(today.getFullYear() - PEDIATRIC_MAX_AGE, today.getMonth(), today.getDate());
-  return toIsoDate(cutoff);
+  const t = asLocalToday(today);
+  const cutoff = new Date(t.getFullYear() - PEDIATRIC_MAX_AGE, t.getMonth(), t.getDate());
+  return toCalendarDateString(cutoff);
 }
 
 /**
@@ -87,8 +87,9 @@ export function getAdultCutoffDate(today = new Date()) {
  * today — one day after the adult cutoff.
  */
 export function getPediatricMinDate(today = new Date()) {
-  const cutoff = new Date(today.getFullYear() - PEDIATRIC_MAX_AGE, today.getMonth(), today.getDate() + 1);
-  return toIsoDate(cutoff);
+  const t = asLocalToday(today);
+  const cutoff = new Date(t.getFullYear() - PEDIATRIC_MAX_AGE, t.getMonth(), t.getDate() + 1);
+  return toCalendarDateString(cutoff);
 }
 
 /**
@@ -97,7 +98,7 @@ export function getPediatricMinDate(today = new Date()) {
  * Returns nulls when no constraint applies.
  */
 export function getDobBoundsForAgeGroup(ageGroup, today = new Date()) {
-  const todayIso = toIsoDate(today);
+  const todayIso = today instanceof Date ? toCalendarDateString(today) : (parseCalendarDate(today) ? toCalendarDateString(today) : todayCalendarDate());
   if (ageGroup === 'Pediatric') {
     return { min: getPediatricMinDate(today), max: todayIso };
   }
@@ -113,9 +114,10 @@ export function getDobBoundsForAgeGroup(ageGroup, today = new Date()) {
  */
 export function inferAgeGroupFromDob(dob, today = new Date()) {
   if (!dob) return null;
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const cutoff = new Date(today.getFullYear() - PEDIATRIC_MAX_AGE, today.getMonth(), today.getDate());
+  const d = parseCalendarDate(dob);
+  if (!d) return null;
+  const t = asLocalToday(today);
+  const cutoff = new Date(t.getFullYear() - PEDIATRIC_MAX_AGE, t.getMonth(), t.getDate());
   return d.getTime() <= cutoff.getTime() ? 'Adult' : 'Pediatric';
 }
 

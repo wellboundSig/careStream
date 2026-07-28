@@ -7,6 +7,14 @@ import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { exportToExcel } from '../utils/reportEngine.js';
 import LoadingState from '../components/common/LoadingState.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
+import {
+  fmtCalendarDate,
+  parseCalendarDate,
+  daysSinceCalendarDate,
+  todayCalendarDate,
+  toCalendarDateString,
+} from '../utils/dateFormat.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -72,7 +80,10 @@ function dayStart(daysAgo) {
 function filterByPeriod(referrals, days) {
   if (days === null) return referrals;
   const cutoff = dayStart(days).getTime();
-  return referrals.filter((r) => r.referral_date && new Date(r.referral_date).getTime() >= cutoff);
+  return referrals.filter((r) => {
+    const d = parseCalendarDate(r.referral_date);
+    return d && d.getTime() >= cutoff;
+  });
 }
 
 function filterByDivision(referrals, division) {
@@ -81,21 +92,21 @@ function filterByDivision(referrals, division) {
 }
 
 function filterByDateRange(referrals, start, end) {
-  const s = start ? new Date(start).setHours(0,0,0,0) : 0;
-  const e = end   ? new Date(end).setHours(23,59,59,999) : Date.now();
+  const s = start ? (parseCalendarDate(start)?.getTime() ?? 0) : 0;
+  const e = end ? ((parseCalendarDate(end)?.getTime() ?? 0) + 86400000 - 1) : Date.now();
   return referrals.filter((r) => {
     if (!r.referral_date) return false;
-    const t = new Date(r.referral_date).getTime();
-    return t >= s && t <= e;
+    const t = parseCalendarDate(r.referral_date)?.getTime();
+    return t != null && t >= s && t <= e;
   });
 }
 
 function computeMetrics(referrals) {
   const total = referrals.length;
-  const soc   = referrals.filter((r) => r.current_stage === 'SOC Completed').length;
+  const soc   = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const ntuc  = referrals.filter((r) => r.current_stage === 'NTUC').length;
   const withDates = referrals.filter((r) => r.referral_date);
-  const sumDays = withDates.reduce((s, r) => s + Math.floor((Date.now() - new Date(r.referral_date).getTime()) / 86400000), 0);
+  const sumDays = withDates.reduce((s, r) => s + (daysSinceCalendarDate(r.referral_date) ?? 0), 0);
   return {
     total,
     alf:           referrals.filter((r) => r.division === 'ALF').length,
@@ -126,7 +137,8 @@ function groupByWeek(referrals, nWeeks = 16) {
 
   referrals.forEach((r) => {
     if (!r.referral_date) return;
-    const t = new Date(r.referral_date).getTime();
+    const t = parseCalendarDate(r.referral_date)?.getTime();
+    if (t == null) return;
     const w = weeks.find((w) => t >= w.start.getTime() && t < w.end.getTime());
     if (w) w.count++;
   });
@@ -347,7 +359,8 @@ function CalendarHeatmap({ referrals, weeks = 20 }) {
   const counts = {};
   referrals.forEach((r) => {
     if (!r.referral_date) return;
-    const d = new Date(r.referral_date).toISOString().split('T')[0];
+    const d = toCalendarDateString(r.referral_date);
+    if (!d) return;
     counts[d] = (counts[d] || 0) + 1;
   });
   const max = Math.max(...Object.values(counts), 1);
@@ -356,7 +369,7 @@ function CalendarHeatmap({ referrals, weeks = 20 }) {
   const days = Array.from({ length: weeks * 7 }, (_, i) => {
     const d = new Date(now);
     d.setDate(d.getDate() - (weeks * 7 - 1 - i));
-    return d.toISOString().split('T')[0];
+    return toCalendarDateString(d);
   });
 
   const grid = [];
@@ -573,7 +586,7 @@ function TrendsTab({ referrals }) {
   }), [referrals]);
 
   const ntucTrend = useMemo(() => groupByWeek(referrals.filter((r) => r.current_stage === 'NTUC'), 20), [referrals]);
-  const socTrend  = useMemo(() => groupByWeek(referrals.filter((r) => r.current_stage === 'SOC Completed'), 20), [referrals]);
+  const socTrend  = useMemo(() => groupByWeek(referrals.filter((r) => isSocCompletedReferral(r)), 20), [referrals]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -675,7 +688,7 @@ function SourcesTab({ referrals, resolveMarketer, resolveSource }) {
 // ── Period Comparison Tab ─────────────────────────────────────────────────────
 
 function PeriodComparisonTab({ allReferrals }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCalendarDate();
   const [aStart, setAStart] = useState('');
   const [aEnd,   setAEnd]   = useState('');
   const [bStart, setBStart] = useState('');
@@ -872,7 +885,7 @@ function DataTableTab({ referrals, resolveMarketer, resolveSource }) {
         division:      r.division || '',
         current_stage: r.current_stage || '',
         priority:      r.priority || 'Normal',
-        referral_date: r.referral_date ? new Date(r.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
+        referral_date: r.referral_date ? fmtCalendarDate(r.referral_date, '') : '',
         source:        resolveSource(r.referral_source_id),
         marketer:      resolveMarketer(r.marketer_id),
         services:      Array.isArray(r.services_requested) ? r.services_requested.join(', ') : '',
@@ -953,7 +966,7 @@ function DataTableTab({ referrals, resolveMarketer, resolveSource }) {
                     {r.priority || 'Normal'}
                   </td>
                   <td style={{ padding: '10px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-                    {r.referral_date ? new Date(r.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    {r.referral_date ? fmtCalendarDate(r.referral_date) : '—'}
                   </td>
                   <td style={{ padding: '10px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(r.referral_source_id)}</td>
                   <td style={{ padding: '10px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveMarketer(r.marketer_id)}</td>

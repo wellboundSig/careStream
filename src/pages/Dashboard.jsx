@@ -17,6 +17,8 @@ import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
+import { fmtCalendarDate, daysSinceCalendarDate } from '../utils/dateFormat.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -81,13 +83,12 @@ const STAGE_BAR_COLOR = {
 };
 
 function formatDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtCalendarDate(d);
 }
 
 function daysAgo(d) {
-  if (!d) return null;
-  const diff = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  const diff = daysSinceCalendarDate(d);
+  if (diff == null) return null;
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : `${diff}d ago`;
 }
 
@@ -341,7 +342,11 @@ function ExecutiveDashboard() {
 
   const stageCounts = useMemo(() =>
     PIPELINE_STAGES.reduce((acc, s) => {
-      acc[s] = filtered.filter((r) => r.current_stage === s).length;
+      // SOC Completed is concurrent: durable soc_completed_date keeps the
+      // patient counted here even when current_stage is back in Intake.
+      acc[s] = filtered.filter((r) =>
+        s === 'SOC Completed' ? isSocCompletedReferral(r) : r.current_stage === s,
+      ).length;
       return acc;
     }, {}),
     [filtered],
@@ -352,7 +357,7 @@ function ExecutiveDashboard() {
     const marketerCounts = {};
     const ownerCounts = {};
     filtered.forEach((r) => {
-      if (r.current_stage !== 'SOC Completed') return;
+      if (!isSocCompletedReferral(r)) return;
       const mid = linkId(r.marketer_id);
       const oid = linkId(r.intake_owner_id);
       if (mid) marketerCounts[mid] = (marketerCounts[mid] || 0) + 1;
@@ -368,11 +373,13 @@ function ExecutiveDashboard() {
 
   // New this week vs last week (WoW delta)
   const now = Date.now();
-  const newThisWeek = filtered.filter((r) => r.referral_date && now - new Date(r.referral_date).getTime() < 7 * 86400000).length;
+  const newThisWeek = filtered.filter((r) => {
+    const days = daysSinceCalendarDate(r.referral_date);
+    return days != null && days >= 0 && days < 7;
+  }).length;
   const newLastWeek = filtered.filter((r) => {
-    if (!r.referral_date) return false;
-    const ms = now - new Date(r.referral_date).getTime();
-    return ms >= 7 * 86400000 && ms < 14 * 86400000;
+    const days = daysSinceCalendarDate(r.referral_date);
+    return days != null && days >= 7 && days < 14;
   }).length;
 
   // Referrals that have been in their current (non-terminal) stage for > 14 days
@@ -403,47 +410,78 @@ function ExecutiveDashboard() {
     return (
       <div style={{ padding: '16px 16px 8px' }}>
 
-        {/* Header */}
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>Dashboard</h1>
-          <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
-            Updated {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+        <div style={{ marginBottom: 14 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 750, color: palette.backgroundDark.hex, marginBottom: 2 }}>Home</h1>
+          <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
+            Tap a patient for files & notes · use Completed for the Pending Log
           </p>
         </div>
 
-        {/* KPI 2×2 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
-          <StatCard label="Active" value={activeCount} sub="in pipeline" color={palette.primaryMagenta.hex} />
-          <StatCard label="New This Week" value={newThisWeek} sub={`${newLastWeek} last week`} delta={wowDelta} color={palette.accentBlue.hex} />
-          <SocCompletedStatCard
-            value={stageCounts['SOC Completed'] || 0}
-            sub="start of care"
-            marketers={socStaffBreakdown.marketers}
-            owners={socStaffBreakdown.owners}
-          />
-          <StatCard label="Overdue" value={overdueCount} sub="›14 days" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
+        {/* Compact KPI strip — nice-to-have, not the hero */}
+        <div style={{
+          display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+          marginBottom: 18, paddingBottom: 2,
+        }}>
+          {[
+            { label: 'Active', value: activeCount, color: palette.primaryMagenta.hex },
+            { label: 'SOC done', value: stageCounts['SOC Completed'] || 0, color: palette.accentGreen.hex },
+            { label: 'New / wk', value: newThisWeek, color: palette.accentBlue.hex },
+            { label: 'Overdue', value: overdueCount, color: overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex },
+          ].map((k) => (
+            <div
+              key={k.label}
+              style={{
+                flex: '0 0 auto', minWidth: 88, padding: '10px 12px', borderRadius: 12,
+                background: palette.backgroundLight.hex,
+                border: `1px solid var(--color-border)`,
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>{k.label}</p>
+              <p style={{ fontSize: 22, fontWeight: 750, color: k.color, margin: '2px 0 0', lineHeight: 1.1 }}>{k.value}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Recent referrals — card list */}
         <div style={{ marginBottom: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-            Recent Referrals
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.5), textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+              Recent
+            </p>
+            <Link to="/patients" style={{ fontSize: 12.5, fontWeight: 650, color: palette.primaryMagenta.hex, textDecoration: 'none' }}>
+              All patients
+            </Link>
+          </div>
           {recentPatients.length === 0 ? (
             <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic', padding: '16px 0', textAlign: 'center' }}>No referrals yet.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {recentPatients.slice(0, 8).map((ref) => (
-                <div
+              {recentPatients.slice(0, 10).map((ref) => (
+                <button
                   key={ref._id}
+                  type="button"
+                  onClick={() => openPatient(
+                    ref.patient || {
+                      id: ref.patient_id,
+                      _id: ref.patient_id,
+                      first_name: ref.patientName?.split(' ')[0] || '',
+                      last_name: ref.patientName?.split(' ').slice(1).join(' ') || '',
+                      division: ref.division,
+                    },
+                    ref,
+                    'files',
+                  )}
                   style={{
-                    padding: '12px 14px', borderRadius: 10,
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '14px', borderRadius: 12, cursor: 'pointer',
                     background: palette.backgroundLight.hex,
                     border: `1px solid var(--color-border)`,
+                    fontFamily: 'inherit',
+                    WebkitTapHighlightColor: 'transparent',
+                    boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.04)}`,
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                    <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>
                       {ref.patientName || ref.patient_id}
                     </p>
                     <StageBadge stage={ref.current_stage} size="small" />
@@ -451,22 +489,28 @@ function ExecutiveDashboard() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <DivisionBadge division={ref.division} size="small" />
                     {ref.referral_date && (
-                      <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                      <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
                         {formatDate(ref.referral_date)}
                       </span>
                     )}
+                    <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 650, color: palette.accentBlue.hex }}>
+                      Files →
+                    </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* New referral modal */}
         {showNewReferral && (
           <NewReferralForm
             onClose={() => setShowNewReferral(false)}
-            onSuccess={() => { triggerDataRefresh(); setShowNewReferral(false); }}
+            onSuccess={({ patient, referral }) => {
+              triggerDataRefresh();
+              setShowNewReferral(false);
+              openPatient(patient, referral, 'files');
+            }}
           />
         )}
       </div>

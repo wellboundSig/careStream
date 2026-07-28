@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
 import airtable from '../api/airtable.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 export function usePhysicianData(physician) {
   const [referrals, setReferrals] = useState([]);
@@ -34,7 +35,7 @@ export function usePhysicianData(physician) {
   const stats = {
     total:    referrals.length,
     active:   referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
-    admitted: referrals.filter((r) => r.current_stage === 'SOC Completed').length,
+    admitted: referrals.filter((r) => isSocCompletedReferral(r)).length,
   };
 
   return { referrals, stats, loading };

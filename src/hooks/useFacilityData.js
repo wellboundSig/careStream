@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useCareStore } from '../store/careStore.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 /** Network facility business ids look like net_fac_001. */
 export function isNetworkFacility(facility) {
@@ -89,7 +90,7 @@ export function useFacilityData(facility) {
   const stats = {
     total: referrals.length,
     active: referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
-    admitted: referrals.filter((r) => r.current_stage === 'SOC Completed').length,
+    admitted: referrals.filter((r) => isSocCompletedReferral(r)).length,
     ntuc: referrals.filter((r) => r.current_stage === 'NTUC').length,
   };
 

@@ -29,7 +29,11 @@ import {
   fmtCalendarDate,
   toCalendarDateInput,
   addCalendarDays,
+  parseCalendarDate,
+  toCalendarDateString,
+  daysUntilCalendarDate,
 } from '../../../utils/dateFormat.js';
+import { useIsMobile } from '../../../hooks/useIsMobile.js';
 
 const CATEGORY_COLORS = {
   'F2F': { bg: hexToRgba(palette.primaryMagenta.hex, 0.1), text: palette.primaryMagenta.hex },
@@ -120,6 +124,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser, resolvePhysician } = useLookups();
   const { openFileBeside } = usePatientDrawer();
+  const isMobile = useIsMobile();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
@@ -237,10 +242,10 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           ? { document_subtype: pendingDocumentSubtype }
           : {}),
         ...(isOpwddCategory(pendingCategory) && pendingDocumentDate
-          ? { document_date: new Date(pendingDocumentDate).toISOString() }
+          ? { document_date: toCalendarDateInput(pendingDocumentDate) }
           : {}),
         ...(isOpwddCategory(pendingCategory) && pendingDocumentValidThrough
-          ? { document_valid_through: new Date(pendingDocumentValidThrough).toISOString() }
+          ? { document_valid_through: toCalendarDateInput(pendingDocumentValidThrough) }
           : {}),
       };
 
@@ -310,7 +315,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   }
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: isMobile ? '14px 14px 28px' : '20px' }}>
       {/* Drop zone — only shown when no pending file */}
       {!readOnly && can(PERMISSION_KEYS.FILE_UPLOAD) && !pendingFile && (
         <div
@@ -320,19 +325,23 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           onClick={() => r2Configured && inputRef.current?.click()}
           style={{
             border: `2px dashed ${dragOver ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-            borderRadius: 10, padding: '20px 16px', textAlign: 'center', marginBottom: 16,
+            borderRadius: 12,
+            padding: isMobile ? '22px 16px' : '20px 16px',
+            textAlign: 'center',
+            marginBottom: 16,
             background: dragOver ? hexToRgba(palette.primaryMagenta.hex, 0.04) : hexToRgba(palette.backgroundDark.hex, 0.02),
             transition: 'all 0.15s',
             cursor: r2Configured ? 'pointer' : 'default',
+            WebkitTapHighlightColor: 'transparent',
           }}
         >
           <input ref={inputRef} type="file" style={{ display: 'none' }} onChange={(e) => stageFile(e.target.files)} />
           {r2Configured ? (
             <>
-              <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4 }}>
-                Drop file here or click to upload
+              <p style={{ fontSize: isMobile ? 15 : 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+                {isMobile ? 'Tap to upload a file' : 'Drop file here or click to upload'}
               </p>
-              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+              <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
                 Secure upload
               </p>
             </>
@@ -432,9 +441,11 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                         // Auto-compute valid-through for evaluation docs
                         const tmpl = OPWDD_CHECKLIST_BY_KEY[chosen.requirement_key];
                         if (tmpl?.validityYears && pendingDocumentDate) {
-                          const d = new Date(pendingDocumentDate);
-                          d.setFullYear(d.getFullYear() + tmpl.validityYears);
-                          setPendingDocumentValidThrough(d.toISOString().slice(0, 10));
+                          const d = parseCalendarDate(pendingDocumentDate);
+                          if (d) {
+                            d.setFullYear(d.getFullYear() + tmpl.validityYears);
+                            setPendingDocumentValidThrough(toCalendarDateString(d));
+                          }
                         }
                       }
                     }}
@@ -481,9 +492,11 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
                       // auto-compute valid through if the subtype carries validity
                       const tmpl = OPWDD_CHECKLIST_BY_KEY[pendingDocumentSubtype];
                       if (e.target.value && tmpl?.validityYears) {
-                        const d = new Date(e.target.value);
-                        d.setFullYear(d.getFullYear() + tmpl.validityYears);
-                        setPendingDocumentValidThrough(d.toISOString().slice(0, 10));
+                        const d = parseCalendarDate(e.target.value);
+                        if (d) {
+                          d.setFullYear(d.getFullYear() + tmpl.validityYears);
+                          setPendingDocumentValidThrough(toCalendarDateString(d));
+                        }
                       }
                     }}
                     style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.3)}`, fontSize: 12.5, background: palette.backgroundLight.hex, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
@@ -555,45 +568,20 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           )}
 
           {/* Source provider — independent of the patient's PCP / referral physician */}
-          <div style={{
-            marginBottom: 16,
-            padding: 12,
-            borderRadius: 10,
-            border: `1.5px solid ${pendingPhysician
-              ? hexToRgba(palette.accentBlue.hex, 0.35)
-              : hexToRgba(palette.backgroundDark.hex, 0.12)}`,
-            background: pendingPhysician
-              ? hexToRgba(palette.accentBlue.hex, 0.05)
-              : hexToRgba(palette.backgroundDark.hex, 0.02),
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
               <p style={{
-                fontSize: 11, fontWeight: 750, letterSpacing: '0.05em', textTransform: 'uppercase',
-                color: pendingPhysician ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
-                margin: 0,
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0,
               }}>
                 Provider this file came from
               </p>
-              {pendingPhysician ? (
-                <button
-                  type="button"
-                  onClick={() => setPendingPhysician(null)}
-                  style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
-                >
-                  Clear
-                </button>
-              ) : (
-                <span style={{
-                  fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
-                  background: hexToRgba(palette.backgroundDark.hex, 0.06),
-                  color: hexToRgba(palette.backgroundDark.hex, 0.45),
-                }}>
-                  Optional
-                </span>
-              )}
+              <span style={{ fontSize: 11, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
+                Optional
+              </span>
             </div>
-            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8, lineHeight: 1.4 }}>
-              Who authored or sent this document. Leave blank if unknown.
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.48), marginBottom: 8, lineHeight: 1.4 }}>
+              Who authored or sent this document — not the patient’s PCP. Leave blank if unknown.
             </p>
             <PhysicianPicker
               physicianId={pendingPhysician?.id || null}
@@ -661,7 +649,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           collapsedGroups={collapsedGroups}
           toggleGroup={(id) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))}
           onPreview={setPreview}
-          onOpenToSide={(file) => openFileBeside(file, patient, referral)}
+          onOpenToSide={isMobile ? undefined : (file) => openFileBeside(file, patient, referral)}
           onDelete={readOnly ? undefined : handleDeleteFile}
           resolveUser={resolveUser}
           resolvePhysician={resolvePhysician}
@@ -673,7 +661,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         <FilePreviewModal
           file={preview}
           onClose={() => setPreview(null)}
-          onOpenToSide={() => openFileBeside(preview, patient, referral)}
+          onOpenToSide={isMobile ? undefined : () => openFileBeside(preview, patient, referral)}
         />
       )}
     </div>
@@ -895,8 +883,8 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
   const opwddSubtypeLabel = file.document_subtype
     ? OPWDD_CHECKLIST_BY_KEY[file.document_subtype]?.label || file.document_subtype
     : null;
-  const validThrough = file.document_valid_through ? new Date(file.document_valid_through) : null;
-  const isExpired = validThrough && validThrough.getTime() < Date.now();
+  const validThroughDays = file.document_valid_through ? daysUntilCalendarDate(file.document_valid_through) : null;
+  const isExpired = validThroughDays != null && validThroughDays < 0;
 
   return (
     <div
@@ -925,9 +913,9 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
               {opwddSubtypeLabel}
             </span>
           )}
-          {validThrough && (
+          {file.document_valid_through && (
             <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: isExpired ? hexToRgba(palette.primaryMagenta.hex, 0.08) : hexToRgba(palette.accentGreen.hex, 0.12), color: isExpired ? palette.primaryMagenta.hex : '#15803d' }}>
-              {isExpired ? 'Expired ' : 'Valid through '}{validThrough.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              {isExpired ? 'Expired ' : 'Valid through '}{fmtCalendarDate(file.document_valid_through, '')}
             </span>
           )}
           <FileSourceProviderBadge file={file} resolvePhysician={resolvePhysician} size="sm" />

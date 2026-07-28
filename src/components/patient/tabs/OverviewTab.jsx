@@ -21,6 +21,8 @@ import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import { LANGUAGE_OPTIONS, languageName, DEFAULT_LANGUAGE_CODE } from '../../../data/languages.js';
 import { normalizePersonNamePart, normalizeContactName } from '../../../utils/personName.js';
+import GuardianContactFields, { contactsFromPatient } from '../../guardians/GuardianContactFields.jsx';
+import { savePatientContactSlot } from '../../../utils/knownGuardians.js';
 
 const DIVISIONS  = ['ALF', 'Special Needs'];
 const PRIORITIES = ['Low', 'Normal', 'High', 'Critical'];
@@ -1300,13 +1302,113 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
           value is established (after the payer authorizes a service set), so
           we don't surface it in Demographics. */}
 
-      {/* ── Emergency Contact ── */}
-      <Section title="Emergency Contact">
-        <EditableField label="Name"   fieldKey="emergency_contact_name"  value={patient.emergency_contact_name}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <PhoneField    label="Phone"  fieldKey="emergency_contact_phone" value={patient.emergency_contact_phone} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <EmailField    label="Email"  fieldKey="emergency_contact_email" value={patient.emergency_contact_email} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
+      {/* ── Primary + Emergency contacts (known guardians under the hood) ── */}
+      <Section title="Contacts">
+        <div style={{ gridColumn: '1 / -1' }}>
+          {readOnly ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <ReadField label="Primary" value={[patient.primary_contact_name, patient.primary_contact_relationship, patient.primary_contact_phone].filter(Boolean).join(' · ') || null} fullWidth />
+              <ReadField label="Emergency" value={[patient.emergency_contact_name, patient.emergency_contact_relationship, patient.emergency_contact_phone].filter(Boolean).join(' · ') || null} fullWidth />
+            </div>
+          ) : (
+            <ContactsEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
+          )}
+        </div>
       </Section>
 
+    </div>
+  );
+}
+
+function ContactsEditor({ patient, patientId, onSave }) {
+  const [draft, setDraft] = useState(() => contactsFromPatient(patient));
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    setDraft(contactsFromPatient(patient));
+  }, [patient?._id, patient?.primary_contact_name, patient?.emergency_contact_name, patient?.primary_contact_phone, patient?.emergency_contact_phone, patient?.primary_contact_relationship, patient?.emergency_contact_relationship]);
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      // Persist mirrors immediately for snappy UI, then upsert guardian links.
+      const mirror = {
+        primary_contact_name: draft.primary?.name || '',
+        primary_contact_phone: draft.primary?.phone || '',
+        primary_contact_email: draft.primary?.email || '',
+        primary_contact_relationship: draft.primary?.relationship || '',
+        emergency_contact_name: draft.emergency?.same_as_primary
+          ? (draft.primary?.name || '')
+          : (draft.emergency?.name || ''),
+        emergency_contact_phone: draft.emergency?.same_as_primary
+          ? (draft.primary?.phone || '')
+          : (draft.emergency?.phone || ''),
+        emergency_contact_email: draft.emergency?.same_as_primary
+          ? (draft.primary?.email || '')
+          : (draft.emergency?.email || ''),
+        emergency_contact_relationship: draft.emergency?.same_as_primary
+          ? (draft.primary?.relationship || draft.emergency?.relationship || '')
+          : (draft.emergency?.relationship || ''),
+      };
+      Object.entries(mirror).forEach(([k, v]) => onSave(k, v));
+      updateEntity('patients', patientId, mirror);
+      await updatePatient(patientId, mirror);
+
+      await savePatientContactSlot({
+        patientBusinessId: patient.id,
+        patientRecordId: patientId,
+        slot: 'primary',
+        name: draft.primary?.name,
+        phone: draft.primary?.phone,
+        email: draft.primary?.email,
+        relationship: draft.primary?.relationship,
+        source: 'demographics',
+      });
+      await savePatientContactSlot({
+        patientBusinessId: patient.id,
+        patientRecordId: patientId,
+        slot: 'emergency',
+        name: mirror.emergency_contact_name,
+        phone: mirror.emergency_contact_phone,
+        email: mirror.emergency_contact_email,
+        relationship: mirror.emergency_contact_relationship,
+        source: 'demographics',
+      });
+      setMsg('Saved');
+      setTimeout(() => setMsg(null), 2000);
+    } catch (err) {
+      console.warn('[OverviewTab] contacts save failed', err);
+      setMsg(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <GuardianContactFields value={draft} onChange={setDraft} showEmail />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            height: 34, padding: '0 16px', borderRadius: 8, border: 'none', cursor: saving ? 'default' : 'pointer',
+            background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+            fontSize: 12.5, fontWeight: 650, fontFamily: 'inherit', opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? 'Saving…' : 'Save contacts'}
+        </button>
+        {msg && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: msg === 'Saved' ? palette.accentGreen.hex : palette.primaryMagenta.hex }}>
+            {msg}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

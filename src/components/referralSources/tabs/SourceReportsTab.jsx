@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { isSocCompletedReferral } from '../../../data/stageConfig.js';
 
 function SectionTitle({ children, sub }) {
   return (
@@ -127,9 +128,9 @@ export default function SourceReportsTab({ source, referrals }) {
 
   const summary = useMemo(() => {
     const total    = filtered.length;
-    const admitted = filtered.filter((r) => r.current_stage === 'SOC Completed').length;
+    const admitted = filtered.filter((r) => isSocCompletedReferral(r)).length;
     const ntuc     = filtered.filter((r) => r.current_stage === 'NTUC').length;
-    const active   = total - admitted - ntuc;
+    const active   = filtered.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC').length;
     return {
       total, admitted, ntuc, active,
       convRate: total ? Math.round((admitted / total) * 100) : 0,
@@ -163,7 +164,7 @@ export default function SourceReportsTab({ source, referrals }) {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!buckets[key]) buckets[key] = { key, total: 0, admitted: 0, ntuc: 0 };
       buckets[key].total++;
-      if (r.current_stage === 'SOC Completed') buckets[key].admitted++;
+      if (isSocCompletedReferral(r)) buckets[key].admitted++;
       if (r.current_stage === 'NTUC') buckets[key].ntuc++;
     });
     const max = range === 'all' ? 12 : range === '365' ? 12 : range === '90' ? 4 : 2;

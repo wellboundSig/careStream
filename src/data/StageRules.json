@@ -259,7 +259,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": true,
-      "description": "SOC performed and documented. Patient transferred to HCHB. CareStream pipeline ends here."
+      "description": "SOC performed and documented (soc_completed_date). Patient stays counted on SOC Completed even if current_stage returns to Intake for post-SOC paperwork — concurrent membership via the durable completion stamp."
     },
 
     "Hold": {

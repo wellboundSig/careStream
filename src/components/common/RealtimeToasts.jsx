@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { useIsMobile } from '../../hooks/useIsMobile.js';
 
 // In-app notification toasts fed by the realtime layer (window 'wb:notification'
 // CustomEvents — see src/store/realtime.js). Stacked bottom-right, auto-dismiss,
@@ -11,6 +12,7 @@ const AUTO_DISMISS_MS = 7000;
 export default function RealtimeToasts() {
   const [toasts, setToasts] = useState([]);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     function onNotify(e) {
@@ -27,8 +29,13 @@ export default function RealtimeToasts() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 20, right: 20, zIndex: 5000,
-      display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 340,
+      position: 'fixed',
+      bottom: isMobile ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : 20,
+      left: isMobile ? 12 : 'auto',
+      right: 12,
+      zIndex: 5000,
+      display: 'flex', flexDirection: 'column', gap: 10,
+      maxWidth: isMobile ? 'none' : 340,
     }}>
       {toasts.map((t) => (
         <div

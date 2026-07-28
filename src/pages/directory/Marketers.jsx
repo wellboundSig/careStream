@@ -6,6 +6,8 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { fmtCalendarDate } from '../../utils/dateFormat.js';
+import { isSocCompletedReferral } from '../../data/stageConfig.js';
 
 const REGION_COLORS = {
   LI:          hexToRgba(palette.accentBlue.hex, 0.18),
@@ -38,7 +40,7 @@ export default function Marketers() {
       if (!mid) return;
       if (!map[mid]) map[mid] = { total: 0, admitted: 0, ntuc: 0, lastDate: null };
       map[mid].total++;
-      if (ref.current_stage === 'SOC Completed') map[mid].admitted++;
+      if (isSocCompletedReferral(ref)) map[mid].admitted++;
       if (ref.current_stage === 'NTUC') map[mid].ntuc++;
       if (!map[mid].lastDate || new Date(ref.referral_date) > new Date(map[mid].lastDate)) {
         map[mid].lastDate = ref.referral_date;
@@ -131,7 +133,7 @@ export default function Marketers() {
 function MarketerRow({ marketer, stats, onOpen }) {
   const [hovered, setHovered] = useState(false);
   const regionBg = REGION_COLORS[marketer.region] || hexToRgba(palette.backgroundDark.hex, 0.07);
-  const lastDate = stats.lastDate ? new Date(stats.lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  const lastDate = stats.lastDate ? fmtCalendarDate(stats.lastDate) : '—';
 
   return (
     <tr onDoubleClick={onOpen} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}

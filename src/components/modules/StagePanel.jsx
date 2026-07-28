@@ -45,11 +45,15 @@ import PatientSnapshot from './PatientSnapshot.jsx';
 import SocCompletedCelebration from '../common/SocCompletedCelebration.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import { isUserOoo, oooWindowLabel } from '../../utils/outOfOffice.js';
+import { findSiblingLeadReferrals } from '../../utils/knownGuardians.js';
 import {
   fmtCalendarDate,
+  fmtCalendarDateShort,
   toCalendarDateInput,
   addCalendarDays,
   daysUntilCalendarDate,
+  daysSinceCalendarDate,
+  todayCalendarDate,
 } from '../../utils/dateFormat.js';
 
 const PIPELINE_STAGES = [
@@ -386,6 +390,13 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
 
   const [ownerId, setOwnerId] = useState('');
   const [onlySpeakers, setOnlySpeakers] = useState(false);
+  const siblingLeads = useMemo(() => findSiblingLeadReferrals(referral), [referral]);
+  const [moveSiblings, setMoveSiblings] = useState(true);
+  const [selectedSiblingIds, setSelectedSiblingIds] = useState(() => new Set());
+  useEffect(() => {
+    setSelectedSiblingIds(new Set(siblingLeads.map((r) => r._id)));
+    setMoveSiblings(siblingLeads.length > 0);
+  }, [siblingLeads]);
   const canSubmit = !!ownerId;
   const selectedOwner = useMemo(
     () => allUsers.find((u) => u.id === ownerId) || (ownerId === appUserId ? meUser : null),
@@ -565,9 +576,71 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
           </div>
         </div>
 
+        {siblingLeads.length > 0 && (
+          <div style={{
+            margin: '0 22px 14px', padding: '12px 14px', borderRadius: 10,
+            background: hexToRgba(palette.accentBlue.hex, 0.08),
+            border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.22)}`,
+          }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={moveSiblings}
+                onChange={(e) => setMoveSiblings(e.target.checked)}
+                style={{ accentColor: palette.accentBlue.hex, marginTop: 2 }}
+              />
+              <span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: palette.backgroundDark.hex, display: 'block' }}>
+                  Move these patients together?
+                </span>
+                <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.4 }}>
+                  Same known guardian on {siblingLeads.length} other lead{siblingLeads.length === 1 ? '' : 's'}. Assigning one intake owner keeps phone calls with one person.
+                </span>
+              </span>
+            </label>
+            {moveSiblings && (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {siblingLeads.map((r) => {
+                  const checked = selectedSiblingIds.has(r._id);
+                  return (
+                    <label key={r._id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedSiblingIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(r._id);
+                            else next.delete(r._id);
+                            return next;
+                          });
+                        }}
+                        style={{ accentColor: palette.accentBlue.hex }}
+                      />
+                      <span style={{ fontWeight: 650, color: palette.backgroundDark.hex }}>
+                        {r.patientName || r.patient_id}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
           <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
-          <button onClick={() => canSubmit && onConfirm(ownerId)} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+          <button
+            onClick={() => {
+              if (!canSubmit) return;
+              const extras = moveSiblings
+                ? siblingLeads.filter((r) => selectedSiblingIds.has(r._id))
+                : [];
+              onConfirm(ownerId, extras);
+            }}
+            disabled={!canSubmit}
+            style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+          >
             Move to Intake
           </button>
         </div>
@@ -582,8 +655,11 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
   const [showDiscard, setShowDiscard] = useState(false);
   const [showPromote, setShowPromote] = useState(false);
 
-  const today = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 86400000).length;
-  const thisWeek = referrals.filter((r) => Date.now() - new Date(r.referral_date).getTime() < 7 * 86400000).length;
+  const today = referrals.filter((r) => daysSinceCalendarDate(r.referral_date) === 0).length;
+  const thisWeek = referrals.filter((r) => {
+    const days = daysSinceCalendarDate(r.referral_date);
+    return days != null && days >= 0 && days < 7;
+  }).length;
 
   async function handleDiscard(reason, explanation) {
     if (!selectedReferral) return;
@@ -603,30 +679,35 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
     setShowDiscard(false);
   }
 
-  async function handlePromote(ownerId) {
+  async function handlePromote(ownerId, siblingReferrals = []) {
     if (!selectedReferral) return;
     // Resolve the staff member's display name so the timeline note never
     // surfaces a raw `usr_###` id to a clinical/business reader.
     const ownerUser = Object.values(useCareStore.getState().users || {}).find((u) => u.id === ownerId);
     const ownerName = ownerUser ? `${ownerUser.first_name || ''} ${ownerUser.last_name || ''}`.trim() : ownerId;
     const now = new Date().toISOString();
-    const result = attemptTransition({
-      referral: selectedReferral,
-      toStage: 'Intake',
-      context: {
-        note: `Owner assigned: ${ownerName}`,
-        actorUserId: appUserId,
-        extraFields: {
-          intake_owner_id: ownerId,
-          intake_owner_changed_at: now,
-          intake_owner_changed_by_id: appUserId,
-          updated_at: now,
+    const batch = [selectedReferral, ...(siblingReferrals || [])];
+    for (const ref of batch) {
+      const result = attemptTransition({
+        referral: ref,
+        toStage: 'Intake',
+        context: {
+          note: batch.length > 1
+            ? `Owner assigned: ${ownerName} (moved with sibling leads sharing a known guardian)`
+            : `Owner assigned: ${ownerName}`,
+          actorUserId: appUserId,
+          extraFields: {
+            intake_owner_id: ownerId,
+            intake_owner_changed_at: now,
+            intake_owner_changed_by_id: appUserId,
+            updated_at: now,
+          },
         },
-      },
-    });
-    if (result.allowed) {
-      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } })
-        .catch((err) => { console.error('[LeadEntry] Move failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
+      });
+      if (result.allowed) {
+        await applyTransition({ referral: ref, result, context: { actorUserId: appUserId } })
+          .catch((err) => { console.error('[LeadEntry] Move failed:', err); window.alert?.('Failed to move to Intake: ' + err.message); });
+      }
     }
     triggerDataRefresh();
     onSelectedReferralLeftModule?.();
@@ -846,10 +927,18 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           {/* Sub-stage indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: isF2F ? hexToRgba(palette.accentOrange.hex, 0.12) : hexToRgba(palette.accentBlue.hex, 0.12), color: isF2F ? palette.accentOrange.hex : palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               {isF2F ? 'F2F/MD Orders' : 'Intake'}
             </span>
+            {selectedReferral.soc_completed_date && (
+              <span
+                title={`SOC completed ${fmtCalendarDate(selectedReferral.soc_completed_date)} — still counted on Completed`}
+                style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.14), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}
+              >
+                SOC done
+              </span>
+            )}
           </div>
 
           <PatientSnapshot
@@ -858,6 +947,26 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
             triageData={triageData}
             onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
           />
+
+          {selectedReferral.soc_completed_date && selectedReferral.current_stage !== 'SOC Completed' && (
+            <div
+              data-testid="post-soc-work-banner"
+              style={{
+                borderRadius: 8,
+                background: hexToRgba(palette.accentGreen.hex, 0.1),
+                border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.28)}`,
+                marginBottom: 12,
+                padding: '10px 12px',
+              }}
+            >
+              <p style={{ fontSize: 12, fontWeight: 650, color: palette.accentGreen.hex, margin: 0 }}>
+                SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)} — post-SOC work still open
+              </p>
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0', lineHeight: 1.45 }}>
+                This visit still counts on SOC Completed. Finish the paperwork here; both lists stay concurrent.
+              </p>
+            </div>
+          )}
 
           {/* Returned from Eligibility — required note becomes a flag here */}
           {selectedReferral.eligibility_returned_to_intake_note && (
@@ -1031,7 +1140,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                     />
                   ) : (
                     <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '10px' }}>
-                      <input type="date" value={receivedDate} max={new Date().toISOString().split('T')[0]} onChange={(e) => setReceivedDate(e.target.value)}
+                      <input type="date" value={receivedDate} max={todayCalendarDate()} onChange={(e) => setReceivedDate(e.target.value)}
                         style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', outline: 'none', marginBottom: 6 }} />
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={handleLogReceived} disabled={!receivedDate || saving} style={{ flex: 1, padding: '6px', borderRadius: 6, border: 'none', background: receivedDate ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), color: receivedDate ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 11, fontWeight: 650, cursor: receivedDate ? 'pointer' : 'not-allowed' }}>{saving ? 'Saving...' : 'Confirm'}</button>
@@ -1430,7 +1539,7 @@ function DisenrollmentPanel({ selectedReferral, onInitiateTransition }) {
                 <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 4 }}>Expert Medicaid Assist</p>
                 {f.note && <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.7), lineHeight: 1.5, marginBottom: 6 }}>{f.note}</p>}
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8 }}>
-                  Follow-up {f.follow_up_date ? new Date(f.follow_up_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
+                  Follow-up {f.follow_up_date ? fmtCalendarDateShort(f.follow_up_date, 'TBD') : 'TBD'}
                 </p>
                 <button
                   onClick={() => markResolved(f)}
@@ -1682,7 +1791,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
                 <input
                   type="date"
                   value={receivedDate}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={todayCalendarDate()}
                   onChange={(e) => setReceivedDate(e.target.value)}
                   style={{
                     width: '100%', boxSizing: 'border-box',
@@ -2925,7 +3034,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
             <InfoRow label="Division" value={selectedReferral.division} />
             <InfoRow label="Services" value={Array.isArray(selectedReferral.services_requested) ? selectedReferral.services_requested.join(', ') : '—'} />
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
-            <InfoRow label="Days in pipeline" value={Math.floor((Date.now() - new Date(selectedReferral.referral_date).getTime()) / 86400000) + 'd'} />
+            <InfoRow label="Days in pipeline" value={(daysSinceCalendarDate(selectedReferral.referral_date) ?? 0) + 'd'} />
           </PanelSection>
 
           {/* NTUC Request details (when this patient was routed here for NTUC review) */}
@@ -2972,7 +3081,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
 function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCalendarDate();
   const [open, setOpen] = useState(false);
   const [newDate, setNewDate] = useState('');
   const [reasonCategory, setReasonCategory] = useState('');
@@ -3197,7 +3306,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
   const actualStage = selectedReferral?.current_stage;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayCalendarDate();
 
   const [socDate, setSocDate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -3270,7 +3379,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
     setOnboarding(true); setOnboardError(null);
     let succeeded = false;
-    const completedDate = new Date().toISOString().split('T')[0];
+    const completedDate = todayCalendarDate();
     const patientName = selectedReferral.patientName || 'Patient';
     // current_stage at click time is either 'Pre-SOC' (no SOC Scheduled
     // sub-state yet) or 'SOC Scheduled'. Both reach SOC Completed; mark the
@@ -3305,9 +3414,9 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   // Step indicator. EMR onboarding now happens upstream (its own stage), so by
   // the time a patient is in Pre-SOC it's already done — reflect that.
   const steps = [
-    { key: 'emr', label: 'EMR Onboarding', done: !!selectedReferral?.emr_onboarded_at || actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
-    { key: 'schedule', label: 'SOC Scheduled', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' },
-    { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' },
+    { key: 'emr', label: 'EMR Onboarding', done: !!selectedReferral?.emr_onboarded_at || actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
+    { key: 'schedule', label: 'SOC Scheduled', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
+    { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
   ];
 
   const socDateDisplay = fmtCalendarDate(selectedReferral?.soc_scheduled_date);
@@ -3457,7 +3566,7 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
     setOnboarding(true);
     setOnboardError(null);
     let succeeded = false;
-    const completedDate = new Date().toISOString().split('T')[0];
+    const completedDate = todayCalendarDate();
     const patientName = selectedReferral.patientName || 'Patient';
     const result = attemptTransition({
       referral: selectedReferral,
@@ -3606,17 +3715,30 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
 }
 
 // ── 13. SOC Completed ─────────────────────────────────────────────────────────
-function SocCompletedPanel({ referrals }) {
+function SocCompletedPanel({ referrals, selectedReferral }) {
   const hchbDone = referrals.filter((r) => r.hchb_entered === true || r.hchb_entered === 'true').length;
+  const postSocWork = selectedReferral
+    && selectedReferral.soc_completed_date
+    && selectedReferral.current_stage
+    && selectedReferral.current_stage !== 'SOC Completed';
   return (
     <Panel>
       <PanelSection title="HCHB Entry Status">
         <InfoRow label="Entered in HCHB" value={hchbDone} highlight={palette.accentGreen.hex} />
         <InfoRow label="Pending HCHB entry" value={referrals.length - hchbDone} highlight={referrals.length - hchbDone > 0 ? palette.accentOrange.hex : null} />
       </PanelSection>
+      {postSocWork && (
+        <PanelSection title="Also in pipeline">
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, margin: 0 }}>
+            SOC is complete and stays counted here. Current work stage:{' '}
+            <strong style={{ color: palette.backgroundDark.hex }}>{selectedReferral.current_stage}</strong>
+            {' '}(post-SOC paperwork / corrections).
+          </p>
+        </PanelSection>
+      )}
       <PanelSection title="Notes">
         <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
-          This is a terminal stage. No forward transitions are available. Cases should be fully entered in HCHB.
+          Once SOC is confirmed, the patient remains on this list via the completion date — even if Intake still has open work. Enter cases fully in HCHB.
         </p>
       </PanelSection>
     </Panel>
@@ -3638,11 +3760,11 @@ function HoldPanel({ referrals, selectedReferral, resolveUser, onInitiateTransit
   }, [selectedReferral?._id, selectedReferral?.hold_return_stage]);
 
   const overdue = referrals.filter((r) =>
-    r.hold_expected_resolution && new Date(r.hold_expected_resolution) < new Date()
+    r.hold_expected_resolution && daysUntilCalendarDate(r.hold_expected_resolution) < 0
   ).length;
 
   const isOverdue = selectedReferral?.hold_expected_resolution &&
-    new Date(selectedReferral.hold_expected_resolution) < new Date();
+    daysUntilCalendarDate(selectedReferral.hold_expected_resolution) < 0;
 
   async function handleRelease() {
     if (!selectedReferral || !returnStage || releasing) return;
@@ -3680,7 +3802,7 @@ function HoldPanel({ referrals, selectedReferral, resolveUser, onInitiateTransit
             label="Expected resolution"
             value={
               selectedReferral.hold_expected_resolution
-                ? new Date(selectedReferral.hold_expected_resolution).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                ? fmtCalendarDate(selectedReferral.hold_expected_resolution)
                 : '—'
             }
             highlight={isOverdue ? palette.primaryMagenta.hex : null}
@@ -3765,9 +3887,7 @@ function NtucPanel({ referrals }) {
         division:              r.division || '',
         ntuc_reason:           r.ntuc_reason || '',
         ntuc_financial_impact: r.ntuc_financial_impact || '',
-        referral_date:         r.referral_date
-          ? new Date(r.referral_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '',
+        referral_date:         r.referral_date ? fmtCalendarDate(r.referral_date, '') : '',
         services_requested:    Array.isArray(r.services_requested)
           ? r.services_requested.join(', ')
           : (r.services_requested || ''),

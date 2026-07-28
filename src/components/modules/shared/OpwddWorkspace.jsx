@@ -23,6 +23,12 @@ import { useCareStore }       from '../../../store/careStore.js';
 import { PERMISSION_KEYS }    from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import {
+  fmtCalendarDate,
+  fmtCalendarDateShort,
+  fmtDateTime,
+  daysUntilCalendarDate,
+} from '../../../utils/dateFormat.js';
 import { oooOptionSuffix } from '../../../utils/outOfOffice.js';
 
 import {
@@ -99,11 +105,10 @@ const CHECKLIST_STATUS_PILL = {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-const fmtDate     = (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-const fmtShort    = (iso) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : '—';
-const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-const daysSince   = (iso) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : 0;
-const daysUntil   = (iso) => iso ? Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000) : 0;
+const fmtDate = fmtCalendarDate;
+const fmtShort = fmtCalendarDateShort;
+const daysSince = (iso) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : 0;
+const daysUntil = (iso) => daysUntilCalendarDate(iso) ?? 0;
 
 function parseArrayField(v) {
   if (!v) return [];

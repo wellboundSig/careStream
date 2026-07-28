@@ -12,7 +12,7 @@ import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import TaskComposer from '../components/tasks/TaskComposer.jsx';
 import AccessDenied from '../components/common/AccessDenied.jsx';
-import { parseCalendarDate } from '../utils/dateFormat.js';
+import { parseCalendarDate, toCalendarDateString, todayCalendarDate } from '../utils/dateFormat.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales: { 'en-US': enUS } });
@@ -185,7 +185,7 @@ export default function CalendarPage() {
   function handleSelectSlot(slotInfo) {
     if (!can(PERMISSION_KEYS.TASK_CREATE)) return;
     const d = slotInfo.start instanceof Date ? slotInfo.start : new Date(slotInfo.start);
-    setAddModal({ date: d.toISOString().split('T')[0] });
+    setAddModal({ date: toCalendarDateString(d) });
   }
 
   function openPatientFromEvent(event) {
@@ -250,7 +250,7 @@ export default function CalendarPage() {
           ))}
           {can(PERMISSION_KEYS.TASK_CREATE) && (
             <button
-              onClick={() => setAddModal({ date: new Date().toISOString().split('T')[0] })}
+              onClick={() => setAddModal({ date: todayCalendarDate() })}
               style={{
                 marginLeft: 8, padding: '8px 16px', borderRadius: 8,
                 background: palette.primaryMagenta.hex, border: 'none',

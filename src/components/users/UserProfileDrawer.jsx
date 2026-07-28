@@ -5,6 +5,7 @@ import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { isSocCompletedReferral } from '../../data/stageConfig.js';
 
 const ROLE_COLORS = {
   'rol_001': palette.primaryMagenta.hex,
@@ -67,7 +68,7 @@ export default function UserProfileDrawer({ user, onClose }) {
 
   const active = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
   const ntuc   = referrals.filter((r) => r.current_stage === 'NTUC');
-  const completed = referrals.filter((r) => r.current_stage === 'SOC Completed');
+  const completed = referrals.filter((r) => isSocCompletedReferral(r));
 
   return (
     <>

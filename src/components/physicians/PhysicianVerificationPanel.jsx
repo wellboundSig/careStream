@@ -6,6 +6,7 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { verifyPhysicianNpi } from '../../api/cms.js';
 import { normalizePhysicianTitle } from '../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { fmtCalendarDate } from '../../utils/dateFormat.js';
 
 /**
  * Reusable NPI / PECOS / OPRA verification panel.
@@ -247,17 +248,11 @@ const DETAIL_FIELDS = [
   { key: 'credential',        label: 'Credential',     hint: 'MD, DO, NP, PA, RN, LCSW, etc.' },
   { key: 'gender',            label: 'Gender',         hint: 'Provider gender (individuals only)', fmt: (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : v },
   { key: 'status',            label: 'NPPES status',   hint: '"A" (active) or "D" (deactivated)', fmt: (v) => v === 'A' ? 'Active' : v === 'D' ? 'Deactivated' : v },
-  { key: 'enumeration_date',  label: 'Enumerated',     hint: 'When the NPI was first issued', fmt: fmtDate },
-  { key: 'last_updated',      label: 'Last updated',   hint: 'Last NPPES record update date', fmt: fmtDate },
+  { key: 'enumeration_date',  label: 'Enumerated',     hint: 'When the NPI was first issued', fmt: (d) => fmtCalendarDate(d, '') },
+  { key: 'last_updated',      label: 'Last updated',   hint: 'Last NPPES record update date', fmt: (d) => fmtCalendarDate(d, '') },
   { key: 'sole_proprietor',   label: 'Sole proprietor', hint: 'Y/N — individual operating as org', fmt: (v) => /^(y|yes)$/i.test(String(v)) ? 'Yes' : /^(n|no)$/i.test(String(v)) ? 'No' : v },
 ];
 
-function fmtDate(d) {
-  if (!d) return '';
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function fmtDateTime(iso) {
   try {

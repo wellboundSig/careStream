@@ -1,4 +1,5 @@
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 
 function InfoRow({ label, value, mono, accent }) {
   return (
@@ -17,11 +18,6 @@ function InfoRow({ label, value, mono, accent }) {
       }}>{value || '—'}</span>
     </div>
   );
-}
-
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function SourceOverviewTab({ source, marketer, stats }) {
@@ -60,8 +56,8 @@ export default function SourceOverviewTab({ source, marketer, stats }) {
       <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), margin: '22px 0 10px' }}>
         Activity
       </p>
-      <InfoRow label="First Referral" value={fmtDate(stats.firstReferral)} />
-      <InfoRow label="Last Referral" value={fmtDate(stats.lastReferral)} />
+      <InfoRow label="First Referral" value={fmtCalendarDate(stats.firstReferral)} />
+      <InfoRow label="Last Referral" value={fmtCalendarDate(stats.lastReferral)} />
       {memberSince && <InfoRow label="In System Since" value={memberSince} />}
 
       <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), margin: '22px 0 10px' }}>

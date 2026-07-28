@@ -12,6 +12,8 @@ import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from
 import { useCursoryReview } from '../../../hooks/useCursoryReview.js';
 import HospitalizationReview from '../../modules/shared/HospitalizationReview.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
+import FileSourceProviderBadge from '../../common/FileSourceProviderBadge.jsx';
+import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { formatPhysicianName } from '../../../utils/physicianName.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
@@ -20,8 +22,16 @@ import {
   fmtDateTime,
   toCalendarDateInput,
   addCalendarDays,
+  todayCalendarDate,
   daysUntilCalendarDate,
 } from '../../../utils/dateFormat.js';
+
+function formatBytes(n) {
+  if (!n && n !== 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function truthyFlag(v) {
   return v === true || v === 'true' || v === 'TRUE' || v === 'Yes' || v === 'yes' || v === 1 || v === '1';
@@ -83,6 +93,9 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState('F2F');
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingPhysician, setPendingPhysician] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
   const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -138,25 +151,42 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     }
   }
 
-  async function handleUpload(e) {
+  function stageUpload(e) {
     const file = e.target.files?.[0];
     if (!file || !patient) return;
+    setPendingFile(file);
+    setPendingPhysician(null);
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function cancelStaging() {
+    setPendingFile(null);
+    setPendingPhysician(null);
+    setUploadError(null);
+    setUploading(false);
+  }
+
+  async function confirmUpload() {
+    if (!pendingFile || !patient || uploading) return;
     setUploading(true);
+    setUploadError(null);
     try {
       // The worker returns `{ r2Key, r2Url }` and requires the patientId in the
       // upload path so the file lands under the correct R2 prefix.
-      const { r2Key, r2Url } = await uploadToR2(file, patient.id);
+      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient.id);
       const fields = {
         patient_id: patient.id,
         referral_id: referral?.id || null,
         uploaded_by_id: appUserId || 'unknown',
-        file_name: file.name,
-        file_type: file.type || 'application/octet-stream',
-        file_size: file.size,
+        file_name: pendingFile.name,
+        file_type: pendingFile.type || 'application/octet-stream',
+        file_size: pendingFile.size,
         r2_key: r2Key,
         r2_url: r2Url,
         category: uploadCategory,
         created_at: new Date().toISOString(),
+        ...(pendingPhysician?.id ? { physician_id: pendingPhysician.id } : {}),
       };
       const created = await createFile(fields);
       const newFile = { _id: created.id, ...created.fields };
@@ -167,7 +197,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
       mergeEntities('files', { [created.id]: newFile });
 
       if (uploadCategory === 'F2F' && referral && !referral.f2f_date) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayCalendarDate();
         await updateReferralOptimistic(referral._id, {
           f2f_date: today,
           f2f_expiration: addCalendarDays(today, 90),
@@ -176,9 +206,10 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
         });
         triggerDataRefresh();
       }
-    } catch { /* silent */ } finally {
+      cancelStaging();
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed');
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -302,7 +333,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
               <input
                 type="date"
                 value={receivedDate}
-                max={new Date().toISOString().split('T')[0]}
+                max={todayCalendarDate()}
                 onChange={(e) => setReceivedDate(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 7, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 15, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }}
               />
@@ -337,23 +368,103 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
       <Section title="Documents">
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           {['F2F', 'MD Orders'].map((cat) => (
-            <button key={cat} onClick={() => setUploadCategory(cat)} style={{
-              flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
-              background: uploadCategory === cat ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-              color: uploadCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
-            }}>
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setUploadCategory(cat)}
+              disabled={!!pendingFile}
+              style={{
+                flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', fontSize: 11.5, fontWeight: 650,
+                cursor: pendingFile ? 'not-allowed' : 'pointer',
+                background: uploadCategory === cat ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+                color: uploadCategory === cat ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
+                opacity: pendingFile && uploadCategory !== cat ? 0.55 : 1,
+              }}
+            >
               {cat}
             </button>
           ))}
         </div>
-        <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleUpload} />
-        {!readOnly && (
+        <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={stageUpload} />
+        {!readOnly && !pendingFile && (
           <button
-            onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
             style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: `1.5px dashed ${hexToRgba(palette.backgroundDark.hex, 0.15)}`, background: hexToRgba(palette.backgroundDark.hex, 0.02), color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 12.5, fontWeight: 600, cursor: 'pointer', marginBottom: 12 }}
           >
-            {uploading ? 'Uploading...' : `Upload ${uploadCategory} Document`}
+            Upload {uploadCategory} Document
           </button>
+        )}
+
+        {pendingFile && (
+          <div style={{
+            marginBottom: 14, padding: 14, borderRadius: 10,
+            border: `1px solid var(--color-border)`,
+            background: hexToRgba(palette.backgroundDark.hex, 0.02),
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 2 }}>
+              {pendingFile.name}
+            </p>
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 12 }}>
+              {formatBytes(pendingFile.size)} · {uploadCategory}
+            </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                <p style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                  color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0,
+                }}>
+                  Provider this file came from
+                </p>
+                <span style={{ fontSize: 11, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>
+                  Optional
+                </span>
+              </div>
+              <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.48), marginBottom: 8, lineHeight: 1.4 }}>
+                Who authored or sent this document — not the patient’s PCP. Leave blank if unknown.
+              </p>
+              <PhysicianPicker
+                physicianId={pendingPhysician?.id || null}
+                onChange={setPendingPhysician}
+                compact
+              />
+            </div>
+
+            {uploadError && (
+              <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 10 }}>{uploadError}</p>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={confirmUpload}
+                disabled={uploading}
+                style={{
+                  padding: '8px 18px', borderRadius: 7, border: 'none',
+                  background: uploading ? hexToRgba(palette.primaryDeepPlum.hex, 0.4) : palette.primaryDeepPlum.hex,
+                  color: '#fff', fontSize: 13, fontWeight: 650,
+                  cursor: uploading ? 'wait' : 'pointer',
+                }}
+              >
+                {uploading ? 'Uploading…' : 'Upload'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelStaging}
+                disabled={uploading}
+                style={{
+                  padding: '8px 14px', borderRadius: 7,
+                  border: `1px solid var(--color-border)`, background: 'none',
+                  fontSize: 12.5, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
 
         {loadingFiles ? (
@@ -367,7 +478,12 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /><path d="M14 2v6h6" stroke={palette.primaryMagenta.hex} strokeWidth="1.6" /></svg>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</p>
-                  <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{f.category} · {fmtDate(f.created_at)}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <span style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                      {f.category} · {fmtDateTime(f.created_at) || fmtDate(f.created_at)}
+                    </span>
+                    <FileSourceProviderBadge file={f} size="sm" />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <button

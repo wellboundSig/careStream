@@ -4,11 +4,8 @@ import DivisionBadge from '../../common/DivisionBadge.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { FilterInput } from '../../../utils/columnModel.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+import { fmtCalendarDate } from '../../../utils/dateFormat.js';
+import { isSocCompletedReferral } from '../../../data/stageConfig.js';
 
 const F2F_COLORS = {
   Green:   palette.accentGreen.hex,
@@ -45,7 +42,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
     let list = referrals;
 
     if (statusFilter === 'active') list = list.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed');
-    else if (statusFilter === 'admitted') list = list.filter((r) => r.current_stage === 'SOC Completed');
+    else if (statusFilter === 'admitted') list = list.filter((r) => isSocCompletedReferral(r));
     else if (statusFilter === 'ntuc') list = list.filter((r) => r.current_stage === 'NTUC');
 
     if (search.trim()) {
@@ -189,7 +186,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: f2fColor, fontWeight: 600 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: f2fColor }} />{ref.f2f_urgency}</span>
                         : <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</span>}
                     </td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtDate(ref.referral_date)}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtCalendarDate(ref.referral_date)}</td>
                   </tr>
                 );
               })}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
 import { useCareStore } from '../store/careStore.js';
 import airtable from '../api/airtable.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 // Hydrate all referrals from this source AND enrich each one with the
 // associated patient's name + insurance + the most recent stage transition.
@@ -51,7 +52,7 @@ export function useReferralSourceData(source) {
     ? Object.values(storeMarketers).find((m) => m.id === source.marketer_id) || null
     : null;
 
-  const admitted = referrals.filter((r) => r.current_stage === 'SOC Completed').length;
+  const admitted = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const ntuc     = referrals.filter((r) => r.current_stage === 'NTUC').length;
   const active   = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC').length;
 
@@ -85,7 +86,7 @@ export function useReferralSourceData(source) {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!buckets[key]) buckets[key] = { key, total: 0, admitted: 0, ntuc: 0 };
       buckets[key].total++;
-      if (r.current_stage === 'SOC Completed') buckets[key].admitted++;
+      if (isSocCompletedReferral(r)) buckets[key].admitted++;
       if (r.current_stage === 'NTUC') buckets[key].ntuc++;
     });
     return Object.values(buckets).sort((a, b) => a.key.localeCompare(b.key)).slice(-12);

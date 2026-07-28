@@ -12,7 +12,7 @@ import {
   URGENT_CARE_TYPE_OPTIONS,
 } from '../../utils/urgentCare.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
-import { fmtCalendarDate } from '../../utils/dateFormat.js';
+import { ageFromDob, fmtCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
 // Fields required for the demographics readiness dot to turn green. Aligned
 // with what the Demographics tab actually edits — `medicaid_number` is NOT
@@ -23,24 +23,12 @@ const DEMOGRAPHICS_FIELDS = [
   'address_street', 'address_city', 'address_state', 'address_zip',
 ];
 
-function calcAge(dob) {
-  if (!dob) return null;
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
-}
-
 // Returns the hospitalization Date when the patient had a hospitalization
 // within the last 14 days (per the cursory review), else null. Drives the
 // hospital indicator in the snapshot.
 export function recentHospitalizationDate(referral) {
-  const raw = referral?.hospitalization_date;
-  if (!raw) return null;
-  // Parse the calendar date in LOCAL time (not UTC midnight) so the day count
-  // and display don't shift by a day in negative-UTC timezones.
-  const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const date = m
-    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-    : new Date(raw);
-  if (isNaN(date.getTime())) return null;
+  const date = parseCalendarDate(referral?.hospitalization_date);
+  if (!date) return null;
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const days = Math.round((startOfToday.getTime() - date.getTime()) / 86400000);
@@ -78,7 +66,7 @@ export function computeSnapshotFlags(patient, referral, triageData /*, _legacyIn
     if (!triageData || typeof triageData !== 'object') {
       triage = false;
     } else {
-      const age = calcAge(p.dob);
+      const age = ageFromDob(p.dob);
       const type = age !== null && age < 18 ? 'pediatric' : 'adult';
       const result = isTriageComplete(triageData, type);
       triage = result.complete === true && result.missing.length === 0;

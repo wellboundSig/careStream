@@ -10,6 +10,7 @@ import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
 import SourceFormModal from '../../components/referralSources/SourceFormModal.jsx';
 import { SOURCE_TYPES, TYPE_COLORS } from '../../components/referralSources/sourceConstants.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { isSocCompletedReferral } from '../../data/stageConfig.js';
 
 // A "Referral Source" is the PERSON who refers (care manager, discharge planner,
 // PCP, etc.). Each person sits under a category/type (Hospital, CCO, PCP, etc.)
@@ -65,7 +66,7 @@ export default function ReferralSources() {
     return list
       .map((src) => {
         const refs = refData.filter((r) => r.referral_source_id === src.id);
-        const admitted = refs.filter((r) => r.current_stage === 'SOC Completed').length;
+        const admitted = refs.filter((r) => isSocCompletedReferral(r)).length;
         const convRate = refs.length ? Math.round((admitted / refs.length) * 100) : 0;
         return { ...src, refCount: refs.length, admitted, convRate };
       })

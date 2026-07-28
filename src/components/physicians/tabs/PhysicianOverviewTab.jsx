@@ -3,6 +3,7 @@ import { updatePhysician } from '../../../api/physicians.js';
 import { updatePhysicianInCache } from '../../../hooks/usePhysicians.js';
 import PhysicianVerificationPanel from '../PhysicianVerificationPanel.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { fmtCalendarDate, todayCalendarDate } from '../../../utils/dateFormat.js';
 
 function Row({ label, value, color }) {
   return (
@@ -69,7 +70,7 @@ export default function PhysicianOverviewTab({ physician, onUpdated }) {
     .filter(Boolean).join(', ');
 
   const pecosCheckedDisplay = local.pecos_last_checked
-    ? new Date(local.pecos_last_checked).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    ? fmtCalendarDate(local.pecos_last_checked, null)
     : null;
 
   async function toggle(field, key) {
@@ -96,7 +97,7 @@ export default function PhysicianOverviewTab({ physician, onUpdated }) {
   }
 
   async function markPecosCheckedToday() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayCalendarDate();
     setSaving('checked');
     setSaveError(null);
     try {

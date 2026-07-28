@@ -37,6 +37,8 @@ export const useCareStore = create((set, get) => ({
   roles: {},
   facilities: {},
   physicians: {},
+  knownGuardians: {},
+  patientGuardians: {},
   campaigns: {},
   marketerFacilities: {},
   campaignMarketers: {},

@@ -9,28 +9,14 @@ import { conflictCategoryLabel, normalizeSeverity } from '../../../utils/conflic
 import LoadingState from '../../common/LoadingState.jsx';
 import MentionText from '../../common/MentionText.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { ageFromDob, fmtCalendarDate, fmtDateTime } from '../../../utils/dateFormat.js';
 
 function fmtFull(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-    ' · ' + new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return fmtDateTime(d) || '';
 }
 
 function initials(name) {
   return (name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-}
-
-function calcAge(dob) {
-  if (!dob) return null;
-  return Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 86400000));
-}
-
-// Format a calendar date (YYYY-MM-DD or ISO) without a timezone shift.
-function fmtCalendarDate(value) {
-  if (!value) return '';
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Build milestone timeline entries from the referral's own persisted
@@ -122,7 +108,7 @@ export default function TimelineTab({ patient, referral }) {
   const [loading, setLoading]   = useState(true);
 
   const isSpecialNeeds = patient?.division === 'Special Needs';
-  const age            = calcAge(patient?.dob);
+  const age            = ageFromDob(patient?.dob);
   const isPediatric    = age !== null && age < 18;
 
   useEffect(() => {

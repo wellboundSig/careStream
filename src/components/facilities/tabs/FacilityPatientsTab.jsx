@@ -4,11 +4,8 @@ import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+import { fmtCalendarDate } from '../../../utils/dateFormat.js';
+import { isSocCompletedReferral } from '../../../data/stageConfig.js';
 
 export default function FacilityPatientsTab({ referrals, loading }) {
   const { open: openPatient } = usePatientDrawer();
@@ -17,7 +14,7 @@ export default function FacilityPatientsTab({ referrals, loading }) {
   const displayed = filter === 'active'
     ? referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed')
     : filter === 'admitted'
-    ? referrals.filter((r) => r.current_stage === 'SOC Completed')
+    ? referrals.filter((r) => isSocCompletedReferral(r))
     : referrals;
 
   if (loading) return <LoadingState message="Loading patients…" size="small" />;
@@ -54,7 +51,7 @@ export default function FacilityPatientsTab({ referrals, loading }) {
                   <td style={{ padding: '9px 14px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</td>
                   <td style={{ padding: '9px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>
                   <td style={{ padding: '9px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
-                  <td style={{ padding: '9px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtDate(ref.referral_date)}</td>
+                  <td style={{ padding: '9px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{fmtCalendarDate(ref.referral_date)}</td>
                 </tr>
               ))}
             </tbody>

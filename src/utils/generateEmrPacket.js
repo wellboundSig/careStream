@@ -9,6 +9,13 @@ import { getConflictsByReferral } from '../api/conflicts.js';
 import { getTriageAdult, getTriagePediatric } from '../api/triage.js';
 import { getSignedFileUrl } from './r2Upload.js';
 import { conflictCategoryLabel, normalizeSeverity } from './conflictFlagging.js';
+import {
+  fmtCalendarDate,
+  fmtCalendarDateLong,
+  fmtDateTime,
+  ageFromDob,
+  todayCalendarDate,
+} from './dateFormat.js';
 
 // Neutral print palette — clean, readable, no brand pink washes.
 const INK = {
@@ -24,27 +31,7 @@ const INK = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v) => (v != null && v !== '') ? String(v) : '—';
-const fmtDate = (v) => {
-  if (!v) return '—';
-  const d = new Date(v);
-  return isNaN(d) ? String(v) : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-};
-
-const fmtDateTime = (v) => {
-  if (!v) return '—';
-  const d = new Date(v);
-  if (isNaN(d)) return String(v);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    + ' · '
-    + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-};
-
-function fmtCalendarDate(value) {
-  if (!value) return '';
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+const fmtDate = fmtCalendarDateLong;
 
 function humanizeUserIds(text, resolveUser) {
   if (!text || typeof text !== 'string') return text;
@@ -381,10 +368,18 @@ async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
   }
   s.gap();
 
+  s.sectionHeader('Primary Contact');
+  s.row('Name', p.primary_contact_name);
+  s.row('Phone', p.primary_contact_phone);
+  s.row('Email', p.primary_contact_email);
+  s.row('Relation', p.primary_contact_relationship);
+  s.gap();
+
   s.sectionHeader('Emergency Contact');
   s.row('Name', p.emergency_contact_name);
   s.row('Phone', p.emergency_contact_phone);
   s.row('Email', p.emergency_contact_email);
+  s.row('Relation', p.emergency_contact_relationship);
 
   if (fileCount > 0) {
     s.gap();
@@ -890,9 +885,7 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   const isSN = (patient.division || referral.division) === 'Special Needs';
   let isPediatric = false;
   if (isSN && referralId) {
-    const age = patient.dob
-      ? Math.floor((Date.now() - new Date(patient.dob).getTime()) / (365.25 * 86400000))
-      : null;
+    const age = patient.dob ? ageFromDob(patient.dob) : null;
     isPediatric = age !== null && age < 18;
     try {
       const recs = await (isPediatric ? getTriagePediatric : getTriageAdult)(referralId);
@@ -922,7 +915,7 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     };
   const { last, first } = patientNameParts(nameSource);
   const nameStem = first ? `${last}_${first}` : last;
-  const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = todayCalendarDate();
 
   // No uploads → clean PDF only.
   if (files.length === 0) {

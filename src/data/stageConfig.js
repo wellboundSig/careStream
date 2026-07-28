@@ -1,5 +1,21 @@
 import palette, { hexToRgba } from '../utils/colors.js';
 
+/**
+ * Durable “SOC was performed” membership. Once `soc_completed_date` is stamped,
+ * the patient stays on the SOC Completed list/count even if `current_stage`
+ * moves back to Intake (or elsewhere) for post-SOC paperwork / ICD fixes.
+ * NTUC / discarded cases leave the Completed list.
+ */
+const SOC_COMPLETED_LEFT_PIPELINE = new Set(['NTUC', 'Discarded Leads']);
+
+export function isSocCompletedReferral(r) {
+  if (!r) return false;
+  if (SOC_COMPLETED_LEFT_PIPELINE.has(r.current_stage)) return false;
+  if (r.current_stage === 'SOC Completed') return true;
+  const d = r.soc_completed_date;
+  return d != null && d !== '' && d !== false;
+}
+
 // ── Stage slug mapping ────────────────────────────────────────────────────────
 // ── Discard reasons — PLACEHOLDER ────────────────────────────────────────────
 // TODO: Replace with final business-approved enum values.
@@ -251,11 +267,13 @@ export const STAGE_META = {
   },
   'SOC Completed': {
     displayName: 'Completed',
-    description: 'SOC performed — patient transferred to HCHB',
+    description: 'SOC performed — stays here once confirmed, even if Intake still has post-SOC work',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,
-    matchReferral: (r) => r.current_stage === 'SOC Completed',
+    // Concurrent: durable soc_completed_date keeps the patient on this list
+    // while current_stage may be Intake (send-back for ICD / paperwork).
+    matchReferral: (r) => isSocCompletedReferral(r),
   },
   'OPWDD Enrollment': {
     displayName: 'OPWDD',
