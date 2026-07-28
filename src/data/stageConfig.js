@@ -183,7 +183,7 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'F2F/MD Orders Pending',
   },
   'Clinical Intake RN Review': {
-    description: 'Skilled need + safety review by clinical RN. Patients may be here concurrent with Intake (via in_clinical_review) until Confirm fires. Also lists deferred-documentation cases still needing post-SOC clinical.',
+    description: 'Skilled need + safety review by clinical RN. Defaults to patients in this stage; use Include deferred for concurrent / post-SOC documentation-deferred cases still needing clinical.',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryMagenta.hex,

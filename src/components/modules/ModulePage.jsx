@@ -168,6 +168,10 @@ export default function ModulePage({ stage }) {
   const colPickerRef = useRef(null);
 
   const isSocCompleted = stage === 'SOC Completed';
+  const isClinicalRnModule = stage === 'Clinical Intake RN Review';
+  // Clinical queue: default to patients actually in this stage. Deferred-docs /
+  // concurrent cases from other stages stay available behind an explicit toggle.
+  const [includeDeferredClinical, setIncludeDeferredClinical] = useState(false);
   const canPendingLog = isSocCompleted && canPerm(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG);
   const canPendingLogDefault = canPendingLog && canPerm(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG_DEFAULT);
   const savedSocView = prefs?.socCompletedView;
@@ -302,6 +306,11 @@ export default function ModulePage({ stage }) {
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
     let list = decoratedReferrals.filter(predicate);
+    // Clinical default: stage-only. Full matchReferral (deferred / concurrent)
+    // only when the user opts in via the queue-scope toggle.
+    if (isClinicalRnModule && !includeDeferredClinical) {
+      list = list.filter((r) => r.current_stage === 'Clinical Intake RN Review');
+    }
     // Never show a division the user cannot access (also covers stale "All"
     // selection before the sidebar default has been coerced).
     list = list.filter((r) => {
@@ -433,7 +442,31 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, isClinicalRnModule, includeDeferredClinical]);
+
+  // Counts for the Clinical queue-scope toggle (division-scoped, ignores search/col filters).
+  const clinicalQueueCounts = useMemo(() => {
+    if (!isClinicalRnModule) return null;
+    const predicate = typeof meta.matchReferral === 'function'
+      ? meta.matchReferral
+      : (r) => r.current_stage === 'Clinical Intake RN Review';
+    let list = decoratedReferrals.filter(predicate).filter((r) => {
+      if (r.division === 'ALF') return hasDivision('ALF');
+      if (r.division === 'Special Needs') return hasDivision('Special Needs');
+      return true;
+    });
+    if (division !== 'All') list = list.filter((r) => r.division === division);
+    const stageOnly = list.filter((r) => r.current_stage === 'Clinical Intake RN Review').length;
+    return { stageOnly, deferred: list.length - stageOnly, all: list.length };
+  }, [isClinicalRnModule, decoratedReferrals, meta, hasDivision, division]);
+
+  // If the selected row drops out of the filtered queue (e.g. toggle flipped), clear it.
+  useEffect(() => {
+    if (!selectedReferralId) return;
+    if (!stageReferrals.some((r) => r._id === selectedReferralId)) {
+      setSelectedReferralId(null);
+    }
+  }, [stageReferrals, selectedReferralId]);
 
   // Distinct values per filterable column for datalist suggestions
   const colOptions = useMemo(() => {
@@ -442,7 +475,10 @@ export default function ModulePage({ stage }) {
       : meta.consolidatedStages
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
-    const base = decoratedReferrals.filter(predicate);
+    let base = decoratedReferrals.filter(predicate);
+    if (isClinicalRnModule && !includeDeferredClinical) {
+      base = base.filter((r) => r.current_stage === 'Clinical Intake RN Review');
+    }
     const opts = {};
     columnDefs.filter((c) => c.filterable).forEach((col) => {
       const vals = new Set();
@@ -482,7 +518,7 @@ export default function ModulePage({ stage }) {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, columnDefs, pcpByReferralId]);
+  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, columnDefs, pcpByReferralId, isClinicalRnModule, includeDeferredClinical]);
 
   const triageStatus = useMemo(() => {
     const snRefIds = new Set(
@@ -1403,6 +1439,43 @@ export default function ModulePage({ stage }) {
             )}
 
             <DuplicateChecker selectedReferral={selectedReferral} allReferrals={allReferrals} />
+
+            {isClinicalRnModule && clinicalQueueCounts && (
+              <button
+                type="button"
+                data-testid="clinical-queue-scope"
+                aria-pressed={includeDeferredClinical}
+                onClick={() => setIncludeDeferredClinical((v) => !v)}
+                title={includeDeferredClinical
+                  ? 'Showing this stage plus deferred cases in other stages. Click to show this stage only.'
+                  : `Showing this stage only. Click to also include ${clinicalQueueCounts.deferred} deferred case${clinicalQueueCounts.deferred === 1 ? '' : 's'}.`}
+                style={{
+                  height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
+                  border: `1px solid ${includeDeferredClinical ? palette.accentBlue.hex : 'var(--color-border)'}`,
+                  background: includeDeferredClinical ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+                  fontSize: 12, fontWeight: 600,
+                  color: includeDeferredClinical ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  cursor: 'pointer', transition: 'all 0.12s',
+                }}
+              >
+                {includeDeferredClinical ? 'Deferred on' : 'Deferred off'}
+                {clinicalQueueCounts.deferred > 0 && (
+                  <span style={{
+                    minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700,
+                    background: includeDeferredClinical
+                      ? hexToRgba(palette.accentBlue.hex, 0.15)
+                      : hexToRgba(palette.backgroundDark.hex, 0.08),
+                    color: includeDeferredClinical
+                      ? palette.accentBlue.hex
+                      : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  }}>
+                    {clinicalQueueCounts.deferred}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Filter toggle */}
             <button
