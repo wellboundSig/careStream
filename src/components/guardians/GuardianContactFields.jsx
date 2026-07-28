@@ -5,44 +5,43 @@ import { guardianDisplay, guardianPhoneDigits } from '../../utils/knownGuardians
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /**
- * Emergency contact slot with relationship + "Find known guardian".
+ * Primary Contact + Emergency Contact slots (known guardians).
  *
- * Patient demographics (primary phone / email / patient name) are the primary
- * contact — do not collect a second "Primary Contact" card here. Pass those
- * fields as `primarySource` so "same as primary" copies and persists correctly.
+ * These are people who care for the patient — never the patient’s own name.
+ * Patient identity (first/last, patient phone, patient email) lives in
+ * demographics separately. “Same as primary” copies the Primary Contact
+ * person into Emergency Contact.
  */
 export default function GuardianContactFields({
   value,
   onChange,
-  primarySource = null,
   showEmail = true,
   compact = false,
 }) {
   const v = value || {};
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSlot, setPickerSlot] = useState(null); // 'primary' | 'emergency' | null
 
-  const primary = primarySource || v.primary || {};
+  const primary = v.primary || {};
   const emergency = v.emergency || {};
-
   const sameAsPrimary = isSameAsPrimary(emergency, primary);
 
-  function setEmergency(patch) {
+  function setSlot(slot, patch) {
     onChange?.({
       ...v,
-      emergency: { ...emergency, ...patch },
+      [slot]: { ...(v[slot] || {}), ...patch },
     });
   }
 
-  function applyGuardian(guardian, relationship) {
-    setEmergency({
+  function applyGuardian(slot, guardian, relationship) {
+    setSlot(slot, {
       name: guardianDisplay(guardian),
       phone: guardianPhoneDigits(guardian.phone) || '',
       email: guardian.email || '',
-      relationship: relationship || emergency.relationship || '',
+      relationship: relationship || v[slot]?.relationship || '',
       guardian_id: guardian.id,
-      same_as_primary: false,
+      ...(slot === 'emergency' ? { same_as_primary: false } : {}),
     });
-    setPickerOpen(false);
+    setPickerSlot(null);
   }
 
   function toggleSameAsPrimary(checked) {
@@ -50,64 +49,75 @@ export default function GuardianContactFields({
       onChange?.({
         ...v,
         emergency: {
-          ...emergency,
-          name: primary.name || emergency.name || '',
+          name: primary.name || '',
           phone: primary.phone || '',
-          email: primary.email || emergency.email || '',
-          relationship: emergency.relationship || '',
+          email: primary.email || '',
+          relationship: emergency.relationship || primary.relationship || '',
+          guardian_id: primary.guardian_id,
           same_as_primary: true,
-          guardian_id: undefined,
         },
       });
     } else {
-      setEmergency({ same_as_primary: false });
+      setSlot('emergency', { same_as_primary: false });
     }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 12 : 16 }}>
+      <p style={{
+        fontSize: 12, margin: 0, lineHeight: 1.4,
+        color: hexToRgba(palette.backgroundDark.hex, 0.5),
+      }}>
+        These are caregivers / contacts — not the patient. New people are saved
+        as known guardians automatically.
+      </p>
+
+      <ContactSlot
+        title="Primary Contact"
+        hint="Main caregiver or decision-maker for this patient"
+        data={primary}
+        showEmail={showEmail}
+        onChange={(patch) => setSlot('primary', patch)}
+        onFind={() => setPickerSlot('primary')}
+      />
+
       <label style={{
         display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5,
         color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer',
+        marginTop: -4,
       }}>
         <input
           type="checkbox"
           checked={sameAsPrimary}
           onChange={(e) => toggleSameAsPrimary(e.target.checked)}
+          disabled={!primary.name && !guardianPhoneDigits(primary.phone)}
           style={{ accentColor: palette.primaryMagenta.hex }}
         />
-        Emergency contact is the same as primary
+        Emergency contact is the same as primary contact
       </label>
-      <p style={{
-        fontSize: 11.5, margin: '-8px 0 0',
-        color: hexToRgba(palette.backgroundDark.hex, 0.4),
-      }}>
-        Uses the patient’s primary phone{primary.phone ? ` (${formatPhoneHint(primary.phone)})` : ''}
-        {primary.email ? ', email' : ''}
-        {primary.name ? `, and name (${primary.name})` : ''}.
-      </p>
 
       <ContactSlot
         title="Emergency Contact"
+        hint="Who to call in an emergency"
         data={emergency}
         showEmail={showEmail}
         disabled={sameAsPrimary}
-        onChange={(patch) => setEmergency({ ...patch, same_as_primary: false })}
-        onFind={() => setPickerOpen(true)}
+        onChange={(patch) => setSlot('emergency', { ...patch, same_as_primary: false })}
+        onFind={() => setPickerSlot('emergency')}
       />
 
-      {pickerOpen && (
+      {pickerSlot && (
         <KnownGuardianPicker
-          onClose={() => setPickerOpen(false)}
-          onSelect={(g, rel) => applyGuardian(g, rel)}
-          defaultRelationship={emergency.relationship || ''}
+          onClose={() => setPickerSlot(null)}
+          onSelect={(g, rel) => applyGuardian(pickerSlot, g, rel)}
+          defaultRelationship={v[pickerSlot]?.relationship || ''}
         />
       )}
     </div>
   );
 }
 
-function ContactSlot({ title, data, showEmail, disabled, onChange, onFind }) {
+function ContactSlot({ title, hint, data, showEmail, disabled, onChange, onFind }) {
   return (
     <div style={{
       opacity: disabled ? 0.55 : 1,
@@ -117,19 +127,29 @@ function ContactSlot({ title, data, showEmail, disabled, onChange, onFind }) {
       border: `1px solid var(--color-border)`,
       background: hexToRgba(palette.backgroundDark.hex, 0.015),
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <p style={{
-          fontSize: 11, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase',
-          color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0,
-        }}>
-          {title}
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{
+            fontSize: 11, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0,
+          }}>
+            {title}
+          </p>
+          {hint && (
+            <p style={{
+              fontSize: 11.5, margin: '3px 0 0',
+              color: hexToRgba(palette.backgroundDark.hex, 0.4),
+            }}>
+              {hint}
+            </p>
+          )}
+        </div>
         <button
           type="button"
           onClick={onFind}
           style={{
             height: 28, padding: '0 10px', borderRadius: 7, border: `1px solid var(--color-border)`,
-            background: palette.backgroundLight.hex, cursor: 'pointer',
+            background: palette.backgroundLight.hex, cursor: 'pointer', flexShrink: 0,
             fontSize: 11.5, fontWeight: 650, color: palette.accentBlue.hex, fontFamily: 'inherit',
           }}
         >
@@ -210,19 +230,20 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-function formatPhoneHint(phone) {
-  const d = guardianPhoneDigits(phone);
-  if (d.length !== 10) return String(phone || '').trim();
-  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-}
-
 export function isSameAsPrimary(emergency, primary) {
   if (emergency?.same_as_primary) return true;
   const pPhone = guardianPhoneDigits(primary?.phone);
   const ePhone = guardianPhoneDigits(emergency?.phone);
   if (pPhone.length < 10 || pPhone !== ePhone) return false;
-  // Phone match is enough to restore the checkbox after save (name may vary).
-  return true;
+  const pName = normalize(primary?.name);
+  const eName = normalize(emergency?.name);
+  // Require name match too so we don’t treat “same phone as patient” as same contact.
+  if (!pName || !eName) return pPhone.length >= 10 && pPhone === ePhone && !pName && !eName;
+  return pName === eName;
+}
+
+function normalize(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
@@ -339,14 +360,20 @@ function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
   );
 }
 
-/** Build form value + infer "same as primary" from patient demographics phone. */
+/** Build form value from patient dual-write mirrors (primary_contact_* + emergency_*). */
 export function contactsFromPatient(patient) {
   if (!patient) {
     return {
+      primary: { name: '', phone: '', email: '', relationship: '' },
       emergency: { name: '', phone: '', email: '', relationship: '', same_as_primary: false },
     };
   }
-  const primary = patientPrimarySource(patient);
+  const primary = {
+    name: patient.primary_contact_name || '',
+    phone: patient.primary_contact_phone || '',
+    email: patient.primary_contact_email || '',
+    relationship: patient.primary_contact_relationship || '',
+  };
   const emergency = {
     name: patient.emergency_contact_name || '',
     phone: patient.emergency_contact_phone || '',
@@ -354,6 +381,7 @@ export function contactsFromPatient(patient) {
     relationship: patient.emergency_contact_relationship || '',
   };
   return {
+    primary,
     emergency: {
       ...emergency,
       same_as_primary: isSameAsPrimary(emergency, primary),
@@ -361,34 +389,54 @@ export function contactsFromPatient(patient) {
   };
 }
 
+/**
+ * Resolve primary + emergency mirrors for save.
+ * Same-as-primary copies the Primary Contact person — never the patient.
+ * Does not invent blank overwrites for untouched slots beyond what draft holds.
+ */
+export function resolveContactsForSave(draft) {
+  const primary = draft?.primary || {};
+  const emergency = draft?.emergency || {};
+  const same = isSameAsPrimary(emergency, primary) || !!emergency.same_as_primary;
+  const primaryOut = {
+    name: primary.name || '',
+    phone: primary.phone || '',
+    email: primary.email || '',
+    relationship: primary.relationship || '',
+  };
+  const emergencyOut = same
+    ? {
+      same_as_primary: true,
+      name: primaryOut.name,
+      phone: primaryOut.phone,
+      email: primaryOut.email,
+      relationship: emergency.relationship || primaryOut.relationship || '',
+    }
+    : {
+      same_as_primary: false,
+      name: emergency.name || '',
+      phone: emergency.phone || '',
+      email: emergency.email || '',
+      relationship: emergency.relationship || '',
+    };
+  return { primary: primaryOut, emergency: emergencyOut };
+}
+
+/** @deprecated use resolveContactsForSave — kept so older imports don’t break */
+export function resolveEmergencyForSave(draft, primarySource) {
+  const resolved = resolveContactsForSave({
+    primary: primarySource || draft?.primary,
+    emergency: draft?.emergency,
+  });
+  return resolved.emergency;
+}
+
+/** @deprecated patient phone/email are not the primary contact person */
 export function patientPrimarySource(patient) {
   if (!patient) return { name: '', phone: '', email: '' };
   return {
-    name: `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
-    phone: patient.phone_primary || '',
-    email: patient.email || '',
-  };
-}
-
-/** Resolve emergency fields for save (copies demographics when same-as-primary). */
-export function resolveEmergencyForSave(draft, primarySource) {
-  const primary = primarySource || {};
-  const emergency = draft?.emergency || {};
-  const same = isSameAsPrimary(emergency, primary) || !!emergency.same_as_primary;
-  if (same) {
-    return {
-      same_as_primary: true,
-      name: primary.name || emergency.name || '',
-      phone: primary.phone || '',
-      email: primary.email || emergency.email || '',
-      relationship: emergency.relationship || '',
-    };
-  }
-  return {
-    same_as_primary: false,
-    name: emergency.name || '',
-    phone: emergency.phone || '',
-    email: emergency.email || '',
-    relationship: emergency.relationship || '',
+    name: patient.primary_contact_name || '',
+    phone: patient.primary_contact_phone || '',
+    email: patient.primary_contact_email || '',
   };
 }

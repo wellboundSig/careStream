@@ -368,12 +368,11 @@ async function buildCoverPdf(referral, resolveSource, { fileCount = 0 } = {}) {
   }
   s.gap();
 
-  // Primary contact = patient demographics (phone/email/name). Named
-  // primary_contact_* mirrors (e.g. from triage caregiver) win when present.
+  // Primary Contact = caregiver person (primary_contact_*), not the patient.
   s.sectionHeader('Primary Contact');
-  s.row('Name', p.primary_contact_name || [p.first_name, p.last_name].filter(Boolean).join(' '));
-  s.row('Phone', p.primary_contact_phone || p.phone_primary);
-  s.row('Email', p.primary_contact_email || p.email);
+  s.row('Name', p.primary_contact_name);
+  s.row('Phone', p.primary_contact_phone);
+  s.row('Email', p.primary_contact_email);
   s.row('Relation', p.primary_contact_relationship);
   s.gap();
 
@@ -742,16 +741,20 @@ async function buildHousePacketPdf({
 }
 
 /**
- * One long PDF: house sections + each patient file embedded (PDF pages / images).
+ * One long PDF: optional house sections + each patient file embedded.
  * Non-embeddable or failed files get a divider page explaining why.
+ * Pass houseBytes=null for a documents-only joined PDF.
  */
 async function buildCompletePacketPdf({
-  houseBytes,
+  houseBytes = null,
   loaded,
   failed,
+  originalsInZip = true,
 }) {
   const merged = await PDFDocument.create();
-  await appendPdfBytes(merged, houseBytes);
+  if (houseBytes) {
+    await appendPdfBytes(merged, houseBytes);
+  }
 
   if (loaded.length === 0 && failed.length === 0) {
     return merged.save();
@@ -761,7 +764,9 @@ async function buildCompletePacketPdf({
     { file_name: 'Attached patient documents', category: 'Packet', created_at: null },
     {
       status: 'Documents below',
-      detail: 'Original uploads are also in the Patient_Files folder of this ZIP.',
+      detail: originalsInZip
+        ? 'Original uploads may also be included separately in this download.'
+        : 'Patient documents embedded in this PDF.',
     },
   ));
 
@@ -777,19 +782,20 @@ async function buildCompletePacketPdf({
         if (!ok) {
           await appendPdfBytes(merged, buildFileDividerPdf(file, {
             status: 'Could not embed image',
-            detail: 'See Patient_Files/ for the original, or open it from the Files tab.',
+            detail: 'Open this file from the patient Files tab.',
           }));
         }
       } else {
         await appendPdfBytes(merged, buildFileDividerPdf(file, {
           status: 'Not embeddable in PDF',
-          detail: `Type “${file.file_type || file.file_name || 'unknown'}” is in Patient_Files/ as the original.`,
+          detail: `Type “${file.file_type || file.file_name || 'unknown'}” — open from the Files tab`
+            + (originalsInZip ? ' or Patient_Files/ in the ZIP.' : '.'),
         }));
       }
     } catch (err) {
       await appendPdfBytes(merged, buildFileDividerPdf(file, {
         status: 'Could not embed file',
-        detail: err?.message || 'See Patient_Files/ or the Files tab.',
+        detail: err?.message || 'Open from the Files tab.',
       }));
     }
   }
@@ -802,6 +808,32 @@ async function buildCompletePacketPdf({
   }
 
   return merged.save();
+}
+
+/** Default download checklist — matches prior “full ZIP” behavior. */
+export const EMR_PACKET_DEFAULT_OPTIONS = {
+  includeHousePacket: true,
+  includePatientFiles: true,
+  /** 'joined' | 'separate' | 'joined_and_separate' */
+  packageMode: 'joined_and_separate',
+};
+
+export function normalizeEmrPacketOptions(raw = {}) {
+  const includeHousePacket = raw.includeHousePacket !== false;
+  const includePatientFiles = raw.includePatientFiles !== false;
+  let packageMode = raw.packageMode || EMR_PACKET_DEFAULT_OPTIONS.packageMode;
+  if (!['joined', 'separate', 'joined_and_separate'].includes(packageMode)) {
+    packageMode = 'joined_and_separate';
+  }
+  // At least one content type required.
+  if (!includeHousePacket && !includePatientFiles) {
+    return { ...EMR_PACKET_DEFAULT_OPTIONS };
+  }
+  // Summary-only → always a single PDF.
+  if (includeHousePacket && !includePatientFiles) {
+    packageMode = 'joined';
+  }
+  return { includeHousePacket, includePatientFiles, packageMode };
 }
 
 async function collectPatientFiles(referral) {
@@ -839,16 +871,12 @@ async function collectPatientFiles(referral) {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Generate and download the EMR Onboarding Packet.
+ * Generate and download the EMR Onboarding Packet per checklist options.
  *
- * - Always builds a house PDF (demographics, notes, timeline).
- * - If the patient has uploaded files, downloads a ZIP with:
- *     • EMR_Onboarding_Complete.pdf — house packet + embedded patient docs
- *     • Patient_Files/ — original uploads as separate files
- * - If there are no files, downloads the house PDF alone.
- *
- * All StagePanel entry points call this same function so Intake / EMR /
- * Pre-SOC / SOC Scheduled stay in sync.
+ * Options (opts.packetOptions or top-level):
+ *   includeHousePacket  — CareStream-generated summary (demographics/notes/timeline)
+ *   includePatientFiles — uploaded patient documents
+ *   packageMode         — 'joined' | 'separate' | 'joined_and_separate'
  *
  * @param {object} referral
  * @param {Function|object} resolveSourceOrOpts  legacy resolveSource fn, or opts bag
@@ -863,18 +891,24 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     resolveSource,
     resolveUser = () => '—',
     resolveMarketer = () => '—',
+    packetOptions,
   } = opts;
+
+  const pack = normalizeEmrPacketOptions(packetOptions || opts);
+  const { includeHousePacket, includePatientFiles, packageMode } = pack;
 
   const patientId = referral.patient_id || referral.patient?.id || referral.patient?._id;
   const referralId = referral.id || referral._id;
   const patient = referral.patient || {};
 
-  const [files, noteRecs, historyRecs, conflictRecs] = await Promise.all([
+  const [allFiles, noteRecs, historyRecs, conflictRecs] = await Promise.all([
     collectPatientFiles(referral),
     patientId ? getNotesByPatient(patientId).catch(() => []) : Promise.resolve([]),
     referralId ? getStageHistory(referralId).catch(() => []) : Promise.resolve([]),
     referralId ? getConflictsByReferral(referralId).catch(() => []) : Promise.resolve([]),
   ]);
+
+  const files = includePatientFiles ? allFiles : [];
 
   const notes = noteRecs
     .map((r) => ({ _id: r.id, ...r.fields }))
@@ -899,15 +933,18 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     referral, history, notes, conflicts, triage, resolveUser, resolveMarketer, isPediatric,
   });
 
-  const houseBytes = await buildHousePacketPdf({
-    referral,
-    resolveSource,
-    resolveUser,
-    resolveMarketer,
-    notes,
-    timelineEntries,
-    files,
-  });
+  let houseBytes = null;
+  if (includeHousePacket) {
+    houseBytes = await buildHousePacketPdf({
+      referral,
+      resolveSource,
+      resolveUser,
+      resolveMarketer,
+      notes,
+      timelineEntries,
+      files: includePatientFiles ? files : allFiles,
+    });
+  }
 
   const nameSource = (patient.first_name || patient.last_name)
     ? patient
@@ -918,28 +955,60 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   const { last, first } = patientNameParts(nameSource);
   const nameStem = first ? `${last}_${first}` : last;
   const dateStr = todayCalendarDate();
+  const baseName = `${nameStem}_EMR_Onboarding_${dateStr}`;
 
-  // No uploads → clean PDF only.
-  if (files.length === 0) {
-    downloadBlob(houseBytes, `${nameStem}_EMR_Onboarding_${dateStr}.pdf`, 'application/pdf');
+  // Summary only (or no uploads available).
+  if (!includePatientFiles || files.length === 0) {
+    if (!houseBytes) {
+      throw new Error('No patient documents on file to download.');
+    }
+    downloadBlob(houseBytes, `${baseName}.pdf`, 'application/pdf');
     return;
   }
 
   const { loaded, failed } = await loadPatientFileBytes(files);
-  const completeBytes = await buildCompletePacketPdf({
-    houseBytes,
-    loaded,
-    failed,
-  });
+  const wantsJoined = packageMode === 'joined' || packageMode === 'joined_and_separate';
+  const wantsSeparate = packageMode === 'separate' || packageMode === 'joined_and_separate';
 
-  // ZIP: one long merged PDF + original uploads in a folder.
+  let joinedBytes = null;
+  if (wantsJoined) {
+    joinedBytes = await buildCompletePacketPdf({
+      houseBytes: includeHousePacket ? houseBytes : null,
+      loaded,
+      failed,
+      originalsInZip: wantsSeparate,
+    });
+  }
+
+  // Single joined PDF — no ZIP.
+  if (packageMode === 'joined') {
+    downloadBlob(
+      joinedBytes,
+      includeHousePacket ? `${baseName}.pdf` : `${baseName}_Documents.pdf`,
+      'application/pdf',
+    );
+    return;
+  }
+
+  // ZIP with separate originals and/or joined + originals.
   const zip = new JSZip();
-  zip.file('EMR_Onboarding_Complete.pdf', completeBytes);
-  zip.file('EMR_Onboarding_Packet.pdf', houseBytes);
+  if (packageMode === 'joined_and_separate' && joinedBytes) {
+    zip.file(
+      includeHousePacket ? 'EMR_Onboarding_Complete.pdf' : 'Patient_Documents_Joined.pdf',
+      joinedBytes,
+    );
+  }
+  if (includeHousePacket && houseBytes && wantsSeparate) {
+    // Always include standalone summary when packaging separately (and when
+    // joined_and_separate so staff can open demographics without the embeds).
+    zip.file('EMR_Onboarding_Summary.pdf', houseBytes);
+  }
 
-  const filesFolder = zip.folder('Patient_Files');
-  for (const item of loaded) {
-    filesFolder.file(item.zipName, item.bytes);
+  if (wantsSeparate) {
+    const filesFolder = zip.folder('Patient_Files');
+    for (const item of loaded) {
+      filesFolder.file(item.zipName, item.bytes);
+    }
   }
 
   if (failed.length > 0) {
@@ -953,5 +1022,5 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, `${nameStem}_EMR_Onboarding_${dateStr}.zip`, 'application/zip');
+  downloadBlob(zipBlob, `${baseName}.zip`, 'application/zip');
 }

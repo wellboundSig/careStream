@@ -1030,28 +1030,40 @@ export default function NewReferralForm({
         ...(form.address_city && { address_city: form.address_city }),
         ...(form.address_state && { address_state: form.address_state }),
         ...(form.address_zip && { address_zip: form.address_zip }),
-        // Emergency contact dual-write — primary contact is demographics phone/email.
+        // Caregiver dual-write mirrors — Primary/Emergency Contact people (not the patient).
         ...(() => {
-          const patientName = `${named.first_name || ''} ${named.last_name || ''}`.trim();
+          const primaryParsed = splitContactNameAndRelationship(form.primary_contact_name);
           const emergencyRaw = form.emergency_same_as_primary
-            ? (patientName || form.emergency_contact_name)
+            ? (form.primary_contact_name || form.emergency_contact_name)
             : form.emergency_contact_name;
           const emergencyParsed = splitContactNameAndRelationship(emergencyRaw);
+          const primaryPhone = form.primary_contact_phone || '';
           const emergencyPhone = form.emergency_same_as_primary
-            ? form.phone_primary
+            ? (form.primary_contact_phone || form.emergency_contact_phone)
             : form.emergency_contact_phone;
           const emergencyEmail = form.emergency_same_as_primary
-            ? form.email
+            ? form.primary_contact_email
             : form.emergency_contact_email;
+          const emergencyRel = form.emergency_same_as_primary
+            ? (form.emergency_contact_relationship || form.primary_contact_relationship)
+            : form.emergency_contact_relationship;
           return {
+            ...(primaryParsed.cleanName && {
+              primary_contact_name: normalizeContactName(primaryParsed.cleanName),
+            }),
+            ...(primaryPhone && { primary_contact_phone: primaryPhone }),
+            ...(form.primary_contact_email && { primary_contact_email: form.primary_contact_email }),
+            ...((form.primary_contact_relationship || primaryParsed.relationship) && {
+              primary_contact_relationship:
+                form.primary_contact_relationship || primaryParsed.relationship,
+            }),
             ...(emergencyParsed.cleanName && {
               emergency_contact_name: normalizeContactName(emergencyParsed.cleanName),
             }),
             ...(emergencyPhone && { emergency_contact_phone: emergencyPhone }),
             ...(emergencyEmail && { emergency_contact_email: emergencyEmail }),
-            ...((form.emergency_contact_relationship || emergencyParsed.relationship) && {
-              emergency_contact_relationship:
-                form.emergency_contact_relationship || emergencyParsed.relationship,
+            ...((emergencyRel || emergencyParsed.relationship) && {
+              emergency_contact_relationship: emergencyRel || emergencyParsed.relationship,
             }),
           };
         })(),
@@ -1061,12 +1073,25 @@ export default function NewReferralForm({
       const createdPatientId = patientRecord.fields?.id || patientCustomId;
 
       // System of record: known_guardians + patient_guardians (non-fatal if API lags).
-      const patientName = `${named.first_name || ''} ${named.last_name || ''}`.trim();
+      const primaryName = form.primary_contact_name;
+      const primaryPhone = form.primary_contact_phone;
+      if (primaryName || primaryPhone) {
+        savePatientContactSlot({
+          patientBusinessId: createdPatientId,
+          patientRecordId: patientRecord.id,
+          slot: 'primary',
+          name: primaryName,
+          phone: primaryPhone,
+          email: form.primary_contact_email,
+          relationship: form.primary_contact_relationship,
+          source: 'new_referral',
+        }).catch((err) => console.warn('New referral: primary guardian sync failed', err));
+      }
       const emergencyName = form.emergency_same_as_primary
-        ? (patientName || form.emergency_contact_name)
+        ? (form.primary_contact_name || form.emergency_contact_name)
         : form.emergency_contact_name;
       const emergencyPhone = form.emergency_same_as_primary
-        ? form.phone_primary
+        ? (form.primary_contact_phone || form.emergency_contact_phone)
         : form.emergency_contact_phone;
       if (emergencyName || emergencyPhone) {
         savePatientContactSlot({
@@ -1075,8 +1100,12 @@ export default function NewReferralForm({
           slot: 'emergency',
           name: emergencyName,
           phone: emergencyPhone,
-          email: form.emergency_same_as_primary ? form.email : form.emergency_contact_email,
-          relationship: form.emergency_contact_relationship,
+          email: form.emergency_same_as_primary
+            ? form.primary_contact_email
+            : form.emergency_contact_email,
+          relationship: form.emergency_same_as_primary
+            ? (form.emergency_contact_relationship || form.primary_contact_relationship)
+            : form.emergency_contact_relationship,
           source: 'new_referral',
         }).catch((err) => console.warn('New referral: emergency guardian sync failed', err));
       }
@@ -1658,12 +1687,12 @@ export default function NewReferralForm({
               />
               {errors.last_name && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.last_name}</p>}
             </FieldBox>
-            <FieldBox label="Primary Phone" required={form.division !== 'ALF'}>
+            <FieldBox label="Patient Phone" required={form.division !== 'ALF'}>
               <Input value={form.phone_primary} onChange={(v) => setField('phone_primary', v)} placeholder="(XXX) XXX-XXXX" type="tel" hasError={!!errors.phone_primary} />
               {errors.phone_primary && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.phone_primary}</p>}
               {form.division === 'ALF' && (
                 <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>
-                  Optional for ALF — the facility is the primary contact
+                  Optional for ALF — the facility is often the main reach number
                 </p>
               )}
             </FieldBox>
@@ -1763,14 +1792,21 @@ export default function NewReferralForm({
                 {errors.address_zip && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.address_zip}</p>}
               </FieldBox>
               <div style={{ gridColumn: '1 / -1' }}>
+                <p style={{
+                  fontSize: 12, fontWeight: 700, margin: '4px 0 10px',
+                  color: hexToRgba(palette.backgroundDark.hex, 0.55),
+                }}>
+                  Primary &amp; Emergency Contacts
+                </p>
                 <GuardianContactFields
                   showEmail
-                  primarySource={{
-                    name: `${form.first_name || ''} ${form.last_name || ''}`.trim(),
-                    phone: form.phone_primary || '',
-                    email: form.email || '',
-                  }}
                   value={{
+                    primary: {
+                      name: form.primary_contact_name,
+                      phone: form.primary_contact_phone,
+                      email: form.primary_contact_email,
+                      relationship: form.primary_contact_relationship,
+                    },
                     emergency: {
                       name: form.emergency_contact_name,
                       phone: form.emergency_contact_phone,
@@ -1783,6 +1819,10 @@ export default function NewReferralForm({
                     setDirty(true);
                     setForm((prev) => ({
                       ...prev,
+                      primary_contact_name: next.primary?.name || '',
+                      primary_contact_phone: next.primary?.phone || '',
+                      primary_contact_email: next.primary?.email || '',
+                      primary_contact_relationship: next.primary?.relationship || '',
                       emergency_contact_name: next.emergency?.name || '',
                       emergency_contact_phone: next.emergency?.phone || '',
                       emergency_contact_email: next.emergency?.email || '',

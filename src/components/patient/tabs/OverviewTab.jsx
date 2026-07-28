@@ -23,8 +23,7 @@ import { LANGUAGE_OPTIONS, languageName, DEFAULT_LANGUAGE_CODE } from '../../../
 import { normalizePersonNamePart, normalizeContactName } from '../../../utils/personName.js';
 import GuardianContactFields, {
   contactsFromPatient,
-  patientPrimarySource,
-  resolveEmergencyForSave,
+  resolveContactsForSave,
 } from '../../guardians/GuardianContactFields.jsx';
 import { savePatientContactSlot } from '../../../utils/knownGuardians.js';
 
@@ -1053,188 +1052,6 @@ function InsuranceEditor({ patient, patientId, onSave }) {
 
 // ── Primary phone + “copy to emergency contact” popup ─────────────────────────
 
-function phoneDigits(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
-function PrimaryPhoneWithEmergencyCopy({ patient, patientId, onSave, readOnly }) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
-  const wrapRef = useRef(null);
-  const { can } = usePermissions();
-
-  const primary = phoneDigits(patient.phone_primary);
-  const ecPhone = phoneDigits(patient.emergency_contact_phone);
-  const alreadySame = primary.length >= 10 && primary === ecPhone;
-  const canOffer = !readOnly && can(PERMISSION_KEYS.PATIENT_EDIT) && primary.length >= 10 && !alreadySame;
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', onDoc);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (alreadySame) setDone(false);
-  }, [alreadySame, patient.phone_primary]);
-
-  async function applyCopy() {
-    if (!canOffer || saving) return;
-    setSaving(true);
-    const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-    const patch = { emergency_contact_phone: primary };
-    // Fill name/email only when blank so we don’t overwrite an existing contact.
-    if (!String(patient.emergency_contact_name || '').trim() && patientName) {
-      patch.emergency_contact_name = patientName;
-    }
-    if (!String(patient.emergency_contact_email || '').trim() && patient.email) {
-      patch.emergency_contact_email = patient.email;
-    }
-
-    Object.entries(patch).forEach(([k, v]) => onSave(k, v));
-    updateEntity('patients', patientId, patch);
-    try {
-      await updatePatient(patientId, patch);
-      setDone(true);
-      setOpen(false);
-    } catch (err) {
-      console.warn('[OverviewTab] copy primary → emergency failed', err);
-      // Roll back local optimistic fields on failure
-      Object.keys(patch).forEach((k) => {
-        onSave(k, patient[k] || '');
-        updateEntity('patients', patientId, { [k]: patient[k] || '' });
-      });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const formatted = primary ? formatPhone(primary) : '';
-
-  return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <PhoneField
-        label="Primary Phone"
-        fieldKey="phone_primary"
-        value={patient.phone_primary}
-        patientId={patientId}
-        patientRecordId={patientId}
-        onSave={onSave}
-        readOnly={readOnly}
-      />
-
-      {canOffer && (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          title="Copy to emergency contact"
-          style={{
-            marginTop: 5,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '3px 9px',
-            borderRadius: 999,
-            border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.28)}`,
-            background: open
-              ? hexToRgba(palette.accentBlue.hex, 0.14)
-              : hexToRgba(palette.accentBlue.hex, 0.07),
-            color: palette.accentBlue.hex,
-            fontSize: 11,
-            fontWeight: 650,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            transition: 'background 0.12s',
-          }}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M8 7h9a2 2 0 0 1 2 2v9M16 3H7a2 2 0 0 0-2 2v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Use for emergency contact
-        </button>
-      )}
-
-      {done && !open && (
-        <p style={{ marginTop: 5, fontSize: 11, fontWeight: 600, color: palette.accentGreen.hex }}>
-          Copied to emergency contact
-        </p>
-      )}
-
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Copy primary phone to emergency contact"
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: 6,
-            zIndex: 40,
-            width: 'min(280px, 100%)',
-            background: palette.backgroundLight.hex,
-            border: `1px solid var(--color-border)`,
-            borderRadius: 10,
-            boxShadow: `0 10px 28px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
-            padding: '12px 13px 11px',
-          }}
-        >
-          <p style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 4px' }}>
-            Primary phone number
-          </p>
-          <p style={{ fontSize: 13.5, fontWeight: 650, color: palette.accentBlue.hex, margin: '0 0 8px' }}>
-            {formatted}
-          </p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.45, margin: '0 0 12px' }}>
-            Autopopulate emergency contact with this number
-            {!String(patient.emergency_contact_name || '').trim() ? ' (and patient name if blank)' : ''}?
-          </p>
-          <div style={{ display: 'flex', gap: 7, justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              style={{
-                padding: '6px 11px', borderRadius: 7, border: 'none',
-                background: hexToRgba(palette.backgroundDark.hex, 0.06),
-                color: hexToRgba(palette.backgroundDark.hex, 0.6),
-                fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              Not now
-            </button>
-            <button
-              type="button"
-              onClick={applyCopy}
-              disabled={saving}
-              style={{
-                padding: '6px 12px', borderRadius: 7, border: 'none',
-                background: palette.accentBlue.hex,
-                color: palette.backgroundLight.hex,
-                fontSize: 12, fontWeight: 650,
-                cursor: saving ? 'default' : 'pointer',
-                opacity: saving ? 0.7 : 1,
-                fontFamily: 'inherit',
-              }}
-            >
-              {saving ? 'Copying…' : 'Yes, copy'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Main tab ───────────────────────────────────────────────────────────────────
 
 export default function OverviewTab({ patient, referral, readOnly = false }) {
@@ -1258,8 +1075,13 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
         </p>
       )}
 
-      {/* ── Patient Information ── */}
-      <Section title="Patient Information">
+      {/* ── 1. Patient (the person receiving care) ── */}
+      <Section title="Patient">
+        <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.4 }}>
+            The patient’s own identity and how to reach them — separate from caregiver contacts below.
+          </p>
+        </div>
         <EditableField label="First Name"        fieldKey="first_name"       value={patient.first_name}       patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EditableField label="Last Name"         fieldKey="last_name"        value={patient.last_name}        patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <DobField patient={patient} patientId={patientId} onSave={handlePatientSave} referral={referral} readOnly={readOnly} />
@@ -1275,14 +1097,9 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
           options={LANGUAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           readOnly={readOnly}
         />
-        <PrimaryPhoneWithEmergencyCopy
-          patient={patient}
-          patientId={patientId}
-          onSave={handlePatientSave}
-          readOnly={readOnly}
-        />
+        <PhoneField label="Patient Phone"        fieldKey="phone_primary"    value={patient.phone_primary}    patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <PhoneField label="Secondary Phone"      fieldKey="phone_secondary"  value={patient.phone_secondary}  patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
-        <EmailField label="Email"                fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
+        <EmailField label="Patient Email"        fieldKey="email"            value={patient.email}            patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
         <EditableField label="Address"           fieldKey="address_street"   value={patient.address_street}   patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} fullWidth readOnly={readOnly} />
         <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 16px' }}>
           <ZipField value={patient.address_zip?.toString()} cityValue={patient.address_city} stateValue={patient.address_state} patientId={patientId} patientRecordId={patientId} onSave={handlePatientSave} readOnly={readOnly} />
@@ -1306,16 +1123,22 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
           value is established (after the payer authorizes a service set), so
           we don't surface it in Demographics. */}
 
-      {/* ── Emergency contact (known guardians under the hood).
-          Primary contact = patient demographics phone / email above. ── */}
-      <Section title="Emergency Contact">
+      {/* ── 2. Caregiver contacts (known guardians) — not the patient ── */}
+      <Section title="Primary & Emergency Contacts">
         <div style={{ gridColumn: '1 / -1' }}>
           {readOnly ? (
-            <ReadField
-              label="Emergency"
-              value={[patient.emergency_contact_name, patient.emergency_contact_relationship, patient.emergency_contact_phone].filter(Boolean).join(' · ') || null}
-              fullWidth
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <ReadField
+                label="Primary contact"
+                value={[patient.primary_contact_name, patient.primary_contact_relationship, patient.primary_contact_phone].filter(Boolean).join(' · ') || null}
+                fullWidth
+              />
+              <ReadField
+                label="Emergency contact"
+                value={[patient.emergency_contact_name, patient.emergency_contact_relationship, patient.emergency_contact_phone].filter(Boolean).join(' · ') || null}
+                fullWidth
+              />
+            </div>
           ) : (
             <ContactsEditor patient={patient} patientId={patientId} onSave={handlePatientSave} />
           )}
@@ -1327,7 +1150,6 @@ export default function OverviewTab({ patient, referral, readOnly = false }) {
 }
 
 function ContactsEditor({ patient, patientId, onSave }) {
-  const primarySource = patientPrimarySource(patient);
   const [draft, setDraft] = useState(() => contactsFromPatient(patient));
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -1336,14 +1158,14 @@ function ContactsEditor({ patient, patientId, onSave }) {
     setDraft(contactsFromPatient(patient));
   }, [
     patient?._id,
+    patient?.primary_contact_name,
+    patient?.primary_contact_phone,
+    patient?.primary_contact_email,
+    patient?.primary_contact_relationship,
     patient?.emergency_contact_name,
     patient?.emergency_contact_phone,
     patient?.emergency_contact_email,
     patient?.emergency_contact_relationship,
-    patient?.phone_primary,
-    patient?.email,
-    patient?.first_name,
-    patient?.last_name,
   ]);
 
   async function handleSave() {
@@ -1351,29 +1173,49 @@ function ContactsEditor({ patient, patientId, onSave }) {
     setSaving(true);
     setMsg(null);
     try {
-      const resolved = resolveEmergencyForSave(draft, primarySource);
+      const { primary, emergency } = resolveContactsForSave(draft);
+      // Dual-write mirrors only — never touch patient first/last/phone_primary/email.
       const mirror = {
-        emergency_contact_name: resolved.name,
-        emergency_contact_phone: resolved.phone,
-        emergency_contact_email: resolved.email,
-        emergency_contact_relationship: resolved.relationship,
+        primary_contact_name: primary.name,
+        primary_contact_phone: primary.phone,
+        primary_contact_email: primary.email,
+        primary_contact_relationship: primary.relationship,
+        emergency_contact_name: emergency.name,
+        emergency_contact_phone: emergency.phone,
+        emergency_contact_email: emergency.email,
+        emergency_contact_relationship: emergency.relationship,
       };
       Object.entries(mirror).forEach(([k, v]) => onSave(k, v));
       updateEntity('patients', patientId, mirror);
       await updatePatient(patientId, mirror);
 
-      await savePatientContactSlot({
-        patientBusinessId: patient.id,
-        patientRecordId: patientId,
-        slot: 'emergency',
-        name: mirror.emergency_contact_name,
-        phone: mirror.emergency_contact_phone,
-        email: mirror.emergency_contact_email,
-        relationship: mirror.emergency_contact_relationship,
-        source: 'demographics',
-      });
+      if (primary.name || primary.phone) {
+        await savePatientContactSlot({
+          patientBusinessId: patient.id,
+          patientRecordId: patientId,
+          slot: 'primary',
+          name: primary.name,
+          phone: primary.phone,
+          email: primary.email,
+          relationship: primary.relationship,
+          source: 'demographics',
+        });
+      }
+      if (emergency.name || emergency.phone) {
+        await savePatientContactSlot({
+          patientBusinessId: patient.id,
+          patientRecordId: patientId,
+          slot: 'emergency',
+          name: emergency.name,
+          phone: emergency.phone,
+          email: emergency.email,
+          relationship: emergency.relationship,
+          source: 'demographics',
+        });
+      }
       setDraft({
-        emergency: { ...resolved, same_as_primary: resolved.same_as_primary },
+        primary,
+        emergency: { ...emergency, same_as_primary: emergency.same_as_primary },
       });
       setMsg('Saved');
       setTimeout(() => setMsg(null), 2000);
@@ -1387,12 +1229,7 @@ function ContactsEditor({ patient, patientId, onSave }) {
 
   return (
     <div>
-      <GuardianContactFields
-        value={draft}
-        onChange={setDraft}
-        primarySource={primarySource}
-        showEmail
-      />
+      <GuardianContactFields value={draft} onChange={setDraft} showEmail />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
         <button
           type="button"
@@ -1404,7 +1241,7 @@ function ContactsEditor({ patient, patientId, onSave }) {
             fontSize: 12.5, fontWeight: 650, fontFamily: 'inherit', opacity: saving ? 0.7 : 1,
           }}
         >
-          {saving ? 'Saving…' : 'Save emergency contact'}
+          {saving ? 'Saving…' : 'Save contacts'}
         </button>
         {msg && (
           <span style={{ fontSize: 12, fontWeight: 600, color: msg === 'Saved' ? palette.accentGreen.hex : palette.primaryMagenta.hex }}>

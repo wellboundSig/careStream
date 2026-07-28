@@ -386,6 +386,7 @@ export default function ModulePage({ stage }) {
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
+          case 'stage': cellVal = r.current_stage || ''; break;
           case 'licence': cellVal = resolveEntity(r.entity_id) || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
           case 'marketer': cellVal = resolveMarketer(r.marketer_id) || ''; break;
@@ -457,6 +458,7 @@ export default function ModulePage({ stage }) {
             vals.add('waiting_docs'); vals.add('waiting_clinical'); vals.add('overdue');
             break;
           case 'division': if (r.division) vals.add(r.division); break;
+          case 'stage': if (r.current_stage) vals.add(r.current_stage); break;
           case 'licence': {
             const v = resolveEntity(r.entity_id);
             if (v && v !== '—') vals.add(v);

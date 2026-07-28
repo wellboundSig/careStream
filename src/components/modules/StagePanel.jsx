@@ -17,7 +17,7 @@ import {
   needsPostSocClinical,
 } from '../../utils/documentationDeferred.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
-import { generateEmrPacket } from '../../utils/generateEmrPacket.js';
+import EmrPacketDownloadButton from '../common/EmrPacketDownloadButton.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -837,7 +837,6 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [receivedDate, setReceivedDate] = useState('');
   const [saving, setSaving] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [initialEmrSaving, setInitialEmrSaving] = useState(false);
   const [initialEmrError, setInitialEmrError] = useState(null);
@@ -889,18 +888,6 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
 
   const canStampInitialEmr = canPerm(PERMISSION_KEYS.INTAKE_EMR_INITIAL);
   const initialEmrDone = !!selectedReferral?.emr_initial_onboarded_at;
-
-  async function handleDownloadEmrPacket() {
-    if (!selectedReferral) return;
-    setPdfLoading(true); setPdfError(null);
-    try {
-      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
-    } catch (err) {
-      setPdfError(err.message || 'Failed to generate PDF');
-    } finally {
-      setPdfLoading(false);
-    }
-  }
 
   async function handleConfirmInitialEmr() {
     if (!selectedReferral || !canStampInitialEmr || initialEmrDone) return;
@@ -1018,11 +1005,12 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 </p>
               )}
 
-              <ActionBtn
-                label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'}
-                variant="default"
-                onClick={handleDownloadEmrPacket}
-                disabled={pdfLoading}
+              <EmrPacketDownloadButton
+                referral={selectedReferral}
+                resolveSource={resolveSource}
+                resolveUser={resolveUser}
+                resolveMarketer={resolveMarketer}
+                onError={setPdfError}
               />
               {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
@@ -2576,7 +2564,6 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const {
     clearDecisionLocal: clearClinicalDecisionLocal,
   } = useClinicalReview(selectedReferral?._id);
-  const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [onboarding, setOnboarding] = useState(false);
   const [onboardError, setOnboardError] = useState(null);
@@ -2602,18 +2589,6 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   const canUnlockClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
   const alreadyOnboarded = !!selectedReferral?.emr_onboarded_at;
   const clinicalFinalized = !!selectedReferral?.clinical_review_decision;
-
-  async function handleDownloadPdf() {
-    if (!selectedReferral) return;
-    setPdfLoading(true); setPdfError(null);
-    try {
-      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
-    } catch (err) {
-      setPdfError(err.message || 'Failed to generate PDF');
-    } finally {
-      setPdfLoading(false);
-    }
-  }
 
   async function handleMarkOnboarded() {
     if (!selectedReferral || !canOnboard) return;
@@ -2820,7 +2795,13 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
                 ? 'Download the packet if needed for reference. Mark onboarded once HCHB onboarding is fully complete to advance to Staffing.'
                 : 'Download the onboarding packet and enter the patient into the EMR (HCHB). Scheduling can\'t plot a SOC until the patient exists in the EMR. Mark onboarded once complete to advance to Staffing.'}
             </p>
-            <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+            <EmrPacketDownloadButton
+              referral={selectedReferral}
+              resolveSource={resolveSource}
+              resolveUser={resolveUser}
+              resolveMarketer={resolveMarketer}
+              onError={setPdfError}
+            />
             {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
             <div style={{ marginTop: 10 }}>
@@ -3311,7 +3292,6 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   const [socDate, setSocDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
@@ -3360,18 +3340,6 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
       // Always release the spinner — previously this only fired in catch, so a
       // successful schedule left the button stuck in "Scheduling…" until a refresh.
       setSaving(false);
-    }
-  }
-
-  async function handleDownloadPdf() {
-    if (!selectedReferral) return;
-    setPdfLoading(true); setPdfError(null);
-    try {
-      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
-    } catch (err) {
-      setPdfError(err.message || 'Failed to generate PDF');
-    } finally {
-      setPdfLoading(false);
     }
   }
 
@@ -3469,7 +3437,13 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               as a reference copy. */}
           {actualStage === 'Pre-SOC' && (
             <PanelSection title="Step 1 — Schedule SOC">
-              <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+              <EmrPacketDownloadButton
+              referral={selectedReferral}
+              resolveSource={resolveSource}
+              resolveUser={resolveUser}
+              resolveMarketer={resolveMarketer}
+              onError={setPdfError}
+            />
               {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
               <div style={{ marginTop: 10 }}>
@@ -3487,7 +3461,13 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               {socDateDisplay && <InfoRow label="Scheduled for" value={socDateDisplay} highlight={palette.accentGreen.hex} />}
 
               <div style={{ marginTop: 10 }}>
-                <ActionBtn label={pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'} variant="default" onClick={handleDownloadPdf} disabled={pdfLoading} />
+                <EmrPacketDownloadButton
+              referral={selectedReferral}
+              resolveSource={resolveSource}
+              resolveUser={resolveUser}
+              resolveMarketer={resolveMarketer}
+              onError={setPdfError}
+            />
                 {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
               </div>
 
@@ -3534,7 +3514,6 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
-  const [pdfLoading, setPdfLoading]       = useState(false);
   const [pdfError, setPdfError]           = useState(null);
   const [confirming, setConfirming]       = useState(false);
   const [onboarding, setOnboarding]       = useState(false);
@@ -3547,19 +3526,6 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
     setOnboardError(null);
     setPdfError(null);
   }, [selectedReferral?._id]);
-
-  async function handleDownloadPdf() {
-    if (!selectedReferral) return;
-    setPdfLoading(true);
-    setPdfError(null);
-    try {
-      await generateEmrPacket(selectedReferral, { resolveSource, resolveUser, resolveMarketer });
-    } catch (err) {
-      setPdfError(err.message || 'Failed to generate PDF');
-    } finally {
-      setPdfLoading(false);
-    }
-  }
 
   async function handleOnboarded() {
     if (!selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE)) return;
@@ -3615,23 +3581,13 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
 
           <PanelSection title="Actions">
 
-            {/* ── Download EMR Onboarding Packet ── */}
-            <button
-              onClick={handleDownloadPdf}
-              disabled={pdfLoading}
-              style={{
-                width: '100%', padding: '7px 12px', marginBottom: 8,
-                borderRadius: 7, border: 'none',
-                background: hexToRgba(palette.backgroundDark.hex, 0.07),
-                color: hexToRgba(palette.backgroundDark.hex, 0.65),
-                fontSize: 12, fontWeight: 600, cursor: pdfLoading ? 'wait' : 'pointer',
-                transition: 'filter 0.12s',
-              }}
-              onMouseEnter={(e) => !pdfLoading && (e.currentTarget.style.filter = 'brightness(0.92)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-            >
-              {pdfLoading ? 'Generating…' : '↓ Download EMR Onboarding Packet'}
-            </button>
+            <EmrPacketDownloadButton
+              referral={selectedReferral}
+              resolveSource={resolveSource}
+              resolveUser={resolveUser}
+              resolveMarketer={resolveMarketer}
+              onError={setPdfError}
+            />
             {pdfError && (
               <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>
             )}

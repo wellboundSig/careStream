@@ -28,7 +28,7 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
   { key: 'marketer',  label: 'Marketer',   defaultOn: true, filterable: true },
-  { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: false, tooltip: 'Current pipeline stage' },
+  { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: true, tooltip: 'Current pipeline stage' },
   { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: false },
   { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter accepts a number; matches stages with at least that many days.' },
   { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter accepts a number.' },
