@@ -40,33 +40,13 @@ import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.j
 import { savePatientContactSlot } from '../../utils/knownGuardians.js';
 import { splitContactNameAndRelationship } from '../../data/guardianRelationships.js';
 import HchbDupWarning from '../common/HchbDupWarning.jsx';
+import InsurancePlanPicker from '../common/InsurancePlanPicker.jsx';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
 
 const ALF_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA'];
 const SPN_SERVICES = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
-
-const INSURANCE_PLANS = [
-  'Fidelis Care',
-  'UnitedHealthcare Community Plan',
-  'Healthfirst',
-  'Aetna Better Health',
-  'Molina Healthcare',
-  'Anthem BCBS',
-  'Humana',
-  'Wellcare',
-  'Medicaid',
-  'Medicare',
-  'Hamaspik',
-  'VNS Health',
-  'MetroPlus MLTC',
-  'MetroPlus HMO',
-  'Fidelis Care at Home',
-  'Elderplan HomeFirst',
-  'Montefiore Diamond Care',
-  'Healthfirst CompleteCare',
-];
 
 // ── Licence mapping from agencies.js ────────────────────────────────────────
 const WB_AGENCY = agencies.find((a) => a.name === 'Wellbound');
@@ -394,17 +374,8 @@ function CheckboxGroup({ options, values, onChange }) {
 // ── Multi-select insurance with checkmarks ──────────────────────────────────
 
 function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailChange }) {
-  const [open, setOpen] = useState(false);
   const [otherValue, setOtherValue] = useState('');
   const [showOther, setShowOther] = useState(false);
-  const dropRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function dismiss(e) { if (dropRef.current && !dropRef.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', dismiss);
-    return () => document.removeEventListener('mousedown', dismiss);
-  }, [open]);
 
   function togglePlan(plan) {
     if (selected.includes(plan)) {
@@ -426,66 +397,10 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
     setShowOther(false);
   }
 
-  const unselected = INSURANCE_PLANS.filter((p) => !selected.includes(p));
-
   return (
     <div>
-      {/* Dropdown trigger */}
-      <div ref={dropRef} style={{ position: 'relative' }}>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          style={{
-            ...inputBase, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            cursor: 'pointer', textAlign: 'left',
-            color: selected.length > 0 ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
-          }}
-        >
-          <span>{selected.length > 0 ? `${selected.length} plan${selected.length !== 1 ? 's' : ''} selected` : 'Select insurance plans...'}</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
-            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+      <InsurancePlanPicker selected={selected} onToggle={togglePlan} />
 
-        {open && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 100,
-            maxHeight: 220, overflowY: 'auto', borderRadius: 10,
-            background: palette.backgroundLight.hex,
-            boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
-            padding: '4px 0',
-          }}>
-            {INSURANCE_PLANS.map((plan) => {
-              const isSelected = selected.includes(plan);
-              return (
-                <button key={plan} type="button" onClick={() => togglePlan(plan)} style={{
-                  width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 9,
-                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  fontSize: 12.5, color: palette.backgroundDark.hex, transition: 'background 0.08s',
-                }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04))}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-                >
-                  <span style={{
-                    width: 14, height: 14, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: isSelected ? palette.primaryMagenta.hex : 'none',
-                    border: isSelected ? 'none' : `1.5px solid ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
-                  }}>
-                    {isSelected && (
-                      <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                        <path d="M2 5l2.5 2.5L8 3" stroke={palette.backgroundLight.hex} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </span>
-                  {plan}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Tags */}
       {selected.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
           {selected.map((plan) => (
@@ -509,7 +424,6 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
         </div>
       )}
 
-      {/* Other */}
       {!showOther ? (
         <button type="button" onClick={() => setShowOther(true)} style={{ marginTop: 6, background: 'none', border: 'none', fontSize: 11.5, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer', padding: '4px 0' }}>
           + Other
@@ -532,7 +446,6 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
         </div>
       )}
 
-      {/* Plan detail inputs */}
       {selected.length > 0 && (
         <div style={{ marginTop: 10 }}>
           {selected.map((plan) => (

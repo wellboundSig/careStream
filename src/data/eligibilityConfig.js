@@ -23,31 +23,8 @@ export const MEDICAID_OPTIONS = [
   { value: 'mco',   label: 'Managed Medicaid (MCO)' },
 ];
 
-export const COMMERCIAL_PLANS = [
-  'Aetna',
-  'Aetna Better Health of NY (Medicaid)',
-  'Anthem / Empire BlueCross BlueShield',
-  'Blue Cross Blue Shield',
-  'CDPHP',
-  'Cigna',
-  'EmblemHealth / GHI / HIP',
-  'Excellus BlueCross BlueShield',
-  'Fidelis Care',
-  'HealthFirst',
-  'HealthPlus / Amerigroup',
-  'Humana',
-  'Independent Health',
-  'MetroPlus',
-  'Molina Healthcare',
-  'MVP Health Care',
-  'Oscar Health',
-  'Oxford Health / United Healthcare',
-  'United Healthcare',
-  'United Healthcare Community Plan (Medicaid)',
-  'WellCare / Centene',
-  'Wellpoint',
-  'Other — specify in notes',
-];
+/** @deprecated Prefer INSURANCE_PLANS from insurancePlans.js */
+export { INSURANCE_PLANS as COMMERCIAL_PLANS } from './insurancePlans.js';
 
 export function buildCheckFields({ referralId, patientId, authorId, form, flagValues, isSN }) {
   const medicareActive = form.medicare_type === 'ffs' || form.medicare_type === 'advantage';

@@ -1,45 +1,65 @@
-CLOSET PC — FIX SyntaxError / SERVICE_PAUSED
-============================================
+CLOSET PC — POWER OFF / MOVE / OUTAGE
+=====================================
 
-Your patient_index.py got corrupted:
-  cur.e*****e(...)   ← invalid
-should be:
-  cur.execute(...)
+Before you shut down (move or planned power off)
+------------------------------------------------
+1) Optional but nice — stop the agent cleanly:
 
-PowerShell (in the agent folder):
--------------------------------
+   cd C:\Users\User\Desktop\hchb-dup-agent
+   .\nssm.exe stop WellboundHchbDupAgent
 
+2) Shut down Windows normally (Start → Power → Shut down).
+   Do NOT yank the plug while Windows is still on.
+
+
+After power is back / PC is moved and plugged in
+------------------------------------------------
+1) Turn the PC on. Log into Windows (same user as before).
+
+2) Confirm network is up (browser or ping).
+   Agent needs internet → AWS, and LAN → SQL Server (LOGSHIP).
+
+3) Service is set to AUTO START — often it comes back alone.
+   Check:
+
+   cd C:\Users\User\Desktop\hchb-dup-agent
+   .\nssm.exe status WellboundHchbDupAgent
+
+   Want: SERVICE_RUNNING
+
+4) If PAUSED / STOPPED / not running:
+
+   .\nssm.exe start WellboundHchbDupAgent
+   Start-Sleep -Seconds 3
+   .\nssm.exe status WellboundHchbDupAgent
+
+5) Prove SQL + bridge:
+
+   .\.venv\Scripts\Activate.ps1
+   python run_agent.py ping
+
+6) Prove CareStream path — type a name in New Referral (or):
+
+   python run_agent.py check --last ANSBRO --first LORETTA
+
+7) If still broken, run in a visible window (leave open):
+
+   .\nssm.exe stop WellboundHchbDupAgent
+   python run_agent.py run
+
+
+What you do NOT need to redo
+----------------------------
+- Reinstall Python / ODBC / venv (unless disk wiped)
+- Redeploy AWS bridge
+- Recreate .env (keep that file on the PC)
+- Rebuild index unless ping works but matches look wrong:
+    python run_agent.py rebuild-index
+
+
+Quick “is it alive?” after any reboot
+-------------------------------------
 cd C:\Users\User\Desktop\hchb-dup-agent
-
-# Fix both mangled lines (keep your .env)
-$p = '.\hchb_dup_agent\patient_index.py'
-$t = Get-Content $p -Raw
-$t = $t -replace 'cur\.e\*+e\(', 'cur.execute('
-Set-Content $p $t -NoNewline
-
-# Confirm the word is back (should show "execute", not stars)
-Select-String -Path $p -Pattern 'cur\.e' | Select-Object -First 5
-
-# Prove it runs
+.\nssm.exe status WellboundHchbDupAgent
 .\.venv\Scripts\Activate.ps1
 python run_agent.py ping
-python run_agent.py check --last ANSBRO --first LORETTA
-
-# Restart service
-.\nssm.exe restart WellboundHchbDupAgent
-Start-Sleep -Seconds 3
-.\nssm.exe status WellboundHchbDupAgent
-# expect SERVICE_RUNNING
-
-
-If still broken — replace code from fresh zip
---------------------------------------------
-Fresh zip is on the Mac Desktop: hchb-dup-agent.zip
-Copy to closet PC, unzip OVER the folder but KEEP:
-  .env
-  .venv
-  logs\
-
-Then:
-  python run_agent.py ping
-  .\nssm.exe restart WellboundHchbDupAgent
