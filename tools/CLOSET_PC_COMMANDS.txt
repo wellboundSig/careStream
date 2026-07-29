@@ -1,0 +1,45 @@
+CLOSET PC — FIX SyntaxError / SERVICE_PAUSED
+============================================
+
+Your patient_index.py got corrupted:
+  cur.e*****e(...)   ← invalid
+should be:
+  cur.execute(...)
+
+PowerShell (in the agent folder):
+-------------------------------
+
+cd C:\Users\User\Desktop\hchb-dup-agent
+
+# Fix both mangled lines (keep your .env)
+$p = '.\hchb_dup_agent\patient_index.py'
+$t = Get-Content $p -Raw
+$t = $t -replace 'cur\.e\*+e\(', 'cur.execute('
+Set-Content $p $t -NoNewline
+
+# Confirm the word is back (should show "execute", not stars)
+Select-String -Path $p -Pattern 'cur\.e' | Select-Object -First 5
+
+# Prove it runs
+.\.venv\Scripts\Activate.ps1
+python run_agent.py ping
+python run_agent.py check --last ANSBRO --first LORETTA
+
+# Restart service
+.\nssm.exe restart WellboundHchbDupAgent
+Start-Sleep -Seconds 3
+.\nssm.exe status WellboundHchbDupAgent
+# expect SERVICE_RUNNING
+
+
+If still broken — replace code from fresh zip
+--------------------------------------------
+Fresh zip is on the Mac Desktop: hchb-dup-agent.zip
+Copy to closet PC, unzip OVER the folder but KEEP:
+  .env
+  .venv
+  logs\
+
+Then:
+  python run_agent.py ping
+  .\nssm.exe restart WellboundHchbDupAgent

@@ -1,0 +1,19 @@
+-- Run on HCHB_WELLBOUND after discover_schema.py identifies the patient table.
+-- Replace dbo.YourPatientTable / column names with real ones.
+-- Hashes must be produced with the SAME normalize + HMAC rules as the Python agent
+-- (see hchb_dup_agent/hashutil.py). Easiest path: populate from the closet PC
+-- with scripts/rebuild_hash_index.py (preferred over T-SQL HMAC).
+
+IF OBJECT_ID('dbo.CareStreamDupIndex', 'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.CareStreamDupIndex (
+    hmac_ssn      char(64) NULL,
+    hmac_mrn      char(64) NULL,
+    hmac_name_dob char(64) NULL,
+    updated_at    datetime2 NOT NULL CONSTRAINT DF_CareStreamDupIndex_updated DEFAULT sysutcdatetime()
+  );
+  CREATE INDEX IX_CareStreamDupIndex_ssn ON dbo.CareStreamDupIndex(hmac_ssn) WHERE hmac_ssn IS NOT NULL;
+  CREATE INDEX IX_CareStreamDupIndex_mrn ON dbo.CareStreamDupIndex(hmac_mrn) WHERE hmac_mrn IS NOT NULL;
+  CREATE INDEX IX_CareStreamDupIndex_namedob ON dbo.CareStreamDupIndex(hmac_name_dob) WHERE hmac_name_dob IS NOT NULL;
+END
+GO

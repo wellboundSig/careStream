@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  HCHB duplicate-check bridge. CareStream (later) POSTs HMAC digests only;
+  on-prem Windows agent claims jobs and posts boolean results. No PHI in transit.
+
+Parameters:
+  AgentToken:
+    Type: String
+    NoEcho: true
+    Description: Bearer token the closet PC sends on /agent/*
+  CareStreamToken:
+    Type: String
+    NoEcho: true
+    Description: Bearer token CareStream backend will send on /jobs (wire later)
+  JobTtlHours:
+    Type: Number
+    Default: 24
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        JOBS_TABLE: !Ref JobsTable
+        QUEUE_URL: !Ref JobsQueue
+        AGENT_TOKEN: !Ref AgentToken
+        CARESTREAM_TOKEN: !Ref CareStreamToken
+        JOB_TTL_HOURS: !Ref JobTtlHours
+
+Resources:
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  JobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 3600
+      ReceiveMessageWaitTimeSeconds: 20
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      TracingEnabled: false
+
+  CreateJobFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.create_job
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobsTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt JobsQueue.QueueName
+      Events:
+        CreateJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /jobs
+            Method: POST
+
+  GetJobFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.get_job
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref JobsTable
+      Events:
+        GetJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /jobs/{job_id}
+            Method: GET
+
+  AgentClaimFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.agent_claim
+      Timeout: 25
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobsTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt JobsQueue.QueueName
+      Events:
+        Claim:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /agent/claim
+            Method: POST
+
+  AgentResultFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.agent_result
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JobsTable
+      Events:
+        Result:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /agent/result
+            Method: POST
+
+Outputs:
+  ApiBaseUrl:
+    Description: Set this as HCHB_DUP_BRIDGE_URL on the closet PC
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  QueueUrl:
+    Value: !Ref JobsQueue
+  JobsTableName:
+    Value: !Ref JobsTable

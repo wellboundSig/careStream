@@ -33,6 +33,7 @@ import OooBadge from '../common/OooBadge.jsx';
 import ClinicalReviewByline from '../common/ClinicalReviewByline.jsx';
 import { useClinicalReviewInProgress } from '../../hooks/useClinicalReviewInProgress.js';
 import StagePanel from './StagePanel.jsx';
+import DuplicateChecker from './DuplicateChecker.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
@@ -1438,7 +1439,12 @@ export default function ModulePage({ stage }) {
               </div>
             )}
 
-            <DuplicateChecker selectedReferral={selectedReferral} allReferrals={allReferrals} />
+            <DuplicateChecker
+              selectedReferral={selectedReferral}
+              allReferrals={allReferrals}
+              onSelectReferral={handleRowSelect}
+              onOpenReferral={handleRowOpen}
+            />
 
             {isClinicalRnModule && clinicalQueueCounts && (
               <button
@@ -2037,143 +2043,6 @@ function SortBtn({ label, field, current, dir, onSort }) {
       {label}
       {active && <span style={{ fontSize: 9 }}>{dir === 'asc' ? '▲' : '▼'}</span>}
     </button>
-  );
-}
-
-// ── Duplicate Checker ────────────────────────────────────────────────────────
-
-const DupIcon = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-    <rect x="8" y="2" width="13" height="16" rx="2" stroke="currentColor" strokeWidth="1.7" />
-    <path d="M16 18v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2" stroke="currentColor" strokeWidth="1.7" />
-  </svg>
-);
-
-function buildIdentityKeys(r) {
-  const keys = [];
-  const name = (r.patientName || '').trim().toLowerCase();
-  const dob = r.patient?.dob || '';
-  if (name && dob) keys.push(`name:${name}|dob:${dob}`);
-  const medicaid = (r.patient?.medicaid_number || '').trim().toLowerCase();
-  if (medicaid) keys.push(`medicaid:${medicaid}`);
-  return keys;
-}
-
-function findDuplicatePatients(referrals) {
-  const seen = {};
-  for (const r of referrals) {
-    for (const key of buildIdentityKeys(r)) {
-      (seen[key] ||= []).push(r);
-    }
-  }
-  const matched = new Map();
-  for (const group of Object.values(seen)) {
-    const uniquePatientIds = [...new Set(group.map((r) => r.patient_id))];
-    if (uniquePatientIds.length < 2) continue;
-    const groupKey = uniquePatientIds.sort().join('|');
-    if (!matched.has(groupKey)) {
-      const deduped = [];
-      const idsSeen = new Set();
-      for (const r of group) {
-        if (!idsSeen.has(r.patient_id)) { idsSeen.add(r.patient_id); deduped.push(r); }
-      }
-      matched.set(groupKey, deduped);
-    }
-  }
-  return [...matched.values()];
-}
-
-/** Duplicate groups in the pipeline that include the selected patient's record(s). */
-function findDuplicateGroupsForPatient(selectedReferral, allReferrals) {
-  if (!selectedReferral?.patient_id) return [];
-  const groups = findDuplicatePatients(allReferrals);
-  return groups.filter((g) => g.some((r) => r.patient_id === selectedReferral.patient_id));
-}
-
-function DuplicateChecker({ selectedReferral, allReferrals }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  const disabled = !selectedReferral;
-  const groups = useMemo(
-    () => (selectedReferral ? findDuplicateGroupsForPatient(selectedReferral, allReferrals) : []),
-    [selectedReferral, allReferrals]
-  );
-  const dupCount = groups.length;
-
-  useEffect(() => {
-    if (!open) return;
-    function dismiss(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', dismiss);
-    return () => document.removeEventListener('mousedown', dismiss);
-  }, [open]);
-
-  useEffect(() => {
-    if (!selectedReferral) setOpen(false);
-  }, [selectedReferral]);
-
-  return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen((v) => !v)}
-        title={disabled ? 'Select a patient in the list to check for duplicate records' : `Duplicate matches for ${selectedReferral?.patientName || 'patient'}`}
-        style={{
-          height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
-          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          background: disabled ? hexToRgba(palette.backgroundDark.hex, 0.06) : open ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-          color: disabled ? hexToRgba(palette.backgroundDark.hex, 0.28) : open ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
-          transition: 'all 0.12s',
-        }}
-      >
-        <DupIcon /> Duplicates
-      </button>
-
-      {open && !disabled && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
-          width: 380,
-          background: palette.backgroundLight.hex,
-          borderRadius: 12, overflow: 'hidden',
-          boxShadow: `0 12px 40px ${hexToRgba(palette.backgroundDark.hex, 0.18)}, 0 2px 8px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
-        }}>
-          <div style={{ padding: '10px 12px 6px', borderBottom: `1px solid var(--color-border)` }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Selected patient</p>
-            <p style={{ fontSize: 13, fontWeight: 650, color: palette.backgroundDark.hex, marginTop: 2 }}>{selectedReferral.patientName || selectedReferral.patient_id}</p>
-            <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.42), marginTop: 6, lineHeight: 1.45 }}>
-              Matches other pipeline records by name + DOB or Medicaid ID. A pipeline-wide duplicate report will be added separately.
-            </p>
-          </div>
-          <div style={{ maxHeight: 280, overflowY: 'auto', padding: '8px 10px 10px' }}>
-            {dupCount === 0 ? (
-              <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 6px', display: 'block', opacity: 0.4 }}>
-                  <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <p style={{ fontSize: 12.5, fontWeight: 600, color: palette.accentGreen.hex }}>No duplicate patient records found</p>
-              </div>
-            ) : (
-              groups.map((group, gi) => (
-                <div key={gi} style={{ background: hexToRgba(palette.primaryMagenta.hex, 0.04), borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}>
-                  {group.map((r, ri) => (
-                    <div key={r._id || ri} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ri === 0 ? palette.primaryMagenta.hex : hexToRgba(palette.primaryMagenta.hex, 0.35), flexShrink: 0 }} />
-                      <span style={{ fontSize: 12.5, fontWeight: ri === 0 ? 650 : 450, color: palette.backgroundDark.hex, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {r.patientName || r.patient_id}
-                      </span>
-                      <span style={{ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.35), flexShrink: 0 }}>
-                        {r.current_stage}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 

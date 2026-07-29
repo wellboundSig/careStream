@@ -1,0 +1,127 @@
+HCHB DUPLICATE CHECK — DO THESE STEPS IN ORDER
+================================================
+
+There are only TWO machines involved:
+  A) THIS Mac (where you are reading this)
+  B) The retired Windows PC in the closet (must reach LOGSHIP on the office network)
+
+I already did on your Mac:
+  - Wrote tools/hchb-dup-agent/.env (DB settings + secrets)
+  - Wrote tools/hchb-dup-bridge/.deploy-secrets.env
+  - Wrote deploy.sh for AWS
+
+------------------------------------------------
+STEP 1 — On THIS Mac: log into AWS
+------------------------------------------------
+Open Terminal and run:
+
+  aws login
+
+Complete the browser login. When it finishes, run:
+
+  cd "/Users/RBaridesWellbound/Desktop/Wellbound/Code/Wellbound CareStream/careStream"
+  ./tools/hchb-dup-bridge/deploy.sh
+
+That creates the cloud queue/API. When it finishes it will print an ApiBaseUrl
+and save it into tools/hchb-dup-agent/.env automatically.
+
+If deploy.sh says SAM is installing, wait, then run deploy.sh again.
+
+Tell me when Step 1 is done (or paste any error) and I will continue from the CLI.
+
+------------------------------------------------
+STEP 2 — Copy the agent folder to the closet Windows PC
+------------------------------------------------
+I already built this zip on your Desktop:
+
+  /Users/RBaridesWellbound/Desktop/hchb-dup-agent.zip
+
+(It includes the .env file.)
+
+Copy that zip to the closet PC (USB / OneDrive / email to yourself), unzip it.
+
+AFTER Step 1 deploy succeeds, re-zip or re-copy so the closet PC gets the
+filled-in HCHB_DUP_BRIDGE_URL — or just edit .env on the closet PC and paste
+the ApiBaseUrl from deploy output.
+
+------------------------------------------------
+STEP 3 — On the closet Windows PC: install 2 things
+------------------------------------------------
+1) Python 3.11 or newer
+   https://www.python.org/downloads/windows/
+   During install: CHECK "Add python.exe to PATH"
+
+2) ODBC Driver 18 for SQL Server
+   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
+   Download "ODBC Driver 18 for SQL Server" x64 → install
+
+------------------------------------------------
+STEP 4 — On the closet Windows PC: prove DB connection
+------------------------------------------------
+Open PowerShell:
+
+  cd path\to\hchb-dup-agent
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  pip install -r requirements.txt
+  python run_agent.py ping
+
+SUCCESS looks like a line with the server name and HCHB_WELLBOUND.
+FAILURE = paste the error to me.
+
+You cannot do this from your Mac — LOGSHIP is only on the office LAN.
+
+------------------------------------------------
+STEP 5 — On the closet Windows PC: find patient columns + build hash table
+------------------------------------------------
+  python discover_schema.py
+
+That prints tables/columns that look like SSN / MRN / name / DOB.
+Send me that output (or the patient table name). I will give you the exact
+SOURCE SQL to paste into scripts\rebuild_hash_index.py.
+
+Then you run:
+
+  python scripts\rebuild_hash_index.py
+
+Then test a person you know is in HCHB:
+
+  python run_agent.py check --mrn THEIR_MRN --last LAST --first FIRST --dob YYYY-MM-DD
+
+You should see: {'duplicate': True, 'match_type': '...'}
+or False if they are not in the index.
+
+------------------------------------------------
+STEP 6 — On the closet Windows PC: start the 24/7 agent
+------------------------------------------------
+Only after Step 1 deploy worked (HCHB_DUP_BRIDGE_URL is filled in .env):
+
+  python run_agent.py run
+
+Leave that window open. It should say "bridge mode: http" and wait for jobs.
+
+(Later we install it as a Windows service so it survives reboot.)
+
+------------------------------------------------
+STEP 7 — On THIS Mac: test end-to-end with curl (no CareStream UI)
+------------------------------------------------
+I will run this for you after Steps 1+6 are up. It will:
+  - create a job with hashes only
+  - wait for the closet PC to answer
+  - print duplicate true/false
+
+------------------------------------------------
+STEP 8 — CareStream button (LATER — do not do yet)
+------------------------------------------------
+Only after Step 7 works. Separate change to the live app.
+Do not add UI before the closet PC + AWS path is proven.
+
+================================================
+WHAT YOU NEED TO DO RIGHT NOW
+================================================
+1. Run:  aws login
+2. Run:  ./tools/hchb-dup-bridge/deploy.sh
+3. Tell me the result (success URL or error text)
+4. Copy hchb-dup-agent to the closet PC and do Steps 3–4 (ping)
+
+Everything else waits on those.

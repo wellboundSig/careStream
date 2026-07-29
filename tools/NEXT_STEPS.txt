@@ -1,0 +1,3 @@
+Superseded by START_HERE.txt in this same folder.
+
+Open:  tools/START_HERE.txt

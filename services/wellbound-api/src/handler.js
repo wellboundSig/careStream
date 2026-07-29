@@ -31,6 +31,7 @@ import {
 } from './accessControl.js';
 import { allowHydrate, allowGeneral } from './rateLimit.js';
 import { runOptumEligibilityCheck } from './optumEligibility.js';
+import { runHchbDupCheck } from './hchbDupCheck.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://wellboundcarestream.com',
@@ -159,6 +160,31 @@ export async function handler(event) {
     } catch (err) {
       const status = err instanceof AccessDeniedError ? err.status : 500;
       if (status === 500) console.error('[wellbound-api optum]', err);
+      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
+  }
+
+  // HCHB logship duplicate check (hashed → on-prem agent → soft/strong flags).
+  // Any authenticated writer can use it (lead / intake / marketer flows).
+  if (rawPath === '/hchb-dup/check' && method === 'POST') {
+    try {
+      assertCanWrite(caller);
+      let body = null;
+      try {
+        body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
+      } catch {
+        return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event);
+      }
+      const result = await runHchbDupCheck(body || {});
+      const status = result.ok ? 200 : (result.configured === false ? 503 : 502);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(hchb-dup)',
+        status,
+      });
+      return json(status, result, origin, event);
+    } catch (err) {
+      const status = err instanceof AccessDeniedError ? err.status : 500;
+      if (status === 500) console.error('[wellbound-api hchb-dup]', err);
       return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
     }
   }

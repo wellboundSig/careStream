@@ -39,6 +39,7 @@ import {
 import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.js';
 import { savePatientContactSlot } from '../../utils/knownGuardians.js';
 import { splitContactNameAndRelationship } from '../../data/guardianRelationships.js';
+import HchbDupWarning from '../common/HchbDupWarning.jsx';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -1761,6 +1762,12 @@ export default function NewReferralForm({
               />
             </FieldBox>
           </FieldGroup>
+
+          <HchbDupWarning
+            firstName={form.first_name}
+            lastName={form.last_name}
+            dob={form.dob}
+          />
 
           {/* ── 3b. Primary Contact (UI) — stored on emergency_contact_* ── */}
           <p style={{

@@ -1,0 +1,63 @@
+HCHB duplicate check — precise SQL (from schema-map / schema-usage)
+===================================================================
+
+USE THESE TABLES
+----------------
+  dbo.CLIENTS_ALL            ~21,093 patients   PK pa_id
+    pa_ssn, pa_medicaidnumber, pa_lastname, pa_firstname, pa_dob,
+    pa_legacymrnum, pa_status, pa_archivestatus
+
+  dbo.CLIENT_EPISODES_ALL    ~37,230 episodes   PK epi_id
+    epi_paid  →  CLIENTS_ALL.pa_id
+    epi_mrnum = HCHB medical record number
+    (also denormalized epi_ssn / epi_lastname / epi_firstname / epi_dob —
+     prefer CLIENTS_ALL for identity; use episodes for MRN)
+
+DO NOT USE for matching
+-----------------------
+  CLIENTS_ALL_BAK (empty), SNAPSHOT_*, PC_PATIENTS1 (huge staging),
+  REFERRAL_REQUESTS (only 39 rows), purge.*, WORKER_* (staff not patients)
+
+
+MATCH PRIORITY (ideal)
+----------------------
+  1. SSN            CLIENTS_ALL.pa_ssn
+  2. Medicaid       CLIENTS_ALL.pa_medicaidnumber
+  3. MRN            CLIENT_EPISODES_ALL.epi_mrnum  (+ pa_legacymrnum)
+  4. Name + DOB     CLIENTS_ALL.pa_lastname + pa_firstname + pa_dob
+                    ← this is the marketer path
+
+
+HOW THE SYSTEM USES THIS
+------------------------
+  Closet PC loads patients + MRNs with LOAD_* SQL (see sql_queries.py),
+  HMAC-hashes them in memory, refreshes every 5 minutes.
+
+  CareStream (later) / curl sends only HMAC digests over the internet.
+  Agent answers: { duplicate: true|false, match_type: ssn|medicaid|mrn|name_dob }
+
+  Marketer types name + birthday → CareStream hashes name_dob → same path
+  → banner "Possible existing HCHB patient" if duplicate true.
+
+
+LIVE CHECK SQL (closet CLI — plaintext, never via AWS)
+------------------------------------------------------
+  Implemented in hchb_dup_agent/sql_queries.py → LIVE_CHECK_SQL
+
+  python run_agent.py check --last SMITH --first JANE --dob 1980-01-15
+  python run_agent.py check --ssn 123-45-6789
+  python run_agent.py check --mrn ABC123
+  python run_agent.py check --medicaid NY1234567
+
+
+LOAD SQL (index build)
+----------------------
+  LOAD_PATIENTS_SQL / LOAD_MRNS_SQL in sql_queries.py
+
+
+CLOSET PC NEXT COMMANDS
+-----------------------
+  python run_agent.py ping
+  python run_agent.py rebuild-index
+  python run_agent.py check --last <LAST> --first <FIRST> --dob YYYY-MM-DD
+  python run_agent.py run

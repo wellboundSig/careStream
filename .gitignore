@@ -12,6 +12,14 @@ services/wellbound-api/registry.json
 "S3 BUCKET.txt"
 S3 BUCKET.txt
 *.md
+# Logship / on-prem DB connection notes (never commit)
+dbconfig.md
+tools/hchb-dup-agent/.env
+tools/hchb-dup-agent/.env.local
+tools/hchb-dup-bridge/.deploy-secrets.env
+tools/hchb-dup-bridge/.aws-sam/
+tools/hchb-dup-bridge/packaged.yaml
+tools/hchb-dup-bridge/build/
 .DS_Store
 .vite/
 *.log
