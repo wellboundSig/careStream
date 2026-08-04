@@ -51,8 +51,8 @@ describe('SOC consolidation — UI changes', () => {
     expect(STAGE_META['SOC Scheduled'].hiddenFromNav).toBe(true);
   });
 
-  it('SOC Completed displayName is "Completed"', () => {
-    expect(STAGE_META['SOC Completed'].displayName).toBe('Completed');
+  it('SOC Completed displayName is "SOC/ROC Completed"', () => {
+    expect(STAGE_META['SOC Completed'].displayName).toBe('SOC/ROC Completed');
   });
 
   it('scheduler role mode shows Staffing, Pre-SOC and SOC Completed but NOT SOC Scheduled', () => {
@@ -72,10 +72,10 @@ describe('SOC consolidation — UI changes', () => {
     expect(paths).not.toContain('/modules/soc-scheduled');
   });
 
-  it('pane nav labels SOC Completed as "Completed"', () => {
+  it('pane nav labels SOC Completed as "SOC/ROC Done"', () => {
     const moduleItems = PANE_NAV.find((g) => g.group === 'Modules').items;
     const completedItem = moduleItems.find((i) => i.path === '/modules/soc-completed');
-    expect(completedItem.label).toBe('Completed');
+    expect(completedItem.label).toBe('SOC/ROC Done');
   });
 });
 

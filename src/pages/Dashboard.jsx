@@ -12,6 +12,7 @@ import EmptyState from '../components/common/EmptyState.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
 import SocCompletedStatCard from '../components/common/SocCompletedBreakdownPopup.jsx';
+import { isRoc } from '../utils/episodeType.js';
 import { SkeletonStatCard, SkeletonTableRow, SkeletonStageCard, SkeletonRect } from '../components/common/Skeleton.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
@@ -352,20 +353,35 @@ function ExecutiveDashboard() {
     [filtered],
   );
 
-  // Staff involved in ≥1 SOC Completed — ranked by count for the hover popup.
+  // Staff involved in ≥1 SOC / ROC Completed — ranked by count for the hover popup.
   const socStaffBreakdown = useMemo(() => {
     const marketerCounts = {};
     const ownerCounts = {};
+    const rocMarketerCounts = {};
+    const rocOwnerCounts = {};
+    let socDone = 0;
+    let rocDone = 0;
     filtered.forEach((r) => {
       if (!isSocCompletedReferral(r)) return;
       const mid = linkId(r.marketer_id);
       const oid = linkId(r.intake_owner_id);
-      if (mid) marketerCounts[mid] = (marketerCounts[mid] || 0) + 1;
-      if (oid) ownerCounts[oid] = (ownerCounts[oid] || 0) + 1;
+      if (isRoc(r)) {
+        rocDone += 1;
+        if (mid) rocMarketerCounts[mid] = (rocMarketerCounts[mid] || 0) + 1;
+        if (oid) rocOwnerCounts[oid] = (rocOwnerCounts[oid] || 0) + 1;
+      } else {
+        socDone += 1;
+        if (mid) marketerCounts[mid] = (marketerCounts[mid] || 0) + 1;
+        if (oid) ownerCounts[oid] = (ownerCounts[oid] || 0) + 1;
+      }
     });
     return {
+      socDone,
+      rocDone,
       marketers: rankByCount(marketerCounts, resolveMarketer),
       owners: rankByCount(ownerCounts, resolveUser, resolveUserImage),
+      rocMarketers: rankByCount(rocMarketerCounts, resolveMarketer),
+      rocOwners: rankByCount(rocOwnerCounts, resolveUser, resolveUserImage),
     };
   }, [filtered, resolveMarketer, resolveUser, resolveUserImage]);
 
@@ -424,7 +440,8 @@ function ExecutiveDashboard() {
         }}>
           {[
             { label: 'Active', value: activeCount, color: palette.primaryMagenta.hex },
-            { label: 'SOC done', value: stageCounts['SOC Completed'] || 0, color: palette.accentGreen.hex },
+            { label: 'SOC done', value: socStaffBreakdown.socDone, color: palette.accentGreen.hex },
+            { label: 'ROC done', value: socStaffBreakdown.rocDone, color: palette.accentBlue.hex },
             { label: 'New / wk', value: newThisWeek, color: palette.accentBlue.hex },
             { label: 'Overdue', value: overdueCount, color: overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex },
           ].map((k) => (
@@ -545,12 +562,24 @@ function ExecutiveDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
         <StatCard label="Active Referrals" value={activeCount} sub="currently in pipeline" color={palette.primaryMagenta.hex} />
         <StatCard label="New This Week" value={newThisWeek} sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'} delta={wowDelta} color={palette.accentBlue.hex} />
-        <SocCompletedStatCard
-          value={stageCounts['SOC Completed'] || 0}
-          sub="patients under care"
-          marketers={socStaffBreakdown.marketers}
-          owners={socStaffBreakdown.owners}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <SocCompletedStatCard
+            value={socStaffBreakdown.socDone}
+            label="SOC Completed"
+            sub="start of care"
+            marketers={socStaffBreakdown.marketers}
+            owners={socStaffBreakdown.owners}
+          />
+          <SocCompletedStatCard
+            value={socStaffBreakdown.rocDone}
+            label="ROC Completed"
+            sub="resumption of care"
+            accentColor={palette.accentBlue.hex}
+            compact
+            marketers={socStaffBreakdown.rocMarketers}
+            owners={socStaffBreakdown.rocOwners}
+          />
+        </div>
         <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
       </div>
 

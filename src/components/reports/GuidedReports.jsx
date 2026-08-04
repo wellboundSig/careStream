@@ -78,6 +78,19 @@ function MadLibSentence({ template, slots, setSlots, marketerOpts, ownerOpts, so
         />
       </>
     ),
+    episodeType: (
+      <>
+        as <InlineSelect
+          value={slots.episodeType}
+          onChange={(v) => set('episodeType', v)}
+          options={[
+            { value: 'SOC', label: 'SOC' },
+            { value: 'ROC', label: 'ROC' },
+          ]}
+          emptyLabel="SOC and ROC"
+        />
+      </>
+    ),
     marketers: (
       <>
         for marketer{' '}
@@ -162,7 +175,7 @@ function MadLibSentence({ template, slots, setSlots, marketerOpts, ownerOpts, so
     case 'soc_completed':
       return (
         <p style={sentenceStyle}>
-          Export starts of care completed {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
+          Export completed care {bits.episodeType} {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
         </p>
       );
     case 'ntuc_analysis':

@@ -18,6 +18,19 @@ import {
 } from '../../utils/documentationDeferred.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import EmrPacketDownloadButton from '../common/EmrPacketDownloadButton.jsx';
+import DocumentationCompleteAction from '../common/DocumentationCompleteAction.jsx';
+import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
+import {
+  scheduleVerb,
+  rescheduleVerb,
+  markCompletedVerb,
+  confirmCompletionVerb,
+  episodeDateLabel,
+  episodeTypeLongLabel,
+  episodeTypeLabel,
+  preSocStageLabel,
+  isRoc,
+} from '../../utils/episodeType.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -950,7 +963,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)} — post-SOC work still open
               </p>
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0', lineHeight: 1.45 }}>
-                This visit still counts on SOC Completed. Finish the paperwork here; both lists stay concurrent.
+                This visit still counts on SOC/ROC Completed. Finish the paperwork here; both lists stay concurrent.
               </p>
             </div>
           )}
@@ -1196,19 +1209,13 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
               />
             )}
             {isDocumentationDeferred(selectedReferral) && (
-              <div style={{
-                marginTop: 8, padding: '8px 10px', borderRadius: 7,
-                background: hexToRgba(palette.accentOrange.hex, 0.1),
-                border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`,
-              }}>
-                <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: palette.accentOrange.hex }}>
-                  Docs deferred — F2F + clinical after SOC
-                </p>
-                {selectedReferral.documentation_due_date && (
-                  <p style={{ margin: '3px 0 0', fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-                    Due {fmtCalendarDate(selectedReferral.documentation_due_date)}
-                  </p>
-                )}
+              <div style={{ marginTop: 8 }}>
+                <DocumentationCompleteAction
+                  referral={selectedReferral}
+                  source="intake_panel"
+                  onOpenF2F={() => onOpenTab?.(selectedReferral, 'f2f')}
+                  onOpenClinical={() => onOpenTab?.(selectedReferral, 'clinical_review')}
+                />
               </div>
             )}
           </PanelSection>
@@ -2965,7 +2972,7 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
                 onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
               >
-                {canConfirm ? 'Confirm → Pre-SOC' : 'Match a clinician to confirm'}
+                {canConfirm ? `Confirm → ${preSocStageLabel(selectedReferral)}` : 'Match a clinician to confirm'}
               </button>
             </div>
           )}
@@ -3036,7 +3043,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
           {canPerm(PERMISSION_KEYS.SCHEDULING_ADMIN_CONFIRM) && (
           <PanelSection title="Decision">
             {!hasNtucRequest && (
-              <ActionBtn label="Accept → Pre-SOC" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
+              <ActionBtn label={`Accept → ${preSocStageLabel(selectedReferral)}`} variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
             )}
 
             {hasNtucRequest && (
@@ -3160,7 +3167,7 @@ function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
       onDone?.();
     } catch (err) {
       console.error('[Pre-SOC] SOC reschedule failed', err);
-      setError(err?.message || 'Failed to reschedule SOC');
+      setError(err?.message || `Failed to ${rescheduleVerb(referral).toLowerCase()}`);
     } finally {
       setSaving(false);
     }
@@ -3170,7 +3177,7 @@ function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
     return (
       <div data-testid="reschedule-soc-open">
         <ActionBtn
-          label="Reschedule SOC"
+          label={rescheduleVerb(referral)}
           variant="warning"
           onClick={() => setOpen(true)}
         />
@@ -3189,14 +3196,14 @@ function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
       }}
     >
       <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 8 }}>
-        Reschedule SOC
+        {rescheduleVerb(referral)}
       </p>
       <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 8, lineHeight: 1.45 }}>
         Current date: <strong>{fmtCalendarDate(referral.soc_scheduled_date) || '—'}</strong>
       </p>
 
       <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
-        New SOC date
+        New {episodeDateLabel(referral).toLowerCase()}
       </label>
       <input
         type="date"
@@ -3381,10 +3388,11 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
 
   // Step indicator. EMR onboarding now happens upstream (its own stage), so by
   // the time a patient is in Pre-SOC it's already done — reflect that.
+  const epLabel = episodeTypeLabel(selectedReferral);
   const steps = [
     { key: 'emr', label: 'EMR Onboarding', done: !!selectedReferral?.emr_onboarded_at || actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
-    { key: 'schedule', label: 'SOC Scheduled', done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
-    { key: 'complete', label: 'SOC Completed', done: actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
+    { key: 'schedule', label: `${epLabel} Scheduled`, done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
+    { key: 'complete', label: `${epLabel} Completed`, done: actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
   ];
 
   const socDateDisplay = fmtCalendarDate(selectedReferral?.soc_scheduled_date);
@@ -3395,6 +3403,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
         <SocCompletedCelebration
           patientName={celebration.patientName}
           completedDate={celebration.completedDate}
+          episodeType={epLabel}
           onClose={() => setCelebration(null)}
         />
       )}
@@ -3436,7 +3445,10 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               panel only schedules the SOC. The packet stays downloadable here
               as a reference copy. */}
           {actualStage === 'Pre-SOC' && (
-            <PanelSection title="Step 1 — Schedule SOC">
+            <PanelSection title={`Step 1: ${scheduleVerb(selectedReferral)}`}>
+              <div style={{ marginBottom: 8 }}>
+                <EpisodeTypeBadge referral={selectedReferral} size="tiny" />
+              </div>
               <EmrPacketDownloadButton
               referral={selectedReferral}
               resolveSource={resolveSource}
@@ -3447,17 +3459,20 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
               {pdfError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{pdfError}</p>}
 
               <div style={{ marginTop: 10 }}>
-                <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>SOC Date</p>
+                <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>{episodeDateLabel(selectedReferral)}</p>
                 <input type="date" value={socDate} min={today} onChange={(e) => setSocDate(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }} />
                 {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
-                <ActionBtn label={saving ? 'Scheduling…' : 'Schedule SOC →'} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
+                <ActionBtn label={saving ? 'Scheduling…' : `${scheduleVerb(selectedReferral)} →`} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
               </div>
             </PanelSection>
           )}
 
           {/* Step B+C: SOC Scheduled → Complete (when DB stage is SOC Scheduled) */}
           {actualStage === 'SOC Scheduled' && (
-            <PanelSection title="Step 2 — SOC Scheduled">
+            <PanelSection title={`Step 2: ${epLabel} Scheduled`}>
+              <div style={{ marginBottom: 8 }}>
+                <EpisodeTypeBadge referral={selectedReferral} size="tiny" />
+              </div>
               {socDateDisplay && <InfoRow label="Scheduled for" value={socDateDisplay} highlight={palette.accentGreen.hex} />}
 
               <div style={{ marginTop: 10 }}>
@@ -3473,12 +3488,12 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
 
               <div style={{ marginTop: 10 }}>
                 {!confirming ? (
-                  <ActionBtn label="Mark SOC Completed →" variant="forward" onClick={() => setConfirming(true)} />
+                  <ActionBtn label={`${markCompletedVerb(selectedReferral)} →`} variant="forward" onClick={() => setConfirming(true)} />
                 ) : (
                   <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`, background: hexToRgba(palette.accentGreen.hex, 0.05), padding: '10px 11px' }}>
-                    <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>Confirm SOC Completion</p>
+                    <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>{confirmCompletionVerb(selectedReferral)}</p>
                     <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-                      Confirm that <strong>{selectedReferral.patientName}</strong> has had their Start of Care. This moves them to Completed.
+                      Confirm <strong>{selectedReferral.patientName}</strong> {isRoc(selectedReferral) ? 'ROC' : 'SOC'} is done.
                     </p>
                     {onboardError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{onboardError}</p>}
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -3616,10 +3631,10 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
                 padding: '10px 11px', marginBottom: 8,
               }}>
                 <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>
-                  Confirm SOC Completion
+                  {confirmCompletionVerb(selectedReferral)}
                 </p>
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-                  Confirm that <strong>{selectedReferral.patientName}</strong> has had their Start of Care and is now under Wellbound care. This will move them to SOC Completed.
+                  Confirm <strong>{selectedReferral.patientName}</strong> {episodeTypeLongLabel(selectedReferral)} is done.
                 </p>
                 {onboardError && (
                   <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{onboardError}</p>
@@ -3671,18 +3686,39 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
 }
 
 // ── 13. SOC Completed ─────────────────────────────────────────────────────────
-function SocCompletedPanel({ referrals, selectedReferral }) {
+function SocCompletedPanel({ referrals, selectedReferral, onOpenTab }) {
   const hchbDone = referrals.filter((r) => r.hchb_entered === true || r.hchb_entered === 'true').length;
   const postSocWork = selectedReferral
     && selectedReferral.soc_completed_date
     && selectedReferral.current_stage
     && selectedReferral.current_stage !== 'SOC Completed';
+  const docsDeferred = isDocumentationDeferred(selectedReferral);
   return (
     <Panel>
       <PanelSection title="HCHB Entry Status">
         <InfoRow label="Entered in HCHB" value={hchbDone} highlight={palette.accentGreen.hex} />
         <InfoRow label="Pending HCHB entry" value={referrals.length - hchbDone} highlight={referrals.length - hchbDone > 0 ? palette.accentOrange.hex : null} />
       </PanelSection>
+      {selectedReferral && docsDeferred && (
+        <PanelSection title="Post-SOC documentation">
+          <DocumentationCompleteAction
+            referral={selectedReferral}
+            source="soc_completed_panel"
+            onOpenF2F={() => onOpenTab?.(selectedReferral, 'f2f')}
+            onOpenClinical={() => onOpenTab?.(selectedReferral, 'clinical_review')}
+          />
+        </PanelSection>
+      )}
+      {selectedReferral && !docsDeferred && selectedReferral.documentation_cleared_at && (
+        <PanelSection title="Post-SOC documentation">
+          <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650, color: palette.accentGreen.hex }}>
+            Documentation complete
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+            Cleared {fmtCalendarDate(selectedReferral.documentation_cleared_at)}. Case remains on SOC/ROC Completed.
+          </p>
+        </PanelSection>
+      )}
       {postSocWork && (
         <PanelSection title="Also in pipeline">
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, margin: 0 }}>

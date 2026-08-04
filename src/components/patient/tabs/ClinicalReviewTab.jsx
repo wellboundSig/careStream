@@ -8,6 +8,7 @@ import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
 import ClinicalChecklistUI from '../../clinical/ClinicalChecklistUI.jsx';
 import { unlockClinicalReview } from '../../../utils/clinicalReviewUnlock.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import DocumentationCompleteAction from '../../common/DocumentationCompleteAction.jsx';
 
 const DECISION_LABELS = {
   accept: 'Accepted',
@@ -30,7 +31,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const { resolveUser } = useLookups();
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
-  const { updateReferralLocal } = usePatientDrawer();
+  const { updateReferralLocal, setActiveTab } = usePatientDrawer();
 
   const decision = referral?.clinical_review_decision;
   const reviewedBy = referral?.clinical_review_by;
@@ -92,6 +93,11 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
+      <DocumentationCompleteAction
+        referral={referral}
+        source="clinical_review_tab"
+        onOpenF2F={() => setActiveTab?.('f2f')}
+      />
 
       {hasReview && (
         <div data-testid="clinical-review-result" style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(decisionColor, 0.08), border: `1px solid ${hexToRgba(decisionColor, 0.2)}`, marginBottom: 20 }}>

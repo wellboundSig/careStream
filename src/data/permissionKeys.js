@@ -332,7 +332,7 @@ export const PERMISSION_CATALOG = [
   // ── Scheduling & SOC ──────────────────────────────────────────────────────
   { key: K.SCHEDULING_STAFFING,      label: 'Staffing feasibility actions',      category: 'Scheduling & SOC', description: 'Work the Staffing Feasibility module', sort: 80 },
   { key: K.SCHEDULING_ADMIN_CONFIRM, label: 'Admin Confirmation stage actions',  category: 'Scheduling & SOC', description: 'Confirm patients in Admin Confirmation', sort: 81 },
-  { key: K.SCHEDULING_SOC_SCHEDULE,  label: 'Schedule Start of Care',            category: 'Scheduling & SOC', description: 'Set SOC dates and create episodes', sort: 82 },
+  { key: K.SCHEDULING_SOC_SCHEDULE,  label: 'Schedule SOC / ROC',                category: 'Scheduling & SOC', description: 'Set SOC/ROC dates and create episodes', sort: 82 },
   { key: K.SCHEDULING_SOC_COMPLETE,  label: 'Mark SOC completed',                category: 'Scheduling & SOC', description: 'Finalize SOC and generate EMR packets', sort: 83 },
   { key: K.SCHEDULING_SOC_PENDING_LOG, label: 'SOC Completed — Pending Log view', category: 'Scheduling & SOC', description: 'Access the Pending Log alternate queue on SOC Completed (facility, insurance, docs wait, clinical note, etc.)', sort: 84 },
   { key: K.SCHEDULING_SOC_PENDING_LOG_DEFAULT, label: 'SOC Completed — Pending Log as default', category: 'Scheduling & SOC', description: 'Open SOC Completed on the Pending Log view by default. Requires Pending Log view access. User preference still wins after they toggle.', sort: 85 },

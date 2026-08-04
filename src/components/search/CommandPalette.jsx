@@ -23,8 +23,8 @@ const STAGE_ROUTES = {
   'EMR Onboarding':            '/modules/emr-onboarding',
   'Staffing Feasibility':      '/modules/staffing',
   'Admin Confirmation':        '/modules/admin-confirmation',
-  'Pre-SOC':                   '/modules/pre-soc',
-  'Completed':                 '/modules/soc-completed',
+  'Pre-SOC/ROC':               '/modules/pre-soc',
+  'SOC/ROC Done':              '/modules/soc-completed',
   'Hold':                      '/modules/hold',
   'NTUC':                      '/modules/ntuc',
 };

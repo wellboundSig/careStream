@@ -15,6 +15,7 @@ import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import ChangeIntakeOwnerModal from '../components/referrals/ChangeIntakeOwnerModal.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
+import EpisodeTypeBadge from '../components/common/EpisodeTypeBadge.jsx';
 import ClinicalReviewByline from '../components/common/ClinicalReviewByline.jsx';
 import { useClinicalReviewInProgress } from '../hooks/useClinicalReviewInProgress.js';
 import LoadingState from '../components/common/LoadingState.jsx';
@@ -28,6 +29,7 @@ import {
   documentationFilterStatus,
   daysUntilDocumentationDue,
 } from '../utils/documentationDeferred.js';
+import { episodeTypeLongLabel } from '../utils/episodeType.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
@@ -36,6 +38,7 @@ const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disen
 const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
+  { key: 'episode_type',    label: 'Episode',           defaultOn: true,  filterable: true, tooltip: 'Start of Care or Resumption of Care' },
   { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
@@ -49,7 +52,7 @@ const COLUMN_DEFS = [
   { key: 'physician',       label: 'Physician',         defaultOn: true, filterable: true  },
   {
     key: 'post_soc_docs',
-    label: 'Post-SOC Docs',
+    label: 'Post-SOC/ROC Docs',
     defaultOn: true,
     filterable: true,
     tooltip: 'Deferred F2F/clinical. Filter: waiting_docs · waiting_clinical · overdue · yes · no',
@@ -290,6 +293,9 @@ export default function PatientList() {
           case 'division':
             if (p.division) vals.add(p.division);
             break;
+          case 'episode_type':
+            vals.add(episodeTypeLongLabel(ref));
+            break;
           case 'licence':
             if (ref?.entity_id) {
               const v = resolveEntity(ref.entity_id);
@@ -385,6 +391,7 @@ export default function PatientList() {
         let cellVal = '';
         switch (key) {
           case 'division':       cellVal = (p.division || '').toLowerCase(); break;
+          case 'episode_type':   cellVal = episodeTypeLongLabel(ref).toLowerCase(); break;
           case 'licence':        cellVal = resolveEntity(ref?.entity_id).toLowerCase(); break;
           case 'stage':          cellVal = (ref?.current_stage || '').toLowerCase(); break;
           case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id).toLowerCase(); break;
@@ -921,6 +928,21 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       }
       case 'division':
         return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
+      case 'episode_type':
+        return (
+          <td key="episode_type" style={{ padding: '11px 14px' }}>
+            {referral ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <EpisodeTypeBadge referral={referral} size="tiny" />
+                <span style={{ fontSize: 12, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.62), whiteSpace: 'nowrap' }}>
+                  {episodeTypeLongLabel(referral)}
+                </span>
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>
+            )}
+          </td>
+        );
       case 'licence': {
         const label = resolveEntity(referral?.entity_id);
         if (!referral?.entity_id || !label || label === '—') return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;

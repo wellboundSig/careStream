@@ -39,7 +39,7 @@ function ReadField({ label, value, fullWidth = false }) {
   );
 }
 
-function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, fullWidth = false, readOnly: forceReadOnly = false, allowBlank = false, blankLabel = 'Leave blank' }) {
+function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, optionLabels = null, fullWidth = false, readOnly: forceReadOnly = false, allowBlank = false, blankLabel = 'Leave blank' }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const { can } = usePermissions();
@@ -57,6 +57,7 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
     finally { setSaving(false); }
   }
 
+  const display = value ? (optionLabels?.[value] || value) : null;
   const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
   return (
     <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
@@ -64,17 +65,17 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
       {editing ? (
         <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
           <option value="" disabled={!allowBlank}>{allowBlank ? blankLabel : 'Select…'}</option>
-          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          {options.map((o) => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
         </select>
       ) : forceReadOnly ? (
-        <p style={{ fontSize: 13, color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: value ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : (value || empty)}
+        <p style={{ fontSize: 13, color: display ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: display ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Saving…' : (display || empty)}
         </p>
       ) : (
         <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
-          {saving ? 'Saving…' : (value || empty)}
+          {saving ? 'Saving…' : (display || empty)}
         </p>
       )}
     </div>
@@ -474,6 +475,16 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
       <Section title="Referral Info">
         <ReadField label="Referral ID" value={referral.id} />
         <ReadField label="Referral Date" value={referral.referral_date ? fmtCalendarDate(referral.referral_date, null) : null} />
+        <EditableReferralSelect
+          label="Episode"
+          fieldKey="episode_type"
+          value={referral.episode_type || 'SOC'}
+          referralId={referral._id}
+          onSave={handleReferralSave}
+          options={['SOC', 'ROC']}
+          optionLabels={{ SOC: 'Start of Care', ROC: 'Resumption of Care' }}
+          readOnly={readOnly}
+        />
         <ReadField label="Marketer" value={resolveMarketer(referral.marketer_id)} />
         <ReadField
           label="Lead submitted by"

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { episodeTypeLabel, episodeTypeLongLabel } from '../../utils/episodeType.js';
 
 function fmtSocDate(value) {
   if (!value) return '—';
@@ -17,7 +18,9 @@ function fmtSocDate(value) {
  * Fun internal-only celebration after Mark SOC Completed.
  * Renders via portal so it stays up after the patient leaves the Pre-SOC queue.
  */
-export default function SocCompletedCelebration({ patientName, completedDate, onClose }) {
+export default function SocCompletedCelebration({ patientName, completedDate, episodeType, onClose }) {
+  const ep = episodeTypeLabel(episodeType);
+  const epLong = episodeTypeLongLabel(episodeType);
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     document.addEventListener('keydown', onKey);
@@ -31,7 +34,7 @@ export default function SocCompletedCelebration({ patientName, completedDate, on
       data-testid="soc-completed-celebration"
       role="dialog"
       aria-modal="true"
-      aria-label="SOC completed"
+      aria-label={`${ep} completed`}
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
@@ -65,13 +68,13 @@ export default function SocCompletedCelebration({ patientName, completedDate, on
             fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
             color: palette.accentGreen.hex, marginBottom: 6,
           }}>
-            Start of Care
+            {epLong}
           </p>
           <h2 style={{
             margin: 0, fontSize: 22, fontWeight: 750, letterSpacing: '-0.02em',
             color: palette.backgroundDark.hex, lineHeight: 1.25,
           }}>
-            SOC completed
+            {ep} completed
           </h2>
           <p style={{
             margin: '8px 0 0', fontSize: 14, fontWeight: 600,

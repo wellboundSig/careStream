@@ -11,6 +11,7 @@ import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { normalizeEpisodeType } from './episodeType.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -94,13 +95,14 @@ export const TABLE_SCHEMAS = {
         fields: [
           { key: 'id',                   label: 'Referral ID',           type: 'text',    filterable: true },
           { key: 'division',             label: 'Division',              type: 'enum',    options: DIVISIONS,   filterable: true },
+          { key: 'episode_type',         label: 'SOC / ROC',             type: 'enum',    options: ['SOC', 'ROC'], filterable: true },
           { key: 'current_stage',        label: 'Stage',                 type: 'enum',    options: STAGES,      filterable: true },
           { key: 'priority',             label: 'Priority',              type: 'enum',    options: PRIORITIES,  filterable: true },
           { key: 'services_requested',   label: 'Services Requested',    type: 'text',    filterable: false },
           { key: 'referral_date',        label: 'Referral Date',         type: 'date',    filterable: true },
           { key: 'admitted_date',        label: 'Admitted Date',         type: 'date',    filterable: true },
-          { key: 'soc_scheduled_date',   label: 'SOC Scheduled Date',    type: 'date',    filterable: true },
-          { key: 'soc_completed_date',   label: 'SOC Completed Date',    type: 'date',    filterable: true },
+          { key: 'soc_scheduled_date',   label: 'SOC/ROC Scheduled Date', type: 'date',   filterable: true },
+          { key: 'soc_completed_date',   label: 'SOC/ROC Completed Date', type: 'date',   filterable: true },
           { key: 'hchb_entered',         label: 'HCHB Entered',          type: 'boolean', filterable: true },
           { key: 'is_pecos_verified',    label: 'PECOS Verified',        type: 'boolean', filterable: true },
           { key: 'is_opra_verified',     label: 'OPRA Verified',         type: 'boolean', filterable: true },
@@ -185,7 +187,7 @@ export const TABLE_SCHEMAS = {
       { key: 'referral_method', label: 'Referral Method', type: 'enum', options: REFERRAL_METHODS },
       { key: 'referral_date',  label: 'Referral Date', type: 'date' },
       { key: 'soc_scheduled_date', label: 'SOC Date', type: 'date' },
-      { key: 'soc_completed_date', label: 'SOC Completed', type: 'date' },
+      { key: 'soc_completed_date', label: 'SOC/ROC Completed', type: 'date' },
       { key: 'clinical_review_completed_at', label: 'Clinical Completed', type: 'date' },
       { key: 'emr_onboarded_at', label: 'EMR Onboarded', type: 'date' },
       { key: 'intake_owner_id', label: 'Intake Owner ID', type: 'text' },
@@ -880,7 +882,7 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division, marke
     { key: 'division', label: 'Division' },
     { key: 'total',    label: 'Total Referrals' },
     { key: 'active',   label: 'Active in Pipeline' },
-    { key: 'soc',      label: 'SOC Completed' },
+    { key: 'soc',      label: 'SOC/ROC Completed' },
     { key: 'ntuc',     label: 'NTUC' },
     { key: 'hold',     label: 'On Hold' },
     { key: 'socRate',  label: 'SOC Rate' },
@@ -977,7 +979,7 @@ export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, ma
     { key: 'services_requested', label: 'Services' },
     { key: 'clinical_review_decision', label: 'Clinical Decision' },
     { key: 'soc_scheduled_date', label: 'SOC Scheduled' },
-    { key: 'soc_completed_date', label: 'SOC Completed' },
+    { key: 'soc_completed_date', label: 'SOC/ROC Completed' },
   ];
 
   const byDay = {};
@@ -1188,7 +1190,7 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
     { key: 'campaigns',    label: 'Campaigns' },
     { key: 'total',        label: 'Total Referrals' },
     { key: 'active',       label: 'Active' },
-    { key: 'soc',          label: 'SOC Completed' },
+    { key: 'soc',          label: 'SOC/ROC Completed' },
     { key: 'ntuc',         label: 'NTUC' },
     { key: 'conversionRate', label: 'SOC Rate' },
     { key: 'ntucRate',     label: 'NTUC Rate' },
@@ -1236,7 +1238,7 @@ export async function runMethodAttribution({ dateFrom, dateTo, division, sourceI
     { key: 'sources', label: 'Sources' },
     { key: 'total', label: 'Total Referrals' },
     { key: 'active', label: 'Active' },
-    { key: 'soc', label: 'SOC Completed' },
+    { key: 'soc', label: 'SOC/ROC Completed' },
     { key: 'ntuc', label: 'NTUC' },
     { key: 'conversionRate', label: 'SOC Rate' },
     { key: 'ntucRate', label: 'NTUC Rate' },
@@ -1440,9 +1442,9 @@ export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }
 }
 
 /**
- * Start of Care — patients with SOC completed in a date range.
+ * SOC / ROC completed — patients with completion stamp in a date range.
  */
-export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds } = {}) {
+export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType } = {}) {
   // Durable stamp: include cases sent back to Intake for post-SOC work.
   const filters = [
     { field: 'soc_completed_date', operator: 'not_empty' },
@@ -1457,7 +1459,7 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
   ];
 
   const cols = [
-    '__patient_name', '__patient_dob', 'division', 'current_stage',
+    '__patient_name', '__patient_dob', 'division', 'episode_type', 'current_stage',
     'referral_date', 'soc_scheduled_date', 'soc_completed_date',
     '__marketer_name', '__intake_owner', '__facility_name', '__source_name',
     'services_requested',
@@ -1468,14 +1470,22 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
     selectedKeys: cols,
     sort: [{ field: 'soc_completed_date', direction: 'desc' }],
   });
-  const rows = fetched.filter((r) => isSocCompletedReferral(r));
+  let rows = fetched.filter((r) => isSocCompletedReferral(r));
+  if (episodeType === 'SOC' || episodeType === 'ROC') {
+    rows = rows.filter((r) => normalizeEpisodeType(r) === episodeType);
+  }
+  rows = rows.map((r) => ({
+    ...r,
+    episode_type: normalizeEpisodeType(r),
+  }));
 
   const columns = [
     { key: '__patient_name', label: 'Patient' },
     { key: '__patient_dob', label: 'DOB' },
     { key: 'division', label: 'Division' },
-    { key: 'soc_completed_date', label: 'SOC Completed' },
-    { key: 'soc_scheduled_date', label: 'SOC Scheduled' },
+    { key: 'episode_type', label: 'SOC / ROC' },
+    { key: 'soc_completed_date', label: 'Completed' },
+    { key: 'soc_scheduled_date', label: 'Scheduled' },
     { key: 'referral_date', label: 'Referral Date' },
     { key: '__marketer_name', label: 'Marketer' },
     { key: '__intake_owner', label: 'Intake Owner' },
@@ -1485,9 +1495,13 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
   ];
 
   const byMarketer = {};
+  let socCount = 0;
+  let rocCount = 0;
   for (const r of rows) {
     const m = r.__marketer_name || 'Unassigned';
     byMarketer[m] = (byMarketer[m] || 0) + 1;
+    if (r.episode_type === 'ROC') rocCount += 1;
+    else socCount += 1;
   }
   const marketerSeries = Object.entries(byMarketer).sort((a, b) => b[1] - a[1]).slice(0, 12);
 
@@ -1496,17 +1510,19 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
     columns,
     summary: {
       kpis: [
-        { label: 'Starts of care', value: rows.length },
+        { label: 'SOC completed', value: socCount },
+        { label: 'ROC completed', value: rocCount },
+        { label: 'Total', value: rows.length },
         { label: 'Marketers', value: Object.keys(byMarketer).length },
         { label: 'ALF', value: rows.filter((r) => r.division === 'ALF').length },
         { label: 'Special Needs', value: rows.filter((r) => r.division === 'Special Needs').length },
       ],
       charts: marketerSeries.length ? [{
-        title: 'SOC completed by marketer',
+        title: 'Completed by marketer',
         type: 'bar',
         labels: marketerSeries.map(([m]) => m),
         datasets: [{
-          label: 'SOC',
+          label: 'SOC/ROC',
           data: marketerSeries.map(([, n]) => n),
           backgroundColor: '#059669CC',
           borderColor: '#059669',

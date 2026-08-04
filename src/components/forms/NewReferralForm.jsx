@@ -41,6 +41,7 @@ import { savePatientContactSlot } from '../../utils/knownGuardians.js';
 import { splitContactNameAndRelationship } from '../../data/guardianRelationships.js';
 import HchbDupWarning from '../common/HchbDupWarning.jsx';
 import InsurancePlanPicker from '../common/InsurancePlanPicker.jsx';
+import { EPISODE_TYPES, normalizeEpisodeType } from '../../utils/episodeType.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -564,6 +565,7 @@ export default function NewReferralForm({
     address_state: 'NY',
     address_zip: '',
     division: '',
+    episode_type: 'SOC',
     facility_id: '',
     coc_nurse_id: '',
     emergency_contact_name: '',
@@ -852,6 +854,9 @@ export default function NewReferralForm({
       if (!zipResult.valid) errs.address_zip = zipResult.error;
     }
     if (!form.division) errs.division = 'Required';
+    if (!form.episode_type || !EPISODE_TYPES.includes(normalizeEpisodeType(form.episode_type))) {
+      errs.episode_type = 'Required';
+    }
     if (!form.referral_source_id) errs.referral_source_id = 'Required';
     if (form.referral_source_id === 'other') {
       const cleaned = sanitizeSourceName(form.referral_source_other);
@@ -1105,6 +1110,7 @@ export default function NewReferralForm({
         ...(form.referral_method ? { referral_method: form.referral_method } : {}),
         current_stage: stage,
         division: form.division,
+        episode_type: normalizeEpisodeType(form.episode_type),
         priority: 'Normal',
         referral_date: referralDate,
         created_at: referralDate,
@@ -1356,6 +1362,53 @@ export default function NewReferralForm({
             {isMarketerRole && divisionLocked && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4, fontStyle: 'italic' }}>Locked to your assigned division</p>
             )}
+
+            <div style={{ marginTop: 14 }}>
+              <p style={{ fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 6 }}>
+                Episode <span style={{ color: palette.primaryMagenta.hex }}>*</span>
+              </p>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[
+                  { value: 'SOC', label: 'Start of Care' },
+                  { value: 'ROC', label: 'Resumption of Care' },
+                ].map((opt) => {
+                  const active = normalizeEpisodeType(form.episode_type) === opt.value;
+                  const accent = opt.value === 'ROC' ? palette.accentBlue.hex : '#8A6A00';
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setField('episode_type', opt.value)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 10px',
+                        borderRadius: 7,
+                        border: 'none',
+                        background: active
+                          ? (opt.value === 'ROC'
+                            ? hexToRgba(palette.accentBlue.hex, 0.12)
+                            : hexToRgba(palette.highlightYellow.hex, 0.22))
+                          : hexToRgba(palette.backgroundDark.hex, 0.04),
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <p style={{
+                        margin: 0,
+                        fontSize: 12.5,
+                        fontWeight: active ? 700 : 550,
+                        color: active ? accent : hexToRgba(palette.backgroundDark.hex, 0.55),
+                      }}>
+                        {opt.label}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              {errors.episode_type && (
+                <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.episode_type}</p>
+              )}
+            </div>
 
             {form.division === 'ALF' && (
               <div style={{ marginTop: 12 }}>

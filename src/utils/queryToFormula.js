@@ -133,7 +133,7 @@ export function slotsToQuery(slots = {}, fieldMap = {}) {
   const rules = [];
   const {
     dateFrom, dateTo, dateField = 'referral_date',
-    division, stages, marketerIds, ownerIds, sourceIds,
+    division, episodeType, stages, marketerIds, ownerIds, sourceIds,
   } = slots;
 
   if (dateFrom && dateTo) {
@@ -151,6 +151,9 @@ export function slotsToQuery(slots = {}, fieldMap = {}) {
 
   if (division) {
     rules.push({ field: 'division', operator: '=', value: division });
+  }
+  if (episodeType === 'SOC' || episodeType === 'ROC') {
+    rules.push({ field: 'episode_type', operator: '=', value: episodeType });
   }
   if (Array.isArray(stages) && stages.length) {
     rules.push({ field: 'current_stage', operator: 'in', value: stages });
@@ -176,6 +179,7 @@ export function queryToSlots(query, { dateField = 'referral_date' } = {}) {
     dateFrom: '',
     dateTo: '',
     division: '',
+    episodeType: '',
     stages: [],
     marketerIds: [],
     ownerIds: [],
@@ -196,6 +200,8 @@ export function queryToSlots(query, { dateField = 'referral_date' } = {}) {
       slots.dateTo = f.value || '';
     } else if (f.field === 'division' && f.operator === 'eq') {
       slots.division = f.value || '';
+    } else if (f.field === 'episode_type' && f.operator === 'eq') {
+      slots.episodeType = f.value || '';
     } else if (f.field === 'current_stage' && f.operator === 'in') {
       slots.stages = [...f.value];
     } else if (f.field === 'current_stage' && f.operator === 'eq') {

@@ -23,6 +23,7 @@ import {
 } from '../../utils/columnModel.jsx';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
+import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
 import EmptyState from '../common/EmptyState.jsx';
@@ -49,7 +50,9 @@ import {
   isDocumentationDeferred,
   documentationFilterStatus,
   daysUntilDocumentationDue,
+  getDocumentationClearChecklist,
 } from '../../utils/documentationDeferred.js';
+import { normalizeEpisodeType, episodeTypeLabel, episodeTypeLongLabel } from '../../utils/episodeType.js';
 import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
 import MobileSocQueue from '../mobile/MobileSocQueue.jsx';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
@@ -391,12 +394,18 @@ export default function ModulePage({ stage }) {
           return true;
         }
         if (key === 'episode_type') {
-          return 'soc'.includes(q) || q === 'soc' || q === 's';
+          const et = normalizeEpisodeType(r).toLowerCase();
+          const long = episodeTypeLongLabel(r).toLowerCase();
+          const v = q.trim().toLowerCase();
+          if (v === 'soc' || v === 's' || v.includes('start')) return et === 'soc';
+          if (v === 'roc' || v === 'r' || v.includes('resum')) return et === 'roc';
+          return long.includes(v) || et.includes(v);
         }
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
           case 'stage': cellVal = r.current_stage || ''; break;
+          case 'episode_type': cellVal = episodeTypeLongLabel(r); break;
           case 'licence': cellVal = resolveEntity(r.entity_id) || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
           case 'marketer': cellVal = resolveMarketer(r.marketer_id) || ''; break;
@@ -512,7 +521,7 @@ export default function ModulePage({ stage }) {
             if (v && v !== '—') vals.add(v);
             break;
           }
-          case 'episode_type': vals.add('SOC'); break;
+          case 'episode_type': vals.add(episodeTypeLongLabel(r)); break;
           case 'waiting_docs': vals.add('yes'); vals.add('no'); break;
         }
       });
@@ -707,8 +716,18 @@ export default function ModulePage({ stage }) {
       }
       case 'episode_type':
         return (
-          <td key="episode_type" style={td({ maxWidth: 80, fontSize: 12, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.7) })}>
-            SOC
+          <td key="episode_type" style={td({ maxWidth: 168 })}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <EpisodeTypeBadge referral={referral} size="tiny" />
+              <span style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: hexToRgba(palette.backgroundDark.hex, 0.62),
+                whiteSpace: 'nowrap',
+              }}>
+                {episodeTypeLongLabel(referral)}
+              </span>
+            </span>
           </td>
         );
       case 'soc_completed_date': {
@@ -721,17 +740,41 @@ export default function ModulePage({ stage }) {
       }
       case 'waiting_docs': {
         const waiting = isDocumentationDeferred(referral);
+        const checklist = waiting ? getDocumentationClearChecklist(referral) : null;
+        const detail = !waiting
+          ? null
+          : checklist.canClear
+            ? 'Ready to clear — select row'
+            : [
+                !checklist.f2f ? 'Need F2F' : null,
+                !checklist.clinical ? 'Need clinical' : null,
+              ].filter(Boolean).join(' · ');
         return (
-          <td key="waiting_docs" style={td({ maxWidth: 110, textAlign: 'left' })}>
+          <td key="waiting_docs" style={td({ maxWidth: 160, textAlign: 'left' })}>
             {waiting ? (
-              <span style={{
-                fontSize: 10.5, fontWeight: 750, color: palette.accentOrange.hex,
-                padding: '2px 7px', borderRadius: 20,
-                background: hexToRgba(palette.accentOrange.hex, 0.12),
-                border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`,
-              }}>
-                Yes
-              </span>
+              <div>
+                <span style={{
+                  fontSize: 10.5, fontWeight: 750, color: palette.accentOrange.hex,
+                  padding: '2px 7px', borderRadius: 5,
+                  background: hexToRgba(palette.accentOrange.hex, 0.12),
+                  border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`,
+                }}>
+                  Yes
+                </span>
+                {detail && (
+                  <div style={{
+                    marginTop: 4,
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    color: checklist.canClear
+                      ? palette.accentGreen.hex
+                      : hexToRgba(palette.backgroundDark.hex, 0.45),
+                    lineHeight: 1.3,
+                  }}>
+                    {detail}
+                  </div>
+                )}
+              </div>
             ) : (
               <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>No</span>
             )}
@@ -915,7 +958,7 @@ export default function ModulePage({ stage }) {
               {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
               {isDocumentationDeferred(referral) && (
                 <span
-                  title="Deferred docs — F2F + clinical after SOC"
+                  title="Deferred docs: F2F + clinical still needed"
                   style={{
                     flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
                     color: palette.accentOrange.hex,
@@ -944,7 +987,7 @@ export default function ModulePage({ stage }) {
               )}
               {!isSocCompleted && isSocCompletedReferral(referral) && (
                 <span
-                  title={`SOC completed ${referral.soc_completed_date || ''} — still on Completed list`}
+                  title={`${episodeTypeLabel(referral)} completed ${referral.soc_completed_date || ''}`}
                   style={{
                     flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
                     color: palette.accentGreen.hex,
@@ -953,7 +996,7 @@ export default function ModulePage({ stage }) {
                     borderRadius: 4, padding: '1px 4px',
                   }}
                 >
-                  SOC
+                  {episodeTypeLabel(referral)}
                 </span>
               )}
               {authObtainedAt && (

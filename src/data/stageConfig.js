@@ -250,7 +250,8 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'Admin Confirmation',
   },
   'Pre-SOC': {
-    description: 'EMR onboarding → SOC scheduling → SOC completion',
+    displayName: 'Pre-SOC / Pre-ROC',
+    description: 'Ready to schedule Start or Resumption of Care',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentGreen.hex,
@@ -258,7 +259,8 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'Pre-SOC' || r.current_stage === 'SOC Scheduled',
   },
   'SOC Scheduled': {
-    description: 'Start of care visit officially scheduled',
+    displayName: 'SOC/ROC Scheduled',
+    description: 'Care start or resumption visit scheduled',
     isGlobal: false,
     isTerminal: false,
     color: palette.accentGreen.hex,
@@ -266,8 +268,8 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'SOC Scheduled',
   },
   'SOC Completed': {
-    displayName: 'Completed',
-    description: 'SOC performed — stays here once confirmed, even if Intake still has post-SOC work',
+    displayName: 'SOC/ROC Completed',
+    description: 'Care started or resumed — stays here once confirmed',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,

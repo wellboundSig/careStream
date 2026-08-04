@@ -7,7 +7,16 @@ import SocCompletedShieldIcon from './SocCompletedShieldIcon.jsx';
  * top = marketers, bottom = intake owners — each ranked by SOC count,
  * only staff with ≥1 completed SOC. Bars scale to the section max.
  */
-export default function SocCompletedStatCard({ value, sub, marketers = [], owners = [] }) {
+export default function SocCompletedStatCard({
+  value,
+  sub,
+  label = 'SOC Completed',
+  accentColor,
+  marketers = [],
+  owners = [],
+  compact = false,
+}) {
+  const accent = accentColor || palette.accentGreen.hex;
   const [open, setOpen] = useState(false);
   const hasBreakdown = marketers.length > 0 || owners.length > 0;
 
@@ -29,29 +38,32 @@ export default function SocCompletedStatCard({ value, sub, marketers = [], owner
           flexDirection: 'column',
           gap: 6,
           border: `1px solid var(--color-border)`,
-          borderTop: `3px solid ${palette.accentGreen.hex}`,
+          borderTop: `3px solid ${accent}`,
           position: 'relative',
           cursor: hasBreakdown ? 'default' : 'default',
           outline: 'none',
           transition: 'box-shadow 0.2s ease, transform 0.2s ease',
           boxShadow: open
-            ? `0 8px 28px ${hexToRgba(palette.accentGreen.hex, 0.18)}`
+            ? `0 8px 28px ${hexToRgba(accent, 0.18)}`
             : 'none',
           transform: open ? 'translateY(-1px)' : 'none',
+          padding: compact ? '12px 16px' : '18px 20px',
         }}
       >
-        <div style={{ position: 'absolute', top: 14, right: 16 }}>
-          <SocCompletedShieldIcon size={28} />
-        </div>
+        {!compact && (
+          <div style={{ position: 'absolute', top: 14, right: 16 }}>
+            <SocCompletedShieldIcon size={28} />
+          </div>
+        )}
         <p style={{
-          fontSize: 11, fontWeight: 650, letterSpacing: '0.05em',
+          fontSize: compact ? 10.5 : 11, fontWeight: 650, letterSpacing: '0.05em',
           color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase',
-          paddingRight: 36,
+          paddingRight: compact ? 0 : 36,
         }}>
-          SOC Completed
+          {label}
         </p>
-        <p style={{ fontSize: 32, fontWeight: 700, color: palette.backgroundDark.hex, lineHeight: 1 }}>{value}</p>
-        <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{sub}</p>
+        <p style={{ fontSize: compact ? 24 : 32, fontWeight: 700, color: palette.backgroundDark.hex, lineHeight: 1 }}>{value}</p>
+        <p style={{ fontSize: compact ? 11 : 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{sub}</p>
       </div>
 
       {hasBreakdown && (

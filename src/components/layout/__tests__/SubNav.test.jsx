@@ -56,8 +56,8 @@ describe('ALL_PINNABLE', () => {
     expect(leadEntry.label).toBe('Leads');
   });
 
-  it('includes "Completed" label for soc-completed path', () => {
+  it('includes "SOC/ROC Done" label for soc-completed path', () => {
     const completed = ALL_PINNABLE.find((p) => p.path === '/modules/soc-completed');
-    expect(completed.label).toBe('Completed');
+    expect(completed.label).toBe('SOC/ROC Done');
   });
 });

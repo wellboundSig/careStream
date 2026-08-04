@@ -5,6 +5,8 @@ import { isDocumentationDeferred } from '../../utils/documentationDeferred.js';
 import { getUrgentCareType, isUrgentCare, urgentCareTypeLabel } from '../../utils/urgentCare.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
+import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
+import { normalizeEpisodeType } from '../../utils/episodeType.js';
 
 /**
  * Mobile-native SOC Completed / Pending Log queue.
@@ -33,6 +35,7 @@ export default function MobileSocQueue({
   // SOC Completed mobile: default to “needs docs” so marketers see follow-ups first.
   const showNeedsDocsToggle = !!isSocCompleted || !!(canPendingLog || isPendingLogView);
   const [needsDocsOnly, setNeedsDocsOnly] = useState(true);
+  const [episodeFilter, setEpisodeFilter] = useState('ALL'); // ALL | SOC | ROC
 
   const waitingDocsCount = useMemo(
     () => (referrals || []).filter((r) => isDocumentationDeferred(r)).length,
@@ -40,9 +43,15 @@ export default function MobileSocQueue({
   );
 
   const visibleReferrals = useMemo(() => {
-    if (!showNeedsDocsToggle || !needsDocsOnly) return referrals || [];
-    return (referrals || []).filter((r) => isDocumentationDeferred(r));
-  }, [referrals, showNeedsDocsToggle, needsDocsOnly]);
+    let list = referrals || [];
+    if (episodeFilter === 'SOC' || episodeFilter === 'ROC') {
+      list = list.filter((r) => normalizeEpisodeType(r) === episodeFilter);
+    }
+    if (showNeedsDocsToggle && needsDocsOnly) {
+      list = list.filter((r) => isDocumentationDeferred(r));
+    }
+    return list;
+  }, [referrals, showNeedsDocsToggle, needsDocsOnly, episodeFilter]);
 
   return (
     <div style={{
@@ -80,12 +89,46 @@ export default function MobileSocQueue({
             </div>
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.4 }}>
               {isPendingLogView
-                ? 'SOC date, urgent type, facility, docs wait, and AM follow-ups'
+                ? 'SOC/ROC date, urgent type, facility, docs wait, and AM follow-ups'
                 : canPendingLog
-                  ? 'SOC completed — date, urgent type, facility, and quick actions'
+                  ? 'Completed care: date, urgent type, facility, quick actions'
                   : (meta?.description || 'Tap a patient for files, notes, or conflicts')}
             </p>
           </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {['ALL', 'SOC', 'ROC'].map((key) => {
+            const active = episodeFilter === key;
+            const label = key === 'ALL' ? 'All' : key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setEpisodeFilter(key)}
+                style={{
+                  flex: 1,
+                  height: 32,
+                  borderRadius: 8,
+                  border: active
+                    ? `1.5px solid ${key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex}`
+                    : '1px solid var(--color-border)',
+                  background: active
+                    ? hexToRgba(key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex, 0.12)
+                    : palette.backgroundLight.hex,
+                  color: active
+                    ? (key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex)
+                    : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {showNeedsDocsToggle && (
@@ -317,8 +360,6 @@ function SocCard({
   const addedDate = addedRaw
     ? (fmtCalendarDate(addedRaw) || String(addedRaw).slice(0, 10))
     : null;
-  const episode = referral.episode_type || 'SOC';
-
   return (
     <article
       style={{
@@ -345,7 +386,7 @@ function SocCard({
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7, alignItems: 'center' }}>
               <DivisionBadge division={referral.division} size="small" />
-              <Chip>{episode}</Chip>
+              <EpisodeTypeBadge referral={referral} size="small" />
               {socDate && (
                 <Chip strong color={palette.accentGreen.hex}>
                   SOC {socDate}

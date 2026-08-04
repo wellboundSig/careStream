@@ -25,6 +25,8 @@ import {
   todayCalendarDate,
   daysUntilCalendarDate,
 } from '../../../utils/dateFormat.js';
+import { maybeClearDocumentationDeferred } from '../../../utils/documentationDeferred.js';
+import DocumentationCompleteAction from '../../common/DocumentationCompleteAction.jsx';
 
 function formatBytes(n) {
   if (!n && n !== 0) return '';
@@ -67,7 +69,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
   const { can } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolveUser } = useLookups();
-  const { openFileBeside } = usePatientDrawer();
+  const { openFileBeside, setActiveTab } = usePatientDrawer();
   const storePhysicians = useCareStore((s) => s.physicians);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -135,12 +137,17 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
       // Optimistic: the F2F tab indicator (green check in the drawer) and the
       // Intake panel's "Push to Clinical RN" section both read from the store.
       // Without an optimistic write, neither updates until the next data sync.
-      await updateReferralOptimistic(referral._id, {
+      const f2fFields = {
         f2f_date: receivedDate,
         f2f_expiration: expiration,
         f2f_date_logged_by_id: appUserId || 'unknown',
         f2f_date_logged_at: loggedAt,
-      });
+      };
+      await updateReferralOptimistic(referral._id, f2fFields);
+      await maybeClearDocumentationDeferred(
+        { ...referral, ...f2fFields },
+        { actorUserId: appUserId, source: 'f2f_tab' },
+      );
       triggerDataRefresh();
       setShowDatePicker(false);
       setReceivedDate('');
@@ -198,12 +205,17 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
 
       if (uploadCategory === 'F2F' && referral && !referral.f2f_date) {
         const today = todayCalendarDate();
-        await updateReferralOptimistic(referral._id, {
+        const f2fFields = {
           f2f_date: today,
           f2f_expiration: addCalendarDays(today, 90),
           f2f_date_logged_by_id: appUserId || 'unknown',
           f2f_date_logged_at: new Date().toISOString(),
-        });
+        };
+        await updateReferralOptimistic(referral._id, f2fFields);
+        await maybeClearDocumentationDeferred(
+          { ...referral, ...f2fFields },
+          { actorUserId: appUserId, source: 'f2f_tab_upload' },
+        );
         triggerDataRefresh();
       }
       cancelStaging();
@@ -227,6 +239,12 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
+      <DocumentationCompleteAction
+        referral={referral}
+        source="f2f_tab"
+        onOpenClinical={() => setActiveTab?.('clinical_review')}
+      />
+
       {/* F2F Status */}
       <Section title="F2F Status">
         {days !== null ? (

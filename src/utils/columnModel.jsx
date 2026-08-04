@@ -5,6 +5,7 @@ import palette, { hexToRgba } from './colors.js';
 export const PATIENT_COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',         defaultOn: true,  alwaysOn: true,  sortField: 'last_name',      filterable: false },
   { key: 'division',        label: 'Division',         defaultOn: true,  sortField: 'division',        filterable: true  },
+  { key: 'episode_type',    label: 'Episode',          defaultOn: true,  filterable: true, tooltip: 'Start of Care or Resumption of Care' },
   { key: 'licence',         label: 'Entity',           defaultOn: true,  filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
   { key: 'stage',           label: 'Stage',            defaultOn: true,  sortField: 'stage',           filterable: true  },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
@@ -25,6 +26,7 @@ export const PATIENT_COLUMN_DEFS = [
 export const MODULE_COLUMN_DEFS = [
   { key: 'patient',   label: 'Patient',    defaultOn: true, alwaysOn: true, filterable: false },
   { key: 'division',  label: 'Division',   defaultOn: true, filterable: true },
+  { key: 'episode_type', label: 'Episode', defaultOn: true, filterable: true, tooltip: 'Start of Care or Resumption of Care' },
   { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
   { key: 'marketer',  label: 'Marketer',   defaultOn: true, filterable: true },
@@ -40,10 +42,10 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'activity',  label: 'Last Activity', defaultOn: true, filterable: false },
   // Urgent care lives at the END so it doesn't crowd the patient label
   // (the row's name already carries the small red cross when flagged).
-  { key: 'urgent',    label: 'Urgent',     defaultOn: true, filterable: true, tooltip: 'Patient flagged as requiring urgent / pre-SOC care. Filter accepts yes / no.' },
+  { key: 'urgent',    label: 'Urgent',     defaultOn: true, filterable: true, tooltip: 'Patient flagged as requiring urgent care. Filter accepts yes / no.' },
   {
     key: 'post_soc_docs',
-    label: 'Post-SOC Docs',
+    label: 'Post-SOC/ROC Docs',
     defaultOn: true,
     filterable: true,
     tooltip: 'Deferred F2F/clinical cases. Filter: waiting_docs · waiting_clinical · overdue · yes (any open) · no',
@@ -58,11 +60,11 @@ export const SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS = [
   { key: 'added_to_module', label: 'Added to module', defaultOn: true, alwaysOn: true, filterable: false, sortField: 'added_to_module', tooltip: 'Date the patient entered SOC Completed' },
   { key: 'patient', label: 'Patient', defaultOn: true, alwaysOn: true, filterable: false, sortField: 'name' },
   { key: 'facility', label: 'Facility', defaultOn: true, filterable: true },
-  { key: 'episode_type', label: 'SOC / ROC', defaultOn: true, filterable: true, tooltip: 'Episode type — currently always SOC' },
+  { key: 'episode_type', label: 'Episode', defaultOn: true, filterable: true, tooltip: 'Start of Care or Resumption of Care' },
   { key: 'insurance', label: 'Insurance', defaultOn: true, filterable: true },
-  { key: 'urgent', label: 'Urgent care', defaultOn: true, filterable: true, tooltip: 'Urgent / pre-SOC care flag. Filter: yes / no' },
+  { key: 'urgent', label: 'Urgent care', defaultOn: true, filterable: true, tooltip: 'Urgent / pre-care flag. Filter: yes / no' },
   { key: 'urgent_care_type', label: 'Urgent type', defaultOn: true, filterable: true, tooltip: 'Wound care, Insulin, Injection, or Both. Editable inline.' },
-  { key: 'soc_completed_date', label: 'SOC completed', defaultOn: true, filterable: false, sortField: 'soc_completed_date', tooltip: 'Date Start of Care was completed' },
+  { key: 'soc_completed_date', label: 'Completed', defaultOn: true, filterable: false, sortField: 'soc_completed_date', tooltip: 'Date SOC or ROC was completed' },
   { key: 'waiting_docs', label: 'Waiting for docs', defaultOn: true, filterable: true, tooltip: 'Deferred F2F/clinical still outstanding. Filter: yes / no' },
   { key: 'pcp', label: 'PCP', defaultOn: true, filterable: true, tooltip: 'Triage PCP when present; otherwise the referral physician' },
   { key: 'marketer', label: 'Marketer', defaultOn: true, filterable: true },

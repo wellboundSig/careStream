@@ -3,9 +3,11 @@ import { useUser } from '@clerk/react';
 import { getFilesByPatient, createFile, deleteFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
+import { updateReferralOptimistic } from '../../../store/mutations.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
+import { maybeClearDocumentationDeferred } from '../../../utils/documentationDeferred.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
@@ -286,12 +288,21 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
       // back one day in US Eastern.
       if (pendingCategory === 'F2F' && f2fDate && referral?._id) {
         const visitDate = toCalendarDateInput(f2fDate);
-        await updateReferral(referral._id, {
+        const f2fFields = {
           f2f_date: visitDate,
           f2f_expiration: addCalendarDays(visitDate, 90),
           f2f_date_logged_by_id: appUserId || 'unknown',
           f2f_date_logged_at: new Date().toISOString(),
-        }).catch(() => {});
+        };
+        try {
+          await updateReferralOptimistic(referral._id, f2fFields);
+          await maybeClearDocumentationDeferred(
+            { ...referral, ...f2fFields },
+            { actorUserId: appUserId, source: 'files_tab_f2f' },
+          );
+        } catch {
+          await updateReferral(referral._id, f2fFields).catch(() => {});
+        }
         triggerDataRefresh();
       }
 

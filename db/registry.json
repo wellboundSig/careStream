@@ -843,6 +843,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "episode_type": {
+        "column": "episode_type",
+        "pg": "text",
+        "wire": "text"
+      },
       "facility_id": {
         "column": "facility_id",
         "pg": "text",

@@ -36,9 +36,9 @@ const STAGE_SHORT = {
   'EMR Onboarding':            'EMR Onboarding',
   'Staffing Feasibility':      'Staffing',
   'Admin Confirmation':        'Admin Confirm',
-  'Pre-SOC':                   'Pre-SOC',
-  'SOC Scheduled':             'SOC Scheduled',
-  'SOC Completed':             'SOC Completed',
+  'Pre-SOC':                   'Pre-SOC/ROC',
+  'SOC Scheduled':             'SOC/ROC Sched',
+  'SOC Completed':             'SOC/ROC Done',
   'Hold':                      'Hold',
   'NTUC':                      'NTUC',
 };
@@ -66,7 +66,7 @@ export default function StageBadge({ stage, size = 'default' }) {
         background: config.bg,
         color: config.text,
         whiteSpace: 'nowrap',
-        maxWidth: isSmall ? 130 : 160,
+        maxWidth: isSmall ? 140 : 170,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
       }}
