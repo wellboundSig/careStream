@@ -269,7 +269,7 @@ export const STAGE_META = {
   },
   'SOC Completed': {
     displayName: 'SOC/ROC Completed',
-    description: 'Care started or resumed — stays here once confirmed',
+    description: 'Care started or resumed, stays here once confirmed',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,
