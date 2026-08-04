@@ -63,6 +63,7 @@ describe('documentationDeferred clear path', () => {
       source: 'pending_log',
     });
     expect(result.ok).toBe(true);
+    expect(result.forced).toBe(false);
     expect(updateReferralOptimistic).toHaveBeenCalledWith(
       'rec1',
       expect.objectContaining({
@@ -75,5 +76,25 @@ describe('documentationDeferred clear path', () => {
       documentation_deferred: false,
       documentation_cleared_at: '2026-07-03',
     })).toBe(false);
+  });
+
+  it('force-clears when halves are missing', async () => {
+    const referral = {
+      _id: 'rec1',
+      id: 'ref_1',
+      patient_id: 'pat_1',
+      documentation_deferred: true,
+    };
+    const result = await clearDocumentationDeferred(referral, {
+      actorUserId: 'u1',
+      source: 'pending_log',
+      force: true,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.forced).toBe(true);
+    expect(updateReferralOptimistic).toHaveBeenCalledWith(
+      'rec1',
+      expect.objectContaining({ documentation_deferred: false }),
+    );
   });
 });

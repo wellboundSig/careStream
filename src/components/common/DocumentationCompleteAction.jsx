@@ -1,7 +1,8 @@
 /**
  * Mark post-SOC deferred documentation complete.
- * Hard gates: still deferred + F2F logged + clinical completed. No waiver.
- * Case stays on SOC Completed; only the deferred flag clears.
+ * Default: F2F + clinical required.
+ * Quiet override: "Mark complete anyway" → Are you sure?
+ * Case stays on SOC/ROC Completed; only the deferred flag clears.
  */
 import { useState } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -41,6 +42,7 @@ export default function DocumentationCompleteAction({
   const { appUserId } = useCurrentAppUser();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [confirmAnyway, setConfirmAnyway] = useState(false);
 
   if (!referral || !isDocumentationDeferred(referral)) return null;
 
@@ -48,14 +50,15 @@ export default function DocumentationCompleteAction({
   const daysLeft = daysUntilDocumentationDue(referral);
   const overdue = daysLeft != null && daysLeft < 0;
 
-  async function handleMarkComplete() {
-    if (!checklist.canClear || busy) return;
+  async function runClear({ force = false } = {}) {
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
       const result = await clearDocumentationDeferred(referral, {
         actorUserId: appUserId,
         source,
+        force,
       });
       if (!result.ok) {
         setError(
@@ -66,6 +69,7 @@ export default function DocumentationCompleteAction({
         );
         return;
       }
+      setConfirmAnyway(false);
       triggerDataRefresh();
       onCleared?.();
     } catch (err) {
@@ -184,7 +188,7 @@ export default function DocumentationCompleteAction({
         type="button"
         data-testid="mark-docs-complete"
         disabled={!checklist.canClear || busy}
-        onClick={handleMarkComplete}
+        onClick={() => runClear({ force: false })}
         title={
           checklist.canClear
             ? 'Clear the deferred-docs hold. Case remains on SOC/ROC Completed.'
@@ -204,8 +208,98 @@ export default function DocumentationCompleteAction({
           opacity: busy ? 0.7 : 1,
         }}
       >
-        {busy ? 'Clearing…' : 'Mark documentation complete'}
+        {busy && checklist.canClear ? 'Clearing…' : 'Mark documentation complete'}
       </button>
+
+      {!checklist.canClear && (
+        <div style={{ marginTop: 10, textAlign: 'center' }}>
+          {!confirmAnyway ? (
+            <button
+              type="button"
+              data-testid="mark-docs-anyway"
+              disabled={busy}
+              onClick={() => { setError(''); setConfirmAnyway(true); }}
+              style={{
+                border: 'none',
+                background: 'none',
+                padding: 0,
+                fontSize: 11,
+                fontWeight: 500,
+                color: hexToRgba(palette.backgroundDark.hex, 0.38),
+                cursor: busy ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+                textUnderlineOffset: 2,
+              }}
+            >
+              Mark complete anyway
+            </button>
+          ) : (
+            <div
+              data-testid="mark-docs-anyway-confirm"
+              style={{
+                padding: '8px 10px',
+                borderRadius: 7,
+                background: hexToRgba(palette.backgroundDark.hex, 0.04),
+                textAlign: 'left',
+              }}
+            >
+              <p style={{
+                margin: 0,
+                fontSize: 12,
+                fontWeight: 650,
+                color: palette.backgroundDark.hex,
+              }}>
+                Are you sure?
+              </p>
+              <p style={{
+                margin: '4px 0 0',
+                fontSize: 11.5,
+                lineHeight: 1.4,
+                color: hexToRgba(palette.backgroundDark.hex, 0.55),
+              }}>
+                F2F and/or clinical are still open. This clears the docs hold only.
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmAnyway(false)}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    padding: '4px 8px',
+                    fontSize: 12,
+                    fontWeight: 550,
+                    color: hexToRgba(palette.backgroundDark.hex, 0.5),
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  data-testid="mark-docs-anyway-confirm-yes"
+                  disabled={busy}
+                  onClick={() => runClear({ force: true })}
+                  style={{
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '5px 10px',
+                    fontSize: 12,
+                    fontWeight: 650,
+                    background: hexToRgba(palette.backgroundDark.hex, 0.12),
+                    color: palette.backgroundDark.hex,
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: busy ? 0.7 : 1,
+                  }}
+                >
+                  {busy ? 'Clearing…' : 'Yes, clear hold'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <p style={{ margin: '8px 0 0', fontSize: 11.5, color: palette.primaryMagenta.hex }}>

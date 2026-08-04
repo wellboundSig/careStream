@@ -98,7 +98,7 @@ export function documentationDeferredStartFields(actorUserId) {
 
 /**
  * Checklist for closing post-SOC deferred documentation.
- * No waiver path — both halves are required.
+ * Default clear needs both F2F + clinical; UI may offer a force override.
  */
 export function getDocumentationClearChecklist(referral) {
   const deferred = isDocumentationDeferred(referral);
@@ -118,17 +118,22 @@ export function getDocumentationClearChecklist(referral) {
 
 /**
  * Explicit clear of deferred documentation (Pending Log / panel / drawer).
- * Hard-gated: still deferred + F2F + clinical. No exception path.
+ * Default: still deferred + F2F + clinical.
+ * Pass `force: true` to clear anyway (manual override; logged).
  *
- * @returns {{ ok: boolean, reason?: string, cleared?: boolean }}
+ * @returns {{ ok: boolean, reason?: string, cleared?: boolean, forced?: boolean }}
  */
-export async function clearDocumentationDeferred(referral, { actorUserId, source = 'unknown' } = {}) {
+export async function clearDocumentationDeferred(referral, {
+  actorUserId,
+  source = 'unknown',
+  force = false,
+} = {}) {
   if (!referral?._id) return { ok: false, reason: 'missing_referral' };
   if (!isDocumentationDeferred(referral)) {
     return { ok: false, reason: 'not_deferred' };
   }
   const checklist = getDocumentationClearChecklist(referral);
-  if (!checklist.canClear) {
+  if (!checklist.canClear && !force) {
     return {
       ok: false,
       reason: checklist.missing.includes('f2f') && checklist.missing.includes('clinical')
@@ -141,30 +146,41 @@ export async function clearDocumentationDeferred(referral, { actorUserId, source
   }
 
   const now = new Date().toISOString();
+  const forced = !checklist.canClear && !!force;
   await updateReferralOptimistic(referral._id, {
     documentation_deferred: false,
     documentation_cleared_at: now,
     ...(actorUserId ? { documentation_cleared_by_id: actorUserId } : {}),
   });
+  const missingLabel = checklist.missing.length
+    ? checklist.missing.map((m) => (m === 'f2f' ? 'F2F' : 'clinical')).join(' + ')
+    : null;
   recordActivity({
     actorUserId,
-    action: 'Post-SOC Documentation Cleared',
+    action: forced
+      ? 'Post-SOC Documentation Cleared (override)'
+      : 'Post-SOC Documentation Cleared',
     patientId: referral.patient_id,
     referralId: referral.id,
-    detail: 'F2F and clinical review completed — deferred-documentation flag cleared',
+    detail: forced
+      ? `Cleared without ${missingLabel}`
+      : 'F2F and clinical review completed — deferred-documentation flag cleared',
     metadata: {
       dueDate: referral.documentation_due_date || null,
       source,
+      forced,
+      missing: checklist.missing,
     },
   }).catch(() => {});
-  return { ok: true, cleared: true };
+  return { ok: true, cleared: true, forced };
 }
 
 /**
  * If deferred and both F2F + clinical are done, clear the flag.
  * Safe to call after either side stamps; no-op when incomplete.
+ * Never force-clears.
  */
 export async function maybeClearDocumentationDeferred(referral, { actorUserId, source = 'auto' } = {}) {
-  const result = await clearDocumentationDeferred(referral, { actorUserId, source });
+  const result = await clearDocumentationDeferred(referral, { actorUserId, source, force: false });
   return !!(result.ok && result.cleared);
 }
