@@ -98,27 +98,27 @@ export default function MobileSocQueue({
     }}>
       {/* Sticky header */}
       <div style={{
-        padding: filtersOpen ? '14px 16px 12px' : '10px 16px 10px',
+        padding: filtersOpen ? '12px 16px 10px' : '10px 16px',
         background: palette.backgroundLight.hex,
-        borderBottom: `1px solid var(--color-border)`,
+        borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
         borderTop: `3px solid ${stageColor || palette.accentGreen.hex}`,
         position: 'sticky',
         top: 0,
         zIndex: 5,
       }}>
         {/* Title row — always visible */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 28 }}>
           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
             <h1 style={{
-              fontSize: filtersOpen ? 20 : 17, fontWeight: 750,
+              fontSize: 18, fontWeight: 750, lineHeight: 1.2,
               color: palette.backgroundDark.hex, margin: 0,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {isPendingLogView ? 'Pending Log' : (meta?.displayName || 'Completed')}
             </h1>
             <span style={{
-              fontSize: 12, fontWeight: 750, padding: '2px 9px', borderRadius: 10, flexShrink: 0,
-              background: hexToRgba(stageColor || palette.accentGreen.hex, 0.14),
+              fontSize: 11.5, fontWeight: 750, padding: '2px 8px', borderRadius: 8, flexShrink: 0,
+              background: hexToRgba(stageColor || palette.accentGreen.hex, 0.16),
               color: stageColor || palette.accentGreen.hex,
             }}>
               {visibleReferrals.length}
@@ -134,36 +134,34 @@ export default function MobileSocQueue({
             onClick={() => setFiltersOpen((v) => !v)}
             style={{
               flexShrink: 0,
-              height: 34,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: `1px solid ${filtersOpen ? hexToRgba(palette.primaryDeepPlum.hex, 0.25) : 'var(--color-border)'}`,
-              background: filtersOpen
-                ? hexToRgba(palette.primaryDeepPlum.hex, 0.08)
-                : hexToRgba(palette.backgroundDark.hex, 0.03),
-              color: filtersOpen ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+              height: 28,
+              padding: '0 8px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'transparent',
+              color: hexToRgba(palette.backgroundDark.hex, 0.5),
               fontSize: 12,
-              fontWeight: 700,
+              fontWeight: 650,
               fontFamily: 'inherit',
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
               WebkitTapHighlightColor: 'transparent',
             }}
           >
             {filtersOpen ? 'Hide' : 'Filters'}
             {!filtersOpen && activeFilterCount > 0 && (
               <span style={{
-                minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
+                minWidth: 15, height: 15, borderRadius: 8, padding: '0 4px',
                 background: palette.primaryMagenta.hex, color: '#fff',
-                fontSize: 10, fontWeight: 800,
+                fontSize: 9.5, fontWeight: 800,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 {activeFilterCount}
               </span>
             )}
-            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden style={{
+            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden style={{
               transform: filtersOpen ? 'rotate(180deg)' : 'none',
               transition: 'transform 0.15s',
             }}>
@@ -180,12 +178,12 @@ export default function MobileSocQueue({
             style={{
               marginTop: 8, width: '100%', textAlign: 'left',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-              padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              background: hexToRgba(palette.accentBlue.hex, 0.1),
+              padding: '7px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: hexToRgba(palette.accentBlue.hex, 0.12),
               fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 650, color: palette.accentBlue.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 650, color: palette.accentBlue.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {activeFacility.name}
             </span>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: palette.accentBlue.hex, flexShrink: 0 }}>Clear</span>
@@ -194,12 +192,12 @@ export default function MobileSocQueue({
 
         {/* Facility chips — always available (collapsed or open) */}
         {facilityOptions.length > 0 && (
-          <div style={{ marginTop: filtersOpen ? 12 : 8 }}>
+          <div style={{ marginTop: filtersOpen ? 10 : 8 }}>
             {filtersOpen && (
               <p style={{
-                margin: '0 0 6px', fontSize: 10.5, fontWeight: 700,
+                margin: '0 0 5px', fontSize: 10, fontWeight: 700,
                 letterSpacing: '0.05em', textTransform: 'uppercase',
-                color: hexToRgba(palette.backgroundDark.hex, 0.4),
+                color: hexToRgba(palette.backgroundDark.hex, 0.38),
               }}>
                 Facility
               </p>
@@ -209,7 +207,7 @@ export default function MobileSocQueue({
               style={{
                 display: 'flex', gap: 6, overflowX: 'auto',
                 WebkitOverflowScrolling: 'touch',
-                paddingBottom: 2, marginRight: -16, paddingRight: 16,
+                paddingBottom: 1, marginRight: -16, paddingRight: 16,
                 scrollbarWidth: 'none',
               }}
             >
@@ -235,18 +233,10 @@ export default function MobileSocQueue({
         {/* Expandable filter details */}
         {filtersOpen && (
           <>
-            <p style={{
-              fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45),
-              margin: '10px 0 0', lineHeight: 1.4,
+            <div style={{
+              display: 'flex', gap: 4, marginTop: 10, padding: 3, borderRadius: 9,
+              background: hexToRgba(palette.backgroundDark.hex, 0.05),
             }}>
-              {isPendingLogView
-                ? 'Tap a facility chip to see only that building.'
-                : canPendingLog
-                  ? 'Completed care — filter by facility when you are on site.'
-                  : (meta?.description || 'Tap a patient for files, notes, or conflicts')}
-            </p>
-
-            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
               {['ALL', 'SOC', 'ROC'].map((key) => {
                 const active = episodeFilter === key;
                 const label = key === 'ALL' ? 'All' : key;
@@ -257,21 +247,18 @@ export default function MobileSocQueue({
                     onClick={() => setEpisodeFilter(key)}
                     style={{
                       flex: 1,
-                      height: 32,
-                      borderRadius: 8,
-                      border: active
-                        ? `1.5px solid ${key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex}`
-                        : '1px solid var(--color-border)',
-                      background: active
-                        ? hexToRgba(key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex, 0.12)
-                        : palette.backgroundLight.hex,
+                      height: 30,
+                      borderRadius: 7,
+                      border: 'none',
+                      background: active ? palette.backgroundLight.hex : 'transparent',
                       color: active
-                        ? (key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex)
-                        : hexToRgba(palette.backgroundDark.hex, 0.55),
+                        ? palette.backgroundDark.hex
+                        : hexToRgba(palette.backgroundDark.hex, 0.5),
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
                       fontFamily: 'inherit',
+                      boxShadow: active ? `0 1px 2px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
                     }}
                   >
                     {label}
@@ -292,15 +279,13 @@ export default function MobileSocQueue({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 12,
-                  marginTop: 10,
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  border: needsDocsOnly
-                    ? `1.5px solid ${hexToRgba(palette.accentOrange.hex, 0.45)}`
-                    : `1px solid var(--color-border)`,
+                  marginTop: 8,
+                  padding: '9px 12px',
+                  borderRadius: 9,
+                  border: 'none',
                   background: needsDocsOnly
-                    ? hexToRgba(palette.accentOrange.hex, 0.1)
-                    : hexToRgba(palette.backgroundDark.hex, 0.03),
+                    ? hexToRgba(palette.accentOrange.hex, 0.12)
+                    : hexToRgba(palette.backgroundDark.hex, 0.04),
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   WebkitTapHighlightColor: 'transparent',
@@ -309,14 +294,14 @@ export default function MobileSocQueue({
               >
                 <div style={{ minWidth: 0 }}>
                   <p style={{
-                    margin: 0, fontSize: 13.5, fontWeight: 750,
+                    margin: 0, fontSize: 13, fontWeight: 700,
                     color: needsDocsOnly ? palette.accentOrange.hex : palette.backgroundDark.hex,
                   }}>
                     Needs docs only
                   </p>
                   <p style={{
-                    margin: '2px 0 0', fontSize: 11.5,
-                    color: hexToRgba(palette.backgroundDark.hex, 0.45),
+                    margin: '1px 0 0', fontSize: 11.5,
+                    color: hexToRgba(palette.backgroundDark.hex, 0.42),
                   }}>
                     {waitingDocsCount} waiting
                     {!needsDocsOnly ? ' · showing everyone' : ''}
@@ -326,13 +311,13 @@ export default function MobileSocQueue({
                   aria-hidden
                   style={{
                     flexShrink: 0,
-                    width: 44,
-                    height: 26,
-                    borderRadius: 13,
+                    width: 40,
+                    height: 24,
+                    borderRadius: 12,
                     padding: 2,
                     background: needsDocsOnly
                       ? palette.accentOrange.hex
-                      : hexToRgba(palette.backgroundDark.hex, 0.18),
+                      : hexToRgba(palette.backgroundDark.hex, 0.16),
                     transition: 'background 0.15s',
                     display: 'flex',
                     alignItems: 'center',
@@ -340,25 +325,25 @@ export default function MobileSocQueue({
                   }}
                 >
                   <span style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 11,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
                     background: palette.backgroundLight.hex,
-                    boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+                    boxShadow: `0 1px 2px ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
                   }} />
                 </span>
               </button>
             )}
 
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
-              background: hexToRgba(palette.backgroundDark.hex, 0.04),
-              border: `1px solid var(--color-border)`,
-              borderRadius: 10, padding: '0 12px', height: 42,
+              display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
+              background: hexToRgba(palette.backgroundDark.hex, 0.05),
+              border: 'none',
+              borderRadius: 9, padding: '0 12px', height: 40,
             }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" />
-                <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.32)} strokeWidth="1.8" />
+                <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.32)} strokeWidth="1.8" strokeLinecap="round" />
               </svg>
               <input
                 value={search}
@@ -366,7 +351,7 @@ export default function MobileSocQueue({
                 placeholder="Search patients…"
                 style={{
                   background: 'none', border: 'none', outline: 'none', flex: 1,
-                  fontSize: 15, color: palette.backgroundDark.hex, fontFamily: 'inherit',
+                  fontSize: 14.5, color: palette.backgroundDark.hex, fontFamily: 'inherit',
                 }}
               />
               {search && (
@@ -374,9 +359,9 @@ export default function MobileSocQueue({
                   type="button"
                   onClick={() => setSearch('')}
                   style={{
-                    background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none',
-                    borderRadius: 6, width: 24, height: 24, cursor: 'pointer',
-                    color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 14, fontWeight: 800,
+                    background: hexToRgba(palette.backgroundDark.hex, 0.1), border: 'none',
+                    borderRadius: 6, width: 22, height: 22, cursor: 'pointer',
+                    color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 13, fontWeight: 800,
                   }}
                 >
                   ×
@@ -386,8 +371,8 @@ export default function MobileSocQueue({
 
             {canPendingLog && (
               <div style={{
-                display: 'flex', padding: 3, borderRadius: 10, marginTop: 10,
-                background: hexToRgba(palette.backgroundDark.hex, 0.06), gap: 3,
+                display: 'flex', padding: 3, borderRadius: 9, marginTop: 8,
+                background: hexToRgba(palette.backgroundDark.hex, 0.05), gap: 3,
               }}>
                 {[
                   { id: 'standard', label: 'Completed' },
@@ -403,11 +388,11 @@ export default function MobileSocQueue({
                         onTogglePendingLog?.();
                       }}
                       style={{
-                        flex: 1, height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
-                        fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                        flex: 1, height: 32, borderRadius: 7, border: 'none', cursor: 'pointer',
+                        fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
                         background: active ? palette.backgroundLight.hex : 'transparent',
-                        color: active ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
-                        boxShadow: active ? `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.1)}` : 'none',
+                        color: active ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.48),
+                        boxShadow: active ? `0 1px 2px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
                         WebkitTapHighlightColor: 'transparent',
                       }}
                     >
@@ -422,7 +407,7 @@ export default function MobileSocQueue({
       </div>
 
       {/* Cards */}
-      <div style={{ padding: '12px 12px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ padding: '14px 12px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {visibleReferrals.length === 0 ? (
           <div style={{
             padding: '40px 20px', textAlign: 'center',
@@ -482,24 +467,22 @@ function FacilityChip({ label, count, active, onClick }) {
       onClick={onClick}
       style={{
         flexShrink: 0,
-        height: 34,
-        padding: '0 12px',
-        borderRadius: 17,
-        border: active
-          ? `1.5px solid ${palette.accentBlue.hex}`
-          : '1px solid var(--color-border)',
+        height: 30,
+        padding: '0 11px',
+        borderRadius: 15,
+        border: 'none',
         background: active
-          ? hexToRgba(palette.accentBlue.hex, 0.12)
-          : palette.backgroundLight.hex,
-        color: active ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
-        fontSize: 12.5,
+          ? hexToRgba(palette.accentBlue.hex, 0.16)
+          : hexToRgba(palette.backgroundDark.hex, 0.05),
+        color: active ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.62),
+        fontSize: 12,
         fontWeight: 700,
         fontFamily: 'inherit',
         cursor: 'pointer',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
-        maxWidth: 220,
+        gap: 5,
+        maxWidth: 200,
         WebkitTapHighlightColor: 'transparent',
       }}
     >
@@ -509,8 +492,8 @@ function FacilityChip({ label, count, active, onClick }) {
         {label}
       </span>
       <span style={{
-        fontSize: 11, fontWeight: 750, flexShrink: 0,
-        opacity: active ? 1 : 0.65,
+        fontSize: 10.5, fontWeight: 750, flexShrink: 0,
+        opacity: active ? 0.9 : 0.55,
       }}>
         {count}
       </span>
@@ -563,9 +546,8 @@ function SocCard({
     <article
       style={{
         background: palette.backgroundLight.hex,
-        borderRadius: 14,
-        border: `1px solid var(--color-border)`,
-        boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}`,
+        borderRadius: 12,
+        border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
         overflow: 'hidden',
       }}
     >
@@ -574,16 +556,16 @@ function SocCard({
         onClick={onOpen}
         style={{
           display: 'block', width: '100%', textAlign: 'left', border: 'none',
-          background: 'transparent', padding: '14px 14px 10px', cursor: 'pointer',
+          background: 'transparent', padding: '12px 13px 9px', cursor: 'pointer',
           fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 7 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0, lineHeight: 1.25 }}>
+            <p style={{ fontSize: 15.5, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0, lineHeight: 1.25 }}>
               {name}
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6, alignItems: 'center' }}>
               <DivisionBadge division={referral.division} size="small" />
               <EpisodeTypeBadge referral={referral} size="tiny" />
               {socDate && (
@@ -596,7 +578,7 @@ function SocCard({
               )}
               {workStage && (
                 <span style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: '0.03em',
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
                   color: palette.accentBlue.hex,
                   background: hexToRgba(palette.accentBlue.hex, 0.12),
                   borderRadius: 4, padding: '2px 6px',
@@ -608,11 +590,10 @@ function SocCard({
           </div>
           {(urgent || urgentLabel) && (
             <span style={{
-              flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
+              flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.03em',
               color: palette.primaryMagenta.hex,
-              background: hexToRgba(palette.primaryMagenta.hex, 0.1),
-              border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`,
-              borderRadius: 6, padding: '3px 7px', textAlign: 'center', lineHeight: 1.25,
+              background: hexToRgba(palette.primaryMagenta.hex, 0.12),
+              borderRadius: 5, padding: '3px 6px', textAlign: 'center', lineHeight: 1.25,
             }}>
               {urgentLabel ? urgentLabel.toUpperCase() : 'URGENT'}
             </span>
@@ -621,9 +602,9 @@ function SocCard({
 
         {(socDate || urgent || pendingLog) && (
           <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8,
-            padding: '8px 10px', borderRadius: 8,
-            background: hexToRgba(palette.backgroundDark.hex, 0.03),
+            display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 7,
+            padding: '7px 9px', borderRadius: 7,
+            background: hexToRgba(palette.backgroundDark.hex, 0.04),
           }}>
             {(socDate || pendingLog) && (
               <DateStat label={`${ep} completed`} value={socDate || '—'} emphasize={!!socDate} />
@@ -660,18 +641,18 @@ function SocCard({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {waitingDocs && (
               <span style={{
-                fontSize: 11, fontWeight: 750, color: palette.accentOrange.hex,
+                fontSize: 11, fontWeight: 700, color: palette.accentOrange.hex,
                 background: hexToRgba(palette.accentOrange.hex, 0.12),
-                borderRadius: 6, padding: '3px 8px',
+                borderRadius: 5, padding: '2px 7px',
               }}>
                 Waiting for docs
               </span>
             )}
             {urgent && !urgentLabel && (
               <span style={{
-                fontSize: 11, fontWeight: 750, color: palette.primaryMagenta.hex,
-                background: hexToRgba(palette.primaryMagenta.hex, 0.1),
-                borderRadius: 6, padding: '3px 8px',
+                fontSize: 11, fontWeight: 700, color: palette.primaryMagenta.hex,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.12),
+                borderRadius: 5, padding: '2px 7px',
               }}>
                 Urgent care
               </span>
@@ -679,9 +660,9 @@ function SocCard({
           </div>
           {notePreview && (
             <p style={{
-              fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6),
-              margin: '6px 0 0', lineHeight: 1.4, whiteSpace: 'pre-wrap',
-              display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.52),
+              margin: '5px 0 0', lineHeight: 1.4, whiteSpace: 'pre-wrap',
+              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
             }}>
               {notePreview}{noteFull.length > 160 ? '…' : ''}
             </p>
@@ -690,8 +671,9 @@ function SocCard({
       </button>
 
       <div style={{
-        display: 'flex', borderTop: `1px solid var(--color-border)`,
-        background: hexToRgba(palette.backgroundDark.hex, 0.015),
+        display: 'flex',
+        borderTop: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+        background: hexToRgba(palette.backgroundDark.hex, 0.02),
       }}>
         <ActionBtn label="Open" onClick={onOpen} primary />
         <ActionBtn label="Files" onClick={onFiles} />
@@ -756,11 +738,12 @@ function ActionBtn({ label, onClick, primary, last }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       style={{
-        flex: 1, height: 44, border: 'none',
-        borderRight: last ? 'none' : `1px solid var(--color-border)`,
-        background: 'transparent', cursor: 'pointer',
-        fontSize: 12, fontWeight: primary ? 750 : 650, fontFamily: 'inherit',
-        color: primary ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+        flex: 1, height: 42, border: 'none',
+        borderRight: last ? 'none' : `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.1)}`,
+        background: 'transparent',
+        cursor: 'pointer',
+        fontSize: 12, fontWeight: primary ? 750 : 600, fontFamily: 'inherit',
+        color: primary ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.58),
         WebkitTapHighlightColor: 'transparent',
       }}
     >
