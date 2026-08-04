@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, createContext, useContext } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { getFilesByPatient } from '../../api/patientFiles.js';
@@ -16,9 +16,11 @@ import {
   maybeClearDocumentationDeferred,
   needsPostSocClinical,
 } from '../../utils/documentationDeferred.js';
+import { discardReferral } from '../../utils/discardReferral.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import EmrPacketDownloadButton from '../common/EmrPacketDownloadButton.jsx';
 import DocumentationCompleteAction from '../common/DocumentationCompleteAction.jsx';
+import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
 import {
   scheduleVerb,
@@ -40,7 +42,6 @@ import AuthorizationWorkspace from './shared/AuthorizationWorkspace.jsx';
 import OpwddWorkspace from './shared/OpwddWorkspace.jsx';
 import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
-import { DISCARD_REASONS } from '../../data/stageConfig.js';
 import { languageName, languageByCode } from '../../data/languages.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { isChecklistComplete } from '../../data/clinicalChecklist.js';
@@ -88,7 +89,11 @@ const SOC_RESCHEDULE_REASONS = [
 ];
 
 // Shared panel wrapper ────────────────────────────────────────────────────────
+/** Optional footer injected into every stage Panel (e.g. discard-from-any). */
+const PanelFooterContext = createContext(null);
+
 function Panel({ children, width = 280 }) {
+  const footer = useContext(PanelFooterContext);
   return (
     <div style={{
       width, minWidth: width, borderLeft: `1px solid var(--color-border)`,
@@ -96,7 +101,41 @@ function Panel({ children, width = 280 }) {
       overflowY: 'auto', flexShrink: 0, padding: '16px 14px',
     }}>
       {children}
+      {footer}
     </div>
+  );
+}
+
+function DiscardAnyPanelSection({ referral, onDone }) {
+  const { appUserId } = useCurrentAppUser();
+  const [open, setOpen] = useState(false);
+  if (!referral) return null;
+  return (
+    <>
+      <PanelSection title="Discard">
+        <ActionBtn label="Discard referral" variant="warning" onClick={() => setOpen(true)} />
+      </PanelSection>
+      {open && (
+        <DiscardReferralModal
+          referral={referral}
+          title="Discard Referral"
+          confirmLabel="Discard"
+          onCancel={() => setOpen(false)}
+          onConfirm={async (reason, explanation) => {
+            const result = await discardReferral({
+              referral, reason, explanation, actorUserId: appUserId,
+            });
+            if (!result.ok) {
+              window.alert?.(result.reason || 'Discard failed');
+              return;
+            }
+            triggerDataRefresh();
+            setOpen(false);
+            onDone?.();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -292,44 +331,6 @@ function EmptyPanelState({ message }) {
 }
 
 // ── 1. Lead Entry (Leads) ─────────────────────────────────────────────────────
-
-function DiscardModal({ referral, onConfirm, onCancel }) {
-  const [reason, setReason] = useState('');
-  const [explanation, setExplanation] = useState('');
-  const canSubmit = reason && explanation.trim();
-
-  return (
-    <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: palette.backgroundLight.hex, borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: `0 24px 64px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 22px', borderBottom: `1px solid var(--color-border)` }}>
-          <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex }}>Discard Lead</p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 2 }}>
-            {referral.patientName || referral.patient_id} will be moved to Discarded Leads.
-          </p>
-        </div>
-        <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <p data-testid="discard-reason-label" style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Reason *</p>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${reason ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex }}>
-              <option value="">Select a reason…</option>
-              {DISCARD_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div>
-            <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>Explanation *</p>
-            <textarea value={explanation} onChange={(e) => setExplanation(e.target.value)} placeholder="Provide details about why this lead is being discarded…" rows={3} style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1px solid ${explanation.trim() ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.03), color: palette.backgroundDark.hex, boxSizing: 'border-box' }} />
-          </div>
-        </div>
-        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
-          <button onClick={() => canSubmit && onConfirm(reason, explanation.trim())} disabled={!canSubmit} style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
-            Discard Lead
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   const { canAssignTo } = usePermissions();
@@ -676,21 +677,22 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
 
   async function handleDiscard(reason, explanation) {
     if (!selectedReferral) return;
-    const note = `[Discarded] ${reason}\n${explanation}`;
-    const result = attemptTransition({
+    const result = await discardReferral({
       referral: selectedReferral,
-      toStage: 'Discarded Leads',
-      context: {
-        note,
-        actorUserId: appUserId,
-        extraFields: { discard_reason: reason, discard_explanation: explanation, updated_at: new Date().toISOString() },
-      },
+      reason,
+      explanation,
+      actorUserId: appUserId,
     });
-    if (result.allowed) await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
+    if (!result.ok) {
+      window.alert?.(result.reason || 'Discard failed');
+      return;
+    }
     triggerDataRefresh();
     onSelectedReferralLeftModule?.();
     setShowDiscard(false);
   }
+
+  const canDiscardLead = canPerm(PERMISSION_KEYS.LEADS_DISCARD) || canPerm(PERMISSION_KEYS.REFERRAL_DISCARD_ANY);
 
   async function handlePromote(ownerId, siblingReferrals = []) {
     if (!selectedReferral) return;
@@ -745,7 +747,7 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
               Only supervisors can move leads to Intake.
             </p>
           )}
-          {canPerm(PERMISSION_KEYS.LEADS_DISCARD) && (
+          {canDiscardLead && (
             <ActionBtn label="Discard Lead" variant="warning" onClick={() => setShowDiscard(true)} />
           )}
         </PanelSection>
@@ -762,7 +764,15 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
         })()}
       </PanelSection>
 
-      {showDiscard && selectedReferral && <DiscardModal referral={selectedReferral} onConfirm={handleDiscard} onCancel={() => setShowDiscard(false)} />}
+      {showDiscard && selectedReferral && (
+        <DiscardReferralModal
+          referral={selectedReferral}
+          title="Discard Lead"
+          confirmLabel="Discard Lead"
+          onConfirm={handleDiscard}
+          onCancel={() => setShowDiscard(false)}
+        />
+      )}
       {showPromote && selectedReferral && <PromoteToIntakeModal referral={selectedReferral} onConfirm={handlePromote} onCancel={() => setShowPromote(false)} />}
     </Panel>
   );
@@ -3965,26 +3975,49 @@ function OPWDDEnrollmentPanel({ referrals, selectedReferral, onInitiateTransitio
 
 // ── Router ────────────────────────────────────────────────────────────────────
 export default function StagePanel({ stage, referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
+  const { can: canPerm } = usePermissions();
   const props = { referrals, allReferrals, selectedReferral, resolveUser, resolveSource, onNewReferral, onOpenTriage, onOpenFiles, onOpenEligibility, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule };
+
+  // Lead Entry has its own discard control; Discarded Leads is the destination.
+  const showDiscardAny = canPerm(PERMISSION_KEYS.REFERRAL_DISCARD_ANY)
+    && !!selectedReferral
+    && stage !== 'Discarded Leads'
+    && stage !== 'Lead Entry'
+    && selectedReferral.current_stage !== 'Discarded Leads';
+
+  const footer = showDiscardAny ? (
+    <DiscardAnyPanelSection
+      referral={selectedReferral}
+      onDone={onSelectedReferralLeftModule}
+    />
+  ) : null;
+
+  let panel = null;
   switch (stage) {
-    case 'Lead Entry':                return <LeadEntryPanel {...props} />;
-    case 'Discarded Leads':           return <DiscardedLeadsPanel {...props} />;
-    case 'Intake':                    return <IntakePanel {...props} />;
-    case 'Eligibility Verification':  return <EligibilityPanel {...props} />;
-    case 'Disenrollment Required':    return <DisenrollmentPanel {...props} />;
-    case 'F2F/MD Orders Pending':     return <F2FPanel {...props} />;
-    case 'Clinical Intake RN Review': return <ClinicalRNPanel {...props} />;
-    case 'Authorization Pending':     return <AuthorizationPanel {...props} />;
-    case 'Conflict':                  return <ConflictPanel {...props} />;
-    case 'EMR Onboarding':            return <EmrOnboardingPanel {...props} />;
-    case 'Staffing Feasibility':      return <StaffingPanel {...props} />;
-    case 'Admin Confirmation':        return <AdminConfirmationPanel {...props} />;
-    case 'Pre-SOC':                   return <PreSocPanel {...props} />;
-    case 'SOC Scheduled':             return <SocScheduledPanel {...props} />;
-    case 'SOC Completed':             return <SocCompletedPanel {...props} />;
-    case 'Hold':                      return <HoldPanel {...props} />;
-    case 'NTUC':                      return <NtucPanel {...props} />;
-    case 'OPWDD Enrollment':          return <OPWDDEnrollmentPanel {...props} />;
+    case 'Lead Entry':                panel = <LeadEntryPanel {...props} />; break;
+    case 'Discarded Leads':           panel = <DiscardedLeadsPanel {...props} />; break;
+    case 'Intake':                    panel = <IntakePanel {...props} />; break;
+    case 'Eligibility Verification':  panel = <EligibilityPanel {...props} />; break;
+    case 'Disenrollment Required':    panel = <DisenrollmentPanel {...props} />; break;
+    case 'F2F/MD Orders Pending':     panel = <F2FPanel {...props} />; break;
+    case 'Clinical Intake RN Review': panel = <ClinicalRNPanel {...props} />; break;
+    case 'Authorization Pending':     panel = <AuthorizationPanel {...props} />; break;
+    case 'Conflict':                  panel = <ConflictPanel {...props} />; break;
+    case 'EMR Onboarding':            panel = <EmrOnboardingPanel {...props} />; break;
+    case 'Staffing Feasibility':      panel = <StaffingPanel {...props} />; break;
+    case 'Admin Confirmation':        panel = <AdminConfirmationPanel {...props} />; break;
+    case 'Pre-SOC':                   panel = <PreSocPanel {...props} />; break;
+    case 'SOC Scheduled':             panel = <SocScheduledPanel {...props} />; break;
+    case 'SOC Completed':             panel = <SocCompletedPanel {...props} />; break;
+    case 'Hold':                      panel = <HoldPanel {...props} />; break;
+    case 'NTUC':                      panel = <NtucPanel {...props} />; break;
+    case 'OPWDD Enrollment':          panel = <OPWDDEnrollmentPanel {...props} />; break;
     default: return null;
   }
+
+  return (
+    <PanelFooterContext.Provider value={footer}>
+      {panel}
+    </PanelFooterContext.Provider>
+  );
 }

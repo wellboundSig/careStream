@@ -14,6 +14,11 @@ export const PERMISSION_KEYS = {
   LEADS_DISCARD: 'leads.discard',
   /** Reassign intake_owner_id after promote — deny-by-default; grant individually. */
   LEADS_CHANGE_INTAKE_OWNER: 'leads.change_intake_owner',
+  /**
+   * Discard a referral/lead to Discarded Leads from any stage.
+   * Deny-by-default — grant only to named users.
+   */
+  REFERRAL_DISCARD_ANY: 'referral.discard_any',
   INTAKE_EMR_INITIAL: 'intake.emr_initial',
   /** Advance Intake → EMR without F2F/clinical; both completed after SOC. */
   INTAKE_ADVANCE_WITHOUT_F2F: 'intake.advance_without_f2f',
@@ -200,6 +205,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.CLINICAL_RN_UNLOCK,
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
+  K.REFERRAL_DISCARD_ANY,
 ]);
 
 /**
@@ -210,6 +216,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
 export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
+  K.REFERRAL_DISCARD_ANY,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -280,6 +287,7 @@ export const PERMISSION_CATALOG = [
   { key: K.LEADS_PROMOTE_TO_INTAKE, label: 'Promote leads to Intake',     category: 'Leads', description: 'Move a lead from Leads to Intake and assign an owner (supervisor action)', sort: 10 },
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 11 },
   { key: K.LEADS_CHANGE_INTAKE_OWNER, label: 'Change intake owner',       category: 'Leads', description: 'Reassign the intake owner on an existing referral (writes a timeline event and notifies the new owner). Deny-by-default — grant only to named supervisors.', sort: 11.5 },
+  { key: K.REFERRAL_DISCARD_ANY, label: 'Discard from any stage', category: 'Referrals', description: 'Send a referral or lead to Discarded Leads from any pipeline stage. Deny-by-default — grant only to named users.', sort: 15.5 },
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
   { key: K.INTAKE_ADVANCE_WITHOUT_F2F, label: 'Advance to EMR without F2F / clinical', category: 'Leads', description: 'Push a referral from Intake straight to EMR Onboarding before F2F and clinical review. Both are completed after SOC; a 30-day paperwork clock starts when SOC is scheduled.', sort: 12.2 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },

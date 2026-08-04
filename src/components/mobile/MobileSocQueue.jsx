@@ -6,7 +6,7 @@ import { getUrgentCareType, isUrgentCare, urgentCareTypeLabel } from '../../util
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
-import { normalizeEpisodeType } from '../../utils/episodeType.js';
+import { normalizeEpisodeType, episodeTypeLabel } from '../../utils/episodeType.js';
 
 /**
  * Mobile-native SOC Completed / Pending Log queue.
@@ -36,22 +36,58 @@ export default function MobileSocQueue({
   const showNeedsDocsToggle = !!isSocCompleted || !!(canPendingLog || isPendingLogView);
   const [needsDocsOnly, setNeedsDocsOnly] = useState(true);
   const [episodeFilter, setEpisodeFilter] = useState('ALL'); // ALL | SOC | ROC
+  const [facilityFilter, setFacilityFilter] = useState(null); // null = all, or facility_id / '__none__'
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const waitingDocsCount = useMemo(
     () => (referrals || []).filter((r) => isDocumentationDeferred(r)).length,
     [referrals],
   );
 
+  const facilityOptions = useMemo(() => {
+    const map = new Map();
+    for (const r of referrals || []) {
+      const id = r.facility_id || '__none__';
+      const name = id === '__none__'
+        ? 'No facility'
+        : (resolveFacility?.(id) || String(id));
+      if (name === '—') continue;
+      const prev = map.get(id);
+      if (prev) prev.count += 1;
+      else map.set(id, { id, name, count: 1 });
+    }
+    return [...map.values()].sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name);
+    });
+  }, [referrals, resolveFacility]);
+
+  const activeFacility = facilityFilter
+    ? facilityOptions.find((f) => f.id === facilityFilter) || null
+    : null;
+
   const visibleReferrals = useMemo(() => {
     let list = referrals || [];
     if (episodeFilter === 'SOC' || episodeFilter === 'ROC') {
       list = list.filter((r) => normalizeEpisodeType(r) === episodeFilter);
     }
+    if (facilityFilter === '__none__') {
+      list = list.filter((r) => !r.facility_id);
+    } else if (facilityFilter) {
+      list = list.filter((r) => r.facility_id === facilityFilter);
+    }
     if (showNeedsDocsToggle && needsDocsOnly) {
       list = list.filter((r) => isDocumentationDeferred(r));
     }
     return list;
-  }, [referrals, showNeedsDocsToggle, needsDocsOnly, episodeFilter]);
+  }, [referrals, showNeedsDocsToggle, needsDocsOnly, episodeFilter, facilityFilter]);
+
+  const activeFilterCount = [
+    episodeFilter !== 'ALL',
+    !!facilityFilter,
+    showNeedsDocsToggle && needsDocsOnly,
+    !!search?.trim(),
+  ].filter(Boolean).length;
 
   return (
     <div style={{
@@ -60,9 +96,9 @@ export default function MobileSocQueue({
       flexDirection: 'column',
       background: hexToRgba(palette.backgroundDark.hex, 0.02),
     }}>
-      {/* Hero header */}
+      {/* Sticky header */}
       <div style={{
-        padding: '16px 16px 14px',
+        padding: filtersOpen ? '14px 16px 12px' : '10px 16px 10px',
         background: palette.backgroundLight.hex,
         borderBottom: `1px solid var(--color-border)`,
         borderTop: `3px solid ${stageColor || palette.accentGreen.hex}`,
@@ -70,203 +106,318 @@ export default function MobileSocQueue({
         top: 0,
         zIndex: 5,
       }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h1 style={{ fontSize: 20, fontWeight: 750, color: palette.backgroundDark.hex, margin: 0 }}>
-                {isPendingLogView ? 'Pending Log' : (meta?.displayName || 'Completed')}
-              </h1>
-              <span style={{
-                fontSize: 12, fontWeight: 750, padding: '2px 9px', borderRadius: 10,
-                background: hexToRgba(stageColor || palette.accentGreen.hex, 0.14),
-                color: stageColor || palette.accentGreen.hex,
-              }}>
-                {visibleReferrals.length}
-                {showNeedsDocsToggle && needsDocsOnly && referrals.length !== visibleReferrals.length
-                  ? ` / ${referrals.length}`
-                  : ''}
-              </span>
-            </div>
-            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.4 }}>
-              {isPendingLogView
-                ? 'SOC/ROC date, urgent type, facility, docs wait, and AM follow-ups'
-                : canPendingLog
-                  ? 'Completed care: date, urgent type, facility, quick actions'
-                  : (meta?.description || 'Tap a patient for files, notes, or conflicts')}
-            </p>
+        {/* Title row — always visible */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+            <h1 style={{
+              fontSize: filtersOpen ? 20 : 17, fontWeight: 750,
+              color: palette.backgroundDark.hex, margin: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {isPendingLogView ? 'Pending Log' : (meta?.displayName || 'Completed')}
+            </h1>
+            <span style={{
+              fontSize: 12, fontWeight: 750, padding: '2px 9px', borderRadius: 10, flexShrink: 0,
+              background: hexToRgba(stageColor || palette.accentGreen.hex, 0.14),
+              color: stageColor || palette.accentGreen.hex,
+            }}>
+              {visibleReferrals.length}
+              {(referrals?.length || 0) !== visibleReferrals.length
+                ? ` / ${referrals.length}`
+                : ''}
+            </span>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          {['ALL', 'SOC', 'ROC'].map((key) => {
-            const active = episodeFilter === key;
-            const label = key === 'ALL' ? 'All' : key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setEpisodeFilter(key)}
-                style={{
-                  flex: 1,
-                  height: 32,
-                  borderRadius: 8,
-                  border: active
-                    ? `1.5px solid ${key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex}`
-                    : '1px solid var(--color-border)',
-                  background: active
-                    ? hexToRgba(key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex, 0.12)
-                    : palette.backgroundLight.hex,
-                  color: active
-                    ? (key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex)
-                    : hexToRgba(palette.backgroundDark.hex, 0.55),
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {showNeedsDocsToggle && (
           <button
             type="button"
-            role="switch"
-            aria-checked={needsDocsOnly}
-            onClick={() => setNeedsDocsOnly((v) => !v)}
+            data-testid="mobile-filters-toggle"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((v) => !v)}
             style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              marginBottom: 10,
-              padding: '10px 12px',
-              borderRadius: 10,
-              border: needsDocsOnly
-                ? `1.5px solid ${hexToRgba(palette.accentOrange.hex, 0.45)}`
-                : `1px solid var(--color-border)`,
-              background: needsDocsOnly
-                ? hexToRgba(palette.accentOrange.hex, 0.1)
+              flexShrink: 0,
+              height: 34,
+              padding: '0 10px',
+              borderRadius: 8,
+              border: `1px solid ${filtersOpen ? hexToRgba(palette.primaryDeepPlum.hex, 0.25) : 'var(--color-border)'}`,
+              background: filtersOpen
+                ? hexToRgba(palette.primaryDeepPlum.hex, 0.08)
                 : hexToRgba(palette.backgroundDark.hex, 0.03),
-              cursor: 'pointer',
+              color: filtersOpen ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+              fontSize: 12,
+              fontWeight: 700,
               fontFamily: 'inherit',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
               WebkitTapHighlightColor: 'transparent',
-              textAlign: 'left',
             }}
           >
-            <div style={{ minWidth: 0 }}>
-              <p style={{
-                margin: 0, fontSize: 13.5, fontWeight: 750,
-                color: needsDocsOnly ? palette.accentOrange.hex : palette.backgroundDark.hex,
-              }}>
-                Needs docs only
-              </p>
-              <p style={{
-                margin: '2px 0 0', fontSize: 11.5,
-                color: hexToRgba(palette.backgroundDark.hex, 0.45),
-              }}>
-                {waitingDocsCount} waiting
-                {!needsDocsOnly ? ' · showing everyone' : ''}
-              </p>
-            </div>
-            <span
-              aria-hidden
-              style={{
-                flexShrink: 0,
-                width: 44,
-                height: 26,
-                borderRadius: 13,
-                padding: 2,
-                background: needsDocsOnly
-                  ? palette.accentOrange.hex
-                  : hexToRgba(palette.backgroundDark.hex, 0.18),
-                transition: 'background 0.15s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: needsDocsOnly ? 'flex-end' : 'flex-start',
-              }}
-            >
+            {filtersOpen ? 'Hide' : 'Filters'}
+            {!filtersOpen && activeFilterCount > 0 && (
               <span style={{
-                width: 22,
-                height: 22,
-                borderRadius: 11,
-                background: palette.backgroundLight.hex,
-                boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
-              }} />
+                minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
+                background: palette.primaryMagenta.hex, color: '#fff',
+                fontSize: 10, fontWeight: 800,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {activeFilterCount}
+              </span>
+            )}
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden style={{
+              transform: filtersOpen ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.15s',
+            }}>
+              <path d="M2 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Collapsed summary — active facility + quick clear */}
+        {!filtersOpen && activeFacility && (
+          <button
+            type="button"
+            onClick={() => setFacilityFilter(null)}
+            style={{
+              marginTop: 8, width: '100%', textAlign: 'left',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: hexToRgba(palette.accentBlue.hex, 0.1),
+              fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 650, color: palette.accentBlue.hex, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeFacility.name}
             </span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: palette.accentBlue.hex, flexShrink: 0 }}>Clear</span>
           </button>
         )}
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: hexToRgba(palette.backgroundDark.hex, 0.04),
-          border: `1px solid var(--color-border)`,
-          borderRadius: 10, padding: '0 12px', height: 42, marginBottom: canPendingLog ? 10 : 0,
-        }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" />
-            <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search patients…"
-            style={{
-              background: 'none', border: 'none', outline: 'none', flex: 1,
-              fontSize: 15, color: palette.backgroundDark.hex, fontFamily: 'inherit',
-            }}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch('')}
+        {/* Facility chips — always available (collapsed or open) */}
+        {facilityOptions.length > 0 && (
+          <div style={{ marginTop: filtersOpen ? 12 : 8 }}>
+            {filtersOpen && (
+              <p style={{
+                margin: '0 0 6px', fontSize: 10.5, fontWeight: 700,
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+                color: hexToRgba(palette.backgroundDark.hex, 0.4),
+              }}>
+                Facility
+              </p>
+            )}
+            <div
+              data-testid="mobile-facility-filter"
               style={{
-                background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none',
-                borderRadius: 6, width: 24, height: 24, cursor: 'pointer',
-                color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 14, fontWeight: 800,
+                display: 'flex', gap: 6, overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                paddingBottom: 2, marginRight: -16, paddingRight: 16,
+                scrollbarWidth: 'none',
               }}
             >
-              ×
-            </button>
-          )}
-        </div>
+              <FacilityChip
+                label="All"
+                count={referrals?.length || 0}
+                active={!facilityFilter}
+                onClick={() => setFacilityFilter(null)}
+              />
+              {facilityOptions.map((f) => (
+                <FacilityChip
+                  key={f.id}
+                  label={f.name}
+                  count={f.count}
+                  active={facilityFilter === f.id}
+                  onClick={() => setFacilityFilter((prev) => (prev === f.id ? null : f.id))}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-        {canPendingLog && (
-          <div style={{
-            display: 'flex', padding: 3, borderRadius: 10,
-            background: hexToRgba(palette.backgroundDark.hex, 0.06), gap: 3,
-          }}>
-            {[
-              { id: 'standard', label: 'Completed' },
-              { id: 'pending_log', label: 'Pending Log' },
-            ].map((tab) => {
-              const active = isPendingLogView ? tab.id === 'pending_log' : tab.id === 'standard';
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    if (active) return;
-                    onTogglePendingLog?.();
-                  }}
+        {/* Expandable filter details */}
+        {filtersOpen && (
+          <>
+            <p style={{
+              fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45),
+              margin: '10px 0 0', lineHeight: 1.4,
+            }}>
+              {isPendingLogView
+                ? 'Tap a facility chip to see only that building.'
+                : canPendingLog
+                  ? 'Completed care — filter by facility when you are on site.'
+                  : (meta?.description || 'Tap a patient for files, notes, or conflicts')}
+            </p>
+
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              {['ALL', 'SOC', 'ROC'].map((key) => {
+                const active = episodeFilter === key;
+                const label = key === 'ALL' ? 'All' : key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEpisodeFilter(key)}
+                    style={{
+                      flex: 1,
+                      height: 32,
+                      borderRadius: 8,
+                      border: active
+                        ? `1.5px solid ${key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex}`
+                        : '1px solid var(--color-border)',
+                      background: active
+                        ? hexToRgba(key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex, 0.12)
+                        : palette.backgroundLight.hex,
+                      color: active
+                        ? (key === 'ROC' ? palette.accentBlue.hex : palette.accentGreen.hex)
+                        : hexToRgba(palette.backgroundDark.hex, 0.55),
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {showNeedsDocsToggle && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={needsDocsOnly}
+                onClick={() => setNeedsDocsOnly((v) => !v)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginTop: 10,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: needsDocsOnly
+                    ? `1.5px solid ${hexToRgba(palette.accentOrange.hex, 0.45)}`
+                    : `1px solid var(--color-border)`,
+                  background: needsDocsOnly
+                    ? hexToRgba(palette.accentOrange.hex, 0.1)
+                    : hexToRgba(palette.backgroundDark.hex, 0.03),
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  WebkitTapHighlightColor: 'transparent',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{
+                    margin: 0, fontSize: 13.5, fontWeight: 750,
+                    color: needsDocsOnly ? palette.accentOrange.hex : palette.backgroundDark.hex,
+                  }}>
+                    Needs docs only
+                  </p>
+                  <p style={{
+                    margin: '2px 0 0', fontSize: 11.5,
+                    color: hexToRgba(palette.backgroundDark.hex, 0.45),
+                  }}>
+                    {waitingDocsCount} waiting
+                    {!needsDocsOnly ? ' · showing everyone' : ''}
+                  </p>
+                </div>
+                <span
+                  aria-hidden
                   style={{
-                    flex: 1, height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
-                    fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-                    background: active ? palette.backgroundLight.hex : 'transparent',
-                    color: active ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
-                    boxShadow: active ? `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.1)}` : 'none',
-                    WebkitTapHighlightColor: 'transparent',
+                    flexShrink: 0,
+                    width: 44,
+                    height: 26,
+                    borderRadius: 13,
+                    padding: 2,
+                    background: needsDocsOnly
+                      ? palette.accentOrange.hex
+                      : hexToRgba(palette.backgroundDark.hex, 0.18),
+                    transition: 'background 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: needsDocsOnly ? 'flex-end' : 'flex-start',
                   }}
                 >
-                  {tab.label}
+                  <span style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    background: palette.backgroundLight.hex,
+                    boxShadow: `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+                  }} />
+                </span>
+              </button>
+            )}
+
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+              background: hexToRgba(palette.backgroundDark.hex, 0.04),
+              border: `1px solid var(--color-border)`,
+              borderRadius: 10, padding: '0 12px', height: 42,
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" />
+                <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search patients…"
+                style={{
+                  background: 'none', border: 'none', outline: 'none', flex: 1,
+                  fontSize: 15, color: palette.backgroundDark.hex, fontFamily: 'inherit',
+                }}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  style={{
+                    background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none',
+                    borderRadius: 6, width: 24, height: 24, cursor: 'pointer',
+                    color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 14, fontWeight: 800,
+                  }}
+                >
+                  ×
                 </button>
-              );
-            })}
-          </div>
+              )}
+            </div>
+
+            {canPendingLog && (
+              <div style={{
+                display: 'flex', padding: 3, borderRadius: 10, marginTop: 10,
+                background: hexToRgba(palette.backgroundDark.hex, 0.06), gap: 3,
+              }}>
+                {[
+                  { id: 'standard', label: 'Completed' },
+                  { id: 'pending_log', label: 'Pending Log' },
+                ].map((tab) => {
+                  const active = isPendingLogView ? tab.id === 'pending_log' : tab.id === 'standard';
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        if (active) return;
+                        onTogglePendingLog?.();
+                      }}
+                      style={{
+                        flex: 1, height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
+                        fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                        background: active ? palette.backgroundLight.hex : 'transparent',
+                        color: active ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.5),
+                        boxShadow: active ? `0 1px 3px ${hexToRgba(palette.backgroundDark.hex, 0.1)}` : 'none',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -281,20 +432,24 @@ export default function MobileSocQueue({
             <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, margin: 0 }}>
               {search
                 ? 'No matches'
-                : showNeedsDocsToggle && needsDocsOnly
-                  ? 'No one waiting on docs'
-                  : (canPendingLog || isPendingLogView)
-                    ? 'No completed SOCs yet'
-                    : `No patients in ${meta?.displayName || 'this queue'}`}
+                : facilityFilter
+                  ? 'No patients at this facility'
+                  : showNeedsDocsToggle && needsDocsOnly
+                    ? 'No one waiting on docs'
+                    : (canPendingLog || isPendingLogView)
+                      ? 'No completed SOCs yet'
+                      : `No patients in ${meta?.displayName || 'this queue'}`}
             </p>
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '6px 0 0' }}>
               {search
                 ? 'Try a different name.'
-                : showNeedsDocsToggle && needsDocsOnly
-                  ? 'Turn off “Needs docs only” to see everyone.'
-                  : (canPendingLog || isPendingLogView)
-                    ? 'Patients appear here once SOC is confirmed.'
-                    : 'They’ll show up when routed here.'}
+                : facilityFilter
+                  ? 'Tap All or another facility chip.'
+                  : showNeedsDocsToggle && needsDocsOnly
+                    ? 'Turn off “Needs docs only” to see everyone.'
+                    : (canPendingLog || isPendingLogView)
+                      ? 'Patients appear here once SOC is confirmed.'
+                      : 'They’ll show up when routed here.'}
             </p>
           </div>
         ) : (
@@ -317,6 +472,49 @@ export default function MobileSocQueue({
         )}
       </div>
     </div>
+  );
+}
+
+function FacilityChip({ label, count, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flexShrink: 0,
+        height: 34,
+        padding: '0 12px',
+        borderRadius: 17,
+        border: active
+          ? `1.5px solid ${palette.accentBlue.hex}`
+          : '1px solid var(--color-border)',
+        background: active
+          ? hexToRgba(palette.accentBlue.hex, 0.12)
+          : palette.backgroundLight.hex,
+        color: active ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+        fontSize: 12.5,
+        fontWeight: 700,
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        maxWidth: 220,
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      <span style={{
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </span>
+      <span style={{
+        fontSize: 11, fontWeight: 750, flexShrink: 0,
+        opacity: active ? 1 : 0.65,
+      }}>
+        {count}
+      </span>
+    </button>
   );
 }
 
@@ -353,6 +551,7 @@ function SocCard({
   const workStage = referral.current_stage && referral.current_stage !== 'SOC Completed'
     ? referral.current_stage
     : null;
+  const ep = episodeTypeLabel(referral);
   const socDate = referral.soc_completed_date
     ? (fmtCalendarDate(referral.soc_completed_date) || String(referral.soc_completed_date).slice(0, 10))
     : null;
@@ -386,10 +585,10 @@ function SocCard({
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7, alignItems: 'center' }}>
               <DivisionBadge division={referral.division} size="small" />
-              <EpisodeTypeBadge referral={referral} size="small" />
+              <EpisodeTypeBadge referral={referral} size="tiny" />
               {socDate && (
                 <Chip strong color={palette.accentGreen.hex}>
-                  SOC {socDate}
+                  {ep} {socDate}
                 </Chip>
               )}
               {!socDate && addedDate && (
@@ -420,7 +619,6 @@ function SocCard({
           )}
         </div>
 
-        {/* Key dates — SOC + urgent callouts for marketers */}
         {(socDate || urgent || pendingLog) && (
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8,
@@ -428,7 +626,7 @@ function SocCard({
             background: hexToRgba(palette.backgroundDark.hex, 0.03),
           }}>
             {(socDate || pendingLog) && (
-              <DateStat label="SOC completed" value={socDate || '—'} emphasize={!!socDate} />
+              <DateStat label={`${ep} completed`} value={socDate || '—'} emphasize={!!socDate} />
             )}
             {pendingLog && (
               <DateStat label="Added to module" value={addedDate || '—'} />

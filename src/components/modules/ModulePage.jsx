@@ -54,8 +54,11 @@ import {
 } from '../../utils/documentationDeferred.js';
 import { normalizeEpisodeType, episodeTypeLabel, episodeTypeLongLabel } from '../../utils/episodeType.js';
 import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
+import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import MobileSocQueue from '../mobile/MobileSocQueue.jsx';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
+import { discardReferral } from '../../utils/discardReferral.js';
+import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
@@ -164,7 +167,9 @@ export default function ModulePage({ stage }) {
   const [draftCount, setDraftCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [changeOwnerTarget, setChangeOwnerTarget] = useState(null);
+  const [discardTarget, setDiscardTarget] = useState(null);
   const canChangeIntakeOwner = canPerm(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
+  const canDiscardAny = canPerm(PERMISSION_KEYS.REFERRAL_DISCARD_ANY);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [toast, setToast] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
@@ -1305,10 +1310,15 @@ export default function ModulePage({ stage }) {
         <RowContextMenu
           x={contextMenu.x} y={contextMenu.y} referral={contextMenu.referral}
           canChangeOwner={canChangeIntakeOwner}
+          canDiscard={canDiscardAny && contextMenu.referral?.current_stage !== 'Discarded Leads'}
           onOpen={() => { handleRowOpen(contextMenu.referral); setContextMenu(null); }}
           onOpenTriage={() => { openPatient(buildPatient(contextMenu.referral), contextMenu.referral, 'triage'); setContextMenu(null); }}
           onChangeOwner={() => {
             setChangeOwnerTarget(contextMenu.referral);
+            setContextMenu(null);
+          }}
+          onDiscard={() => {
+            setDiscardTarget(contextMenu.referral);
             setContextMenu(null);
           }}
           onMarkUrgent={async (type) => {
@@ -1333,6 +1343,30 @@ export default function ModulePage({ stage }) {
             }
           }}
           onDismiss={() => setContextMenu(null)}
+        />
+      )}
+      {discardTarget && (
+        <DiscardReferralModal
+          referral={discardTarget}
+          title="Discard Referral"
+          confirmLabel="Discard"
+          onCancel={() => setDiscardTarget(null)}
+          onConfirm={async (reason, explanation) => {
+            const result = await discardReferral({
+              referral: discardTarget,
+              reason,
+              explanation,
+              actorUserId: appUserId,
+            });
+            if (!result.ok) {
+              showToast(result.reason || 'Discard failed', 'error');
+              return;
+            }
+            showToast(`${discardTarget.patientName || discardTarget.patient_id} discarded`);
+            setDiscardTarget(null);
+            setSelectedReferralId(null);
+            triggerDataRefresh();
+          }}
         />
       )}
       {changeOwnerTarget && (
@@ -1603,6 +1637,31 @@ export default function ModulePage({ stage }) {
                 )}
               </div>
             )}
+
+            {/* Discard from any stage — permission-gated */}
+            {canDiscardAny && stage !== 'Discarded Leads' && (() => {
+              const canSend = !!selectedReferral && selectedReferral.current_stage !== 'Discarded Leads';
+              return (
+                <button
+                  type="button"
+                  data-testid="discard-any-toolbar"
+                  onClick={canSend ? () => setDiscardTarget(selectedReferral) : undefined}
+                  disabled={!canSend}
+                  title={canSend
+                    ? `Discard ${selectedReferral.patientName || 'patient'}`
+                    : 'Select a patient to discard'}
+                  style={{
+                    height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
+                    borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
+                    cursor: canSend ? 'pointer' : 'default', flexShrink: 0,
+                    background: canSend ? hexToRgba(palette.accentOrange.hex, 0.14) : hexToRgba(palette.backgroundDark.hex, 0.06),
+                    color: canSend ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                  }}
+                >
+                  Discard
+                </button>
+              );
+            })()}
 
             {/* Send to Conflict */}
             {stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC' && (() => {
@@ -1979,7 +2038,7 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   );
 }
 
-function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, onMarkUrgent, onClearUrgent, onDismiss }) {
+function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, canDiscard, onDiscard, onMarkUrgent, onClearUrgent, onDismiss }) {
   const ref = useRef(null);
   const isSN = referral.division === 'Special Needs';
   const urgent = isUrgentCare(referral);
@@ -2018,6 +2077,14 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
               onClick={onChangeOwner}
               accent={palette.accentBlue.hex}
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
+            />
+          )}
+          {canDiscard && (
+            <MenuItem
+              label="Discard"
+              onClick={onDiscard}
+              accent={palette.accentOrange.hex}
+              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
             />
           )}
           {/* Urgent care: pick wound / insulin / injection / both when marking.
