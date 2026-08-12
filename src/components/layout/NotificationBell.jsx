@@ -98,7 +98,8 @@ export default function NotificationBell({ variant = 'desktop' }) {
         _id: n.patient_id,
       };
       const referral = referralFor(n.patient_id, n.referral_id);
-      openPatient(patient, referral, 'notes');
+      const tab = n.type === 'clinical_review_assigned' ? 'clinical_review' : 'notes';
+      openPatient(patient, referral, tab);
       return;
     }
     if (n.type === 'task' || n.entity_type === 'task') {
@@ -258,7 +259,9 @@ export default function NotificationBell({ variant = 'desktop' }) {
                   ? 'Mention'
                   : n.type === 'intake_owner_assigned'
                     ? 'Ownership'
-                    : (n.type || 'Alert');
+                    : n.type === 'clinical_review_assigned'
+                      ? 'Clinical'
+                      : (n.type || 'Alert');
                 return (
                   <button
                     type="button"

@@ -1108,6 +1108,21 @@
         "pg": "text",
         "wire": "text"
       },
+      "clinical_review_assigned_to_id": {
+        "column": "clinical_review_assigned_to_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_assigned_at": {
+        "column": "clinical_review_assigned_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_review_assigned_by_id": {
+        "column": "clinical_review_assigned_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "clinical_review_completed_at": {
         "column": "clinical_review_completed_at",
         "pg": "timestamptz",

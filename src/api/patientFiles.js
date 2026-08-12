@@ -11,4 +11,5 @@ export const getFilesForPatients = (patientIds) => {
   return airtable.fetchAll(TABLE, { filterByFormula: formula });
 };
 export const createFile = (fields) => airtable.create(TABLE, fields);
+export const updateFile = (id, fields) => airtable.update(TABLE, id, fields);
 export const deleteFile = (id) => airtable.remove(TABLE, id);

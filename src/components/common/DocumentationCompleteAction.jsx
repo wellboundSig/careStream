@@ -87,8 +87,7 @@ export default function DocumentationCompleteAction({
         marginBottom: compact ? 0 : 16,
         padding: compact ? '10px 12px' : '12px 14px',
         borderRadius: 8,
-        background: hexToRgba(palette.accentOrange.hex, 0.08),
-        border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.28)}`,
+        background: hexToRgba(palette.accentOrange.hex, 0.06),
       }}
     >
       <p style={{
@@ -96,7 +95,6 @@ export default function DocumentationCompleteAction({
         fontSize: 12.5,
         fontWeight: 700,
         color: palette.accentOrange.hex,
-        letterSpacing: '-0.01em',
       }}>
         Waiting for post-SOC documentation
       </p>

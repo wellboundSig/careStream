@@ -3,29 +3,39 @@
  * panel). Subscribes to `useRefreshVersion()` so every mounted surface
  * re-fetches whenever any write calls `triggerDataRefresh()`.
  *
- * Single source of truth for the insurance set:
- *   `PatientInsurances` table only. The legacy "virtual" rows synthesised
- *   from `Patients.insurance_plans` JSON are gone — Demographics now writes
- *   straight into the table via `syncPatientInsurances`, so by the time a
- *   user opens this workspace every insurance is a real row with a real id.
- *
- *   If a patient has not been migrated yet (no PatientInsurances rows but
- *   JSON populated), the InsuranceEditor in Demographics auto-syncs on
- *   open. That keeps this hook trivially simple.
+ * Single source of truth: `PatientInsurances`. On load, heals from patient
+ * JSON when rows/CIN are missing (referral-stage sync gap).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRefreshVersion } from '../../../hooks/useRefreshTrigger.js';
+import { useCareStore } from '../../../store/careStore.js';
 import { getInsurancesByPatient }         from '../../../api/patientInsurances.js';
 import { getVerificationsByPatient, readVerificationInsuranceId } from '../../../api/eligibilityVerifications.js';
 import { getChecksByPatient }             from '../../../api/insuranceChecks.js';
 import { getAuthorizationsByReferral }    from '../../../api/authorizations.js';
 import { getDisenrollmentFlagsByPatient } from '../../../api/disenrollmentFlags.js';
 import { VERIFICATION_STATUS } from '../../../data/eligibilityEnums.js';
+import { ensurePatientInsurancesFromJson } from '../../../utils/ensurePatientInsurances.js';
+
+function resolvePatientRecordId(patient, pid, patientsById) {
+  if (patient?._id) return patient._id;
+  if (patient?.record_id) return patient.record_id;
+  if (!pid) return null;
+  const fromStore = Object.values(patientsById || {}).find(
+    (p) => p.id === pid || p._id === pid,
+  );
+  return fromStore?._id || null;
+}
 
 export function useEligibilityData({ patient, patientId, referralId, recheckRequestedAt }) {
   const refreshVersion = useRefreshVersion();
+  const patientsById = useCareStore((s) => s.patients) || {};
   const pid = patientId || patient?.id;
+  const patientRecordId = resolvePatientRecordId(patient, pid, patientsById);
+  const patientForHeal = patient || (pid
+    ? Object.values(patientsById).find((p) => p.id === pid || p._id === pid)
+    : null);
 
   const [insurances,      setInsurances]        = useState([]);
   const [verifications,   setVerifications]     = useState([]);
@@ -35,29 +45,39 @@ export function useEligibilityData({ patient, patientId, referralId, recheckRequ
   const [loading,         setLoading]           = useState(false);
   const [error,           setError]             = useState(null);
 
-  const reload = useCallback(() => {
+  const reload = useCallback(async () => {
     if (!pid) {
       setInsurances([]); setVerifications([]); setLegacyChecks([]);
       setAuthorizations([]); setDisenrollFlags([]);
       return;
     }
     setLoading(true); setError(null);
-    Promise.all([
-      getInsurancesByPatient(pid).catch(() => []),
-      getVerificationsByPatient(pid).catch(() => []),
-      getChecksByPatient(pid).catch(() => []),
-      referralId ? getAuthorizationsByReferral(referralId).catch(() => []) : Promise.resolve([]),
-      getDisenrollmentFlagsByPatient(pid).catch(() => []),
-    ]).then(([insRecs, verRecs, legRecs, authRecs, flagRecs]) => {
+    try {
+      if (patientForHeal && patientRecordId) {
+        await ensurePatientInsurancesFromJson({
+          patient: patientForHeal,
+          patientRecordId,
+          patientBusinessId: pid,
+        }).catch(() => null);
+      }
+      const [insRecs, verRecs, legRecs, authRecs, flagRecs] = await Promise.all([
+        getInsurancesByPatient(pid).catch(() => []),
+        getVerificationsByPatient(pid).catch(() => []),
+        getChecksByPatient(pid).catch(() => []),
+        referralId ? getAuthorizationsByReferral(referralId).catch(() => []) : Promise.resolve([]),
+        getDisenrollmentFlagsByPatient(pid).catch(() => []),
+      ]);
       setInsurances(insRecs.map((r) => ({ _id: r.id, ...r.fields })));
       setVerifications(verRecs.map((r) => ({ _id: r.id, ...r.fields })));
       setLegacyChecks(legRecs.map((r) => ({ _id: r.id, ...r.fields })));
       setAuthorizations(authRecs.map((r) => ({ _id: r.id, ...r.fields })));
       setDisenrollFlags(flagRecs.map((r) => ({ _id: r.id, ...r.fields })));
-    }).catch((e) => setError(e?.message || 'Load failed'))
-      .finally(() => setLoading(false));
-  }, [pid, referralId]);
-
+    } catch (e) {
+      setError(e?.message || 'Load failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [pid, referralId, patientForHeal, patientRecordId]);
   useEffect(() => { reload(); }, [reload, refreshVersion]);
 
   // Latest verification per insurance id. `readVerificationInsuranceId`

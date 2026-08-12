@@ -245,12 +245,19 @@ function EditableReferralPhysician({ referral, onSave, readOnly: forceReadOnly =
 
 function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const containerRef = useRef(null);
-  const { resolveSource } = useLookups();
+  const { resolveSource, resolveMarketer } = useLookups();
   const { can } = usePermissions();
   const storeSources = useCareStore((s) => s.referralSources) || {};
+
+  const sourceRecord = useMemo(() => {
+    const id = referral.referral_source_id;
+    if (!id) return null;
+    return Object.values(storeSources).find((s) => s.id === id || s._id === id) || null;
+  }, [storeSources, referral.referral_source_id]);
 
   // Dedicated key preferred; referral.edit kept as back-compat for existing grants.
   const canEdit = !forceReadOnly && (
@@ -344,23 +351,55 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
   }
 
   const display = referral.referral_source_id
-    ? resolveSource(referral.referral_source_id)
+    ? (sourceRecord?.name || resolveSource(referral.referral_source_id))
     : null;
+  const entityName = (sourceRecord?.source_entity || '').trim();
+  const sourceType = (sourceRecord?.type || '').trim();
   const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+  const hasSource = !!(display && display !== '—');
+  const marketerLabel = sourceRecord?.marketer_id
+    ? resolveMarketer(sourceRecord.marketer_id)
+    : null;
+
+  const detailRows = sourceRecord ? [
+    { label: 'Person', value: sourceRecord.name },
+    { label: 'Company / Entity', value: entityName },
+    { label: 'Category', value: sourceType },
+    { label: 'Default method', value: sourceRecord.method },
+    { label: 'Phone', value: sourceRecord.phone },
+    { label: 'Email', value: sourceRecord.email },
+    {
+      label: 'Assigned marketer',
+      value: marketerLabel && marketerLabel !== '—' ? marketerLabel : (sourceRecord.marketer_id || ''),
+    },
+    { label: 'Source ID', value: sourceRecord.id, mono: true },
+  ].filter((r) => r.value) : [];
 
   return (
     <div style={{ gridColumn: '1 / -1' }} ref={containerRef}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
         <p style={fl()}>Referral Source</p>
-        {!editing && canEdit && (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            {referral.referral_source_id ? 'Change' : '+ Add'}
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {!editing && hasSource && sourceRecord && (
+            <button
+              type="button"
+              data-testid="referral-source-expand"
+              onClick={() => setExpanded((v) => !v)}
+              style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              {expanded ? 'Hide details' : 'Details'}
+            </button>
+          )}
+          {!editing && canEdit && (
+            <button
+              type="button"
+              onClick={() => { setEditing(true); setExpanded(false); }}
+              style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              {referral.referral_source_id ? 'Change' : '+ Add'}
+            </button>
+          )}
+        </div>
       </div>
       {editing ? (
         <div style={{
@@ -424,15 +463,102 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
           </div>
         </div>
       ) : (
-        <p style={{
-          fontSize: 13,
-          color: display && display !== '—' ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
-          padding: '4px 6px',
-          fontStyle: display && display !== '—' ? 'normal' : 'italic',
-          opacity: saving ? 0.6 : 1,
-        }}>
-          {saving ? 'Saving…' : (display && display !== '—' ? display : empty)}
-        </p>
+        <div style={{ opacity: saving ? 0.6 : 1 }}>
+          <button
+            type="button"
+            onClick={() => { if (sourceRecord) setExpanded((v) => !v); }}
+            disabled={!sourceRecord}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              background: 'none',
+              border: 'none',
+              padding: '4px 6px',
+              cursor: sourceRecord ? 'pointer' : 'default',
+              fontFamily: 'inherit',
+            }}
+            title={sourceRecord ? (expanded ? 'Hide source details' : 'Show all source details') : undefined}
+          >
+            <span style={{
+              display: 'block',
+              fontSize: 13,
+              fontWeight: hasSource ? 650 : 400,
+              color: hasSource ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
+              fontStyle: hasSource ? 'normal' : 'italic',
+            }}>
+              {saving ? 'Saving…' : (hasSource ? display : empty)}
+            </span>
+            {!saving && entityName && (
+              <span style={{
+                display: 'block',
+                marginTop: 2,
+                fontSize: 12,
+                fontWeight: 500,
+                color: hexToRgba(palette.backgroundDark.hex, 0.55),
+              }}>
+                {entityName}
+                {sourceType ? ` · ${sourceType}` : ''}
+              </span>
+            )}
+            {!saving && !entityName && sourceType && (
+              <span style={{
+                display: 'block',
+                marginTop: 2,
+                fontSize: 12,
+                fontWeight: 500,
+                color: hexToRgba(palette.backgroundDark.hex, 0.45),
+              }}>
+                {sourceType}
+              </span>
+            )}
+          </button>
+          {expanded && sourceRecord && (
+            <div
+              data-testid="referral-source-details"
+              style={{
+                marginTop: 6,
+                marginLeft: 6,
+                marginRight: 6,
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: hexToRgba(palette.backgroundDark.hex, 0.03),
+              }}
+            >
+              {detailRows.map((row) => (
+                <div
+                  key={row.label}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: '6px 0',
+                    borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
+                  }}
+                >
+                  <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), flexShrink: 0 }}>
+                    {row.label}
+                  </span>
+                  <span style={{
+                    fontSize: row.mono ? 11.5 : 12.5,
+                    fontWeight: 550,
+                    color: palette.backgroundDark.hex,
+                    textAlign: 'right',
+                    wordBreak: 'break-word',
+                    fontFamily: row.mono ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : 'inherit',
+                  }}>
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+              {detailRows.length === 0 && (
+                <p style={{ margin: 0, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                  No directory details for this source.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

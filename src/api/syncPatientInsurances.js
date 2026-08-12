@@ -43,13 +43,21 @@ const ORDER_RANK_FOR = ['primary', 'secondary', 'tertiary'];
  * @param {string} args.patientBusinessId Patient business id (`pat_…`), used for filter reads
  * @param {string[]} args.plans  Ordered list of payer display names
  * @param {object}  [args.details] Map of `planName → { member_id }` (also accepts a bare string member id)
+ * @param {string}  [args.enteredFrom] Stamp for new rows (`referral`, `demographics`, `heal_json`, …)
  */
-export async function syncPatientInsurances({ patientRecordId, patientBusinessId, plans, details }) {
+export async function syncPatientInsurances({
+  patientRecordId,
+  patientBusinessId,
+  plans,
+  details,
+  enteredFrom,
+} = {}) {
   if (!patientRecordId || !patientBusinessId) {
     return { synced: false, reason: 'missing_patient_ids' };
   }
   const safePlans = Array.isArray(plans) ? plans.filter(Boolean) : [];
   const safeDetails = details && typeof details === 'object' ? details : {};
+  const defaultEnteredFrom = enteredFrom || 'demographics';
 
   let existing = [];
   try {
@@ -89,9 +97,10 @@ export async function syncPatientInsurances({ patientRecordId, patientBusinessId
     const baseFields = {
       payer_display_name: plan,
       insurance_category: existingRow?.insurance_category || normalizeInsuranceCategory({ rawLabel: plan }).category,
+      // Prefer incoming CIN; keep existing if the new payload omitted it.
       member_id: memberId || existingRow?.member_id || '',
       order_rank: ORDER_RANK_FOR[i] || 'unknown',
-      entered_from: existingRow?.entered_from || 'demographics',
+      entered_from: existingRow?.entered_from || defaultEnteredFrom,
       is_active_raw: true,
       termination_date: null, // clear soft-delete if re-adding
       updated_at: new Date().toISOString(),

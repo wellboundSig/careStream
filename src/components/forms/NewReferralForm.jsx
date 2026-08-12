@@ -1042,16 +1042,23 @@ export default function NewReferralForm({
         }).catch((err) => console.warn('New referral: emergency guardian sync failed', err));
       }
 
-      // Populate the canonical PatientInsurances table for this new patient
-      // so every downstream consumer sees structured rows from day one.
-      // Failure is non-fatal: the legacy JSON mirror still saved above.
+      // Canonical PatientInsurances — Eligibility/Auth/Demographics read this.
+      // Await so CIN is present before the drawer opens; JSON remains the mirror.
       if (form.insurance_plans.length > 0) {
-        syncPatientInsurances({
-          patientRecordId:   patientRecord.id,    // Airtable rec… (link write)
-          patientBusinessId: createdPatientId,    // pat_… (filter read / dedupe)
-          plans:   form.insurance_plans,
-          details: form.insurance_plan_details,
-        }).catch((err) => console.warn('New referral: PatientInsurances sync failed', err));
+        try {
+          const syncResult = await syncPatientInsurances({
+            patientRecordId:   patientRecord.id,
+            patientBusinessId: createdPatientId,
+            plans:   form.insurance_plans,
+            details: form.insurance_plan_details,
+            enteredFrom: 'referral',
+          });
+          if (!syncResult?.synced) {
+            console.warn('New referral: PatientInsurances sync incomplete', syncResult);
+          }
+        } catch (err) {
+          console.warn('New referral: PatientInsurances sync failed', err);
+        }
       }
 
       const resolvedMarketer = form.marketer_id === 'other'

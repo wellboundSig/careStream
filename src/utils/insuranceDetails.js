@@ -41,12 +41,18 @@ export function getInsuranceDetailsMap(patient) {
   return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
 }
 
+/** Normalize plan-detail cell (bare string or `{ member_id }`) → member ID string. */
+export function memberIdFromDetail(val) {
+  if (typeof val === 'string') return val.trim();
+  if (val && typeof val === 'object') {
+    return String(val.member_id || val.memberId || '').trim();
+  }
+  return '';
+}
+
 export function hasInsuranceDetails(patient) {
   const plans = getInsurancePlans(patient);
   if (plans.length === 0) return false;
   const details = getInsuranceDetailsMap(patient);
-  return plans.some((plan) => {
-    const id = details[plan];
-    return typeof id === 'string' && id.trim().length > 0;
-  });
+  return plans.some((plan) => memberIdFromDetail(details[plan]).length > 0);
 }

@@ -96,6 +96,22 @@ function daysInPipeline(referral) {
   return Number.isFinite(v) ? v : 0;
 }
 
+/** Stage + assigned / in-review handoffs (excludes deferred-only holds). */
+function isActiveClinicalQueueRow(r) {
+  return r.current_stage === 'Clinical Intake RN Review'
+    || r.in_clinical_review === true
+    || r.in_clinical_review === 'true'
+    || (!!r.clinical_review_assigned_to_id && !r.clinical_review_completed_at);
+}
+
+/** Prefer open assignee; otherwise completed-by stamp. */
+function resolveClinicalRnLabel(referral, resolveUser) {
+  if (referral?.clinical_review_assigned_to_id && !referral?.clinical_review_completed_at) {
+    return resolveUser(referral.clinical_review_assigned_to_id) || '';
+  }
+  return resolveUser(referral?.clinical_review_completed_by_id || referral?.clinical_review_by) || '';
+}
+
 function relativeTime(dateStr) {
   if (!dateStr) return '—';
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -315,10 +331,10 @@ export default function ModulePage({ stage }) {
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
     let list = decoratedReferrals.filter(predicate);
-    // Clinical default: stage-only. Full matchReferral (deferred / concurrent)
-    // only when the user opts in via the queue-scope toggle.
+    // Clinical default: stage + active concurrent handoffs (in_clinical_review /
+    // assigned). Older deferred-only rows stay behind the Deferred toggle.
     if (isClinicalRnModule && !includeDeferredClinical) {
-      list = list.filter((r) => r.current_stage === 'Clinical Intake RN Review');
+      list = list.filter(isActiveClinicalQueueRow);
     }
     // Never show a division the user cannot access (also covers stale "All"
     // selection before the sidebar default has been coerced).
@@ -418,7 +434,7 @@ export default function ModulePage({ stage }) {
           case 'insurance': cellVal = r.patient?.insurance_plan || ''; break;
           case 'facility': cellVal = resolveFacility(r.facility_id) || ''; break;
           case 'pcp': cellVal = resolvePcpName(r) || ''; break;
-          case 'clinical_rn': cellVal = resolveUser(r.clinical_review_completed_by_id || r.clinical_review_by) || ''; break;
+          case 'clinical_rn': cellVal = resolveClinicalRnLabel(r, resolveUser) || ''; break;
           default: return true;
         }
         return cellVal.toLowerCase().includes(q);
@@ -471,8 +487,8 @@ export default function ModulePage({ stage }) {
       return true;
     });
     if (division !== 'All') list = list.filter((r) => r.division === division);
-    const stageOnly = list.filter((r) => r.current_stage === 'Clinical Intake RN Review').length;
-    return { stageOnly, deferred: list.length - stageOnly, all: list.length };
+    const active = list.filter(isActiveClinicalQueueRow).length;
+    return { active, deferred: list.length - active, all: list.length };
   }, [isClinicalRnModule, decoratedReferrals, meta, hasDivision, division]);
 
   // If the selected row drops out of the filtered queue (e.g. toggle flipped), clear it.
@@ -492,7 +508,7 @@ export default function ModulePage({ stage }) {
         : (r) => r.current_stage === stage;
     let base = decoratedReferrals.filter(predicate);
     if (isClinicalRnModule && !includeDeferredClinical) {
-      base = base.filter((r) => r.current_stage === 'Clinical Intake RN Review');
+      base = base.filter(isActiveClinicalQueueRow);
     }
     const opts = {};
     columnDefs.filter((c) => c.filterable).forEach((col) => {
@@ -522,7 +538,7 @@ export default function ModulePage({ stage }) {
           case 'facility': { const v = resolveFacility(r.facility_id); if (v && v !== '—') vals.add(v); break; }
           case 'pcp': { const v = resolvePcpName(r); if (v) vals.add(v); break; }
           case 'clinical_rn': {
-            const v = resolveUser(r.clinical_review_completed_by_id || r.clinical_review_by);
+            const v = resolveClinicalRnLabel(r, resolveUser);
             if (v && v !== '—') vals.add(v);
             break;
           }
@@ -745,17 +761,23 @@ export default function ModulePage({ stage }) {
       }
       case 'waiting_docs': {
         const waiting = isDocumentationDeferred(referral);
+        const docsCleared = !waiting && !!referral.documentation_cleared_at;
         const checklist = waiting ? getDocumentationClearChecklist(referral) : null;
+        const clinicalAssigned = !!(
+          referral.clinical_review_assigned_to_id
+          && !referral.clinical_review_completed_at
+        );
         const detail = !waiting
-          ? null
+          ? (docsCleared ? 'Docs complete' : (clinicalAssigned ? 'Clinical assigned' : null))
           : checklist.canClear
             ? 'Ready to clear — select row'
             : [
                 !checklist.f2f ? 'Need F2F' : null,
                 !checklist.clinical ? 'Need clinical' : null,
+                clinicalAssigned ? 'RN assigned' : null,
               ].filter(Boolean).join(' · ');
         return (
-          <td key="waiting_docs" style={td({ maxWidth: 160, textAlign: 'left' })}>
+          <td key="waiting_docs" style={td({ maxWidth: 170, textAlign: 'left' })}>
             {waiting ? (
               <div>
                 <span style={{
@@ -779,6 +801,17 @@ export default function ModulePage({ stage }) {
                     {detail}
                   </div>
                 )}
+              </div>
+            ) : docsCleared ? (
+              <div>
+                <span style={{
+                  fontSize: 10.5, fontWeight: 750, color: palette.accentGreen.hex,
+                  padding: '2px 7px', borderRadius: 5,
+                  background: hexToRgba(palette.accentGreen.hex, 0.12),
+                  border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.3)}`,
+                }}>
+                  Complete
+                </span>
               </div>
             ) : (
               <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>No</span>
@@ -825,10 +858,26 @@ export default function ModulePage({ stage }) {
         );
       }
       case 'clinical_rn': {
-        const name = resolveUser(referral.clinical_review_completed_by_id || referral.clinical_review_by);
+        const assignedPending = !!(
+          referral.clinical_review_assigned_to_id
+          && !referral.clinical_review_completed_at
+        );
+        const name = resolveClinicalRnLabel(referral, resolveUser);
         return (
-          <td key="clinical_rn" style={td({ maxWidth: 150, fontSize: 12.5 })}>
-            {name && name !== '—' ? name : '—'}
+          <td key="clinical_rn" style={td({ maxWidth: 160, fontSize: 12.5 })} title={assignedPending ? 'Assigned — review open' : undefined}>
+            {name && name !== '—' ? (
+              <span>
+                {name}
+                {assignedPending && (
+                  <span style={{
+                    display: 'block', marginTop: 2, fontSize: 10.5, fontWeight: 650,
+                    color: palette.primaryMagenta.hex,
+                  }}>
+                    Assigned
+                  </span>
+                )}
+              </span>
+            ) : '—'}
           </td>
         );
       }
@@ -1530,8 +1579,8 @@ export default function ModulePage({ stage }) {
                 aria-pressed={includeDeferredClinical}
                 onClick={() => setIncludeDeferredClinical((v) => !v)}
                 title={includeDeferredClinical
-                  ? 'Showing this stage plus deferred cases in other stages. Click to show this stage only.'
-                  : `Showing this stage only. Click to also include ${clinicalQueueCounts.deferred} deferred case${clinicalQueueCounts.deferred === 1 ? '' : 's'}.`}
+                  ? 'Showing active clinical plus older deferred-only holds. Click to hide deferred-only.'
+                  : `Active clinical + assigned handoffs. Click to also include ${clinicalQueueCounts.deferred} deferred-only case${clinicalQueueCounts.deferred === 1 ? '' : 's'}.`}
                 style={{
                   height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
                   border: `1px solid ${includeDeferredClinical ? palette.accentBlue.hex : 'var(--color-border)'}`,

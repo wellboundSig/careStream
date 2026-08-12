@@ -183,7 +183,7 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'F2F/MD Orders Pending',
   },
   'Clinical Intake RN Review': {
-    description: 'Skilled need + safety review by clinical RN. Defaults to patients in this stage; use Include deferred for concurrent / post-SOC documentation-deferred cases still needing clinical.',
+    description: 'Skilled need + safety review by clinical RN. Includes assigned post-SOC cases. Use Deferred for older docs-only holds without an assignment.',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryMagenta.hex,
@@ -194,6 +194,8 @@ export const STAGE_META = {
         || r.in_clinical_review === true
         || r.in_clinical_review === 'true'
       ) return true;
+      // Explicit post-SOC handoff (marketer → Clinical RN)
+      if (r.clinical_review_assigned_to_id && !r.clinical_review_completed_at) return true;
       // Post-SOC clinical for fast-tracked cases (still open until cleared)
       const deferred = (r.documentation_deferred === true || r.documentation_deferred === 'true')
         && !r.documentation_cleared_at;
@@ -269,12 +271,12 @@ export const STAGE_META = {
   },
   'SOC Completed': {
     displayName: 'SOC/ROC Completed',
-    description: 'Care started or resumed, stays here once confirmed',
+    description: 'Care started or resumed. Stays here even during post-SOC clinical review.',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,
     // Concurrent: durable soc_completed_date keeps the patient on this list
-    // while current_stage may be Intake (send-back for ICD / paperwork).
+    // while clinical / intake paperwork may still be open.
     matchReferral: (r) => isSocCompletedReferral(r),
   },
   'OPWDD Enrollment': {

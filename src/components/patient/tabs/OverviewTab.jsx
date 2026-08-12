@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { updatePatient } from '../../../api/patients.js';
 import { syncPatientInsurances } from '../../../api/syncPatientInsurances.js';
+import { ensurePatientInsurancesFromJson } from '../../../utils/ensurePatientInsurances.js';
+import {
+  getInsuranceDetailsMap,
+  memberIdFromDetail,
+} from '../../../utils/insuranceDetails.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { updateEntity } from '../../../store/careStore.js';
@@ -794,9 +799,11 @@ function InsuranceEditor({ patient, patientId, onSave }) {
     if (seededRef.current) return;
     if (rowsLoading) return;            // wait for first fetch to settle
 
+    const legacyDetails = getInsuranceDetailsMap(patient);
+
     // usePatientInsurances already hides soft-deleted rows. Once that query
-    // has settled, trust it — do not resurrect payers from stale legacy JSON
-    // after staff removed them (that was bringing HIP back for Neshon Nedd).
+    // has settled, trust plan list from PI — but fill empty member_id from
+    // JSON so referral-stage CIN still shows when sync was partial.
     if (realRows.length > 0) {
       const RANK = { primary: 0, secondary: 1, tertiary: 2, unknown: 3 };
       const sorted = [...realRows].sort(
@@ -806,7 +813,11 @@ function InsuranceEditor({ patient, patientId, onSave }) {
       setDetails(Object.fromEntries(
         sorted
           .filter((r) => r.payer_display_name)
-          .map((r) => [r.payer_display_name, r.member_id || '']),
+          .map((r) => {
+            const fromRow = String(r.member_id || '').trim();
+            const fromJson = memberIdFromDetail(legacyDetails[r.payer_display_name]);
+            return [r.payer_display_name, fromRow || fromJson || ''];
+          }),
       ));
     } else {
       const legacyRaw = patient.insurance_plans;
@@ -820,15 +831,45 @@ function InsuranceEditor({ patient, patientId, onSave }) {
         try { p = legacyRaw ? JSON.parse(legacyRaw) : []; } catch { p = []; }
         if (!Array.isArray(p)) p = [];
         if (p.length === 0 && patient.insurance_plan) p = [patient.insurance_plan];
-        let d = {};
-        try { d = patient.insurance_plan_details ? JSON.parse(patient.insurance_plan_details) : {}; } catch { d = {}; }
-        if (typeof d !== 'object' || d === null) d = {};
+        const d = {};
+        for (const plan of p) {
+          d[plan] = memberIdFromDetail(legacyDetails[plan]);
+        }
         setPlans(p);
         setDetails(d);
       }
     }
     seededRef.current = true;
   }, [realRows, rowsLoading, patient]);
+
+  // Heal PI from JSON when rows missing / CIN empty (referral sync gap).
+  const healAttemptedRef = useRef(false);
+  useEffect(() => {
+    healAttemptedRef.current = false;
+  }, [patientBusinessId]);
+
+  useEffect(() => {
+    if (healAttemptedRef.current || rowsLoading) return;
+    if (!patientId || !patientBusinessId) return;
+    healAttemptedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { healed } = await ensurePatientInsurancesFromJson({
+          patient,
+          patientRecordId: patientId,
+          patientBusinessId,
+        });
+        if (healed && !cancelled) {
+          seededRef.current = false; // re-seed from healed PatientInsurances
+          triggerDataRefresh();
+        }
+      } catch (err) {
+        console.warn('[InsuranceEditor] heal failed', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [patient, patientId, patientBusinessId, rowsLoading]);
 
   // If the patient swaps under us (drawer navigated to a different patient),
   // re-seed from the new source.

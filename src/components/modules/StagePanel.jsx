@@ -16,12 +16,16 @@ import {
   maybeClearDocumentationDeferred,
   needsPostSocClinical,
 } from '../../utils/documentationDeferred.js';
+import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { discardReferral } from '../../utils/discardReferral.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import EmrPacketDownloadButton from '../common/EmrPacketDownloadButton.jsx';
 import DocumentationCompleteAction from '../common/DocumentationCompleteAction.jsx';
+import RequestClinicalReviewAction from '../common/RequestClinicalReviewAction.jsx';
 import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
+import { isSocCompletedReferral } from '../../data/stageConfig.js';
+import { postSocClinicalCompleteClearFields } from '../../utils/requestPostSocClinicalReview.js';
 import {
   scheduleVerb,
   rescheduleVerb,
@@ -824,7 +828,7 @@ const INTAKE_DEMO_FIELDS = [
   { key: 'dob',             label: 'Date of birth' },
   { key: 'phone_primary',   label: 'Primary phone' },
   { key: 'address_street',  label: 'Street address' },
-  { key: 'medicaid_number', label: 'Medicaid number' },
+  { key: 'medicaid_number', label: 'Insurance / CIN' },
 ];
 
 function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, onOpenTriage, onOpenFiles, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
@@ -832,7 +836,10 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
   const p = selectedReferral?.patient;
-  const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [key, !!(p?.[key])]));
+  const doneMap = Object.fromEntries(INTAKE_DEMO_FIELDS.map(({ key }) => [
+    key,
+    key === 'medicaid_number' ? hasInsuranceDetails(p) : !!(p?.[key]),
+  ]));
   const isSN = selectedReferral?.division === 'Special Needs';
   const isALF = selectedReferral?.division === 'ALF';
   const isF2F = selectedReferral?.current_stage === 'F2F/MD Orders Pending';
@@ -2088,6 +2095,12 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   // can finish that work in parallel). Does not gate the Confirm action.
   const eligibilityDone = !!selectedReferral?.eligibility_completed_at;
 
+  const isPostSocClinical = !!selectedReferral && (
+    isSocCompletedReferral(selectedReferral)
+    || isDocumentationDeferred(selectedReferral)
+    || needsPostSocClinical(selectedReferral)
+  );
+
   async function handleConfirm() {
     if (!canConfirm || !selectedReferral) return;
     const now = new Date().toISOString();
@@ -2098,20 +2111,25 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       clinical_review_completed_at: now,
       clinical_review_completed_by_id: appUserId || 'unknown',
       in_clinical_review: false,
+      ...postSocClinicalCompleteClearFields(),
     };
 
-    // Deferred post-SOC clinical: case is already at/after EMR. Stamp only —
-    // do not bounce them back to EMR Onboarding.
+    // Post-SOC / concurrent clinical: stamp only — stay on SOC Completed.
+    // Do not bounce to EMR Onboarding.
     const alreadyPastClinicalGate = [
-      'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed',
+      'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Intake',
     ].includes(selectedReferral.current_stage);
-    if (alreadyPastClinicalGate && (isDocumentationDeferred(selectedReferral) || needsPostSocClinical(selectedReferral))) {
+    if (isPostSocClinical || (
+      alreadyPastClinicalGate
+      && (isDocumentationDeferred(selectedReferral) || needsPostSocClinical(selectedReferral))
+    )) {
       try {
         await updateReferralOptimistic(selectedReferral._id, clinicalFields);
         await maybeClearDocumentationDeferred(
           { ...selectedReferral, ...clinicalFields },
-          { actorUserId: appUserId },
+          { actorUserId: appUserId, source: 'clinical_post_soc' },
         );
+        onSelectedReferralLeftModule?.();
         triggerDataRefresh();
       } catch {}
       return;
@@ -2186,9 +2204,23 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               Clinical RN
             </span>
-            {selectedReferral.current_stage && selectedReferral.current_stage !== 'Clinical Intake RN Review' && (
+            {isSocCompletedReferral(selectedReferral) ? (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                also on SOC/ROC Completed
+              </span>
+            ) : selectedReferral.current_stage && selectedReferral.current_stage !== 'Clinical Intake RN Review' ? (
               <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 also in {selectedReferral.current_stage}
+              </span>
+            ) : null}
+            {isDocumentationDeferred(selectedReferral) && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                docs pending
+              </span>
+            )}
+            {!isDocumentationDeferred(selectedReferral) && selectedReferral.documentation_cleared_at && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                docs complete
               </span>
             )}
             {eligibilityDone && (
@@ -2197,6 +2229,24 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </span>
             )}
           </div>
+
+          {selectedReferral.clinical_review_assigned_to_id && !selectedReferral.clinical_review_completed_at && (
+            <div
+              data-testid="clinical-review-assigned-to"
+              style={{
+                marginBottom: 12, padding: '9px 11px', borderRadius: 8,
+                background: hexToRgba(palette.primaryMagenta.hex, 0.06),
+                border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.16)}`,
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                Assigned Clinical RN
+              </p>
+              <p style={{ fontSize: 13.5, fontWeight: 700, color: palette.backgroundDark.hex, margin: '3px 0 0' }}>
+                {resolveUser(selectedReferral.clinical_review_assigned_to_id) || selectedReferral.clinical_review_assigned_to_id}
+              </p>
+            </div>
+          )}
 
           {startedBy && (
             <div
@@ -2241,8 +2291,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '0 0 8px' }}>{unlockError}</p>
           )}
 
-          {/* Send back to Intake — always available, including after Accept.
-              Not gated by clinical permission or checklist. Note optional. */}
+          {/* Send back to Intake — pre-SOC concurrent path only. Post-SOC
+              handoffs stay on Completed; RNs mark clinical completed instead. */}
+          {!isSocCompletedReferral(selectedReferral) && (
           <PanelSection title="Send Back">
             {decisionLocked && !showSendBack && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.45, margin: '0 0 8px' }}>
@@ -2283,10 +2334,22 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </div>
             )}
           </PanelSection>
+          )}
 
           {/* Confirm + clinical decision actions — gated by permission.
               Decline is gone; issues route through the toolbar Conflict
               button at the top of the module page. */}
+          {isPostSocClinical && (
+            <PanelSection title="Post-SOC docs">
+              <DocumentationCompleteAction
+                referral={selectedReferral}
+                source="clinical_post_soc_panel"
+                compact
+                onOpenF2F={() => onOpenFiles?.(selectedReferral)}
+              />
+            </PanelSection>
+          )}
+
           {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
           <PanelSection title="Clinical Validation">
             <button
@@ -2304,11 +2367,16 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
               {canConfirm
-                ? 'Confirm → EMR Onboarding'
+                ? (isPostSocClinical ? 'Mark clinical completed' : 'Confirm → EMR Onboarding')
                 : !checklistComplete
                   ? 'Complete checklist to confirm'
                   : 'Select Accept or Conditional to confirm'}
             </button>
+            {isPostSocClinical && canConfirm && (
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '0 0 6px', lineHeight: 1.4 }}>
+                Leaves Clinical. Stays on SOC/ROC Completed. Clears docs hold when F2F is also done.
+              </p>
+            )}
           </PanelSection>
           )}
 
@@ -3697,7 +3765,13 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
 
 // ── 13. SOC Completed ─────────────────────────────────────────────────────────
 function SocCompletedPanel({ referrals, selectedReferral, onOpenTab }) {
+  const { can: canPerm } = usePermissions();
+  const canRequestClinical = canPerm(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG)
+    || canPerm(PERMISSION_KEYS.MODULE_SCHEDULING);
   const hchbDone = referrals.filter((r) => r.hchb_entered === true || r.hchb_entered === 'true').length;
+  const inClinical = selectedReferral
+    && (selectedReferral.in_clinical_review === true || selectedReferral.in_clinical_review === 'true'
+      || selectedReferral.current_stage === 'Clinical Intake RN Review');
   const postSocWork = selectedReferral
     && selectedReferral.soc_completed_date
     && selectedReferral.current_stage
@@ -3719,6 +3793,11 @@ function SocCompletedPanel({ referrals, selectedReferral, onOpenTab }) {
           />
         </PanelSection>
       )}
+      {selectedReferral && canRequestClinical && (
+        <PanelSection title="Clinical handoff">
+          <RequestClinicalReviewAction referral={selectedReferral} />
+        </PanelSection>
+      )}
       {selectedReferral && !docsDeferred && selectedReferral.documentation_cleared_at && (
         <PanelSection title="Post-SOC documentation">
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650, color: palette.accentGreen.hex }}>
@@ -3729,20 +3808,15 @@ function SocCompletedPanel({ referrals, selectedReferral, onOpenTab }) {
           </p>
         </PanelSection>
       )}
-      {postSocWork && (
+      {(inClinical || postSocWork) && (
         <PanelSection title="Also in pipeline">
           <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, margin: 0 }}>
-            SOC is complete and stays counted here. Current work stage:{' '}
-            <strong style={{ color: palette.backgroundDark.hex }}>{selectedReferral.current_stage}</strong>
-            {' '}(post-SOC paperwork / corrections).
+            {inClinical
+              ? 'In Clinical Review for post-SOC paperwork. Stays counted here until clinical is marked complete.'
+              : <>Current work stage: <strong style={{ color: palette.backgroundDark.hex }}>{selectedReferral.current_stage}</strong></>}
           </p>
         </PanelSection>
       )}
-      <PanelSection title="Notes">
-        <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.6 }}>
-          Once SOC is confirmed, the patient remains on this list via the completion date — even if Intake still has open work. Enter cases fully in HCHB.
-        </p>
-      </PanelSection>
     </Panel>
   );
 }

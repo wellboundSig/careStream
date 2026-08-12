@@ -5,6 +5,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { runHchbDupCheck } from '../../api/hchbDupCheck.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
+import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import DuplicateMergeWizard from './DuplicateMergeWizard.jsx';
 
 /** Stages where duplicate intake still matters. */
 export const EARLY_DUP_STAGES = new Set([
@@ -150,6 +153,8 @@ export default function DuplicateChecker({
   onSelectReferral,
   onOpenReferral,
 }) {
+  const { can } = usePermissions();
+  const canMerge = can(PERMISSION_KEYS.REFERRAL_MERGE_DUPLICATES);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('pipeline');
   const [sortBy, setSortBy] = useState('count'); // count | name | stage | newest
@@ -160,6 +165,7 @@ export default function DuplicateChecker({
   const [hchbError, setHchbError] = useState('');
   const [hchbByPatient, setHchbByPatient] = useState({});
   const [batchBusy, setBatchBusy] = useState(false);
+  const [mergeMembers, setMergeMembers] = useState(null);
   const ref = useRef(null);
 
   const allEarlyGroups = useMemo(
@@ -204,13 +210,13 @@ export default function DuplicateChecker({
   const badgeCount = selectedReferral ? selectedGroups.length : allEarlyGroups.length;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || mergeMembers) return;
     function dismiss(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     }
     document.addEventListener('mousedown', dismiss);
     return () => document.removeEventListener('mousedown', dismiss);
-  }, [open]);
+  }, [open, mergeMembers]);
 
   useEffect(() => {
     if (!selectedReferral) return;
@@ -447,8 +453,25 @@ export default function DuplicateChecker({
                               margin: '8px 0 6px', fontSize: 11, lineHeight: 1.4,
                               color: hexToRgba(palette.backgroundDark.hex, 0.48),
                             }}>
-                              Keep one chart, open the other to discard as “Duplicate referral”. Oldest listed first.
+                              {canMerge
+                                ? 'Merge into one chart, or open and discard the extra as Duplicate referral.'
+                                : 'Keep one chart. Open the other and discard as Duplicate referral. Oldest listed first.'}
                             </p>
+                            {canMerge && group.members.length >= 2 && (
+                              <button
+                                type="button"
+                                data-testid="merge-duplicates-btn"
+                                onClick={() => setMergeMembers(group.members)}
+                                style={{
+                                  marginBottom: 8, height: 30, width: '100%', borderRadius: 7, border: 'none',
+                                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                                  background: palette.primaryMagenta.hex,
+                                  color: palette.backgroundLight.hex,
+                                }}
+                              >
+                                Merge these charts
+                              </button>
+                            )}
                             {group.members.map((r, ri) => {
                               const tone = hchbTone(hchbByPatient[r.patient_id]);
                               const isSelected = selectedReferral?._id === r._id;
@@ -611,6 +634,18 @@ export default function DuplicateChecker({
             </div>
           )}
         </div>
+      )}
+
+      {mergeMembers && (
+        <DuplicateMergeWizard
+          members={mergeMembers}
+          onClose={() => setMergeMembers(null)}
+          onMerged={(survivor) => {
+            setMergeMembers(null);
+            setOpen(false);
+            if (survivor) onOpenReferral?.(survivor);
+          }}
+        />
       )}
     </div>
   );

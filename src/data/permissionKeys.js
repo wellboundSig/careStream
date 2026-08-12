@@ -19,6 +19,11 @@ export const PERMISSION_KEYS = {
    * Deny-by-default — grant only to named users.
    */
   REFERRAL_DISCARD_ANY: 'referral.discard_any',
+  /**
+   * Merge CareStream duplicate charts (name+DOB / Medicaid) into one referral.
+   * Deny-by-default — Admin + Clinical RN presets include it; grant others individually.
+   */
+  REFERRAL_MERGE_DUPLICATES: 'referral.merge_duplicates',
   INTAKE_EMR_INITIAL: 'intake.emr_initial',
   /** Advance Intake → EMR without F2F/clinical; both completed after SOC. */
   INTAKE_ADVANCE_WITHOUT_F2F: 'intake.advance_without_f2f',
@@ -217,6 +222,7 @@ export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
   K.REFERRAL_DISCARD_ANY,
+  K.REFERRAL_MERGE_DUPLICATES,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -288,6 +294,7 @@ export const PERMISSION_CATALOG = [
   { key: K.LEADS_DISCARD,           label: 'Discard leads',                category: 'Leads', description: 'Discard a lead with a reason and explanation', sort: 11 },
   { key: K.LEADS_CHANGE_INTAKE_OWNER, label: 'Change intake owner',       category: 'Leads', description: 'Reassign the intake owner on an existing referral (writes a timeline event and notifies the new owner). Deny-by-default — grant only to named supervisors.', sort: 11.5 },
   { key: K.REFERRAL_DISCARD_ANY, label: 'Discard from any stage', category: 'Referrals', description: 'Send a referral or lead to Discarded Leads from any pipeline stage. Deny-by-default — grant only to named users.', sort: 15.5 },
+  { key: K.REFERRAL_MERGE_DUPLICATES, label: 'Merge duplicate charts', category: 'Referrals', description: 'Combine two early-stage CareStream duplicates into one referral (guided field choices, files/notes/insurance union). Deny-by-default.', sort: 15.6 },
   { key: K.INTAKE_EMR_INITIAL,      label: 'Complete initial EMR onboarding (ALF)', category: 'Leads', description: 'Stamp early HCHB chart creation during ALF Intake (does not advance stage; full EMR Onboarding still required later)', sort: 12 },
   { key: K.INTAKE_ADVANCE_WITHOUT_F2F, label: 'Advance to EMR without F2F / clinical', category: 'Leads', description: 'Push a referral from Intake straight to EMR Onboarding before F2F and clinical review. Both are completed after SOC; a 30-day paperwork clock starts when SOC is scheduled.', sort: 12.2 },
   { key: K.REFERRAL_CREATE,     label: 'Create new referrals (legacy)',    category: 'Referrals', description: 'Legacy alias for Enter new leads. Prefer “Enter new leads” for new grants.', sort: 12.5 },
@@ -431,6 +438,7 @@ export const DEFAULT_PRESETS = [
       K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL, K.INTAKE_ADVANCE_WITHOUT_F2F,
       K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
+      K.REFERRAL_MERGE_DUPLICATES,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
       K.CLINICAL_ELIGIBILITY,
       K.ROUTING_OPWDD,
@@ -466,6 +474,7 @@ export const DEFAULT_PRESETS = [
       K.LEADS_CREATE, K.REFERRAL_CREATE,
       K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
+      K.REFERRAL_MERGE_DUPLICATES,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW, K.CLINICAL_F2F, K.CLINICAL_ELIGIBILITY,
       K.TASK_VIEW, K.TASK_CREATE, K.TASK_COMPLETE, K.CALENDAR_VIEW,
