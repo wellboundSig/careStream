@@ -1,8 +1,7 @@
 /**
  * Mark post-SOC deferred documentation complete.
  * Default: F2F + clinical required.
- * Quiet override: "Mark complete anyway" → Are you sure?
- * Case stays on SOC/ROC Completed; only the deferred flag clears.
+ * Override: confirm, then clear the hold only. Case stays on SOC/ROC Completed.
  */
 import { useState } from 'react';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -14,12 +13,40 @@ import {
   daysUntilDocumentationDue,
 } from '../../utils/documentationDeferred.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
-import palette, { hexToRgba } from '../../utils/colors.js';
+import palette from '../../utils/colors.js';
 
 const CHECK_LABELS = {
   f2f: 'F2F / MD orders date logged',
   clinical: 'Clinical RN review completed',
 };
+
+function StatusCheck({ complete }) {
+  if (complete) {
+    return (
+      <span
+        style={{
+          width: 18, height: 18, borderRadius: 9, flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: palette.accentGreen.hex,
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+          <path d="M2.5 6.2l2.4 2.4 4.6-5.2" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        width: 18, height: 18, borderRadius: 9, flexShrink: 0,
+        boxSizing: 'border-box',
+        border: '1.5px solid #C4C0CC',
+        background: '#FFFFFF',
+      }}
+    />
+  );
+}
 
 /**
  * @param {{
@@ -85,37 +112,51 @@ export default function DocumentationCompleteAction({
       style={{
         marginTop: compact ? 0 : 4,
         marginBottom: compact ? 0 : 16,
-        padding: compact ? '10px 12px' : '12px 14px',
-        borderRadius: 8,
-        background: hexToRgba(palette.accentOrange.hex, 0.06),
+        padding: compact ? '10px 12px' : '12px 12px 12px',
+        borderRadius: 10,
+        background: '#F8EDE4',
       }}
     >
-      <p style={{
-        margin: 0,
-        fontSize: 12.5,
-        fontWeight: 700,
-        color: palette.accentOrange.hex,
-      }}>
-        Waiting for post-SOC documentation
-      </p>
-      <p style={{
-        margin: '4px 0 0',
-        fontSize: 11.5,
-        lineHeight: 1.4,
-        color: hexToRgba(palette.backgroundDark.hex, 0.55),
-      }}>
-        Mark complete when F2F and clinical are both done. Stays on Completed.
-        {referral.documentation_due_date && (
-          <>
-            {' '}Due {fmtCalendarDate(referral.documentation_due_date)}
-            {overdue ? (
-              <span style={{ color: palette.primaryMagenta.hex, fontWeight: 700 }}> · overdue</span>
-            ) : daysLeft != null ? (
-              <span> · {daysLeft} day{daysLeft === 1 ? '' : 's'} left</span>
-            ) : null}
-          </>
-        )}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
+          <path d="M7 4h7l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" stroke="#9A4E12" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M14 4v4h4" stroke="#9A4E12" strokeWidth="1.8" strokeLinejoin="round" />
+        </svg>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            margin: 0,
+            fontSize: 13,
+            fontWeight: 750,
+            color: '#9A4E12',
+            lineHeight: 1.3,
+          }}>
+            Post-SOC documentation
+          </p>
+          <p style={{
+            margin: '4px 0 0',
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            color: '#3A3545',
+          }}>
+            Finish F2F and clinical review.
+          </p>
+          {referral.documentation_due_date && (
+            <p style={{
+              margin: '6px 0 0',
+              fontSize: 12.5,
+              fontWeight: 650,
+              color: overdue ? palette.primaryMagenta.hex : '#5A5466',
+            }}>
+              Due {fmtCalendarDate(referral.documentation_due_date)}
+              {overdue
+                ? ' · overdue'
+                : daysLeft != null
+                  ? ` · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`
+                  : ''}
+            </p>
+          )}
+        </div>
+      </div>
 
       <ul style={{
         margin: '10px 0 0',
@@ -123,63 +164,55 @@ export default function DocumentationCompleteAction({
         listStyle: 'none',
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
+        gap: 4,
       }}>
         {[
           { key: 'f2f', done: checklist.f2f, onClick: onOpenF2F },
           { key: 'clinical', done: checklist.clinical, onClick: onOpenClinical },
-        ].map((item) => (
-          <li key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span
-              aria-hidden
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                flexShrink: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: item.done ? palette.accentGreen.hex : 'transparent',
-                border: item.done
-                  ? 'none'
-                  : `1.5px solid ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
-                color: palette.backgroundLight.hex,
-                fontSize: 10,
-                fontWeight: 700,
-              }}
-            >
-              {item.done ? '✓' : ''}
-            </span>
-            <span style={{
-              flex: 1,
-              fontSize: 12,
-              fontWeight: item.done ? 550 : 650,
-              color: item.done
-                ? hexToRgba(palette.backgroundDark.hex, 0.55)
-                : palette.backgroundDark.hex,
-            }}>
-              {CHECK_LABELS[item.key]}
-            </span>
-            {!item.done && item.onClick && (
+        ].map((item) => {
+          const clickable = !item.done && !!item.onClick;
+          return (
+            <li key={item.key}>
               <button
                 type="button"
-                onClick={item.onClick}
+                onClick={clickable ? item.onClick : undefined}
+                disabled={!clickable}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  padding: '7px 8px',
+                  borderRadius: 8,
                   border: 'none',
-                  background: 'none',
-                  padding: 0,
-                  fontSize: 11,
-                  fontWeight: 650,
-                  color: palette.primaryDeepPlum.hex,
-                  cursor: 'pointer',
+                  background: clickable ? '#FFFFFF' : 'transparent',
+                  textAlign: 'left',
+                  cursor: clickable ? 'pointer' : 'default',
+                  fontFamily: 'inherit',
+                  transition: 'background 0.12s',
                 }}
+                onMouseEnter={(e) => { if (clickable) e.currentTarget.style.background = '#F3E4D8'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = clickable ? '#FFFFFF' : 'transparent'; }}
               >
-                Open
+                <StatusCheck complete={item.done} />
+                <span style={{
+                  flex: 1,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: palette.backgroundDark.hex,
+                  lineHeight: 1.3,
+                }}>
+                  {CHECK_LABELS[item.key]}
+                </span>
+                {clickable && (
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, color: '#8A8494' }}>
+                    <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </button>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
 
       <button
@@ -193,16 +226,17 @@ export default function DocumentationCompleteAction({
             : 'Both F2F and clinical review must be done first.'
         }
         style={{
-          marginTop: 12,
+          marginTop: 10,
           width: '100%',
-          height: 34,
-          borderRadius: 7,
+          height: 36,
+          borderRadius: 8,
           border: 'none',
-          fontSize: 12.5,
-          fontWeight: 650,
+          fontSize: 13,
+          fontWeight: 700,
+          fontFamily: 'inherit',
           cursor: checklist.canClear && !busy ? 'pointer' : 'not-allowed',
-          background: checklist.canClear ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08),
-          color: checklist.canClear ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+          background: checklist.canClear ? palette.accentGreen.hex : '#E8E6ED',
+          color: checklist.canClear ? palette.backgroundLight.hex : '#5A5466',
           opacity: busy ? 0.7 : 1,
         }}
       >
@@ -210,7 +244,7 @@ export default function DocumentationCompleteAction({
       </button>
 
       {!checklist.canClear && (
-        <div style={{ marginTop: 10, textAlign: 'center' }}>
+        <div style={{ marginTop: 8 }}>
           {!confirmAnyway ? (
             <button
               type="button"
@@ -218,80 +252,76 @@ export default function DocumentationCompleteAction({
               disabled={busy}
               onClick={() => { setError(''); setConfirmAnyway(true); }}
               style={{
+                width: '100%',
                 border: 'none',
-                background: 'none',
-                padding: 0,
-                fontSize: 11,
-                fontWeight: 500,
-                color: hexToRgba(palette.backgroundDark.hex, 0.38),
+                background: 'transparent',
+                padding: '8px 4px',
+                fontSize: 12.5,
+                fontWeight: 650,
+                color: '#5A5466',
                 cursor: busy ? 'not-allowed' : 'pointer',
-                textDecoration: 'underline',
-                textUnderlineOffset: 2,
+                fontFamily: 'inherit',
               }}
             >
-              Mark complete anyway
+              Complete without F2F and clinical
             </button>
           ) : (
             <div
               data-testid="mark-docs-anyway-confirm"
               style={{
-                padding: '8px 10px',
-                borderRadius: 7,
-                background: hexToRgba(palette.backgroundDark.hex, 0.04),
-                textAlign: 'left',
+                padding: '10px 10px',
+                borderRadius: 8,
+                background: '#FFFFFF',
               }}
             >
               <p style={{
                 margin: 0,
-                fontSize: 12,
-                fontWeight: 650,
-                color: palette.backgroundDark.hex,
+                fontSize: 12.5,
+                lineHeight: 1.45,
+                color: '#3A3545',
               }}>
-                Are you sure?
+                F2F or clinical review is still open. This only clears the documentation hold.
               </p>
-              <p style={{
-                margin: '4px 0 0',
-                fontSize: 11.5,
-                lineHeight: 1.4,
-                color: hexToRgba(palette.backgroundDark.hex, 0.55),
-              }}>
-                F2F and/or clinical are still open. This clears the docs hold only.
-              </p>
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setConfirmAnyway(false)}
-                  style={{
-                    border: 'none',
-                    background: 'none',
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    fontWeight: 550,
-                    color: hexToRgba(palette.backgroundDark.hex, 0.5),
-                    cursor: busy ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                 <button
                   type="button"
                   data-testid="mark-docs-anyway-confirm-yes"
                   disabled={busy}
                   onClick={() => runClear({ force: true })}
                   style={{
+                    flex: 1,
                     border: 'none',
-                    borderRadius: 6,
-                    padding: '5px 10px',
-                    fontSize: 12,
+                    borderRadius: 7,
+                    padding: '8px 10px',
+                    fontSize: 12.5,
                     fontWeight: 650,
-                    background: hexToRgba(palette.backgroundDark.hex, 0.12),
-                    color: palette.backgroundDark.hex,
+                    background: '#E8E6ED',
+                    color: '#3A3545',
                     cursor: busy ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
                     opacity: busy ? 0.7 : 1,
                   }}
                 >
-                  {busy ? 'Clearing…' : 'Yes, clear hold'}
+                  {busy ? 'Clearing…' : 'Clear hold'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmAnyway(false)}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: 7,
+                    padding: '8px 10px',
+                    fontSize: 12.5,
+                    fontWeight: 650,
+                    background: '#E8E6ED',
+                    color: '#3A3545',
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
             </div>
@@ -300,7 +330,7 @@ export default function DocumentationCompleteAction({
       )}
 
       {error && (
-        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: palette.primaryMagenta.hex }}>
+        <p style={{ margin: '8px 0 0', fontSize: 12.5, color: palette.primaryMagenta.hex }}>
           {error}
         </p>
       )}

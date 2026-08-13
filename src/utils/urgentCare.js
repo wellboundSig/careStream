@@ -6,41 +6,84 @@
 //   2. Emit an ActivityLog entry tagged `Urgent Care Flagged` /
 //      `Urgent Care Cleared` so a future Worker can subscribe to the audit
 //      stream and notify clinical RNs by email.
+//
+// `urgent_care_type` is a comma-separated text field: wound, insulin, injection.
+// Legacy single values (`wound` / `insulin` / `injection` / `both`) still parse.
+// `both` (from before Injection existed) reads as wound + insulin.
 
 import { updateReferralOptimistic } from '../store/mutations.js';
 import { recordActivity } from '../api/activityLog.js';
 
-/** @typedef {'wound'|'insulin'|'injection'|'both'|''|null|undefined} UrgentCareType */
+/** @typedef {'wound'|'insulin'|'injection'} UrgentCareType */
 
 export const URGENT_CARE_TYPE_OPTIONS = [
   { value: 'wound', label: 'Wound care' },
   { value: 'insulin', label: 'Insulin' },
   { value: 'injection', label: 'Injection' },
-  { value: 'both', label: 'Both' },
 ];
 
-const URGENT_CARE_TYPE_VALUES = new Set(URGENT_CARE_TYPE_OPTIONS.map((o) => o.value));
-
+const KNOWN_TYPES = new Set(URGENT_CARE_TYPE_OPTIONS.map((o) => o.value));
+const TYPE_ORDER = URGENT_CARE_TYPE_OPTIONS.map((o) => o.value);
 const TYPE_LABELS = Object.fromEntries(
   URGENT_CARE_TYPE_OPTIONS.map((o) => [o.value, o.label]),
 );
 
+function normalizeUrgentCareTypes(list) {
+  const set = new Set();
+  for (const item of list || []) {
+    const t = String(item || '').trim().toLowerCase();
+    if (t === 'both') {
+      set.add('wound');
+      set.add('insulin');
+    } else if (KNOWN_TYPES.has(t)) {
+      set.add(t);
+    }
+  }
+  return TYPE_ORDER.filter((v) => set.has(v));
+}
+
 /**
- * @param {UrgentCareType} type
+ * Parse a stored `urgent_care_type` value into an ordered list of types.
+ * @param {string|string[]|null|undefined} raw
+ * @returns {UrgentCareType[]}
+ */
+export function parseUrgentCareTypes(raw) {
+  if (Array.isArray(raw)) return normalizeUrgentCareTypes(raw);
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  if (s === 'both') return ['wound', 'insulin'];
+  return normalizeUrgentCareTypes(s.split(/[,\s]+/));
+}
+
+export function serializeUrgentCareTypes(types) {
+  return normalizeUrgentCareTypes(types).join(',');
+}
+
+/**
+ * @param {UrgentCareType|UrgentCareType[]|string|null|undefined} type
  * @returns {string}
  */
 export function urgentCareTypeLabel(type) {
-  if (!type) return '';
-  return TYPE_LABELS[type] || String(type);
+  const types = Array.isArray(type) ? normalizeUrgentCareTypes(type) : parseUrgentCareTypes(type);
+  return types.map((t) => TYPE_LABELS[t]).filter(Boolean).join(', ');
 }
 
 /**
  * @param {object|null|undefined} referral
- * @returns {'wound'|'insulin'|'injection'|'both'|''}
+ * @returns {UrgentCareType[]}
+ */
+export function getUrgentCareTypes(referral) {
+  return parseUrgentCareTypes(referral?.urgent_care_type);
+}
+
+/**
+ * Serialized types for the referral (`wound,insulin`), or '' if none.
+ * Prefer getUrgentCareTypes when you need the list.
+ * @param {object|null|undefined} referral
+ * @returns {string}
  */
 export function getUrgentCareType(referral) {
-  const t = referral?.urgent_care_type;
-  return URGENT_CARE_TYPE_VALUES.has(t) ? t : '';
+  return serializeUrgentCareTypes(getUrgentCareTypes(referral));
 }
 
 /**
@@ -52,7 +95,7 @@ export function getUrgentCareType(referral) {
  * @param {string} args.actorUserId       usr_xxx — the current user.
  * @param {string} [args.note]            Optional context, persisted to
  *                                        `urgent_care_note` when setting.
- * @param {UrgentCareType} [args.type]    wound | insulin | injection | both when marking.
+ * @param {UrgentCareType|UrgentCareType[]|string} [args.type]
  * @returns {Promise<void>}
  */
 export async function setUrgentCare({ referral, next, actorUserId, note, type }) {
@@ -67,7 +110,7 @@ export async function setUrgentCare({ referral, next, actorUserId, note, type })
     if (actorUserId) updates.urgent_care_marked_by_id = actorUserId;
     if (note && note.trim()) updates.urgent_care_note = note.trim();
     if (type !== undefined) {
-      updates.urgent_care_type = type || '';
+      updates.urgent_care_type = serializeUrgentCareTypes(type);
     }
   } else {
     // Leave the audit columns intact so we keep history of who/when last
@@ -78,39 +121,38 @@ export async function setUrgentCare({ referral, next, actorUserId, note, type })
 
   await updateReferralOptimistic(referral._id, updates);
 
-  // Best-effort audit. The Worker / email subscription will read these
-  // entries in a follow-up — for now the row is enough.
-  // TODO: email RNs on the patient's care team when next=true (Worker hook).
-  const typeLabel = type ? urgentCareTypeLabel(type) : '';
+  const typeLabel = type !== undefined ? urgentCareTypeLabel(type) : '';
   recordActivity({
     actorUserId,
     action: next ? 'Urgent Care Flagged' : 'Urgent Care Cleared',
     patientId: referral.patient_id,
     referralId: referral.id,
     detail: next
-      ? `Patient flagged urgent care${typeLabel ? ` (${typeLabel})` : ''}${note?.trim() ? ` — ${note.trim()}` : ''}`
+      ? `Patient flagged urgent care${typeLabel ? ` (${typeLabel})` : ''}${note?.trim() ? `. ${note.trim()}` : ''}`
       : 'Urgent care flag cleared',
     metadata: {
       fromStage: referral.current_stage || null,
       note: note?.trim() || null,
-      urgentCareType: type || null,
+      urgentCareType: type !== undefined ? serializeUrgentCareTypes(type) || null : null,
     },
   }).catch(() => {});
 }
 
 /**
- * Set / clear the urgent-care subtype without requiring a full clear.
- * Selecting a type also turns the urgent flag on; blank clears the subtype only.
+ * Set the urgent-care types without requiring a full clear.
+ * Selecting any type also turns the urgent flag on; an empty list clears
+ * the subtype only.
  *
  * @param {object} args
  * @param {object} args.referral
- * @param {UrgentCareType} args.type
+ * @param {UrgentCareType|UrgentCareType[]|string} [args.type]
+ * @param {UrgentCareType[]} [args.types]
  * @param {string} [args.actorUserId]
  * @returns {Promise<void>}
  */
-export async function setUrgentCareType({ referral, type, actorUserId }) {
+export async function setUrgentCareType({ referral, type, types, actorUserId }) {
   if (!referral?._id) throw new Error('setUrgentCareType: missing referral record id');
-  const nextType = URGENT_CARE_TYPE_VALUES.has(type) ? type : '';
+  const nextType = serializeUrgentCareTypes(types !== undefined ? types : type);
   const updates = { urgent_care_type: nextType };
 
   if (nextType && !isUrgentCare(referral)) {

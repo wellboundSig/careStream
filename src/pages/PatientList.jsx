@@ -619,8 +619,8 @@ export default function PatientList() {
                         fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                        <p style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>{name}</p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                        <p title={name} style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{name}</p>
                         {ref?.current_stage && <StageBadge stage={ref.current_stage} size="small" />}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
@@ -910,6 +910,21 @@ export default function PatientList() {
   );
 }
 
+const ROW_H = 46;
+const TD = {
+  padding: '0 14px',
+  height: ROW_H,
+  verticalAlign: 'middle',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+};
+const ELLIPSIS = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  display: 'block',
+};
+
 // ── Patient row ────────────────────────────────────────────────────────────────
 function PatientRow({ patient, referral, days, totalDays, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
@@ -919,22 +934,30 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
     switch (col.key) {
       case 'patient': {
         const review = getReviewInProgress ? getReviewInProgress(referral) : null;
+        const fullName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
         return (
-          <td key="patient" style={{ padding: '11px 14px' }}>
-            <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{patient.first_name} {patient.last_name}</p>
-            {review && <ClinicalReviewByline name={review.starterName} />}
+          <td key="patient" style={{ ...TD, maxWidth: 280 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span
+                title={fullName}
+                style={{ ...ELLIPSIS, fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, minWidth: 0, flex: '1 1 auto' }}
+              >
+                {fullName}
+              </span>
+              {review && <ClinicalReviewByline name={review.starterName} compact />}
+            </div>
           </td>
         );
       }
       case 'division':
-        return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={patient.division} size="small" /></td>;
+        return <td key="division" style={TD}><DivisionBadge division={patient.division} size="small" /></td>;
       case 'episode_type':
         return (
-          <td key="episode_type" style={{ padding: '11px 14px' }}>
+          <td key="episode_type" style={TD}>
             {referral ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
                 <EpisodeTypeBadge referral={referral} size="tiny" />
-                <span style={{ fontSize: 12, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.62), whiteSpace: 'nowrap' }}>
+                <span style={{ ...ELLIPSIS, fontSize: 12, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.62) }}>
                   {episodeTypeLongLabel(referral)}
                 </span>
               </span>
@@ -945,10 +968,10 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
         );
       case 'licence': {
         const label = resolveEntity(referral?.entity_id);
-        if (!referral?.entity_id || !label || label === '—') return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        if (!referral?.entity_id || !label || label === '—') return <td key="licence" style={{ ...TD, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
         const isWBII = /WBII|WELLBOUND II/i.test(label);
         return (
-          <td key="licence" style={{ padding: '11px 14px' }}>
+          <td key="licence" style={TD}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
               fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
@@ -962,22 +985,22 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       }
       case 'stage':
         return (
-          <td key="stage" style={{ padding: '11px 14px' }}>
+          <td key="stage" style={TD}>
             {referral?.current_stage ? <StageBadge stage={referral.current_stage} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
           </td>
         );
       case 'f2f':
-        return <td key="f2f" style={{ padding: '11px 14px' }}><F2FCell referral={referral} /></td>;
+        return <td key="f2f" style={TD}><F2FCell referral={referral} /></td>;
       case 'days_in_stage': {
         if (days === null || days === undefined) {
-          return <td key="days_in_stage" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+          return <td key="days_in_stage" style={{ ...TD, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
         }
         const stageName = referral?.current_stage || 'stage';
         const color = days > 14 ? palette.primaryMagenta.hex
           : days > 7 ? palette.accentOrange.hex
           : hexToRgba(palette.backgroundDark.hex, 0.7);
         return (
-          <td key="days_in_stage" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+          <td key="days_in_stage" style={TD}>
             <span
               title={`${days} day${days === 1 ? '' : 's'} in ${stageName} stage — resets on every stage change`}
               style={{ fontSize: 12, color, fontWeight: days > 7 ? 650 : 500 }}
@@ -992,10 +1015,10 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       }
       case 'days_in_pipeline': {
         if (totalDays === null || totalDays === undefined) {
-          return <td key="days_in_pipeline" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+          return <td key="days_in_pipeline" style={{ ...TD, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
         }
         return (
-          <td key="days_in_pipeline" style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+          <td key="days_in_pipeline" style={TD}>
             <span
               title={`${totalDays} day${totalDays === 1 ? '' : 's'} in pipeline — since referral was created`}
               style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), fontWeight: 500 }}
@@ -1010,50 +1033,60 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       }
       case 'marketer':
         return (
-          <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
+          <td key="marketer" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 180 }}>
+            <span title={referral?.marketer_id ? resolveMarketer(referral.marketer_id) : ''} style={ELLIPSIS}>
+              {referral?.marketer_id ? resolveMarketer(referral.marketer_id) : '—'}
+            </span>
           </td>
         );
       case 'insurance':
         return (
-          <td key="insurance" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {patient.insurance_plan || '—'}
+          <td key="insurance" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>
+            <span title={patient.insurance_plan || ''} style={ELLIPSIS}>
+              {patient.insurance_plan || '—'}
+            </span>
           </td>
         );
       case 'referral_date':
         return (
-          <td key="referral_date" style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+          <td key="referral_date" style={{ ...TD, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
             {referral?.referral_date ? fmtDate(referral.referral_date) : '—'}
           </td>
         );
       case 'referral_source':
         return (
-          <td key="referral_source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {referral?.referral_source_id ? resolveSource(referral.referral_source_id) : '—'}
+          <td key="referral_source" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>
+            <span title={referral?.referral_source_id ? resolveSource(referral.referral_source_id) : ''} style={ELLIPSIS}>
+              {referral?.referral_source_id ? resolveSource(referral.referral_source_id) : '—'}
+            </span>
           </td>
         );
       case 'facility':
         return (
-          <td key="facility" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {referral?.facility_id ? resolveFacility(referral.facility_id) : '—'}
+          <td key="facility" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>
+            <span title={referral?.facility_id ? resolveFacility(referral.facility_id) : ''} style={ELLIPSIS}>
+              {referral?.facility_id ? resolveFacility(referral.facility_id) : '—'}
+            </span>
           </td>
         );
       case 'physician':
         return (
-          <td key="physician" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
-            {referral?.physician_id ? resolvePhysician(referral.physician_id) : '—'}
+          <td key="physician" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>
+            <span title={referral?.physician_id ? resolvePhysician(referral.physician_id) : ''} style={ELLIPSIS}>
+              {referral?.physician_id ? resolvePhysician(referral.physician_id) : '—'}
+            </span>
           </td>
         );
       case 'post_soc_docs': {
         const status = documentationFilterStatus(referral);
         if (status === 'none' || status === 'cleared') {
-          return <td key="post_soc_docs" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+          return <td key="post_soc_docs" style={{ ...TD, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
         }
         const daysLeft = daysUntilDocumentationDue(referral);
         const label = status === 'overdue' ? 'Overdue' : status === 'waiting_docs' ? 'Need F2F' : 'Need clinical';
         const color = status === 'overdue' ? palette.primaryMagenta.hex : palette.accentOrange.hex;
         return (
-          <td key="post_soc_docs" style={{ padding: '11px 14px' }} title={referral?.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : 'Deferred docs'}>
+          <td key="post_soc_docs" style={TD} title={referral?.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : 'Deferred docs'}>
             <span style={{
               fontSize: 10.5, fontWeight: 750, color, padding: '2px 7px', borderRadius: 20,
               background: hexToRgba(color, 0.12), border: `1px solid ${hexToRgba(color, 0.3)}`,
@@ -1075,7 +1108,7 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       title="Double-click to open · Right-click for options"
-      style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent', cursor: 'default', transition: 'background 0.1s' }}
+      style={{ height: ROW_H, borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent', cursor: 'default', transition: 'background 0.1s' }}
     >
       {activeColumns.map(renderCell)}
     </tr>

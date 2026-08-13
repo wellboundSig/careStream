@@ -21,7 +21,7 @@ import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
-import palette, { hexToRgba } from '../../../utils/colors.js';
+import palette from '../../../utils/colors.js';
 import { todayCalendarDate } from '../../../utils/dateFormat.js';
 
 function isTrue(v) { return v === true || v === 'true'; }
@@ -118,23 +118,23 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
   }
 
   return (
-    <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}` }}>
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #E6E4EB' }}>
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: readOnly ? 'default' : 'pointer' }}>
         <input
           type="checkbox"
           checked={recent}
           disabled={readOnly}
           onChange={handleToggle}
-          style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13, flexShrink: 0, marginTop: 1 }}
+          style={{ accentColor: palette.primaryMagenta.hex, width: 14, height: 14, flexShrink: 0, marginTop: 1 }}
         />
-        <span style={{ fontSize: 12, fontWeight: 600, color: palette.backgroundDark.hex, lineHeight: 1.4 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: palette.backgroundDark.hex, lineHeight: 1.4 }}>
           Recent hospitalization within the last 14 days?
         </span>
       </label>
 
       {recent && (
-        <div style={{ marginTop: 8, paddingLeft: 21 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>Date of hospitalization</p>
+        <div style={{ marginTop: 8, paddingLeft: 22 }}>
+          <p style={{ fontSize: 12, fontWeight: 650, color: '#4A4458', marginBottom: 4 }}>Date of hospitalization</p>
           <input
             type="date"
             value={hospDate}
@@ -144,7 +144,7 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
             style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: `1px solid ${hospDate ? palette.primaryMagenta.hex : 'var(--color-border)'}`, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }}
           />
 
-          <p style={{ fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>Discharge papers</p>
+          <p style={{ fontSize: 12, fontWeight: 650, color: '#4A4458', marginBottom: 4 }}>Discharge papers</p>
           {dischargeFiles.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
               {dischargeFiles.map((f) => {
@@ -166,9 +166,9 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
               <input ref={fileInputRef} type="file" onChange={handleUpload} style={{ display: 'none' }} id={`discharge-upload-${recordId}`} />
               <label
                 htmlFor={`discharge-upload-${recordId}`}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 6, cursor: uploading ? 'wait' : 'pointer', fontSize: 11.5, fontWeight: 650, background: hexToRgba(palette.highlightYellow.hex, 0.15), color: '#7A5F00', border: `1px solid ${hexToRgba(palette.highlightYellow.hex, 0.35)}` }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 11px', borderRadius: 7, cursor: uploading ? 'wait' : 'pointer', fontSize: 12, fontWeight: 650, background: '#F5E9C8', color: '#6B5200', border: 'none' }}
               >
-                {uploading ? 'Uploading…' : '↑ Upload discharge papers'}
+                {uploading ? 'Uploading…' : 'Upload discharge papers'}
               </label>
             </>
           )}

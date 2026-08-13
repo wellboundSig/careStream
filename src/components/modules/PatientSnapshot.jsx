@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import palette, { hexToRgba } from '../../utils/colors.js';
+import { useState, useEffect } from 'react';
+import palette from '../../utils/colors.js';
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
 import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
@@ -7,10 +7,10 @@ import {
   setUrgentCare,
   setUrgentCareType,
   isUrgentCare,
-  getUrgentCareType,
+  getUrgentCareTypes,
   urgentCareTypeLabel,
-  URGENT_CARE_TYPE_OPTIONS,
 } from '../../utils/urgentCare.js';
+import UrgentCareTypePicker from '../common/UrgentCareTypePicker.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { ageFromDob, fmtCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
@@ -82,50 +82,103 @@ export function computeSnapshotFlags(patient, referral, triageData /*, _legacyIn
   return { demographics, triage, f2f, f2fDate, insurance, initialEmr, initialEmrDate };
 }
 
-// Each flag row knows which patient-drawer tab to jump to when clicked. The
-// snapshot doubles as a quick navigation surface — clicking a row opens the
-// corresponding tab in the patient drawer.
-const FLAGS_META = [
-  { key: 'demographics', label: 'Demographics',      tab: 'demographics' },
-  { key: 'triage',       label: 'Triage',            tab: 'triage'       },
-  { key: 'f2f',          label: 'F2F Received',      tab: 'f2f'          },
-  // Insurance Details lives in Demographics — clicking jumps there, not to
-  // the Eligibility tab (eligibility verification is a separate workflow,
-  // and the readiness dot tracks data capture only).
-  { key: 'insurance',    label: 'Insurance Details', tab: 'demographics' },
-  // ALF-only companion milestone (Intake early HCHB chart). Hidden for SN.
-  { key: 'initialEmr',   label: 'Initial EMR',       tab: null, alfOnly: true },
-];
-
-function StatusDot({ complete }) {
-  const size = 8;
+function StatusCheck({ complete }) {
+  if (complete) {
+    return (
+      <span
+        style={{
+          width: 18, height: 18, borderRadius: 9, flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: palette.accentGreen.hex,
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+          <path d="M2.5 6.2l2.4 2.4 4.6-5.2" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
   return (
     <span
       style={{
-        display: 'inline-block',
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        flexShrink: 0,
-        ...(complete
-          ? { background: palette.accentGreen.hex }
-          : {
-              background: 'transparent',
-              border: `1.5px solid ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
-            }),
+        width: 18, height: 18, borderRadius: 9, flexShrink: 0,
+        boxSizing: 'border-box',
+        border: '1.5px solid #C4C0CC',
+        background: '#FFFFFF',
       }}
     />
   );
 }
 
+function FlagIcon({ name, color }) {
+  const c = color || '#5A5466';
+  const common = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', style: { flexShrink: 0 } };
+  if (name === 'person') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="8" r="3.2" stroke={c} strokeWidth="1.8" />
+        <path d="M5.5 19c.8-3.2 3.3-5 6.5-5s5.7 1.8 6.5 5" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (name === 'clipboard') {
+    return (
+      <svg {...common}>
+        <rect x="6" y="5" width="12" height="15" rx="2" stroke={c} strokeWidth="1.8" />
+        <path d="M9 5.2V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5v.7" stroke={c} strokeWidth="1.8" />
+        <path d="M9 11h6M9 15h4" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (name === 'doc') {
+    return (
+      <svg {...common}>
+        <path d="M7 4h7l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" stroke={c} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M14 4v4h4" stroke={c} strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (name === 'card') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="6" width="18" height="12" rx="2" stroke={c} strokeWidth="1.8" />
+        <path d="M3 10h18" stroke={c} strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (name === 'monitor') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="4" width="18" height="12" rx="2" stroke={c} strokeWidth="1.8" />
+        <path d="M8 20h8M12 16v4" stroke={c} strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return null;
+}
+
+const FLAGS_META = [
+  { key: 'demographics', label: 'Demographics',      tab: 'demographics', icon: 'person' },
+  { key: 'triage',       label: 'Triage',            tab: 'triage',       icon: 'clipboard' },
+  { key: 'f2f',          label: 'F2F Received',      tab: 'f2f',          icon: 'doc' },
+  { key: 'insurance',    label: 'Insurance Details', tab: 'demographics', icon: 'card' },
+  { key: 'initialEmr',   label: 'Initial EMR',       tab: null, alfOnly: true, icon: 'monitor' },
+];
+
 export default function PatientSnapshot({ patient, referral, triageData, insuranceChecks, onOpenTab }) {
   const flags = computeSnapshotFlags(patient, referral, triageData, insuranceChecks);
   const { appUserId } = useCurrentAppUser();
   const urgent = isUrgentCare(referral);
-  const urgentType = getUrgentCareType(referral);
+  const urgentTypes = getUrgentCareTypes(referral);
   const hospDate = recentHospitalizationDate(referral);
   const [busy, setBusy] = useState(false);
   const [pickType, setPickType] = useState(false);
+  const [draftTypes, setDraftTypes] = useState([]);
+
+  useEffect(() => {
+    setPickType(false);
+    setDraftTypes([]);
+  }, [referral?._id]);
 
   // We intentionally do NOT gate the toggle on a permission check at the UI
   // layer. The user explicitly asked for the urgent care control to always be
@@ -133,12 +186,13 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   // optimistically updates the store and reverts on rejection. Permission
   // enforcement happens server-side (or via Worker policies) — this UI is the
   // surface, not the guard.
-  async function markUrgent(type) {
-    if (!referral?._id || busy) return;
+  async function markUrgent(types) {
+    if (!referral?._id || busy || !types?.length) return;
     setBusy(true);
     try {
-      await setUrgentCare({ referral, next: true, actorUserId: appUserId, type });
+      await setUrgentCare({ referral, next: true, actorUserId: appUserId, type: types });
       setPickType(false);
+      setDraftTypes([]);
     } catch {
       // Optimistic mutation reverts on failure; nothing more to do.
     } finally {
@@ -152,6 +206,7 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
     try {
       await setUrgentCare({ referral, next: false, actorUserId: appUserId });
       setPickType(false);
+      setDraftTypes([]);
     } catch {
       // no-op
     } finally {
@@ -159,11 +214,11 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
     }
   }
 
-  async function changeType(type) {
+  async function changeTypes(types) {
     if (!referral?._id || busy) return;
     setBusy(true);
     try {
-      await setUrgentCareType({ referral, type, actorUserId: appUserId });
+      await setUrgentCareType({ referral, types, actorUserId: appUserId });
     } catch {
       // no-op
     } finally {
@@ -172,91 +227,82 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {/* Urgent care — pick subtype when marking; editable while flagged. */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div
         style={{
-          marginBottom: 2,
-          borderRadius: 7,
-          background: urgent ? hexToRgba(palette.primaryMagenta.hex, 0.1) : 'transparent',
+          marginBottom: 4,
+          borderRadius: 8,
+          background: urgent ? '#F8E8EF' : 'transparent',
           opacity: busy ? 0.6 : 1,
         }}
       >
         {urgent ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '5px 8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 8px' }}>
             <button
               type="button"
               onClick={clearUrgent}
               disabled={busy || !referral?._id}
-              title="Click to clear the urgent care flag"
+              title="Clear urgent care"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 border: 'none', background: 'transparent', padding: 0,
                 textAlign: 'left', cursor: busy ? 'wait' : 'pointer',
                 color: palette.primaryMagenta.hex, fontFamily: 'inherit',
-                fontWeight: 650, fontSize: 11.5,
+                fontWeight: 700, fontSize: 12.5,
               }}
             >
-              <UrgentCareIcon size={13} />
+              <UrgentCareIcon size={15} />
               <span>
                 Urgent care
-                {urgentType ? ` · ${urgentCareTypeLabel(urgentType)}` : ''}
+                {urgentTypes.length ? ` · ${urgentCareTypeLabel(urgentTypes)}` : ''}
               </span>
             </button>
-            <select
-              value={urgentType}
+            <UrgentCareTypePicker
+              types={urgentTypes}
               disabled={busy || !referral?._id}
-              onChange={(e) => changeType(e.target.value)}
-              title="Wound care, Insulin, Injection, or Both"
-              style={{
-                fontSize: 11.5, fontFamily: 'inherit', padding: '3px 6px',
-                borderRadius: 6, border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.25)}`,
-                background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
-                cursor: busy ? 'wait' : 'pointer',
-              }}
-            >
-              <option value="">Type…</option>
-              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              onChange={changeTypes}
+            />
           </div>
         ) : pickType ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 4px' }}>
             <div style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-              textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4),
-              padding: '2px 2px 4px',
+              fontSize: 11, fontWeight: 750, letterSpacing: '0.04em',
+              textTransform: 'uppercase', color: '#4A4458',
+              padding: '4px 6px 6px',
             }}>
               Mark urgent care
             </div>
-            {URGENT_CARE_TYPE_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                disabled={busy || !referral?._id}
-                onClick={() => markUrgent(o.value)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 6px', borderRadius: 6, border: 'none',
-                  background: 'transparent', textAlign: 'left',
-                  cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
-                  fontSize: 11.5, fontWeight: 600,
-                  color: hexToRgba(palette.backgroundDark.hex, 0.7),
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.1); }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <UrgentCareIcon size={12} muted />
-                {o.label}
-              </button>
-            ))}
+            <UrgentCareTypePicker
+              types={draftTypes}
+              disabled={busy || !referral?._id}
+              onChange={setDraftTypes}
+            />
             <button
               type="button"
-              onClick={() => setPickType(false)}
+              disabled={busy || !referral?._id || draftTypes.length === 0}
+              onClick={() => markUrgent(draftTypes)}
               style={{
-                border: 'none', background: 'transparent', padding: '4px 6px',
-                fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4),
+                marginTop: 6,
+                width: '100%',
+                padding: '8px',
+                borderRadius: 7,
+                border: 'none',
+                background: draftTypes.length ? palette.primaryMagenta.hex : '#E8E6ED',
+                color: draftTypes.length ? '#FFFFFF' : '#8A8494',
+                fontSize: 12.5,
+                fontWeight: 700,
+                fontFamily: 'inherit',
+                cursor: draftTypes.length && !busy ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPickType(false); setDraftTypes([]); }}
+              style={{
+                border: 'none', background: 'transparent', padding: '6px 8px',
+                fontSize: 12, fontWeight: 600, color: '#5A5466',
                 cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
               }}
             >
@@ -266,75 +312,67 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
         ) : (
           <button
             type="button"
-            onClick={() => setPickType(true)}
+            onClick={() => { setDraftTypes([]); setPickType(true); }}
             disabled={busy || !referral?._id}
-            title="Click to flag this patient for urgent care"
+            title="Flag this patient for urgent care"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              padding: '5px 8px',
-              borderRadius: 7,
+              padding: '8px 8px',
+              borderRadius: 8,
               border: 'none',
               textAlign: 'left',
               cursor: busy ? 'wait' : 'pointer',
-              background: 'transparent',
-              color: hexToRgba(palette.backgroundDark.hex, 0.5),
+              background: '#EEECEF',
+              color: '#3A3545',
               fontFamily: 'inherit',
-              fontWeight: 550,
-              fontSize: 11.5,
+              fontWeight: 650,
+              fontSize: 12.5,
               width: '100%',
+              transition: 'background 0.12s',
             }}
-            onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05); }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = '#E4E1E8'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#EEECEF'; }}
           >
-            <UrgentCareIcon size={13} muted />
+            <UrgentCareIcon size={15} muted />
             <span>Mark urgent care</span>
           </button>
         )}
       </div>
 
-      {/* Recent hospitalization indicator — shown when the cursory review
-          flagged a hospitalization within the last 14 days. Informational
-          (not clickable); opens the F2F tab where the review lives. */}
       {hospDate && (
         <button
           type="button"
           onClick={() => onOpenTab?.('f2f')}
-          title="Recent hospitalization — see Document Review (F2F tab)"
+          title="Open F2F document review"
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '5px 8px', marginBottom: 2, borderRadius: 7, border: 'none',
+            padding: '8px', marginBottom: 4, borderRadius: 8, border: 'none',
             textAlign: 'left', cursor: onOpenTab ? 'pointer' : 'default',
-            background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+            background: '#F8E8EF',
             color: palette.primaryMagenta.hex,
-            fontFamily: 'inherit', fontWeight: 650, fontSize: 11.5,
+            fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.16); }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.1); }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#F3D7E3'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#F8E8EF'; }}
         >
-          <HospitalIcon size={13} color={palette.primaryMagenta.hex} />
+          <HospitalIcon size={15} color={palette.primaryMagenta.hex} />
           <span>Hospitalized {hospDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         </button>
       )}
 
-      {/* Snapshot flag rows — each is a button that opens the matching tab
-          in the patient drawer (when an onOpenTab callback is wired). */}
-      {FLAGS_META.filter((m) => !m.alfOnly || referral?.division === 'ALF').map(({ key, label, tab }) => {
+      {FLAGS_META.filter((m) => !m.alfOnly || referral?.division === 'ALF').map(({ key, label, tab, icon }) => {
         const clickable = !!onOpenTab && !!tab;
         const complete = !!flags[key];
-        // The F2F row doubles as a quick read-out of the recorded visit date,
-        // so the moment a date is logged (Files tab during intake, or from
-        // the F2F panel itself) the snapshot reflects it without waiting for
-        // the patient to move into the F2F stage.
-        const isF2FRow = key === 'f2f';
         let secondary = null;
-        if (isF2FRow && flags.f2fDate) {
+        if (key === 'f2f' && flags.f2fDate) {
           secondary = fmtCalendarDate(flags.f2fDate, null);
         }
         if (key === 'initialEmr' && flags.initialEmrDate) {
           secondary = fmtCalendarDate(flags.initialEmrDate, null);
         }
+        const iconColor = complete ? '#2F6B2A' : '#6B6575';
         return (
           <button
             key={key}
@@ -346,8 +384,8 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              padding: '4px 6px',
-              borderRadius: 6,
+              padding: '7px 8px',
+              borderRadius: 8,
               border: 'none',
               background: 'transparent',
               textAlign: 'left',
@@ -355,30 +393,30 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
               fontFamily: 'inherit',
               transition: 'background 0.12s',
             }}
-            onMouseEnter={(e) => { if (clickable) e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.04); }}
+            onMouseEnter={(e) => { if (clickable) e.currentTarget.style.background = '#EEECEF'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <StatusDot complete={complete} />
+            <StatusCheck complete={complete} />
+            <FlagIcon name={icon} color={iconColor} />
             <span
               style={{
-                fontSize: 11.5,
-                fontWeight: 500,
-                color: complete
-                  ? hexToRgba(palette.backgroundDark.hex, 0.75)
-                  : hexToRgba(palette.backgroundDark.hex, 0.45),
+                fontSize: 13,
+                fontWeight: 600,
+                color: complete ? palette.backgroundDark.hex : '#3A3545',
                 flex: 1,
+                lineHeight: 1.3,
               }}
             >
               {label}
               {secondary && (
-                <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 550, color: '#5A5466' }}>
                   · {secondary}
                 </span>
               )}
             </span>
             {clickable && (
-              <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.4 }}>
-                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, color: '#8A8494' }}>
+                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             )}
           </button>

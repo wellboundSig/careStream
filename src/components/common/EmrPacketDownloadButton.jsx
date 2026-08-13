@@ -16,7 +16,7 @@ export default function EmrPacketDownloadButton({
   resolveSource,
   resolveUser,
   resolveMarketer,
-  label = '↓ Download EMR Onboarding Packet',
+  label = 'Download EMR packet',
   variant = 'default',
   disabled = false,
   onError,
@@ -89,7 +89,7 @@ export default function EmrPacketDownloadButton({
               </p>
               <p style={{
                 margin: '5px 0 0', fontSize: 12.5, lineHeight: 1.4,
-                color: hexToRgba(palette.backgroundDark.hex, 0.5),
+                color: '#5A5466',
               }}>
                 Choose what to include and how files should be packaged.
               </p>
@@ -105,7 +105,7 @@ export default function EmrPacketDownloadButton({
                   packageMode: v && !o.includePatientFiles ? 'joined' : o.packageMode,
                 }))}
                 title="CareStream summary packet"
-                detail="Generated demographics, contacts, notes, and timeline — not patient uploads."
+                detail="Generated demographics, contacts, notes, and timeline. Not patient uploads."
               />
               <CheckRow
                 checked={opts.includePatientFiles}
@@ -240,7 +240,7 @@ function CheckRow({ checked, onChange, title, detail }) {
         <span style={{ display: 'block', fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex }}>
           {title}
         </span>
-        <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.35 }}>
+        <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: '#5A5466', lineHeight: 1.35 }}>
           {detail}
         </span>
       </span>
@@ -270,7 +270,7 @@ function RadioRow({ checked, onChange, title, detail, disabled }) {
         <span style={{ display: 'block', fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex }}>
           {title}
         </span>
-        <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.35 }}>
+        <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: '#5A5466', lineHeight: 1.35 }}>
           {detail}
         </span>
       </span>
@@ -294,8 +294,8 @@ const btnPrimary = {
 function ActionLike({ label, onClick, disabled, variant }) {
   const styles = {
     forward:  { bg: palette.accentGreen.hex, color: palette.backgroundLight.hex, pad: '11px 14px', size: 13.5, weight: 700 },
-    success:  { bg: hexToRgba(palette.accentGreen.hex, 0.13), color: palette.accentGreen.hex, pad: '8px 12px', size: 12.5, weight: 650 },
-    default:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.65), pad: '7px 12px', size: 12, weight: 600 },
+    success:  { bg: palette.accentGreen.hex, color: palette.backgroundLight.hex, pad: '8px 12px', size: 12.5, weight: 650 },
+    default:  { bg: '#E8E6ED', color: '#3A3545', pad: '8px 12px', size: 12.5, weight: 650 },
   };
   const s = styles[variant] || styles.default;
   return (
@@ -310,8 +310,16 @@ function ActionLike({ label, onClick, disabled, variant }) {
         background: s.bg, color: s.color, border: 'none',
         textAlign: 'left', opacity: disabled ? 0.45 : 1,
         fontFamily: 'inherit',
+        display: 'flex', alignItems: 'center', gap: 8,
+        transition: 'filter 0.12s',
       }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
     >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+        <path d="M12 4v10M8 10l4 4 4-4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 18h14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      </svg>
       {label}
     </button>
   );

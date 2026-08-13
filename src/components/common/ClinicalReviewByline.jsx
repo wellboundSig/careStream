@@ -5,28 +5,29 @@ import palette, { hexToRgba } from '../../utils/colors.js';
  * "Clinical review in progress by {nurse}". Pair with
  * useClinicalReviewInProgress() — pass the resolved starter name.
  */
-export default function ClinicalReviewByline({ name }) {
+export default function ClinicalReviewByline({ name, compact = false }) {
   if (!name) return null;
   const ink = hexToRgba(palette.backgroundDark.hex, 0.72);
   return (
     <span
       title={`Clinical review in progress by ${name}`}
       style={{
-        display: 'flex',
+        display: 'inline-flex',
         alignItems: 'center',
-        gap: 5,
-        marginTop: 2,
-        fontSize: 10.5,
+        gap: compact ? 4 : 5,
+        marginTop: compact ? 0 : 2,
+        flexShrink: 0,
+        fontSize: compact ? 10 : 10.5,
         fontWeight: 600,
         color: ink,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        maxWidth: '100%',
+        maxWidth: compact ? 160 : '100%',
       }}
     >
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        Clinical review in progress by {name}
+        {compact ? `In review · ${name}` : `Clinical review in progress by ${name}`}
       </span>
       <span
         aria-hidden

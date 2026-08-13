@@ -63,7 +63,7 @@ export const SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS = [
   { key: 'episode_type', label: 'Episode', defaultOn: true, filterable: true, tooltip: 'Start of Care or Resumption of Care' },
   { key: 'insurance', label: 'Insurance', defaultOn: true, filterable: true },
   { key: 'urgent', label: 'Urgent care', defaultOn: true, filterable: true, tooltip: 'Urgent / pre-care flag. Filter: yes / no' },
-  { key: 'urgent_care_type', label: 'Urgent type', defaultOn: true, filterable: true, tooltip: 'Wound care, Insulin, Injection, or Both. Editable inline.' },
+  { key: 'urgent_care_type', label: 'Urgent type', defaultOn: true, filterable: true, tooltip: 'Wound care, Insulin, and Injection. Multiple can be selected.' },
   { key: 'soc_completed_date', label: 'Completed', defaultOn: true, filterable: false, sortField: 'soc_completed_date', tooltip: 'Date SOC or ROC was completed' },
   { key: 'waiting_docs', label: 'Waiting for docs', defaultOn: true, filterable: true, tooltip: 'Deferred F2F/clinical still outstanding. Filter: yes / no' },
   { key: 'pcp', label: 'PCP', defaultOn: true, filterable: true, tooltip: 'Triage PCP when present; otherwise the referral physician' },

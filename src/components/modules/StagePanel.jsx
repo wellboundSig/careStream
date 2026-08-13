@@ -100,8 +100,8 @@ function Panel({ children, width = 280 }) {
   const footer = useContext(PanelFooterContext);
   return (
     <div style={{
-      width, minWidth: width, borderLeft: `1px solid var(--color-border)`,
-      background: hexToRgba(palette.backgroundDark.hex, 0.015),
+      width, minWidth: width, borderLeft: `1px solid #E6E4EB`,
+      background: '#F3F2F6',
       overflowY: 'auto', flexShrink: 0, padding: '16px 14px',
     }}>
       {children}
@@ -145,18 +145,51 @@ function DiscardAnyPanelSection({ referral, onDone }) {
 
 function PanelSection({ title, children }) {
   return (
-    <div style={{ marginBottom: 20 }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginBottom: 10 }}>{title}</p>
+    <div style={{ marginBottom: 4, paddingBottom: 18, borderBottom: '1px solid #E6E4EB' }}>
+      {title && (
+        <p style={{ fontSize: 11, fontWeight: 750, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A4458', margin: '0 0 10px' }}>{title}</p>
+      )}
       {children}
+    </div>
+  );
+}
+
+function SelectedPatientHeader({ referral, stageLabel }) {
+  const p = referral?.patient;
+  const name = (p
+    ? `${p.first_name || ''} ${p.last_name || ''}`.trim()
+    : '') || referral?.patientName || 'Unnamed patient';
+  return (
+    <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #E6E4EB' }}>
+      <p style={{
+        fontSize: 16, fontWeight: 750, color: palette.backgroundDark.hex,
+        margin: 0, lineHeight: 1.25, wordBreak: 'break-word',
+      }}>
+        {name}
+      </p>
+      {stageLabel && (
+        <span style={{
+          display: 'inline-block',
+          marginTop: 8,
+          padding: '3px 8px',
+          borderRadius: 6,
+          background: '#E8E6ED',
+          fontSize: 11.5,
+          fontWeight: 700,
+          color: '#4A4458',
+        }}>
+          {stageLabel}
+        </span>
+      )}
     </div>
   );
 }
 
 function InfoRow({ label, value, highlight }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
-      <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: highlight || palette.backgroundDark.hex }}>{value || '—'}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '5px 0' }}>
+      <span style={{ fontSize: 12, color: '#5A5466' }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 650, color: highlight || palette.backgroundDark.hex, textAlign: 'right' }}>{value || '—'}</span>
     </div>
   );
 }
@@ -165,13 +198,12 @@ function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
   // forward = large primary CTA (one per panel), success = small green confirm,
   // warning = yellow caution, danger = orange negative, default = grey utility
   const styles = {
-    forward:  { bg: palette.accentGreen.hex,                              color: palette.backgroundLight.hex,   pad: '11px 14px', size: 13.5,  weight: 700 },
-    success:  { bg: hexToRgba(palette.accentGreen.hex, 0.13),             color: palette.accentGreen.hex,        pad: '8px 12px',  size: 12.5,  weight: 650 },
-    warning:  { bg: palette.highlightYellow.hex,                          color: palette.backgroundDark.hex,     pad: '8px 12px',  size: 12.5,  weight: 650 },
-    danger:   { bg: palette.accentOrange.hex,                             color: palette.backgroundLight.hex,    pad: '8px 12px',  size: 12.5,  weight: 650 },
-    default:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),          color: hexToRgba(palette.backgroundDark.hex, 0.65), pad: '7px 12px', size: 12, weight: 600 },
-    // legacy aliases kept for any inline callers
-    primary:  { bg: hexToRgba(palette.backgroundDark.hex, 0.07),          color: hexToRgba(palette.backgroundDark.hex, 0.65), pad: '7px 12px', size: 12, weight: 600 },
+    forward:  { bg: palette.accentGreen.hex,  color: palette.backgroundLight.hex, pad: '11px 14px', size: 13.5, weight: 700 },
+    success:  { bg: palette.accentGreen.hex,  color: palette.backgroundLight.hex, pad: '8px 12px',  size: 12.5, weight: 650 },
+    warning:  { bg: palette.highlightYellow.hex, color: palette.backgroundDark.hex, pad: '8px 12px', size: 12.5, weight: 650 },
+    danger:   { bg: palette.accentOrange.hex, color: palette.backgroundLight.hex, pad: '8px 12px',  size: 12.5, weight: 650 },
+    default:  { bg: '#E8E6ED', color: '#3A3545', pad: '8px 12px', size: 12.5, weight: 650 },
+    primary:  { bg: '#E8E6ED', color: '#3A3545', pad: '8px 12px', size: 12.5, weight: 650 },
   };
   const s = styles[variant] || styles.default;
   return (
@@ -183,12 +215,17 @@ function ActionBtn({ label, variant = 'default', onClick, disabled = false }) {
         fontSize: s.size, fontWeight: s.weight,
         cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 6,
         background: s.bg, color: s.color, border: 'none',
-        textAlign: 'left', transition: 'filter 0.12s',
+        textAlign: 'left',
         opacity: disabled ? 0.45 : 1,
         letterSpacing: variant === 'forward' ? '-0.01em' : 'normal',
+        fontFamily: 'inherit',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        transition: 'background 0.12s, transform 0.12s',
       }}
-      onMouseEnter={(e) => !disabled && (e.currentTarget.style.filter = 'brightness(1.08)')}
-      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
     >
       {label}
     </button>
@@ -218,11 +255,11 @@ function CollapsibleChecklist({ title, items, doneMap, onToggle }) {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           width: '100%', padding: '8px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-          background: hexToRgba(palette.backgroundDark.hex, 0.04),
+          background: '#E8E6ED',
           transition: 'background 0.1s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.07))}
-        onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.04))}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#DDDAE3')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = '#E8E6ED')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{title}</span>
@@ -250,32 +287,48 @@ function CollapsibleChecklist({ title, items, doneMap, onToggle }) {
   );
 }
 
+function ReturnFlagIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
+      <path d="M9 7L4 12l5 5" stroke="#9A4E12" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 12h9a6 6 0 0 1 6 6" stroke="#9A4E12" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ReturnedFromClinicalFlag({ note, at }) {
   const [expanded, setExpanded] = useState(true);
   const ts = at ? new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
   return (
-    <div data-testid="returned-from-clinical-flag" style={{ borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 12, overflow: 'hidden' }}>
+    <div data-testid="returned-from-clinical-flag" style={{ borderRadius: 10, background: '#F8EDE4', marginBottom: 12, overflow: 'hidden' }}>
       <button
         onClick={() => setExpanded((v) => !v)}
-        style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
+        style={{
+          width: '100%', padding: '10px 12px', background: 'none', border: 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8,
+          textAlign: 'left', fontFamily: 'inherit',
+        }}
       >
-        <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
-          ↩ Returned from Clinical RN Review{ts ? ` · ${ts}` : ''}
+        <ReturnFlagIcon />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 750, color: '#9A4E12', lineHeight: 1.3 }}>
+            Returned from Clinical
+          </span>
+          {ts && (
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#6B4A2A', marginTop: 3 }}>
+              {ts}
+            </span>
+          )}
         </span>
-        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
-          <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0, marginTop: 3 }}>
+          <path d="M2 4.5l4 4 4-4" stroke="#9A4E12" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {expanded && (
-        <div style={{ padding: '0 12px 10px' }}>
-          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>
-            {note ? 'What Intake needs:' : 'Clinical RN returned this case for more paperwork.'}
+        <div style={{ padding: '0 12px 12px 36px' }}>
+          <p style={{ fontSize: 13, color: palette.backgroundDark.hex, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>
+            {note || 'No note'}
           </p>
-          {note ? (
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
-          ) : (
-            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.55, fontStyle: 'italic' }}>No note provided.</p>
-          )}
         </div>
       )}
     </div>
@@ -308,22 +361,33 @@ function ReturnedFromEligibilityFlag({ note, at }) {
   const [expanded, setExpanded] = useState(true);
   const ts = at ? new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
   return (
-    <div data-testid="returned-from-eligibility-flag" style={{ borderRadius: 8, background: hexToRgba(palette.accentOrange.hex, 0.1), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.25)}`, marginBottom: 12, overflow: 'hidden' }}>
+    <div data-testid="returned-from-eligibility-flag" style={{ borderRadius: 10, background: '#F8EDE4', marginBottom: 12, overflow: 'hidden' }}>
       <button
         onClick={() => setExpanded((v) => !v)}
-        style={{ width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
+        style={{
+          width: '100%', padding: '10px 12px', background: 'none', border: 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 8,
+          textAlign: 'left', fontFamily: 'inherit',
+        }}
       >
-        <span style={{ fontSize: 12, fontWeight: 650, color: palette.accentOrange.hex }}>
-          ↩ Returned from Eligibility{ts ? ` · ${ts}` : ''}
+        <ReturnFlagIcon />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 750, color: '#9A4E12', lineHeight: 1.3 }}>
+            Returned from Eligibility
+          </span>
+          {ts && (
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#6B4A2A', marginTop: 3 }}>
+              {ts}
+            </span>
+          )}
         </span>
-        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
-          <path d="M2 4.5l4 4 4-4" stroke={palette.accentOrange.hex} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0, marginTop: 3 }}>
+          <path d="M2 4.5l4 4 4-4" stroke="#9A4E12" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {expanded && note && (
-        <div style={{ padding: '0 12px 10px' }}>
-          <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginBottom: 3 }}>Reason:</p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.55 }}>{note}</p>
+        <div style={{ padding: '0 12px 12px 36px' }}>
+          <p style={{ fontSize: 13, color: palette.backgroundDark.hex, lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{note}</p>
         </div>
       )}
     </div>
@@ -331,7 +395,7 @@ function ReturnedFromEligibilityFlag({ note, at }) {
 }
 
 function EmptyPanelState({ message }) {
-  return <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic', textAlign: 'center', paddingTop: 24 }}>{message || 'Select a patient to see details.'}</p>;
+  return <p style={{ fontSize: 13, fontWeight: 600, color: '#5A5466', textAlign: 'center', paddingTop: 28, margin: 0 }}>{message || 'Select a patient to see details.'}</p>;
 }
 
 // ── 1. Lead Entry (Leads) ─────────────────────────────────────────────────────
@@ -943,44 +1007,39 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
     <Panel>
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
-          {/* Sub-stage indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: isF2F ? hexToRgba(palette.accentOrange.hex, 0.12) : hexToRgba(palette.accentBlue.hex, 0.12), color: isF2F ? palette.accentOrange.hex : palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              {isF2F ? 'F2F/MD Orders' : 'Intake'}
-            </span>
-            {selectedReferral.soc_completed_date && (
-              <span
-                title={`SOC completed ${fmtCalendarDate(selectedReferral.soc_completed_date)} — still counted on Completed`}
-                style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.14), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}
-              >
-                SOC done
-              </span>
-            )}
-          </div>
-
-          <PatientSnapshot
-            patient={selectedReferral?.patient}
+          <SelectedPatientHeader
             referral={selectedReferral}
-            triageData={triageData}
-            onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
+            stageLabel={
+              isF2F
+                ? (selectedReferral.soc_completed_date ? 'F2F / MD Orders · SOC done' : 'F2F / MD Orders')
+                : (selectedReferral.soc_completed_date ? 'Intake · SOC done' : 'Intake')
+            }
           />
+
+          <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '8px 8px 10px', marginBottom: 14 }}>
+            <PatientSnapshot
+              patient={selectedReferral?.patient}
+              referral={selectedReferral}
+              triageData={triageData}
+              onOpenTab={(tab) => onOpenTab?.(selectedReferral, tab)}
+            />
+          </div>
 
           {selectedReferral.soc_completed_date && selectedReferral.current_stage !== 'SOC Completed' && (
             <div
               data-testid="post-soc-work-banner"
               style={{
-                borderRadius: 8,
-                background: hexToRgba(palette.accentGreen.hex, 0.1),
-                border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.28)}`,
+                borderRadius: 10,
+                background: '#E5F3E4',
                 marginBottom: 12,
                 padding: '10px 12px',
               }}
             >
-              <p style={{ fontSize: 12, fontWeight: 650, color: palette.accentGreen.hex, margin: 0 }}>
-                SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)} — post-SOC work still open
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: 0 }}>
+                SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)}
               </p>
-              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: '4px 0 0', lineHeight: 1.45 }}>
-                This visit still counts on SOC/ROC Completed. Finish the paperwork here; both lists stay concurrent.
+              <p style={{ fontSize: 12, color: palette.backgroundDark.hex, margin: '4px 0 0', lineHeight: 1.45 }}>
+                Still on the Completed list. Finish remaining paperwork here.
               </p>
             </div>
           )}
@@ -1006,21 +1065,20 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
             <PanelSection title="Initial EMR Onboarding">
               {initialEmrDone ? (
                 <div style={{
-                  borderRadius: 8,
-                  border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
-                  background: hexToRgba(palette.accentGreen.hex, 0.06),
+                  borderRadius: 10,
+                  background: '#E5F3E4',
                   padding: '10px 11px',
                   marginBottom: 8,
                 }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: palette.accentGreen.hex, marginBottom: 4 }}>
-                    Initial EMR onboarding complete
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: '0 0 4px' }}>
+                    Initial EMR complete
                   </p>
                   <InfoRow
                     label="Completed"
                     value={new Date(selectedReferral.emr_initial_onboarded_at).toLocaleString('en-US', {
                       month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
                     })}
-                    highlight={palette.accentGreen.hex}
+                    highlight="#2F6B2A"
                   />
                   {selectedReferral.emr_initial_onboarded_by_id && (
                     <InfoRow
@@ -1030,8 +1088,8 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                   )}
                 </div>
               ) : (
-                <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-                  Create the patient chart in HCHB early. Download the packet, enter the patient in the EMR, then confirm. This does not leave Intake.
+                <p style={{ fontSize: 12.5, color: '#3A3545', lineHeight: 1.5, margin: '0 0 10px' }}>
+                  Create the HCHB chart now. Download the packet, enter the patient, then confirm. They stay in Intake.
                 </p>
               )}
 
@@ -1054,19 +1112,18 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                     />
                   ) : (
                     <div style={{
-                      borderRadius: 8,
-                      border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
-                      background: hexToRgba(palette.accentGreen.hex, 0.05),
+                      borderRadius: 10,
+                      background: '#E5F3E4',
                       padding: '10px 11px',
                     }}>
-                      <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 4, lineHeight: 1.5 }}>
-                        Confirm chart created in HCHB?
+                      <p style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 4px', lineHeight: 1.45 }}>
+                        Confirm the HCHB chart is created?
                       </p>
-                      <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.55, marginBottom: 10 }}>
-                        This logs that initial EMR onboarding is done. The patient stays in Intake; scheduling still completes full EMR Onboarding later.
+                      <p style={{ fontSize: 12, color: '#3A3545', lineHeight: 1.5, margin: '0 0 10px' }}>
+                        This stamps initial EMR done. The patient stays in Intake.
                       </p>
                       {initialEmrError && (
-                        <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{initialEmrError}</p>
+                        <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, margin: '0 0 6px' }}>{initialEmrError}</p>
                       )}
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
@@ -1074,10 +1131,10 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                           onClick={handleConfirmInitialEmr}
                           disabled={initialEmrSaving}
                           style={{
-                            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
-                            background: initialEmrSaving ? hexToRgba(palette.accentGreen.hex, 0.5) : palette.accentGreen.hex,
-                            color: palette.backgroundLight.hex, fontSize: 11.5, fontWeight: 650,
-                            cursor: initialEmrSaving ? 'wait' : 'pointer',
+                            flex: 1, padding: '8px 0', borderRadius: 7, border: 'none',
+                            background: initialEmrSaving ? '#8FBF86' : palette.accentGreen.hex,
+                            color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650,
+                            cursor: initialEmrSaving ? 'wait' : 'pointer', fontFamily: 'inherit',
                           }}
                         >
                           {initialEmrSaving ? 'Saving…' : 'Confirm'}
@@ -1087,10 +1144,10 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                           onClick={() => { setConfirmInitialEmr(false); setInitialEmrError(null); }}
                           disabled={initialEmrSaving}
                           style={{
-                            flex: 1, padding: '7px 0', borderRadius: 6, border: 'none',
-                            background: hexToRgba(palette.backgroundDark.hex, 0.07),
-                            color: hexToRgba(palette.backgroundDark.hex, 0.55),
-                            fontSize: 11.5, fontWeight: 650, cursor: 'pointer',
+                            flex: 1, padding: '8px 0', borderRadius: 7, border: 'none',
+                            background: '#E8E6ED',
+                            color: '#3A3545',
+                            fontSize: 12.5, fontWeight: 650, cursor: 'pointer', fontFamily: 'inherit',
                           }}
                         >
                           Cancel
@@ -1101,8 +1158,8 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 </div>
               )}
               {!initialEmrDone && !canStampInitialEmr && (
-                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 8, fontStyle: 'italic' }}>
-                  You need the “Complete initial EMR onboarding” permission to stamp this.
+                <p style={{ fontSize: 12, color: '#5A5466', marginTop: 8 }}>
+                  You need permission to stamp initial EMR.
                 </p>
               )}
             </PanelSection>
@@ -1118,11 +1175,11 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
             <>
               <PanelSection title="F2F Status">
                 {days !== null ? (
-                  <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
-                    <p style={{ fontSize: 28, fontWeight: 800, color: urgencyColor, lineHeight: 1 }}>{days < 0 ? 'EXPIRED' : `${days}d`}</p>
-                    <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 3 }}>{days < 0 ? 'F2F has expired' : 'until expiration'}</p>
+                  <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 28, fontWeight: 800, color: urgencyColor, lineHeight: 1, margin: 0 }}>{days < 0 ? 'EXPIRED' : `${days}d`}</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: '#5A5466', margin: '4px 0 0' }}>{days < 0 ? 'F2F has expired' : 'until expiration'}</p>
                     {selectedReferral.f2f_date && (
-                      <p style={{ fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 4 }}>
+                      <p style={{ fontSize: 12, color: '#3A3545', margin: '6px 0 0' }}>
                         Visit {fmtCalendarDate(selectedReferral.f2f_date, '')}
                         {selectedReferral.f2f_expiration && (
                           <>
@@ -1134,13 +1191,13 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                     )}
                   </div>
                 ) : selectedReferral.f2f_date ? (
-                  <div style={{ textAlign: 'center', padding: '8px 0 12px' }}>
-                    <p style={{ fontSize: 13, fontWeight: 650, color: palette.accentGreen.hex, lineHeight: 1.3 }}>
+                  <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 13, fontWeight: 650, color: '#2F6B2A', lineHeight: 1.3, margin: 0 }}>
                       Visit logged {fmtCalendarDate(selectedReferral.f2f_date, '')}
                     </p>
                   </div>
                 ) : (
-                  <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4), textAlign: 'center', padding: '6px 0' }}>No F2F date recorded</p>
+                  <p style={{ fontSize: 13, color: '#5A5466', textAlign: 'center', padding: '6px 0', margin: 0 }}>No F2F date recorded</p>
                 )}
                 {/* PECOS / OPRA InfoRows removed from the intake right-hand
                     panel on 2026-05-27: staff cannot act on those checks
@@ -1157,38 +1214,50 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                       onClick={() => { if (selectedReferral.f2f_date) setReceivedDate(toCalendarDateInput(selectedReferral.f2f_date)); setShowDatePicker(true); }}
                     />
                   ) : (
-                    <div style={{ borderRadius: 8, background: hexToRgba(palette.accentGreen.hex, 0.04), padding: '10px' }}>
+                    <div style={{ borderRadius: 10, background: '#E5F3E4', padding: '10px' }}>
                       <input type="date" value={receivedDate} max={todayCalendarDate()} onChange={(e) => setReceivedDate(e.target.value)}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', borderRadius: 6, border: `1px solid ${receivedDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 12, fontFamily: 'inherit', outline: 'none', marginBottom: 6 }} />
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 8px', borderRadius: 7, border: 'none', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', marginBottom: 8, background: '#FFFFFF' }} />
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={handleLogReceived} disabled={!receivedDate || saving} style={{ flex: 1, padding: '6px', borderRadius: 6, border: 'none', background: receivedDate ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.08), color: receivedDate ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), fontSize: 11, fontWeight: 650, cursor: receivedDate ? 'pointer' : 'not-allowed' }}>{saving ? 'Saving...' : 'Confirm'}</button>
-                        <button onClick={() => { setShowDatePicker(false); setReceivedDate(''); }} style={{ flex: 1, padding: '6px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.07), color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 11, fontWeight: 650, cursor: 'pointer' }}>Cancel</button>
+                        <button onClick={handleLogReceived} disabled={!receivedDate || saving} style={{ flex: 1, padding: '8px', borderRadius: 7, border: 'none', background: receivedDate ? palette.accentGreen.hex : '#E8E6ED', color: receivedDate ? palette.backgroundLight.hex : '#8A8494', fontSize: 12.5, fontWeight: 650, cursor: receivedDate ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>{saving ? 'Saving...' : 'Confirm'}</button>
+                        <button onClick={() => { setShowDatePicker(false); setReceivedDate(''); }} style={{ flex: 1, padding: '8px', borderRadius: 7, border: 'none', background: '#E8E6ED', color: '#3A3545', fontSize: 12.5, fontWeight: 650, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                       </div>
                     </div>
                   )}
-                  <ActionBtn label="Go to Files" variant="default" onClick={() => onOpenFiles?.(selectedReferral)} />
+                  <ActionBtn
+                    label={
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M4 7h5l2 2h9v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                        </svg>
+                        Go to Files
+                      </>
+                    }
+                    variant="default"
+                    onClick={() => onOpenFiles?.(selectedReferral)}
+                  />
                 </PanelSection>
               )}
 
               {(isF2F || selectedReferral.f2f_date) && (
               <PanelSection title="Document Review">
+                <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '10px 10px 8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.38) }}>Cursory Review</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: reviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.4) }}>{completedReq}/{totalReq}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#4A4458' }}>Cursory review</span>
+                  <span style={{ fontSize: 12, fontWeight: 750, color: reviewComplete ? '#2F6B2A' : '#5A5466' }}>{completedReq}/{totalReq}</span>
                 </div>
-                <div style={{ height: 3, borderRadius: 2, background: hexToRgba(palette.backgroundDark.hex, 0.08), overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ height: 4, borderRadius: 2, background: '#E8E6ED', overflow: 'hidden', marginBottom: 8 }}>
                   <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
                 </div>
                 {F2F_REVIEW_CHECKLIST.map((item) => (
-                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 0', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 12, height: 12, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11.5, color: reviewChecked[item.key] ? hexToRgba(palette.backgroundDark.hex, 0.4) : palette.backgroundDark.hex, textDecoration: reviewChecked[item.key] ? 'line-through' : 'none', fontWeight: item.required ? 550 : 400 }}>
+                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 2px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12.5, color: reviewChecked[item.key] ? '#5A5466' : palette.backgroundDark.hex, fontWeight: item.required ? 600 : 500 }}>
                       {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
                     </span>
                   </label>
                 ))}
-
                 <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
+                </div>
 
                 {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
                     checkboxes per spec — it's only clickable once every
@@ -1214,7 +1283,20 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
               referrals still get a quick link to the triage form. */}
           <PanelSection title="Actions">
             {isSN && (
-              <ActionBtn label="Open Triage Form" variant="default" onClick={() => onOpenTriage?.(selectedReferral)} />
+              <ActionBtn
+                label={
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <rect x="6" y="5" width="12" height="15" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M9 5.2V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5v.7" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M9 11h6M9 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                    </svg>
+                    Open Triage Form
+                  </>
+                }
+                variant="default"
+                onClick={() => onOpenTriage?.(selectedReferral)}
+              />
             )}
             {canPerm(PERMISSION_KEYS.INTAKE_ADVANCE_WITHOUT_F2F)
               && selectedReferral?.current_stage === 'Intake'
@@ -1363,9 +1445,9 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
 
   if (inClinical) {
     return (
-      <div style={{ padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.22)}`, marginTop: 10 }}>
-        <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex }}>
-          ✓ Pushed to Clinical Intake RN Review
+      <div style={{ padding: '10px 12px', borderRadius: 10, background: '#E5F3E4', marginTop: 10 }}>
+        <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: 0 }}>
+          Pushed to Clinical RN Review
         </p>
       </div>
     );
@@ -1382,18 +1464,28 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
         padding: '10px 12px',
         borderRadius: 8,
         border: 'none',
-        background: cursoryReviewComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-        color: cursoryReviewComplete ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
-        fontSize: 12.5,
+        background: cursoryReviewComplete ? palette.accentGreen.hex : '#E8E6ED',
+        color: cursoryReviewComplete ? palette.backgroundLight.hex : '#5A5466',
+        fontSize: 13,
         fontWeight: 700,
         cursor: cursoryReviewComplete ? 'pointer' : 'not-allowed',
         textAlign: 'left',
+        fontFamily: 'inherit',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
         transition: 'filter 0.12s',
       }}
-      onMouseEnter={(e) => cursoryReviewComplete && (e.currentTarget.style.filter = 'brightness(1.08)')}
+      onMouseEnter={(e) => cursoryReviewComplete && (e.currentTarget.style.filter = 'brightness(1.06)')}
       onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
     >
-      {cursoryReviewComplete ? 'Push to Intake Clinical RN Review →' : 'Check off the cursory review to push'}
+      {cursoryReviewComplete ? 'Push to Clinical RN Review' : 'Finish cursory review to push'}
+      {cursoryReviewComplete && (
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
     </button>
   );
 }

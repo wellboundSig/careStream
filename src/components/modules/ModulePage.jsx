@@ -43,9 +43,11 @@ import {
   setUrgentCareType,
   isUrgentCare,
   getUrgentCareType,
+  getUrgentCareTypes,
   urgentCareTypeLabel,
   URGENT_CARE_TYPE_OPTIONS,
 } from '../../utils/urgentCare.js';
+import UrgentCareTypePicker from '../common/UrgentCareTypePicker.jsx';
 import {
   isDocumentationDeferred,
   documentationFilterStatus,
@@ -382,8 +384,9 @@ export default function ModulePage({ stage }) {
           return true; // partial typing — don't filter yet
         }
         if (key === 'urgent_care_type') {
-          const label = urgentCareTypeLabel(getUrgentCareType(r)).toLowerCase();
-          const raw = getUrgentCareType(r);
+          const types = getUrgentCareTypes(r);
+          const label = urgentCareTypeLabel(types).toLowerCase();
+          const raw = types.join(' ');
           return label.includes(q) || raw.includes(q);
         }
         if (key === 'emr_onboarded') {
@@ -888,50 +891,14 @@ export default function ModulePage({ stage }) {
           </td>
         );
       case 'urgent_care_type': {
-        const current = getUrgentCareType(referral);
         return (
-          <td
+          <UrgentTypeCell
             key="urgent_care_type"
-            style={td({ maxWidth: 140, overflow: 'visible' })}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <select
-              value={current}
-              title="Urgent care type — Wound care, Insulin, Injection, or Both"
-              onChange={async (e) => {
-                const next = e.target.value;
-                try {
-                  await setUrgentCareType({
-                    referral,
-                    type: next || '',
-                    actorUserId: appUserId,
-                  });
-                } catch (err) {
-                  showToast(`Urgent type update failed: ${err.message}`, 'error');
-                }
-              }}
-              style={{
-                width: '100%',
-                maxWidth: 130,
-                fontSize: 12,
-                fontFamily: 'inherit',
-                padding: '3px 6px',
-                borderRadius: 6,
-                border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
-                background: current ? hexToRgba(palette.primaryMagenta.hex, 0.06) : 'transparent',
-                color: current
-                  ? palette.backgroundDark.hex
-                  : hexToRgba(palette.backgroundDark.hex, 0.4),
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">—</option>
-              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </td>
+            referral={referral}
+            appUserId={appUserId}
+            td={td}
+            onError={(err) => showToast(`Urgent type update failed: ${err.message}`, 'error')}
+          />
         );
       }
       case 'post_soc_docs': {
@@ -1370,15 +1337,23 @@ export default function ModulePage({ stage }) {
             setDiscardTarget(contextMenu.referral);
             setContextMenu(null);
           }}
-          onMarkUrgent={async (type) => {
+          onMarkUrgent={async (types) => {
             const ref = contextMenu.referral;
             setContextMenu(null);
             try {
-              await setUrgentCare({ referral: ref, next: true, actorUserId: appUserId, type });
-              const label = urgentCareTypeLabel(type);
+              await setUrgentCare({ referral: ref, next: true, actorUserId: appUserId, type: types });
+              const label = urgentCareTypeLabel(types);
               showToast(`${ref.patientName || ref.patient_id} flagged urgent care${label ? ` (${label})` : ''}`);
             } catch (err) {
               showToast(`Urgent care toggle failed: ${err.message}`, 'error');
+            }
+          }}
+          onToggleUrgentTypes={async (types) => {
+            const ref = contextMenu.referral;
+            try {
+              await setUrgentCareType({ referral: ref, types, actorUserId: appUserId });
+            } catch (err) {
+              showToast(`Urgent type update failed: ${err.message}`, 'error');
             }
           }}
           onClearUrgent={async () => {
@@ -2087,7 +2062,120 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   );
 }
 
-function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, canDiscard, onDiscard, onMarkUrgent, onClearUrgent, onDismiss }) {
+function UrgentTypeCell({ referral, appUserId, td, onError }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const types = getUrgentCareTypes(referral);
+  const label = urgentCareTypeLabel(types);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(e) {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <td
+      style={td({ maxWidth: 160, overflow: 'visible' })}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div ref={wrapRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title="Wound care, Insulin, Injection"
+          style={{
+            width: '100%',
+            maxWidth: 150,
+            fontSize: 12,
+            fontFamily: 'inherit',
+            fontWeight: 600,
+            padding: '4px 8px',
+            borderRadius: 6,
+            border: 'none',
+            textAlign: 'left',
+            background: types.length ? '#F8E8EF' : '#EEECEF',
+            color: types.length ? palette.backgroundDark.hex : '#8A8494',
+            cursor: 'pointer',
+          }}
+        >
+          {label || 'Type'}
+        </button>
+        {open && (
+          <div style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            zIndex: 40,
+            minWidth: 168,
+            background: palette.backgroundLight.hex,
+            borderRadius: 10,
+            boxShadow: `0 8px 24px ${hexToRgba(palette.backgroundDark.hex, 0.16)}`,
+            padding: '6px 4px',
+          }}>
+            <UrgentCareTypePicker
+              types={types}
+              onChange={async (next) => {
+                try {
+                  await setUrgentCareType({ referral, types: next, actorUserId: appUserId });
+                } catch (err) {
+                  onError?.(err);
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </td>
+  );
+}
+
+function MarkUrgentMenuBlock({ onSave }) {
+  const [picked, setPicked] = useState([]);
+  return (
+    <>
+      <div style={{
+        padding: '6px 12px 2px',
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: hexToRgba(palette.backgroundDark.hex, 0.4),
+      }}>
+        Mark urgent care
+      </div>
+      <div style={{ padding: '0 6px 6px' }}>
+        <UrgentCareTypePicker types={picked} onChange={setPicked} />
+        <button
+          type="button"
+          disabled={picked.length === 0}
+          onClick={() => onSave(picked)}
+          style={{
+            width: '100%',
+            marginTop: 6,
+            padding: '8px',
+            borderRadius: 7,
+            border: 'none',
+            background: picked.length ? palette.primaryMagenta.hex : '#E8E6ED',
+            color: picked.length ? palette.backgroundLight.hex : '#8A8494',
+            fontSize: 12.5,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            cursor: picked.length ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Save
+        </button>
+      </div>
+    </>
+  );
+}
+
+function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, canChangeOwner, canDiscard, onDiscard, onMarkUrgent, onToggleUrgentTypes, onClearUrgent, onDismiss }) {
   const ref = useRef(null);
   const isSN = referral.division === 'Special Needs';
   const urgent = isUrgentCare(referral);
@@ -2136,8 +2224,7 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
             />
           )}
-          {/* Urgent care: pick wound / insulin / injection / both when marking.
-              Always present — not gated at the UI layer. */}
+          {/* Urgent care: checkboxes for wound / insulin / injection. */}
           {urgent ? (
             <>
               <MenuItem
@@ -2156,38 +2243,15 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
               }}>
                 Change type
               </div>
-              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
-                <MenuItem
-                  key={o.value}
-                  label={o.label}
-                  onClick={() => onMarkUrgent(o.value)}
-                  accent={urgentType === o.value ? palette.primaryMagenta.hex : undefined}
-                  icon={<UrgentCareIcon size={14} muted={urgentType !== o.value} title={o.label} />}
+              <div style={{ padding: '0 6px 6px' }}>
+                <UrgentCareTypePicker
+                  types={getUrgentCareTypes(referral)}
+                  onChange={(next) => onToggleUrgentTypes?.(next)}
                 />
-              ))}
+              </div>
             </>
           ) : (
-            <>
-              <div style={{
-                padding: '6px 12px 2px',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                color: hexToRgba(palette.backgroundDark.hex, 0.4),
-              }}>
-                Mark urgent care
-              </div>
-              {URGENT_CARE_TYPE_OPTIONS.map((o) => (
-                <MenuItem
-                  key={o.value}
-                  label={o.label}
-                  onClick={() => onMarkUrgent(o.value)}
-                  accent={palette.primaryMagenta.hex}
-                  icon={<UrgentCareIcon size={14} muted title={o.label} />}
-                />
-              ))}
-            </>
+            <MarkUrgentMenuBlock onSave={(types) => onMarkUrgent(types)} />
           )}
         </div>
       </div>
