@@ -6,6 +6,7 @@ import {
   runSourceAttribution,
   runMethodAttribution,
   runSocCompleted,
+  runReferralSourceReport,
   PRESETS,
 } from '../utils/reportEngine.js';
 
@@ -228,6 +229,28 @@ export const GUIDED_TEMPLATES = [
     ],
     async run(slots) {
       return runMethodAttribution({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        sourceIds: slots.sourceIds,
+      });
+    },
+  },
+  {
+    id: 'referral_sources',
+    title: 'Referral Sources',
+    description: 'Every source in the directory, with contacts, type, method, entity, and patient totals.',
+    icon: 'source_attribution',
+    dateField: 'referral_date',
+    slots: ['dateRange', 'division', 'sources'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS }),
+    fields: [
+      { name: 'referral_date', label: 'Referral date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+      { name: 'referral_source_id', label: 'Source', inputType: 'text' },
+    ],
+    async run(slots) {
+      return runReferralSourceReport({
         dateFrom: slots.dateFrom,
         dateTo: slots.dateTo,
         division: slots.division || undefined,

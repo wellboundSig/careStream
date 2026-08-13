@@ -877,8 +877,10 @@ function InsuranceEditor({ patient, patientId, onSave }) {
 
   async function persist(nextPlans, nextDetails) {
     const primary = nextPlans[0] || '';
-    const plansJson = nextPlans.length > 0 ? JSON.stringify(nextPlans) : '';
-    const detailsJson = Object.keys(nextDetails).length > 0 ? JSON.stringify(nextDetails) : '';
+    const plansJson = JSON.stringify(nextPlans.length > 0 ? nextPlans : []);
+    const detailsJson = JSON.stringify(
+      Object.keys(nextDetails).length > 0 ? nextDetails : {},
+    );
 
     // Mirror to the legacy JSON columns so existing readers (reports,
     // exports, list-column display) keep working unchanged. This is a

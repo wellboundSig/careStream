@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { DRAWER_TABS } from '../PatientDrawer.jsx';
+import { DRAWER_TABS, canEditDrawerTab } from '../PatientDrawer.jsx';
 
 describe('DRAWER_TABS definition', () => {
   it('has "Referral" as the first tab', () => {
@@ -44,5 +44,23 @@ describe('DRAWER_TABS definition', () => {
   it('does not have any tab labeled just "Overview"', () => {
     const labels = DRAWER_TABS.map((t) => t.label);
     expect(labels).not.toContain('Overview');
+  });
+});
+
+describe('canEditDrawerTab', () => {
+  it('lets staff post notes with note.create even without snapshot.edit_notes', () => {
+    const granted = new Set(['note.create']);
+    const can = (k) => granted.has(k);
+    expect(canEditDrawerTab('notes', can)).toBe(true);
+    expect(canEditDrawerTab('files', can)).toBe(false);
+  });
+
+  it('lets staff post notes with snapshot.edit_notes', () => {
+    const can = (k) => k === 'snapshot.edit_notes';
+    expect(canEditDrawerTab('notes', can)).toBe(true);
+  });
+
+  it('keeps notes read-only when neither notes permission is granted', () => {
+    expect(canEditDrawerTab('notes', () => false)).toBe(false);
   });
 });

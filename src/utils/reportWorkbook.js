@@ -164,13 +164,49 @@ export function buildAutoSummary(rows, columns) {
   return { kpis, charts };
 }
 
+function writeTableSheet(wb, name, columns, rows, tabColor) {
+  const ws = wb.addWorksheet(safeSheetName(name), {
+    properties: { tabColor: { argb: tabColor } },
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+
+  const headerRow = ws.addRow(columns.map((c) => c.label));
+  headerRow.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.headerBg } };
+    cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: BRAND.headerFg } };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+    cell.border = {
+      bottom: { style: 'thin', color: { argb: '9F1654' } },
+    };
+  });
+  headerRow.height = 22;
+
+  for (const row of rows) {
+    const dataRow = ws.addRow(columns.map((c) => cellValue(row[c.key])));
+    dataRow.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 10, color: { argb: BRAND.dark } };
+      cell.alignment = { vertical: 'middle', wrapText: false };
+    });
+  }
+
+  columns.forEach((col, i) => {
+    let max = String(col.label || '').length;
+    for (let r = 0; r < Math.min(rows.length, 80); r++) {
+      const len = String(cellValue(rows[r][col.key])).length;
+      if (len > max) max = len;
+    }
+    ws.getColumn(i + 1).width = Math.min(Math.max(max + 2, 10), 42);
+  });
+}
+
 /**
  * @param {object} opts
  * @param {object[]} opts.rows
  * @param {{key:string,label:string}[]} opts.columns
  * @param {string} opts.reportTitle
  * @param {string} [opts.subtitle]
- * @param {{ kpis?: {label:string,value:string|number}[], charts?: object[] }} [opts.summary]
+ * @param {{ kpis?: {label:string,value:string|number}[], charts?: object[], extraSheets?: {name:string,columns:object[],rows:object[]}[] }} [opts.summary]
+ * @param {{name:string,columns:object[],rows:object[]}[]} [opts.extraSheets]
  */
 export async function exportReportWorkbook({
   rows,
@@ -178,6 +214,7 @@ export async function exportReportWorkbook({
   reportTitle,
   subtitle = '',
   summary = null,
+  extraSheets = [],
 }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Wellbound CareStream';
@@ -261,37 +298,22 @@ export async function exportReportWorkbook({
   summaryWs.getColumn(2).width = 18;
 
   // ── Detail sheet ──────────────────────────────────────────────────────────
-  const detailWs = wb.addWorksheet(safeSheetName('Detail'), {
-    properties: { tabColor: { argb: BRAND.accentBlue } },
-    views: [{ state: 'frozen', ySplit: 1 }],
-  });
+  writeTableSheet(wb, 'Detail', columns, rows, BRAND.accentBlue);
 
-  const headerRow = detailWs.addRow(columns.map((c) => c.label));
-  headerRow.eachCell((cell) => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.headerBg } };
-    cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: BRAND.headerFg } };
-    cell.alignment = { vertical: 'middle', wrapText: true };
-    cell.border = {
-      bottom: { style: 'thin', color: { argb: '9F1654' } },
-    };
-  });
-  headerRow.height = 22;
-
-  for (const row of rows) {
-    const dataRow = detailWs.addRow(columns.map((c) => cellValue(row[c.key])));
-    dataRow.eachCell((cell) => {
-      cell.font = { name: 'Calibri', size: 10, color: { argb: BRAND.dark } };
-      cell.alignment = { vertical: 'middle', wrapText: false };
-    });
-  }
-
-  columns.forEach((col, i) => {
-    let max = String(col.label || '').length;
-    for (let r = 0; r < Math.min(rows.length, 80); r++) {
-      const len = String(cellValue(rows[r][col.key])).length;
-      if (len > max) max = len;
-    }
-    detailWs.getColumn(i + 1).width = Math.min(Math.max(max + 2, 10), 42);
+  const moreSheets = [
+    ...(Array.isArray(extraSheets) ? extraSheets : []),
+    ...(Array.isArray(summary?.extraSheets) ? summary.extraSheets : []),
+  ];
+  const sheetColors = [BRAND.accentGreen, BRAND.accentOrange, BRAND.magenta];
+  moreSheets.forEach((sheet, i) => {
+    if (!sheet?.columns?.length) return;
+    writeTableSheet(
+      wb,
+      sheet.name || `Sheet ${i + 2}`,
+      sheet.columns,
+      sheet.rows || [],
+      sheetColors[i % sheetColors.length],
+    );
   });
 
   // Optional Chart Data sheet (raw series for Excel's native charting)

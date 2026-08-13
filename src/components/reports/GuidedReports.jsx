@@ -253,13 +253,13 @@ export default function GuidedReports() {
     try {
       // Prefer slots (sentence) — Advanced edits sync into slots via queryToSlots.
       const result = await template.run(slots);
-      const { rows, columns, summary } = result;
+      const { rows, columns, summary, extraSheets } = result;
       if (exportExcel) {
         const subtitle = [
           slots.dateFrom && slots.dateTo ? `${slots.dateFrom} → ${slots.dateTo}` : null,
           slots.division || 'All divisions',
         ].filter(Boolean).join(' · ');
-        await exportToExcel(rows, columns, template.title, subtitle, summary || null);
+        await exportToExcel(rows, columns, template.title, subtitle, summary || null, extraSheets);
         setStatus('done');
       } else {
         setPreview({

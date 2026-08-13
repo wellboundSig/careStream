@@ -291,7 +291,10 @@ const MentionComposer = forwardRef(function MentionComposer(
     getValue: () => {
       const root = editorRef.current;
       if (!root) return '';
-      return serializeEditor(root).trim();
+      const serialized = serializeEditor(root).trim();
+      if (serialized) return serialized;
+      // Fallback when the DOM walk misses typed text (browser wrapping).
+      return (root.textContent || '').replace(/\u00a0/g, ' ').trim();
     },
     clear: () => {
       const root = editorRef.current;

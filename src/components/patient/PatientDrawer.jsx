@@ -826,10 +826,22 @@ function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
   );
 }
 
+/** Notes tab is writable if either drawer-edit OR note.create is granted.
+ *  Those keys drifted apart on some UserPermissions rows (note.create without
+ *  snapshot.edit_notes) which hid the composer behind "View only". */
+export function canEditDrawerTab(tab, can) {
+  const editPermKey = TAB_EDIT_PERMISSIONS[tab];
+  if (!editPermKey) return false;
+  if (tab === 'notes') {
+    return can(editPermKey) || can(PERMISSION_KEYS.NOTE_CREATE);
+  }
+  return can(editPermKey);
+}
+
 function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
   const { can } = usePermissions();
   const editPermKey = TAB_EDIT_PERMISSIONS[tab];
-  const canEdit = editPermKey ? can(editPermKey) : false;
+  const canEdit = canEditDrawerTab(tab, can);
   const props = { patient, referral, readOnly: !canEdit };
 
   return (

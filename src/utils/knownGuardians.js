@@ -8,6 +8,7 @@ import {
   updateKnownGuardian,
   createPatientGuardian,
   updatePatientGuardian,
+  getPatientGuardians,
 } from '../api/knownGuardians.js';
 import { updatePatient } from '../api/patients.js';
 import { mergeEntities, updateEntity, getStore } from '../store/careStore.js';
@@ -154,7 +155,25 @@ export async function linkGuardianToPatient({
       created_at: now,
       updated_at: now,
     };
-    const rec = await createPatientGuardian(fields);
+    const rec = await createPatientGuardian(fields).catch(async (err) => {
+      // Unique (patient_id, guardian_id) — link exists on the server but the
+      // local store missed it (hydrate lag / other tab). Update instead of 500.
+      const rows = await getPatientGuardians({
+        filterByFormula: `AND({patient_id} = "${patientBusinessId}", {guardian_id} = "${guardian.id}")`,
+        maxRecords: 1,
+      }).catch(() => []);
+      const hit = rows?.[0];
+      if (!hit?.id) throw err;
+      const patch = {
+        relationship: rel || '',
+        is_primary: !!isPrimary,
+        is_emergency: !!isEmergency,
+        source,
+        updated_at: now,
+      };
+      await updatePatientGuardian(hit.id, patch);
+      return { id: hit.id, fields: { ...hit.fields, ...patch } };
+    });
     link = { _id: rec.id, ...rec.fields };
     mergeEntities('patientGuardians', { [rec.id]: link });
   }

@@ -17,6 +17,10 @@ import {
   buildProcessingFlags,
   isInProcessingPool,
 } from './processingOverview.js';
+import {
+  buildReferralSourceReport,
+  uniqueLookupRecords,
+} from './referralSourceReport.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -805,14 +809,16 @@ export async function fetchReportData({ tableName, filters = [], selectedKeys = 
  * @param {string}   reportTitle
  * @param {string}   [subtitle]
  * @param {object}   [summary]
+ * @param {Array}    [extraSheets]
  */
-export async function exportToExcel(rows, columns, reportTitle, subtitle = '', summary = null) {
+export async function exportToExcel(rows, columns, reportTitle, subtitle = '', summary = null, extraSheets = []) {
   await exportReportWorkbook({
     rows,
     columns,
     reportTitle,
     subtitle,
     summary: summary || buildAutoSummary(rows, columns),
+    extraSheets,
   });
 }
 
@@ -1645,6 +1651,39 @@ async function runProcessingOverview({ dateFrom, dateTo, division, marketerIds }
   };
 }
 
+/**
+ * Every referral source in the directory, with contacts, type, method, entity,
+ * marketer, and patient totals. Excel adds a patient-level sheet.
+ */
+export async function runReferralSourceReport({ dateFrom, dateTo, division, sourceIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, sourceIds });
+  const cols = [
+    '__patient_name', '__patient_dob', '__patient_phone', '__patient_insplan',
+    '__source_name', '__source_type',
+    '__marketer_name', '__facility_name', '__intake_owner', '__campaign_name',
+    'referral_method',
+  ];
+  const [{ rows: referrals }, sourcesMap, marketersMap, patientsMap] = await Promise.all([
+    fetchReportData({ tableName: 'Referrals', filters, selectedKeys: cols }),
+    getLookupMap('ReferralSources'),
+    getLookupMap('Marketers'),
+    getLookupMap('Patients'),
+  ]);
+
+  let sources = uniqueLookupRecords(sourcesMap);
+  if (Array.isArray(sourceIds) && sourceIds.length) {
+    const want = new Set(sourceIds);
+    sources = sources.filter((s) => want.has(s.id));
+  }
+
+  return buildReferralSourceReport({
+    sources,
+    marketers: marketersMap,
+    referrals,
+    patients: patientsMap,
+  });
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
@@ -1661,6 +1700,13 @@ export const PRESETS = [
     description: 'Open-pipeline checklist: demographics, triage, insurance, F2F, clinical, auth, eligibility, PECOS/OPRA/NPI, EMR, staffing, SOC. Spot bottlenecks fast.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runProcessingOverview(params); },
+  },
+  {
+    id: 'referral_sources',
+    title: 'Referral Sources',
+    description: 'Every source in the directory: contact, type, method, entity, marketer, and patient totals. Excel includes a patient-level sheet.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runReferralSourceReport(params); },
   },
   {
     id: 'staff_audit',

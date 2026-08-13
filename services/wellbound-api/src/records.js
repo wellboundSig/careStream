@@ -146,11 +146,23 @@ function buildWriteSets(def, fields, params) {
         sets.push({ col: colRef, expr: value === true || value === 'true' ? 'TRUE' : 'FALSE' });
         break;
       case 'jsonString': {
+        // Empty string is how several UIs mean "clear" — `''::jsonb` is a 500.
+        if (typeof value === 'string' && value.trim() === '') {
+          sets.push({ col: colRef, expr: 'NULL' });
+          break;
+        }
         const str = typeof value === 'string' ? value : JSON.stringify(value);
+        try { JSON.parse(str); } catch {
+          throw new ApiError(422, 'INVALID_VALUE', `Field "${airtableName}" is not valid JSON`);
+        }
         sets.push({ col: colRef, expr: `${P(str)}::jsonb` });
         break;
       }
       case 'jsonRaw':
+        if (typeof value === 'string' && value.trim() === '') {
+          sets.push({ col: colRef, expr: 'NULL' });
+          break;
+        }
         sets.push({ col: colRef, expr: `${P(JSON.stringify(value))}::jsonb` });
         break;
       case 'linkArray': {
@@ -303,6 +315,18 @@ export async function getRecord(tableName, recId) {
   return rowToRecord(rows[0], def);
 }
 
+function wrapPgWriteError(err) {
+  if (err instanceof ApiError) throw err;
+  const code = err?.code;
+  if (code === '23505') {
+    throw new ApiError(422, 'DUPLICATE', err.detail || 'Duplicate record');
+  }
+  if (code === '22P02') {
+    throw new ApiError(422, 'INVALID_VALUE', err.message || 'Invalid value');
+  }
+  throw err;
+}
+
 async function createOne(def, fields) {
   const params = [];
   const sets = buildWriteSets(def, fields, params);
@@ -311,8 +335,12 @@ async function createOne(def, fields) {
   const sql = cols.length
     ? `INSERT INTO "${def.pgTable}" (${cols.join(', ')}) VALUES (${exprs.join(', ')}) RETURNING *`
     : `INSERT INTO "${def.pgTable}" DEFAULT VALUES RETURNING *`;
-  const { rows } = await query(sql, params);
-  return rowToRecord(rows[0], def);
+  try {
+    const { rows } = await query(sql, params);
+    return rowToRecord(rows[0], def);
+  } catch (err) {
+    wrapPgWriteError(err);
+  }
 }
 
 export async function createRecords(tableName, body) {
@@ -331,12 +359,16 @@ async function updateOne(def, recId, fields) {
   if (!sets.length) return getRecordByDef(def, recId);
   params.push(recId);
   const assignments = sets.map((s) => `${s.col} = ${s.expr}`).join(', ');
-  const { rows } = await query(
-    `UPDATE "${def.pgTable}" SET ${assignments} WHERE rec_id = $${params.length} RETURNING *`,
-    params,
-  );
-  if (!rows.length) throw new ApiError(404, 'NOT_FOUND', `Record not found: ${recId}`);
-  return rowToRecord(rows[0], def);
+  try {
+    const { rows } = await query(
+      `UPDATE "${def.pgTable}" SET ${assignments} WHERE rec_id = $${params.length} RETURNING *`,
+      params,
+    );
+    if (!rows.length) throw new ApiError(404, 'NOT_FOUND', `Record not found: ${recId}`);
+    return rowToRecord(rows[0], def);
+  } catch (err) {
+    wrapPgWriteError(err);
+  }
 }
 
 async function getRecordByDef(def, recId) {

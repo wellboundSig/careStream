@@ -53,6 +53,7 @@ const Icon = {
 const PRESET_ICONS = {
   intake_volume:         Icon.Pipeline,
   processing_overview:   Icon.Checkmark,
+  referral_sources:      Icon.Link,
   staff_audit:           Icon.Shield,
   marketer_performance:  Icon.Chart,
   pipeline_snapshot:     Icon.Pipeline,
@@ -329,10 +330,10 @@ function PresetPanel() {
     setStatus(null);
     setErrMsg('');
     try {
-      const { rows, columns, summary } = await preset.run(params);
+      const { rows, columns, summary, extraSheets } = await preset.run(params);
       const subtitle = Object.entries(params).filter(([, v]) => v)
         .map(([k, v]) => `${k}: ${v}`).join(' | ') || `Generated: ${new Date().toLocaleString()}`;
-      await exportToExcel(rows, columns, preset.title, subtitle, summary || null);
+      await exportToExcel(rows, columns, preset.title, subtitle, summary || null, extraSheets);
       setRowCount(rows.length);
       setStatus('done');
     } catch (e) {
