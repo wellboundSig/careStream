@@ -113,7 +113,9 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     getFilesByPatient(patient.id)
       .then((recs) => {
         const mapped = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        setFiles(mapped.filter((f) => f.category === 'F2F' || f.category === 'MD Orders'));
+        // Archived files (e.g. an F2F Clinical rejected) don't count as
+        // current documentation — they live in the Files tab Archived section.
+        setFiles(mapped.filter((f) => !f.archived_at && (f.category === 'F2F' || f.category === 'MD Orders')));
       })
       .catch(() => {})
       .finally(() => setLoadingFiles(false));

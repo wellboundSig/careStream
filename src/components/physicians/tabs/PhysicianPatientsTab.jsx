@@ -25,7 +25,7 @@ function FilesSection({ referralId, onClose }) {
     getFilesByReferral(referralId)
       .then((recs) => {
         const all = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        setFiles(all.filter((f) => DOC_CATEGORIES.includes(f.category) || !f.category));
+        setFiles(all.filter((f) => !f.archived_at && (DOC_CATEGORIES.includes(f.category) || !f.category)));
       })
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));

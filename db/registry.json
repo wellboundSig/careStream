@@ -1627,6 +1627,21 @@
         "column": "updated_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "archived_at": {
+        "column": "archived_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "archived_by_id": {
+        "column": "archived_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "archived_reason": {
+        "column": "archived_reason",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },

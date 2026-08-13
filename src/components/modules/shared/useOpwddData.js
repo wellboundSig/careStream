@@ -56,7 +56,7 @@ export function useOpwddData({ patientId, referralId }) {
 
         if (patientId) {
           const files = await getFilesByPatient(patientId).catch(() => []);
-          setOpwddFiles(files.map((r) => ({ _id: r.id, ...r.fields })));
+          setOpwddFiles(files.map((r) => ({ _id: r.id, ...r.fields })).filter((f) => !f.archived_at));
         }
       })
       .catch((e) => setError(e?.message || 'Load failed'))

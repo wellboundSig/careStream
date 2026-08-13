@@ -1640,7 +1640,8 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
       .then((recs) => {
         if (cancelled) return;
         const mapped = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        setFiles(mapped.filter((f) => f.category === 'F2F' || f.category === 'MD Orders'));
+        // Archived files don't count as current F2F/MD Orders documentation.
+        setFiles(mapped.filter((f) => !f.archived_at && (f.category === 'F2F' || f.category === 'MD Orders')));
       })
       .catch(() => { if (!cancelled) setFiles([]); })
       .finally(() => { if (!cancelled) setFilesLoading(false); });

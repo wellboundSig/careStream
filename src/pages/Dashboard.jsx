@@ -28,7 +28,18 @@ const PIPELINE_STAGES = [
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
 
-const TERMINAL_STAGES = new Set(['NTUC', 'SOC Completed']);
+/** Stages counted in "Active Referrals" KPI are everything except these. */
+const INACTIVE_FOR_ACTIVE_KPI = new Set([
+  'SOC Completed',
+  'Conflict',
+  'NTUC',
+  'Admin Confirmation',
+  'Hold',
+  'Discarded Leads',
+]);
+
+/** Overdue KPI: same exits + anything already SOC-completed concurrently. */
+const TERMINAL_STAGES = new Set(['NTUC', 'SOC Completed', 'Hold', 'Discarded Leads']);
 
 // Maps each stage to its dedicated module route
 const STAGE_ROUTE = {
@@ -96,6 +107,7 @@ function daysAgo(d) {
 export default function Dashboard() {
   const { prefs, save } = usePreferences();
   const { can } = usePermissions();
+  const isMobile = useIsMobile();
   const mode = prefs.dashboardMode || 'executive';
   const canToggle = can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE);
 
@@ -104,12 +116,18 @@ export default function Dashboard() {
     save({ dashboardMode: next });
   }
 
+  // Desktop: the toggle renders inside the page header (aligned with the
+  // other actions). Mobile keeps the compact floating pill.
+  const modeToggle = canToggle && !isMobile ? { mode, onToggle: handleToggle } : null;
+
   return (
     <>
-      {canToggle && (
+      {canToggle && isMobile && (
         <DashboardModeToggle mode={mode} onToggle={handleToggle} />
       )}
-      {mode === 'caseload' ? <CaseloadDashboard /> : <ExecutiveDashboard />}
+      {mode === 'caseload'
+        ? <CaseloadDashboard modeToggle={modeToggle} />
+        : <ExecutiveDashboard modeToggle={modeToggle} />}
     </>
   );
 }
@@ -137,14 +155,59 @@ function DashboardModeToggle({ mode, onToggle }) {
   );
 }
 
+// Quiet secondary header button — deliberately lower-key than the magenta
+// "+ New Referral" primary so the header has a clear hierarchy.
+const HEADER_SECONDARY_BTN = {
+  padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
+  background: 'transparent',
+  border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
+  fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit',
+  color: hexToRgba(palette.backgroundDark.hex, 0.6),
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  transition: 'background 0.12s',
+};
+
+function HeaderModeToggleButton({ mode, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      data-testid="dashboard-mode-toggle"
+      style={HEADER_SECONDARY_BTN}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05))}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+        <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+      {mode === 'executive' ? 'My Caseload' : 'Executive View'}
+    </button>
+  );
+}
+
+function HeaderMentionsButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title="All notes where you are @mentioned"
+      style={HEADER_SECONDARY_BTN}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.05))}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>@</span>
+      Mentions
+    </button>
+  );
+}
+
 // ── Caseload Dashboard ────────────────────────────────────────────────────────
 
-function CaseloadDashboard() {
+function CaseloadDashboard({ modeToggle = null }) {
   const { division } = useOutletContext();
   const { data: referrals, loading } = usePipelineData();
   const { appUserId, appUserName } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
   const { resolveSource, resolveUser } = useLookups();
+  const navigate = useNavigate();
   const allTasks = useCareStore((s) => s.tasks);
   const isMobile = useIsMobile();
 
@@ -213,6 +276,56 @@ function CaseloadDashboard() {
 
   if (loading) return <DashboardSkeleton isMobile={isMobile} />;
 
+  // Zero assigned cases: show a clear message instead of a dashboard of
+  // zeros (KPI cards, empty toolbar, empty table) that reads like a glitch.
+  if (myReferrals.length === 0) {
+    return (
+      <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 3 }}>My Caseload</h1>
+            <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+              {appUserName}{division !== 'All' && ` · ${division}`}
+            </p>
+          </div>
+          {!isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <HeaderMentionsButton onClick={() => navigate('/mentions')} />
+              {modeToggle && (
+                <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{
+          textAlign: 'center', padding: '64px 24px',
+          background: palette.backgroundLight.hex, borderRadius: 12,
+          border: '1px solid var(--color-border)',
+        }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>
+            You have no cases assigned
+          </p>
+          <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '8px 0 0', lineHeight: 1.55 }}>
+            Cases appear here when you are the intake owner on a referral.
+            {myTasks.length > 0 && ` You do have ${myTasks.length} open task${myTasks.length !== 1 ? 's' : ''} on the Tasks page.`}
+          </p>
+          {modeToggle && (
+            <button
+              onClick={modeToggle.onToggle}
+              style={{
+                marginTop: 18, padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+                fontSize: 12.5, fontWeight: 650, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Back to Executive View
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
@@ -223,6 +336,14 @@ function CaseloadDashboard() {
             {division !== 'All' && ` · ${division}`}
           </p>
         </div>
+        {!isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <HeaderMentionsButton onClick={() => navigate('/mentions')} />
+            {modeToggle && (
+              <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
+            )}
+          </div>
+        )}
       </div>
 
       {/* KPI row */}
@@ -326,7 +447,7 @@ function rankByCount(counts, resolveName, resolveImage) {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
-function ExecutiveDashboard() {
+function ExecutiveDashboard({ modeToggle = null }) {
   const { division } = useOutletContext();
   const { data: referrals, loading } = usePipelineData();
   const { open: openPatient } = usePatientDrawer();
@@ -385,7 +506,12 @@ function ExecutiveDashboard() {
     };
   }, [filtered, resolveMarketer, resolveUser, resolveUserImage]);
 
-  const activeCount = filtered.filter((r) => !TERMINAL_STAGES.has(r.current_stage)).length;
+  const activeCount = filtered.filter((r) => {
+    if (INACTIVE_FOR_ACTIVE_KPI.has(r.current_stage)) return false;
+    // Concurrent SOC/ROC completed (stage may still say Intake, etc.)
+    if (isSocCompletedReferral(r)) return false;
+    return true;
+  }).length;
 
   // New this week vs last week (WoW delta)
   const now = Date.now();
@@ -401,7 +527,7 @@ function ExecutiveDashboard() {
   // Referrals that have been in their current (non-terminal) stage for > 14 days
   const overdueCount = useMemo(() =>
     filtered.filter((r) => {
-      if (TERMINAL_STAGES.has(r.current_stage) || r.current_stage === 'Hold') return false;
+      if (INACTIVE_FOR_ACTIVE_KPI.has(r.current_stage) || isSocCompletedReferral(r)) return false;
       if (!r.updated_at) return false;
       return Math.floor((now - new Date(r.updated_at).getTime()) / 86400000) > 14;
     }).length,
@@ -548,19 +674,25 @@ function ExecutiveDashboard() {
             <span>Updated {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
           </p>
         </div>
-        {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
-          <button
-            onClick={() => setShowNewReferral(true)}
-            style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}
-          >
-            + New Referral
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <HeaderMentionsButton onClick={() => navigate('/mentions')} />
+          {modeToggle && (
+            <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
+          )}
+          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+            <button
+              onClick={() => setShowNewReferral(true)}
+              style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              + New Referral
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── KPI cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-        <StatCard label="Active Referrals" value={activeCount} sub="currently in pipeline" color={palette.primaryMagenta.hex} />
+        <StatCard label="Active Referrals" value={activeCount} sub="open pipeline (excludes completed / parked)" color={palette.primaryMagenta.hex} />
         <StatCard label="New This Week" value={newThisWeek} sub={newLastWeek > 0 ? `${newLastWeek} last week` : 'vs. last week'} delta={wowDelta} color={palette.accentBlue.hex} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <SocCompletedStatCard

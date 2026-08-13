@@ -9,7 +9,7 @@
  * Requires WB_CLUSTER_ARN + WB_SECRET_ARN (or AWS lookup).
  * Optional: WB_DATABASE (default wellbound).
  *
- * Targets: Raquel Lipschits, Rafi Barides
+ * Targets: Raquel Lipschitz, Rafi Barides, Olesya Glukhovskiy, David Krasner, Mordy Slomovics
  */
 
 import { readFileSync } from 'node:fs';
@@ -39,6 +39,9 @@ const PERM = 'referral.merge_duplicates';
 const TARGETS = [
   ['raquel', 'lipschits'],
   ['rafi', 'barides'],
+  ['olesya', 'glukhovskiy'],
+  ['david', 'krasner'],
+  ['mordy', 'slomovics'],
 ];
 
 const resourceArn = process.env.WB_CLUSTER_ARN;

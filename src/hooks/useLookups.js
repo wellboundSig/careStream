@@ -41,7 +41,10 @@ export function useLookups() {
   const marketerMap = useMemo(() => {
     const map = {};
     Object.values(marketers).forEach((m) => {
-      if (m.id) map[m.id] = `${m.first_name || ''} ${m.last_name || ''}`.trim();
+      const name = `${m.first_name || ''} ${m.last_name || ''}`.trim();
+      if (!name) return;
+      if (m.id) map[m.id] = name;
+      if (m._id) map[m._id] = name;
     });
     return map;
   }, [marketers]);
@@ -50,7 +53,9 @@ export function useLookups() {
     const map = {};
     Object.values(users).forEach((u) => {
       const name = `${u.first_name || ''} ${u.last_name || ''}`.trim();
+      if (!name) return;
       if (u.id) map[u.id] = name;
+      if (u._id) map[u._id] = name;
       if (u.clerk_user_id) map[u.clerk_user_id] = name;
     });
     return map;
@@ -127,19 +132,26 @@ export function useLookups() {
     return map;
   }, [patients]);
 
-  const resolveMarketer  = useMemo(() => (id) => (id && marketerMap[id])  || '—', [marketerMap]);
-  const resolveEntity    = useMemo(() => (id) => (id && entityMap[id])    || '—', [entityMap]);
-  const resolveUser      = useMemo(() => (id) => (id && userMap[id])      || '—', [userMap]);
+  // Airtable linked fields sometimes arrive as ['rec…'] — unwrap before lookup.
+  const asId = (id) => {
+    if (id == null || id === '') return '';
+    if (Array.isArray(id)) return id[0] ? String(id[0]) : '';
+    return String(id);
+  };
+
+  const resolveMarketer  = useMemo(() => (id) => { const k = asId(id); return (k && marketerMap[k])  || '—'; }, [marketerMap]);
+  const resolveEntity    = useMemo(() => (id) => { const k = asId(id); return (k && entityMap[k])    || '—'; }, [entityMap]);
+  const resolveUser      = useMemo(() => (id) => { const k = asId(id); return (k && userMap[k])      || '—'; }, [userMap]);
   // Returns the Clerk profile image URL for a user id (or null if none).
   // Distinct from `resolveUser` because callers usually want to render an
   // <img> with an initials fallback, so a null sentinel is more useful
   // than the "—" placeholder used by the name resolvers.
-  const resolveUserImage = useMemo(() => (id) => (id ? (userImageMap[id] || null) : null), [userImageMap]);
-  const resolveSource    = useMemo(() => (id) => (id && sourceMap[id])    || '—', [sourceMap]);
-  const resolveRole      = useMemo(() => (id) => (id && roleMap[id])     || '—', [roleMap]);
-  const resolveFacility  = useMemo(() => (id) => (id && facilityMap[id]) || '—', [facilityMap]);
-  const resolvePhysician = useMemo(() => (id) => (id && physicianMap[id])|| '—', [physicianMap]);
-  const resolvePatient   = useMemo(() => (id) => (id && patientMap[id])  || id || '—', [patientMap]);
+  const resolveUserImage = useMemo(() => (id) => { const k = asId(id); return k ? (userImageMap[k] || null) : null; }, [userImageMap]);
+  const resolveSource    = useMemo(() => (id) => { const k = asId(id); return (k && sourceMap[k])    || '—'; }, [sourceMap]);
+  const resolveRole      = useMemo(() => (id) => { const k = asId(id); return (k && roleMap[k])     || '—'; }, [roleMap]);
+  const resolveFacility  = useMemo(() => (id) => { const k = asId(id); return (k && facilityMap[k]) || '—'; }, [facilityMap]);
+  const resolvePhysician = useMemo(() => (id) => { const k = asId(id); return (k && physicianMap[k])|| '—'; }, [physicianMap]);
+  const resolvePatient   = useMemo(() => (id) => { const k = asId(id); return (k && patientMap[k])  || k || '—'; }, [patientMap]);
 
   return {
     resolveEntity,

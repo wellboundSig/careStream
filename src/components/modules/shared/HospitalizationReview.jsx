@@ -54,7 +54,7 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
       .then((recs) => {
         if (cancelled) return;
         const mapped = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        setDischargeFiles(mapped.filter((f) => f.category === 'Discharge'));
+        setDischargeFiles(mapped.filter((f) => !f.archived_at && f.category === 'Discharge'));
       })
       .catch(() => { if (!cancelled) setDischargeFiles([]); });
     return () => { cancelled = true; };

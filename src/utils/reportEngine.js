@@ -12,6 +12,11 @@ import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
 import { normalizeEpisodeType } from './episodeType.js';
+import {
+  PROCESSING_OVERVIEW_EXPORT_COLUMNS,
+  buildProcessingFlags,
+  isInProcessingPool,
+} from './processingOverview.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -1533,6 +1538,113 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
   };
 }
 
+async function runProcessingOverview({ dateFrom, dateTo, division, marketerIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds });
+  const cols = [
+    '__patient_name', 'division', 'current_stage', 'patient_id', 'physician_id',
+    'facility_id', 'marketer_id', 'intake_owner_id',
+    'f2f_date', 'clinical_review_completed_at', 'auth_obtained_at',
+    'eligibility_completed_at', 'emr_onboarded_at', 'staffing_confirmed_at',
+    'soc_scheduled_date', 'soc_completed_date',
+    '__facility_name', '__marketer_name', '__intake_owner', '__physician_name',
+  ];
+  const { rows: raw } = await fetchReportData({
+    tableName: 'Referrals',
+    filters,
+    selectedKeys: cols,
+  });
+
+  const [physiciansMap, triageAdultRecs, triagePedRecs, patientsMap] = await Promise.all([
+    getLookupMap('Physicians'),
+    airtable.fetchAll('TriageAdult').catch(() => []),
+    airtable.fetchAll('TriagePediatric').catch(() => []),
+    getLookupMap('Patients'),
+  ]);
+
+  const triageAdult = {};
+  for (const r of triageAdultRecs) {
+    const f = { _id: r.id, ...r.fields };
+    triageAdult[r.id] = f;
+    if (f.id) triageAdult[f.id] = f;
+  }
+  const triagePediatric = {};
+  for (const r of triagePedRecs) {
+    const f = { _id: r.id, ...r.fields };
+    triagePediatric[r.id] = f;
+    if (f.id) triagePediatric[f.id] = f;
+  }
+
+  function triageFor(row) {
+    const refId = row.id;
+    const match = (t) => {
+      const tid = t.referral_id;
+      if (!tid) return false;
+      if (tid === refId || tid === row._id) return true;
+      if (Array.isArray(tid)) return tid.includes(refId) || tid.includes(row._id);
+      return false;
+    };
+    return Object.values(triageAdult).find(match)
+      || Object.values(triagePediatric).find(match)
+      || null;
+  }
+
+  const rows = [];
+  for (const row of raw) {
+    if (!isInProcessingPool(row)) continue;
+    const pid = Array.isArray(row.patient_id) ? row.patient_id[0] : row.patient_id;
+    const patient = patientsMap[pid] || {};
+    const referral = {
+      ...row,
+      patient: {
+        ...patient,
+        first_name: patient.first_name,
+        last_name: patient.last_name,
+        dob: patient.dob || row.__patient_dob,
+        gender: patient.gender,
+        phone_primary: patient.phone_primary,
+        address_street: patient.address_street,
+        address_city: patient.address_city,
+        address_state: patient.address_state,
+        address_zip: patient.address_zip,
+        insurance_plan: patient.insurance_plan,
+        insurance_plans: patient.insurance_plans,
+        insurance_plan_details: patient.insurance_plan_details,
+      },
+    };
+    const phyId = firstId(row.physician_id);
+    const physician = (phyId && physiciansMap[phyId]) || null;
+    const flags = buildProcessingFlags(referral, {
+      triageData: triageFor(row),
+      physician,
+    });
+    rows.push({
+      patientName: row.__patient_name || pid || '',
+      division: row.division || '',
+      current_stage: row.current_stage || '',
+      ...Object.fromEntries(
+        Object.entries(flags).map(([k, v]) => [k, v ? 'Yes' : 'No']),
+      ),
+      facility: row.__facility_name && row.__facility_name !== '—' ? row.__facility_name : '',
+      marketer: row.__marketer_name && row.__marketer_name !== '—' ? row.__marketer_name : '',
+      intakeOwner: row.__intake_owner || '',
+      doctor: (row.__physician_name && row.__physician_name !== '—'
+        ? row.__physician_name
+        : `${physician?.first_name || ''} ${physician?.last_name || ''}`.trim()) || '',
+    });
+  }
+
+  rows.sort((a, b) => (a.patientName || '').localeCompare(b.patientName || '', undefined, { sensitivity: 'base' }));
+
+  return {
+    rows,
+    columns: PROCESSING_OVERVIEW_EXPORT_COLUMNS,
+    summary: {
+      total: rows.length,
+      note: 'Open pipeline only (excludes SOC/ROC completed, NTUC, Discarded).',
+    },
+  };
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
@@ -1542,6 +1654,13 @@ export const PRESETS = [
     description: 'Daily intake volume with owner, marketer, source, and stage mix. Summary charts for leadership.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runIntakeVolume(params); },
+  },
+  {
+    id: 'processing_overview',
+    title: 'Processing Overview',
+    description: 'Open-pipeline checklist: demographics, triage, insurance, F2F, clinical, auth, eligibility, PECOS/OPRA/NPI, EMR, staffing, SOC. Spot bottlenecks fast.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runProcessingOverview(params); },
   },
   {
     id: 'staff_audit',

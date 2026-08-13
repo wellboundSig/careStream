@@ -86,9 +86,14 @@ function rowToRecord(row, def, projection = null) {
           catch { if (v) fields[airtableName] = [v]; }
         }
         break;
-      case 'timestamp':
-        fields[airtableName] = parsePgTimestamp(v).toISOString();
+      case 'timestamp': {
+        // One corrupt value (e.g. a DOB typo like year 275760) must NEVER
+        // 500 the whole table read — omit the field instead. (Aug 2026:
+        // a single bad dob broke /hydrate Patients for every user.)
+        const d = parsePgTimestamp(v);
+        if (!Number.isNaN(d.getTime())) fields[airtableName] = d.toISOString();
         break;
+      }
       case 'date':
         fields[airtableName] = typeof v === 'string' ? v.slice(0, 10) : v;
         break;
@@ -101,11 +106,26 @@ function rowToRecord(row, def, projection = null) {
         fields[airtableName] = v;
     }
   }
+  let createdTime = new Date(0).toISOString();
+  if (row.created_at) {
+    const d = parsePgTimestamp(row.created_at);
+    if (!Number.isNaN(d.getTime())) createdTime = d.toISOString();
+  }
   return {
     id: row.rec_id,
-    createdTime: row.created_at ? parsePgTimestamp(row.created_at).toISOString() : new Date(0).toISOString(),
+    createdTime,
     fields,
   };
+}
+
+// Reject impossible dates at the door (typos like year 275760 poison table
+// reads for everyone). PG happily stores years up to 294276 — we don't.
+function assertSaneDate(fieldName, value) {
+  const d = new Date(String(value));
+  const year = d.getFullYear();
+  if (Number.isNaN(d.getTime()) || year < 1850 || year > 2100) {
+    throw new ApiError(422, 'INVALID_VALUE', `Invalid date for "${fieldName}": "${value}"`);
+  }
 }
 
 // ── Airtable fields → SQL column assignments ─────────────────────────────────
@@ -144,9 +164,11 @@ function buildWriteSets(def, fields, params) {
         break;
       }
       case 'timestamp':
+        assertSaneDate(airtableName, value);
         sets.push({ col: colRef, expr: `${P(String(value))}::timestamptz` });
         break;
       case 'date':
+        assertSaneDate(airtableName, value);
         sets.push({ col: colRef, expr: `${P(String(value).slice(0, 10))}::date` });
         break;
       case 'int':

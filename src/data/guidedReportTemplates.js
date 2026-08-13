@@ -91,6 +91,28 @@ export const GUIDED_TEMPLATES = [
     },
   },
   {
+    id: 'processing_overview',
+    title: 'Processing Overview',
+    description: 'Open pipeline checklist (not SOC completed) for bottleneck spotting.',
+    icon: 'processing_overview',
+    dateField: 'referral_date',
+    slots: ['division', 'dateRange', 'marketers'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS }),
+    fields: [
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+      { name: 'referral_date', label: 'Referral date', inputType: 'date' },
+    ],
+    async run(slots) {
+      const preset = presetById('processing_overview');
+      return preset.run({
+        dateFrom: slots.dateFrom || undefined,
+        dateTo: slots.dateTo || undefined,
+        division: slots.division || undefined,
+        marketerIds: slots.marketerIds,
+      });
+    },
+  },
+  {
     id: 'pipeline_snapshot',
     title: 'Pipeline Snapshot',
     description: 'Patients currently in selected stages, with marketer and F2F context.',

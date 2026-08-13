@@ -28,6 +28,12 @@
  *     trigger (feeds the client's IS_AFTER incremental sync).
  *
  * Usage: node db/generate-ddl.js
+ *
+ * SAFETY: this script is a snapshot+drift generator, NOT the live schema
+ * source of truth. Later SQL migrations add tables/columns that are absent
+ * from the Airtable snapshot. The emitted registry is MERGED with the
+ * existing db/registry.json so those live fields are never wiped. Never
+ * deploy an API zip built from a regenerated-only registry.
  */
 
 import fs from 'node:fs';
@@ -108,6 +114,9 @@ const DRIFT_FIELDS = {
     ['document_date', 'dateTime'], ['document_valid_through', 'dateTime'],
     ['verified_current_by_id', 'singleLineText'], ['verified_current_at', 'dateTime'],
     ['authorization_id', 'singleLineText'],
+    // Soft-archive (never delete): see db/migrations/0031_files_archive.sql
+    ['archived_at', 'dateTime'], ['archived_by_id', 'singleLineText'],
+    ['archived_reason', 'multilineText'],
   ],
   Tasks: [['opwdd_case_id', 'singleLineText'], ['physician_id', 'singleLineText']],
   ActivityLog: [['opwdd_case_id', 'singleLineText']],
@@ -351,11 +360,34 @@ const outDir = path.join(ROOT, 'db/migrations');
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, '0001_init.sql'), lines.join('\n'));
 
-// ── Emit registry ─────────────────────────────────────────────────────────────
+// ── Emit registry (merge with existing — never drop live tables/fields) ───────
+const registryPath = path.join(ROOT, 'db/registry.json');
 const registry = {};
 for (const t of tables) {
   registry[t.airtableName] = { pgTable: t.pgName, fields: t.registryCols };
 }
-fs.writeFileSync(path.join(ROOT, 'db/registry.json'), JSON.stringify(registry, null, 2));
+let existing = {};
+if (fs.existsSync(registryPath)) {
+  existing = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+}
+let keptTables = 0;
+let keptFields = 0;
+for (const [name, def] of Object.entries(existing)) {
+  if (!registry[name]) {
+    registry[name] = def;
+    keptTables++;
+    continue;
+  }
+  for (const [fname, fdef] of Object.entries(def.fields || {})) {
+    if (!registry[name].fields[fname]) {
+      registry[name].fields[fname] = fdef;
+      keptFields++;
+    }
+  }
+}
+fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n');
 
-console.log(`Generated db/migrations/0001_init.sql (${tables.length} tables) and db/registry.json`);
+console.log(
+  `Generated db/migrations/0001_init.sql (${tables.length} snapshot tables) and db/registry.json`
+  + ` (merged ${keptTables} extra table(s), ${keptFields} extra field(s) from existing registry)`,
+);

@@ -330,6 +330,30 @@ export default function NotificationBell({ variant = 'desktop' }) {
               })
             )}
           </div>
+
+          {/* Footer — permanent record of every @mention (this list caps and
+              fades once read; the Mentions page never forgets). */}
+          <div style={{
+            borderTop: `1px solid var(--color-border)`,
+            flexShrink: 0,
+            background: hexToRgba(palette.primaryDeepPlum.hex, 0.03),
+          }}>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); navigate('/mentions'); }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                width: '100%', padding: isMobile ? '14px 16px' : '11px 14px',
+                border: 'none', background: 'transparent', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 650, fontFamily: 'inherit',
+                color: palette.primaryMagenta.hex,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>@</span>
+              View all mentions
+            </button>
+          </div>
         </div>
       )}
     </div>

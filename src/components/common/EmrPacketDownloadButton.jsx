@@ -112,11 +112,22 @@ export default function EmrPacketDownloadButton({
                 onChange={(v) => setOpts((o) => ({
                   ...o,
                   includePatientFiles: v,
+                  includeArchivedFiles: v ? o.includeArchivedFiles : false,
                   packageMode: !v && o.includeHousePacket ? 'joined' : o.packageMode,
                 }))}
                 title="Patient uploaded documents"
-                detail="F2F, MD orders, and other files from the Files tab."
+                detail="F2F, MD orders, and other files from the Files tab. Archived files are left out unless included below."
               />
+              {opts.includePatientFiles && (
+                <div style={{ marginLeft: 24 }}>
+                  <CheckRow
+                    checked={opts.includeArchivedFiles === true}
+                    onChange={(v) => setOpts((o) => ({ ...o, includeArchivedFiles: v }))}
+                    title="Also include archived files"
+                    detail="Superseded documents that staff archived (e.g. an F2F that was replaced). Marked ARCHIVED in the manifest and kept in a separate ZIP folder."
+                  />
+                </div>
+              )}
 
               <SectionLabel style={{ marginTop: 16 }}>Download as</SectionLabel>
               <RadioRow

@@ -52,6 +52,7 @@ const Icon = {
 
 const PRESET_ICONS = {
   intake_volume:         Icon.Pipeline,
+  processing_overview:   Icon.Checkmark,
   staff_audit:           Icon.Shield,
   marketer_performance:  Icon.Chart,
   pipeline_snapshot:     Icon.Pipeline,

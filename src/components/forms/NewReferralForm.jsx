@@ -834,6 +834,13 @@ export default function NewReferralForm({
     const errs = {};
     if (!form.first_name.trim()) errs.first_name = 'Required';
     if (!form.last_name.trim()) errs.last_name = 'Required';
+    if (form.dob) {
+      const d = new Date(form.dob);
+      const y = d.getFullYear();
+      if (Number.isNaN(d.getTime()) || y < 1900 || d > new Date()) {
+        errs.dob = 'Enter a valid date of birth';
+      }
+    }
     // Primary Contact phone is required for Special Needs (reach the caregiver),
     // optional for ALF — facility social worker is often the main contact.
     const phoneRequired = form.division !== 'ALF';

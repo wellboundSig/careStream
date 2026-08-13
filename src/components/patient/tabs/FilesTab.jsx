@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser } from '@clerk/react';
-import { getFilesByPatient, createFile, deleteFile } from '../../../api/patientFiles.js';
+import { getFilesByPatient, createFile, updateFile, deleteFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
@@ -150,6 +150,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'F2F' | 'MD Orders' | 'OPWDD' (family) | specific cat
   const [search, setSearch] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const inputRef = useRef(null);
   const { can } = usePermissions();
 
@@ -166,11 +167,50 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const r2Configured = !!(import.meta.env.VITE_FILES_API_URL || import.meta.env.VITE_R2_WORKER_URL);
 
   async function handleDeleteFile(file) {
-    if (!window.confirm(`Delete "${file.file_name || 'this file'}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${file.file_name || 'this file'}"? This cannot be undone.\n\nIf the document was just superseded (e.g. a replaced F2F), use Archive instead — archived files are kept and can be restored.`)) return;
     try {
       await deleteFile(file._id);
       setFiles((prev) => prev.filter((f) => f._id !== file._id));
     } catch { /* silent */ }
+  }
+
+  // Soft-archive: the file is NOT deleted — it moves to the Archived section
+  // below, stays viewable/downloadable, and can be restored. Used when a
+  // document is superseded (e.g. Clinical bounced an F2F and a new one is
+  // uploaded).
+  async function handleArchiveFile(file) {
+    const reason = window.prompt(
+      `Archive "${file.file_name || 'this file'}"?\n\nThe file is kept and can be restored — it just moves to the Archived section.\n\nOptional reason (e.g. "F2F rejected by Clinical, replaced"):`,
+      '',
+    );
+    if (reason === null) return; // cancelled
+    const fields = {
+      archived_at: new Date().toISOString(),
+      archived_by_id: appUserId || 'unknown',
+      archived_reason: reason.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await updateFile(file._id, fields);
+      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...fields } : f)));
+    } catch (err) {
+      setUploadError(`Could not archive file: ${err.message}`);
+    }
+  }
+
+  async function handleRestoreFile(file) {
+    const fields = {
+      archived_at: null,
+      archived_by_id: null,
+      archived_reason: null,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await updateFile(file._id, fields);
+      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...fields } : f)));
+    } catch (err) {
+      setUploadError(`Could not restore file: ${err.message}`);
+    }
   }
 
   useEffect(() => {
@@ -181,6 +221,13 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [patient?.id]);
+
+  const activeFiles = useMemo(() => files.filter((f) => !f.archived_at), [files]);
+  const archivedFiles = useMemo(
+    () => files.filter((f) => f.archived_at)
+      .sort((a, b) => (b.archived_at || '').localeCompare(a.archived_at || '')),
+    [files],
+  );
 
   function stageFile(fileList) {
     if (!can(PERMISSION_KEYS.FILE_UPLOAD)) return;
@@ -651,21 +698,66 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
           No files uploaded yet.
         </p>
       ) : (
-        <GroupedFileList
-          files={files}
-          categoryFilter={categoryFilter}
-          setCategoryFilter={setCategoryFilter}
-          search={search}
-          setSearch={setSearch}
-          collapsedGroups={collapsedGroups}
-          toggleGroup={(id) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))}
-          onPreview={setPreview}
-          onOpenToSide={isMobile ? undefined : (file) => openFileBeside(file, patient, referral)}
-          onDelete={readOnly ? undefined : handleDeleteFile}
-          resolveUser={resolveUser}
-          resolvePhysician={resolvePhysician}
-          appUserName={appUserName}
-        />
+        <>
+          {activeFiles.length === 0 ? (
+            <p style={{ textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), padding: '24px 0', fontStyle: 'italic' }}>
+              No active files — all files are archived below.
+            </p>
+          ) : (
+            <GroupedFileList
+              files={activeFiles}
+              categoryFilter={categoryFilter}
+              setCategoryFilter={setCategoryFilter}
+              search={search}
+              setSearch={setSearch}
+              collapsedGroups={collapsedGroups}
+              toggleGroup={(id) => setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }))}
+              onPreview={setPreview}
+              onOpenToSide={isMobile ? undefined : (file) => openFileBeside(file, patient, referral)}
+              onDelete={readOnly ? undefined : handleDeleteFile}
+              onArchive={readOnly ? undefined : handleArchiveFile}
+              resolveUser={resolveUser}
+              resolvePhysician={resolvePhysician}
+              appUserName={appUserName}
+            />
+          )}
+
+          {archivedFiles.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <button
+                onClick={() => setArchivedOpen((v) => !v)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                  background: hexToRgba(palette.backgroundDark.hex, 0.04),
+                  border: `1px dashed ${hexToRgba(palette.backgroundDark.hex, 0.25)}`,
+                  borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                  color: hexToRgba(palette.backgroundDark.hex, 0.5),
+                  textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 11, opacity: 0.7 }}>{archivedOpen ? '▾' : '▸'}</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>Archived</span>
+                <span style={{ fontSize: 10.5, opacity: 0.7 }}>{archivedFiles.length}</span>
+              </button>
+              {archivedOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 5 }}>
+                  <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.42), padding: '0 2px', lineHeight: 1.45 }}>
+                    Archived files are kept — not deleted. They are left out of EMR packet downloads unless explicitly included.
+                  </p>
+                  {archivedFiles.map((file) => (
+                    <FileRow key={file._id} file={file}
+                      onPreview={setPreview}
+                      onOpenToSide={isMobile ? undefined : (f) => openFileBeside(f, patient, referral)}
+                      onDelete={readOnly ? undefined : handleDeleteFile}
+                      onRestore={readOnly ? undefined : handleRestoreFile}
+                      resolveUser={resolveUser} resolvePhysician={resolvePhysician}
+                      appUserName={appUserName} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {preview && (
@@ -691,7 +783,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
 function GroupedFileList({
   files, categoryFilter, setCategoryFilter, search, setSearch,
   collapsedGroups, toggleGroup,
-  onPreview, onOpenToSide, onDelete, resolveUser, resolvePhysician, appUserName,
+  onPreview, onOpenToSide, onDelete, onArchive, resolveUser, resolvePhysician, appUserName,
 }) {
   const groupDefs = useMemo(() => ([
     {
@@ -862,6 +954,7 @@ function GroupedFileList({
                         {subFiles.map((file) => (
                           <FileRow key={file._id} file={file}
                             onPreview={onPreview} onOpenToSide={onOpenToSide} onDelete={onDelete}
+                            onArchive={onArchive}
                             resolveUser={resolveUser} resolvePhysician={resolvePhysician}
                             appUserName={appUserName} />
                         ))}
@@ -872,6 +965,7 @@ function GroupedFileList({
                   group.items.map((file) => (
                     <FileRow key={file._id} file={file}
                       onPreview={onPreview} onOpenToSide={onOpenToSide} onDelete={onDelete}
+                      onArchive={onArchive}
                       resolveUser={resolveUser} resolvePhysician={resolvePhysician}
                       appUserName={appUserName} />
                   ))
@@ -885,7 +979,24 @@ function GroupedFileList({
   );
 }
 
-function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolvePhysician, appUserName }) {
+// ── File row buttons — flat, solid colors, one clear primary ────────────────
+// No borders, no translucent tints. "Open to side" is the workhorse action,
+// so it gets the solid magenta; utilities are quiet solid-gray; destructive/
+// housekeeping actions are plain text.
+const FILE_BTN_BASE = {
+  padding: '6px 13px', borderRadius: 7, border: 'none', cursor: 'pointer',
+  fontSize: 12, fontWeight: 650, fontFamily: 'inherit', lineHeight: 1.2,
+  whiteSpace: 'nowrap',
+};
+const FILE_BTN = {
+  primary: { ...FILE_BTN_BASE, background: palette.primaryMagenta.hex, color: '#FFFFFF' },
+  neutral: { ...FILE_BTN_BASE, background: '#EFEEF3', color: '#4B4554' },
+  ghost:   { ...FILE_BTN_BASE, background: 'transparent', color: '#8A8494', fontWeight: 600 },
+  danger:  { ...FILE_BTN_BASE, background: 'transparent', color: palette.primaryMagenta.hex, fontWeight: 600 },
+  success: { ...FILE_BTN_BASE, background: palette.accentGreen.hex, color: '#FFFFFF' },
+};
+
+function FileRow({ file, onPreview, onOpenToSide, onDelete, onArchive, onRestore, resolveUser, resolvePhysician, appUserName }) {
   const kind = getFileIcon(file.file_type, file.file_name);
   const catColors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS['Other'];
   // Private R2: a file is viewable/downloadable as long as we have its key
@@ -896,63 +1007,68 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
     : null;
   const validThroughDays = file.document_valid_through ? daysUntilCalendarDate(file.document_valid_through) : null;
   const isExpired = validThroughDays != null && validThroughDays < 0;
+  const isArchived = !!file.archived_at;
+  const rowBg = isArchived ? '#F4F4F6' : palette.backgroundLight.hex;
 
   return (
     <div
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-        borderRadius: 7, border: `1px solid var(--color-border)`,
-        background: palette.backgroundLight.hex, transition: 'background 0.12s',
+        padding: '10px 12px',
+        borderRadius: 8,
+        border: `1px solid var(--color-border)`,
+        background: rowBg,
+        opacity: isArchived ? 0.85 : 1,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.025))}
-      onMouseLeave={(e) => (e.currentTarget.style.background = palette.backgroundLight.hex)}
     >
-      <FileIconSVG kind={kind} />
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex, wordBreak: 'break-word', lineHeight: 1.3 }}>
-          {file.file_name || 'Unnamed'}
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-          {file.category && (
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: catColors.bg, color: catColors.text }}>
-              {file.category}
-            </span>
-          )}
-          {opwddSubtypeLabel && (
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), color: palette.primaryDeepPlum.hex }}>
-              {opwddSubtypeLabel}
-            </span>
-          )}
-          {file.document_valid_through && (
-            <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: isExpired ? hexToRgba(palette.primaryMagenta.hex, 0.08) : hexToRgba(palette.accentGreen.hex, 0.12), color: isExpired ? palette.primaryMagenta.hex : '#15803d' }}>
-              {isExpired ? 'Expired ' : 'Valid through '}{fmtCalendarDate(file.document_valid_through, '')}
-            </span>
-          )}
-          <FileSourceProviderBadge file={file} resolvePhysician={resolvePhysician} size="sm" />
-          {file.file_size && (
-            <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{formatBytes(file.file_size)}</span>
+      {/* Name + meta — full width so long file names never squeeze vertical */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <FileIconSVG kind={kind} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, wordBreak: 'break-word', lineHeight: 1.35, margin: 0 }}>
+            {file.file_name || 'Unnamed'}
+          </p>
+          <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {isArchived && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: '#E2E1E7', color: '#6C667A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Archived
+              </span>
+            )}
+            {file.category && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: catColors.bg, color: catColors.text }}>
+                {file.category}
+              </span>
+            )}
+            {opwddSubtypeLabel && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: hexToRgba(palette.primaryDeepPlum.hex, 0.08), color: palette.primaryDeepPlum.hex }}>
+                {opwddSubtypeLabel}
+              </span>
+            )}
+            {file.document_valid_through && (
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 10, background: isExpired ? hexToRgba(palette.primaryMagenta.hex, 0.08) : hexToRgba(palette.accentGreen.hex, 0.12), color: isExpired ? palette.primaryMagenta.hex : '#15803d' }}>
+                {isExpired ? 'Expired ' : 'Valid through '}{fmtCalendarDate(file.document_valid_through, '')}
+              </span>
+            )}
+            <FileSourceProviderBadge file={file} resolvePhysician={resolvePhysician} size="sm" />
+          </div>
+          <p style={{ fontSize: 11, color: '#9B96A6', marginTop: 4, marginBottom: 0 }}>
+            {file.file_size ? `${formatBytes(file.file_size)} · ` : ''}
+            Uploaded {formatDateTime(file.created_at)}
+            {file.uploaded_by_id ? ` · ${resolveUser(file.uploaded_by_id)}` : file._justUploaded ? ` · ${appUserName}` : ''}
+          </p>
+          {isArchived && (
+            <p style={{ fontSize: 11, color: '#7C7689', marginTop: 2, marginBottom: 0 }}>
+              Archived {formatDateTime(file.archived_at)}
+              {file.archived_by_id ? ` · ${resolveUser(file.archived_by_id)}` : ''}
+              {file.archived_reason ? ` — ${file.archived_reason}` : ''}
+            </p>
           )}
         </div>
-        <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35), marginTop: 2 }}>
-          Uploaded {formatDateTime(file.created_at)}
-          {file.uploaded_by_id ? ` · ${resolveUser(file.uploaded_by_id)}` : file._justUploaded ? ` · ${appUserName}` : ''}
-        </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {/* Actions — one primary, quiet utilities, text-only housekeeping */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {canPreview && onOpenToSide && (
-          <button
-            type="button"
-            onClick={() => onOpenToSide(file)}
-            title="Open beside patient snapshot"
-            style={{
-              padding: '5px 11px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 650,
-              background: hexToRgba(palette.primaryMagenta.hex, 0.1),
-              border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.22)}`,
-              color: palette.primaryMagenta.hex,
-            }}
-          >
+          <button type="button" onClick={() => onOpenToSide(file)} title="Open beside patient snapshot" style={FILE_BTN.primary}>
             Open to side
           </button>
         )}
@@ -960,46 +1076,34 @@ function FileRow({ file, onPreview, onOpenToSide, onDelete, resolveUser, resolve
           <button
             type="button"
             onClick={() => onPreview(file)}
-            style={{
-              padding: '5px 11px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-              background: hexToRgba(palette.primaryDeepPlum.hex, 0.07),
-              border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.15)}`,
-              color: palette.primaryDeepPlum.hex, transition: 'background 0.12s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.12))}
-            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.07))}
+            style={onOpenToSide ? FILE_BTN.neutral : FILE_BTN.primary}
           >
             Preview
           </button>
         )}
         {canPreview && (
-          <button
-            type="button"
-            onClick={() => openSignedFile(file, { download: true })}
-            style={{
-              padding: '5px 11px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: hexToRgba(palette.accentBlue.hex, 0.1),
-              border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.25)}`,
-              color: palette.accentBlue.hex,
-              display: 'flex', alignItems: 'center',
-            }}
-          >
+          <button type="button" onClick={() => openSignedFile(file, { download: true })} style={FILE_BTN.neutral}>
             Download
           </button>
         )}
-        {onDelete && (
+        {onRestore && isArchived && (
+          <button type="button" onClick={() => onRestore(file)} title="Restore file to the active list" style={FILE_BTN.success}>
+            Restore
+          </button>
+        )}
+        <span style={{ flex: 1 }} />
+        {onArchive && !isArchived && (
           <button
-            onClick={() => onDelete(file)}
-            title="Delete file"
-            style={{
-              padding: '5px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-              background: hexToRgba(palette.primaryMagenta.hex, 0.08),
-              border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.2)}`,
-              color: palette.primaryMagenta.hex, transition: 'background 0.12s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.15))}
-            onMouseLeave={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryMagenta.hex, 0.08))}
+            type="button"
+            onClick={() => onArchive(file)}
+            title="Archive file — kept and restorable, excluded from packet downloads"
+            style={FILE_BTN.ghost}
           >
+            Archive
+          </button>
+        )}
+        {onDelete && (
+          <button type="button" onClick={() => onDelete(file)} title="Delete file" style={FILE_BTN.danger}>
             Delete
           </button>
         )}

@@ -3,6 +3,13 @@ import { useCareStore } from '../store/careStore.js';
 import { resolveStageEnteredAt, daysBetween, daysInPipeline } from '../utils/referralMetrics.js';
 import { useReferralVisibility } from './useReferralVisibility.js';
 
+/** Unwrap linked-record arrays / trim ids. Kept local — do not import heavy utils here. */
+function asId(raw) {
+  if (raw == null || raw === '') return '';
+  if (Array.isArray(raw)) return raw[0] != null ? String(raw[0]).trim() : '';
+  return String(raw).trim();
+}
+
 export function usePipelineData() {
   const patients     = useCareStore((s) => s.patients);
   const referrals    = useCareStore((s) => s.referrals);
@@ -20,6 +27,11 @@ export function usePipelineData() {
     Object.values(patients).forEach((p) => {
       if (p.id)  patientByCustomId[p.id]  = p;
       if (p._id) patientByRecordId[p._id] = p;
+      // Also index trimmed forms
+      const cid = asId(p.id);
+      const rid = asId(p._id);
+      if (cid && !patientByCustomId[cid]) patientByCustomId[cid] = p;
+      if (rid && !patientByRecordId[rid]) patientByRecordId[rid] = p;
     });
 
     // Index StageHistory by referral_id once, so each referral does an O(1)
@@ -33,16 +45,20 @@ export function usePipelineData() {
     });
 
     return refs.map((ref) => {
-      const patient = patientByCustomId[ref.patient_id]
+      const pid = asId(ref.patient_id) || ref.patient_id;
+      const patient = patientByCustomId[pid]
+        || patientByRecordId[pid]
+        || patientByCustomId[ref.patient_id]
         || patientByRecordId[ref.patient_id]
         || null;
       const refHistory = historyByReferral[ref.id] || [];
       const stageEnteredAt = resolveStageEnteredAt(ref, refHistory);
+      const fullName = patient
+        ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
+        : '';
       return {
         ...ref,
-        patientName: patient
-          ? `${patient.first_name} ${patient.last_name}`
-          : ref.patient_id || 'Unknown',
+        patientName: fullName || pid || ref.patient_id || 'Unknown',
         patientDob: patient?.dob || null,
         patient: patient || null,
         // Computed time metrics (single source of truth — see referralMetrics.js)

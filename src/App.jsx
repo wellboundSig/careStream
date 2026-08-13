@@ -18,6 +18,7 @@ import Campaigns from './pages/directory/Campaigns.jsx';
 import ReferralSources from './pages/directory/ReferralSources.jsx';
 import Clinicians from './pages/directory/Clinicians.jsx';
 import Tasks from './pages/Tasks.jsx';
+import Mentions from './pages/Mentions.jsx';
 import UserManagement from './pages/admin/UserManagement.jsx';
 import Settings from './pages/Settings.jsx';
 import CalendarPage from './pages/Calendar.jsx';
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 
         <Route path="tasks" element={<Tasks />} />
+        <Route path="mentions" element={<Mentions />} />
         <Route path="inbound-submissions" element={<InboundSubmissions />} />
         <Route path="inbound-submissions/:id/convert" element={<InboundConvertWorkspace />} />
         <Route path="inbound-submissions/:id" element={<InboundSubmissionDetail />} />

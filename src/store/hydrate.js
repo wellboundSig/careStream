@@ -147,6 +147,12 @@ async function batchedHydrate() {
   }
 }
 
+// Tables the UI cannot render sensibly without. If any of these fail to load
+// (e.g. rate-limited during multi-tab refresh storms), we must show the retry
+// screen — NOT boot with silently-empty data (patients missing → every name
+// renders as a raw pat_… id; referrals missing → "No referrals yet").
+const CRITICAL_TABLES = new Set(['Patients', 'Referrals', 'Users', 'Marketers']);
+
 export async function hydrateStore() {
   const state = useCareStore.getState();
   if (state.hydrated || state.hydrating) return;
@@ -158,11 +164,13 @@ export async function hydrateStore() {
   });
 
   try {
-    // One automatic retry — covers Clerk token race + brief 429s from
-    // double-mounted Vite tabs without trapping the user on an error screen.
+    // Automatic retries — cover the Clerk token race and brief 429s from
+    // double-mounted Vite tabs / multi-tab refreshes. The API's hydrate
+    // rate-limit window is 60s, so back off meaningfully between attempts.
     let results = null;
-    for (let attempt = 0; attempt < 2 && !results; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 800));
+    const delays = [0, 1500, 4000];
+    for (let attempt = 0; attempt < delays.length && !results; attempt++) {
+      if (delays[attempt]) await new Promise((r) => setTimeout(r, delays[attempt]));
       results = await batchedHydrate();
     }
 
@@ -170,6 +178,7 @@ export async function hydrateStore() {
       useCareStore.setState({ hydrationProgress: { done: TABLES.length, total: TABLES.length } });
     } else {
       let done = 0;
+      const failed = [];
       results = await Promise.all(
         TABLES.map(async ({ key, table }) => {
           try {
@@ -181,10 +190,36 @@ export async function hydrateStore() {
             done++;
             useCareStore.setState({ hydrationProgress: { done, total: TABLES.length } });
             console.warn(`[hydrate] Failed to fetch ${table}:`, err.message);
+            failed.push({ key, table });
             return { key, data: {} };
           }
         }),
       );
+
+      // Second chance for tables that failed (likely 429s) — retry after a
+      // pause so the rate-limit window can drain.
+      if (failed.length) {
+        await new Promise((r) => setTimeout(r, 2500));
+        for (const f of failed) {
+          try {
+            const records = await airtable.fetchAll(f.table);
+            const idx = results.findIndex((r) => r.key === f.key);
+            if (idx >= 0) results[idx] = { key: f.key, data: normalize(records) };
+            f.recovered = true;
+          } catch (err) {
+            console.warn(`[hydrate] Retry failed for ${f.table}:`, err.message);
+          }
+        }
+        const stillFailedCritical = failed
+          .filter((f) => !f.recovered && CRITICAL_TABLES.has(f.table))
+          .map((f) => f.table);
+        if (stillFailedCritical.length) {
+          throw new Error(
+            `Could not load ${stillFailedCritical.join(', ')} — the server may be busy `
+            + '(too many open tabs refreshing at once). Wait a few seconds and retry.',
+          );
+        }
+      }
     }
 
     const batch = {

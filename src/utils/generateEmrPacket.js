@@ -645,6 +645,7 @@ function buildFileManifestPdf(files) {
     s.ensureSpace(12);
     s.bodyText(file.file_name || 'Untitled file', { bold: true, size: 9 });
     const meta = [
+      file.archived_at ? 'ARCHIVED' : null,
       file.category || null,
       file.created_at ? `Uploaded ${fmtDateTime(file.created_at)}` : null,
       file.file_type || null,
@@ -744,12 +745,18 @@ async function buildHousePacketPdf({
  * One long PDF: optional house sections + each patient file embedded.
  * Non-embeddable or failed files get a divider page explaining why.
  * Pass houseBytes=null for a documents-only joined PDF.
+ *
+ * includeDividers=false → documents-only cleanup: no intro page and no
+ * per-file divider pages; only the actual documents (plus an explanatory
+ * page for files that could not be embedded, so nothing goes silently
+ * missing).
  */
 async function buildCompletePacketPdf({
   houseBytes = null,
   loaded,
   failed,
   originalsInZip = true,
+  includeDividers = true,
 }) {
   const merged = await PDFDocument.create();
   if (houseBytes) {
@@ -760,24 +767,30 @@ async function buildCompletePacketPdf({
     return merged.save();
   }
 
-  await appendPdfBytes(merged, buildFileDividerPdf(
-    { file_name: 'Attached patient documents', category: 'Packet', created_at: null },
-    {
-      status: 'Documents below',
-      detail: originalsInZip
-        ? 'Original uploads may also be included separately in this download.'
-        : 'Patient documents embedded in this PDF.',
-    },
-  ));
+  if (includeDividers) {
+    await appendPdfBytes(merged, buildFileDividerPdf(
+      { file_name: 'Attached patient documents', category: 'Packet', created_at: null },
+      {
+        status: 'Documents below',
+        detail: originalsInZip
+          ? 'Original uploads may also be included separately in this download.'
+          : 'Patient documents embedded in this PDF.',
+      },
+    ));
+  }
 
   for (const item of loaded) {
     const { file, bytes, kind } = item;
     try {
       if (kind === 'pdf') {
-        await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        if (includeDividers) {
+          await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        }
         await appendPdfBytes(merged, bytes);
       } else if (kind === 'png' || kind === 'jpg') {
-        await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        if (includeDividers) {
+          await appendPdfBytes(merged, buildFileDividerPdf(file, { status: 'Embedded below' }));
+        }
         const ok = await appendImageFile(merged, bytes, kind);
         if (!ok) {
           await appendPdfBytes(merged, buildFileDividerPdf(file, {
@@ -814,6 +827,8 @@ async function buildCompletePacketPdf({
 export const EMR_PACKET_DEFAULT_OPTIONS = {
   includeHousePacket: true,
   includePatientFiles: true,
+  /** Archived (soft-deleted) uploads are excluded unless explicitly requested. */
+  includeArchivedFiles: false,
   /** 'joined' | 'separate' | 'joined_and_separate' */
   packageMode: 'joined_and_separate',
 };
@@ -821,6 +836,7 @@ export const EMR_PACKET_DEFAULT_OPTIONS = {
 export function normalizeEmrPacketOptions(raw = {}) {
   const includeHousePacket = raw.includeHousePacket !== false;
   const includePatientFiles = raw.includePatientFiles !== false;
+  const includeArchivedFiles = raw.includeArchivedFiles === true;
   let packageMode = raw.packageMode || EMR_PACKET_DEFAULT_OPTIONS.packageMode;
   if (!['joined', 'separate', 'joined_and_separate'].includes(packageMode)) {
     packageMode = 'joined_and_separate';
@@ -833,7 +849,7 @@ export function normalizeEmrPacketOptions(raw = {}) {
   if (includeHousePacket && !includePatientFiles) {
     packageMode = 'joined';
   }
-  return { includeHousePacket, includePatientFiles, packageMode };
+  return { includeHousePacket, includePatientFiles, includeArchivedFiles, packageMode };
 }
 
 async function collectPatientFiles(referral) {
@@ -895,7 +911,9 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
   } = opts;
 
   const pack = normalizeEmrPacketOptions(packetOptions || opts);
-  const { includeHousePacket, includePatientFiles, packageMode } = pack;
+  const {
+    includeHousePacket, includePatientFiles, includeArchivedFiles, packageMode,
+  } = pack;
 
   const patientId = referral.patient_id || referral.patient?.id || referral.patient?._id;
   const referralId = referral.id || referral._id;
@@ -908,7 +926,10 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
     referralId ? getConflictsByReferral(referralId).catch(() => []) : Promise.resolve([]),
   ]);
 
-  const files = includePatientFiles ? allFiles : [];
+  // Archived files are excluded unless the checklist explicitly asks for them.
+  const activeFiles = allFiles.filter((f) => !f.archived_at);
+  const selectableFiles = includeArchivedFiles ? allFiles : activeFiles;
+  const files = includePatientFiles ? selectableFiles : [];
 
   const notes = noteRecs
     .map((r) => ({ _id: r.id, ...r.fields }))
@@ -942,7 +963,7 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
       resolveMarketer,
       notes,
       timelineEntries,
-      files: includePatientFiles ? files : allFiles,
+      files: includePatientFiles ? files : selectableFiles,
     });
   }
 
@@ -977,6 +998,9 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
       loaded,
       failed,
       originalsInZip: wantsSeparate,
+      // Documents-only downloads must contain ONLY the documents — no
+      // CareStream-generated intro or per-file divider pages.
+      includeDividers: includeHousePacket,
     });
   }
 
@@ -1006,8 +1030,14 @@ export async function generateEmrPacket(referral, resolveSourceOrOpts, maybeOpts
 
   if (wantsSeparate) {
     const filesFolder = zip.folder('Patient_Files');
+    let archivedFolder = null;
     for (const item of loaded) {
-      filesFolder.file(item.zipName, item.bytes);
+      if (item.file?.archived_at) {
+        if (!archivedFolder) archivedFolder = filesFolder.folder('Archived');
+        archivedFolder.file(item.zipName, item.bytes);
+      } else {
+        filesFolder.file(item.zipName, item.bytes);
+      }
     }
   }
 

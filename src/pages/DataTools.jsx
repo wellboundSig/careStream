@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../hooks/usePermissions.js';
+import { useCareStore, mergeEntities } from '../store/careStore.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { exportToExcel } from '../utils/reportEngine.js';
 import LoadingState from '../components/common/LoadingState.jsx';
@@ -15,6 +16,16 @@ import {
   toCalendarDateString,
 } from '../utils/dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import {
+  PROCESSING_FLAG_COLUMNS,
+  PROCESSING_META_COLUMNS,
+  PROCESSING_OVERVIEW_EXPORT_COLUMNS,
+  VERIFYABLE_FLAG_KEYS,
+  buildProcessingOverviewRows,
+} from '../utils/processingOverview.js';
+import { verifyPhysicianNpi } from '../api/cms.js';
+import { updatePhysician } from '../api/physicians.js';
+import { normalizePhysicianTitle } from '../utils/physicianName.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -66,7 +77,7 @@ const COMPARE_METRICS = [
   { key: 'avg_days',      label: 'Avg Days in Pipeline',   fmt: 'd' },
 ];
 
-const TABS = ['Overview','Trends','Sources','Period Comparison','Heatmap','Data Table'];
+const TABS = ['Overview','Trends','Sources','Period Comparison','Heatmap','Processing Overview','Data Table'];
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -840,6 +851,414 @@ function PeriodComparisonTab({ allReferrals }) {
   );
 }
 
+// ── Processing Overview Tab ───────────────────────────────────────────────────
+
+const PO_BORDER = '#C5C5C5';
+const PO_HEADER_BG = '#EFEFEF';
+const PO_FILTER_BG = '#F7F7F7';
+const PO_CELL = {
+  padding: '5px 7px',
+  border: `1px solid ${PO_BORDER}`,
+  fontSize: 12,
+  color: palette.backgroundDark.hex,
+  background: palette.backgroundLight.hex,
+  verticalAlign: 'middle',
+};
+const PO_TH = {
+  ...PO_CELL,
+  background: PO_HEADER_BG,
+  fontSize: 10.5,
+  fontWeight: 700,
+  letterSpacing: '0.02em',
+  textTransform: 'uppercase',
+  color: '#333',
+  whiteSpace: 'nowrap',
+  position: 'sticky',
+  top: 0,
+  zIndex: 3,
+};
+const PO_FILTER_TH = {
+  ...PO_CELL,
+  background: PO_FILTER_BG,
+  padding: '3px 4px',
+  position: 'sticky',
+  top: 28,
+  zIndex: 3,
+};
+const PO_FILTER_INPUT = {
+  width: '100%',
+  boxSizing: 'border-box',
+  border: `1px solid ${PO_BORDER}`,
+  background: '#fff',
+  fontSize: 11,
+  fontFamily: 'inherit',
+  padding: '3px 5px',
+  outline: 'none',
+  color: palette.backgroundDark.hex,
+  minWidth: 56,
+};
+
+function YesNoCell({ yes, clickable, busy, title, onClick }) {
+  const base = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 34,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: 750,
+    letterSpacing: '0.02em',
+    padding: '2px 6px',
+    border: `1px solid ${yes ? '#8FCF9E' : '#D0D0D0'}`,
+    background: yes ? '#E7F8EE' : '#F3F3F3',
+    color: yes ? '#157347' : '#777',
+    cursor: clickable && !busy ? 'pointer' : 'default',
+  };
+  if (busy) {
+    return <span style={{ ...base, color: palette.primaryMagenta.hex }}>…</span>;
+  }
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        style={{ ...base, fontFamily: 'inherit' }}
+      >
+        {yes ? 'Yes' : 'Check'}
+      </button>
+    );
+  }
+  return <span style={base}>{yes ? 'Yes' : 'No'}</span>;
+}
+
+function ProcessingOverviewTab({ referrals }) {
+  const {
+    resolveMarketer, resolveFacility, resolveUser, resolvePhysician, resolvePatient,
+  } = useLookups();
+  const { appUserId } = useCurrentAppUser();
+  const triageAdult = useCareStore((s) => s.triageAdult) || {};
+  const triagePediatric = useCareStore((s) => s.triagePediatric) || {};
+  const physicians = useCareStore((s) => s.physicians) || {};
+  const patients = useCareStore((s) => s.patients) || {};
+  const [exporting, setExporting] = useState(false);
+  const [divFilter, setDivFilter] = useState('All');
+  const [textFilters, setTextFilters] = useState({
+    patientName: '', stage: '', facility: '', marketer: '', intakeOwner: '', doctor: '',
+  });
+  const [flagFilters, setFlagFilters] = useState({});
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [verifyError, setVerifyError] = useState(null);
+
+  const setText = (key, val) => setTextFilters((prev) => ({ ...prev, [key]: val }));
+  const setFlag = (key, val) => setFlagFilters((prev) => ({ ...prev, [key]: val }));
+
+  const baseRows = useMemo(() => buildProcessingOverviewRows(referrals, {
+    triageAdult,
+    triagePediatric,
+    physicians,
+    patients,
+    resolveFacility,
+    resolveMarketer,
+    resolveUser,
+    resolvePhysician,
+    resolvePatient,
+  }), [
+    referrals, triageAdult, triagePediatric, physicians, patients,
+    resolveFacility, resolveMarketer, resolveUser, resolvePhysician, resolvePatient,
+  ]);
+
+  const rows = useMemo(() => {
+    let list = baseRows;
+    if (divFilter !== 'All') list = list.filter((r) => r.division === divFilter);
+
+    const tf = textFilters;
+    const match = (val, q) => !q || String(val || '').toLowerCase().includes(q.toLowerCase());
+    list = list.filter((r) => (
+      match(r.patientName, tf.patientName)
+      && match(r.current_stage, tf.stage)
+      && match(r.facility, tf.facility)
+      && match(r.marketer, tf.marketer)
+      && match(r.intakeOwner, tf.intakeOwner)
+      && match(r.doctor, tf.doctor)
+    ));
+
+    for (const col of PROCESSING_FLAG_COLUMNS) {
+      const f = flagFilters[col.key];
+      if (f === 'Yes') list = list.filter((r) => r.flags[col.key]);
+      else if (f === 'No') list = list.filter((r) => !r.flags[col.key]);
+    }
+    return list;
+  }, [baseRows, divFilter, textFilters, flagFilters]);
+
+  const bottleneckHint = useMemo(() => {
+    if (!rows.length) return null;
+    let worst = null;
+    for (const col of PROCESSING_FLAG_COLUMNS) {
+      if (col.key === 'socCompleted') continue;
+      const nos = rows.filter((r) => !r.flags[col.key]).length;
+      if (!worst || nos > worst.nos) worst = { label: col.label, nos };
+    }
+    if (!worst || worst.nos === 0) return null;
+    const pct = Math.round((worst.nos / rows.length) * 100);
+    return `${worst.label}: ${worst.nos} open (${pct}%)`;
+  }, [rows]);
+
+  const handleVerify = useCallback(async (row) => {
+    const recId = row.physician_record_id;
+    const npi = row.physician_npi;
+    if (!recId || !npi || npi.length !== 10) {
+      setVerifyError(
+        !row.doctor
+          ? 'No physician linked — add one on the patient Physician tab first.'
+          : 'Physician needs a valid 10-digit NPI before CMS check.',
+      );
+      return;
+    }
+    setVerifyingId(recId);
+    setVerifyError(null);
+    try {
+      const r = await verifyPhysicianNpi(npi);
+      const title = normalizePhysicianTitle(r.details?.credential);
+      const fields = {
+        npi_status: r.npiStatus,
+        npi_checked_at: r.checkedAt,
+        npi_provider_name: r.providerName || '',
+        npi_details: r.details ? JSON.stringify(r.details) : '',
+        ...(title ? { title } : {}),
+        is_pecos_enrolled: r.pecosEnrolled ? true : null,
+        pecos_last_checked: r.checkedAt,
+        is_opra_enrolled: r.opraEligible ? true : null,
+        opra_last_checked: r.checkedAt,
+        order_refer_flags: JSON.stringify(r.flags || {}),
+        verification_last_run_at: r.checkedAt,
+        verification_checked_by_id: appUserId || 'unknown',
+      };
+      await updatePhysician(recId, fields);
+      const existing = physicians[recId] || {};
+      mergeEntities('physicians', {
+        [recId]: {
+          ...existing,
+          ...fields,
+          is_pecos_enrolled: !!r.pecosEnrolled,
+          is_opra_enrolled: !!r.opraEligible,
+        },
+      });
+    } catch (e) {
+      setVerifyError(e.message || 'CMS verification failed');
+    } finally {
+      setVerifyingId(null);
+    }
+  }, [appUserId, physicians]);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await exportToExcel(
+        rows,
+        PROCESSING_OVERVIEW_EXPORT_COLUMNS,
+        'Processing Overview',
+        `${rows.length} patients · not SOC completed · ${new Date().toLocaleDateString()}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const toolbarBtn = {
+    padding: '6px 12px',
+    border: `1px solid ${PO_BORDER}`,
+    background: '#fff',
+    fontSize: 12,
+    fontFamily: 'inherit',
+    color: palette.backgroundDark.hex,
+    cursor: 'pointer',
+  };
+
+  return (
+    <div>
+      <div style={{
+        display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap',
+        padding: '10px 12px',
+        background: PO_HEADER_BG,
+        border: `1px solid ${PO_BORDER}`,
+      }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 750, color: palette.backgroundDark.hex }}>
+            Processing Overview
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#666' }}>
+            Open pipeline (not SOC completed). PECOS / OPRA / NPI cells: click to run CMS check.
+          </p>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select
+            value={divFilter}
+            onChange={(e) => setDivFilter(e.target.value)}
+            style={{ ...toolbarBtn, minWidth: 140 }}
+          >
+            <option value="All">ALF + Special Needs</option>
+            <option value="ALF">ALF only</option>
+            <option value="Special Needs">Special Needs only</option>
+          </select>
+          <span style={{ fontSize: 12, color: '#666' }}>{rows.length} rows</span>
+          {bottleneckHint && (
+            <span style={{ fontSize: 11.5, fontWeight: 650, color: '#92400E', background: '#FEF4E5', border: '1px solid #F0D2A0', padding: '4px 8px' }}>
+              Gap: {bottleneckHint}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || !rows.length}
+            style={{
+              ...toolbarBtn,
+              background: palette.primaryMagenta.hex,
+              borderColor: palette.primaryMagenta.hex,
+              color: '#fff',
+              fontWeight: 650,
+              opacity: exporting || !rows.length ? 0.55 : 1,
+              cursor: exporting || !rows.length ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exporting ? 'Exporting…' : 'Download Excel'}
+          </button>
+        </div>
+      </div>
+
+      {verifyError && (
+        <p style={{
+          margin: '0 0 8px', fontSize: 12, color: palette.primaryMagenta.hex,
+          padding: '6px 10px', border: `1px solid ${hexToRgba(palette.primaryMagenta.hex, 0.35)}`,
+          background: hexToRgba(palette.primaryMagenta.hex, 0.06),
+        }}>
+          {verifyError}
+        </p>
+      )}
+
+      <div style={{ border: `1px solid ${PO_BORDER}`, background: '#fff', overflow: 'auto', maxHeight: 'min(72vh, 680px)' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 1680 }}>
+          <thead>
+            <tr>
+              {['Patient', 'Div', 'Stage', ...PROCESSING_META_COLUMNS.map((c) => c.label), ...PROCESSING_FLAG_COLUMNS.map((c) => c.label)].map((label, i) => (
+                <th
+                  key={label}
+                  style={{
+                    ...PO_TH,
+                    ...(i === 0 ? { left: 0, zIndex: 5, minWidth: 140 } : null),
+                  }}
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              <th style={{ ...PO_FILTER_TH, left: 0, zIndex: 5, minWidth: 140 }}>
+                <input
+                  value={textFilters.patientName}
+                  onChange={(e) => setText('patientName', e.target.value)}
+                  placeholder="Filter"
+                  style={PO_FILTER_INPUT}
+                />
+              </th>
+              <th style={PO_FILTER_TH}>
+                <select value={divFilter} onChange={(e) => setDivFilter(e.target.value)} style={PO_FILTER_INPUT}>
+                  <option value="All">All</option>
+                  <option value="ALF">ALF</option>
+                  <option value="Special Needs">SPN</option>
+                </select>
+              </th>
+              <th style={PO_FILTER_TH}>
+                <input
+                  value={textFilters.stage}
+                  onChange={(e) => setText('stage', e.target.value)}
+                  placeholder="Filter"
+                  style={PO_FILTER_INPUT}
+                />
+              </th>
+              {PROCESSING_META_COLUMNS.map((c) => (
+                <th key={c.key} style={PO_FILTER_TH}>
+                  <input
+                    value={textFilters[c.key] || ''}
+                    onChange={(e) => setText(c.key, e.target.value)}
+                    placeholder="Filter"
+                    style={PO_FILTER_INPUT}
+                  />
+                </th>
+              ))}
+              {PROCESSING_FLAG_COLUMNS.map((c) => (
+                <th key={c.key} style={PO_FILTER_TH}>
+                  <select
+                    value={flagFilters[c.key] || ''}
+                    onChange={(e) => setFlag(c.key, e.target.value)}
+                    style={PO_FILTER_INPUT}
+                  >
+                    <option value="">All</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const busy = verifyingId && verifyingId === r.physician_record_id;
+              return (
+                <tr key={r._id || r.referral_id}>
+                  <td style={{
+                    ...PO_CELL,
+                    fontWeight: 650,
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 1,
+                    minWidth: 140,
+                  }}>
+                    {r.patientName}
+                  </td>
+                  <td style={{ ...PO_CELL, whiteSpace: 'nowrap' }}>
+                    {r.division === 'Special Needs' ? 'SPN' : (r.division || '')}
+                  </td>
+                  <td style={{ ...PO_CELL, whiteSpace: 'nowrap' }}>{r.current_stage}</td>
+                  {PROCESSING_META_COLUMNS.map((c) => (
+                    <td key={c.key} style={{ ...PO_CELL, whiteSpace: 'nowrap', maxWidth: 180 }}>
+                      {r[c.key] || '—'}
+                    </td>
+                  ))}
+                  {PROCESSING_FLAG_COLUMNS.map((c) => {
+                    const verifiable = VERIFYABLE_FLAG_KEYS.has(c.key);
+                    return (
+                      <td key={c.key} style={{ ...PO_CELL, textAlign: 'center' }}>
+                        <YesNoCell
+                          yes={!!r.flags[c.key]}
+                          clickable={verifiable}
+                          busy={busy && verifiable}
+                          title={verifiable
+                            ? (r.physician_npi?.length === 10
+                              ? 'Click to run NPPES + CMS PECOS / OPRA check'
+                              : 'Needs linked physician with 10-digit NPI')
+                            : undefined}
+                          onClick={verifiable ? () => handleVerify(r) : undefined}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <p style={{ padding: 28, textAlign: 'center', fontSize: 13, color: '#999', margin: 0 }}>
+            No open pipeline patients match these filters.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Data Table Tab ────────────────────────────────────────────────────────────
 
 function DataTableTab({ referrals, resolveMarketer, resolveSource }) {
@@ -1036,7 +1455,11 @@ export default function DataTools() {
   if (loading) return <LoadingState message="Loading data…" />;
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{
+      padding: '24px 28px',
+      maxWidth: tab === 'Processing Overview' ? 1600 : 1280,
+      margin: '0 auto',
+    }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
@@ -1079,6 +1502,9 @@ export default function DataTools() {
           </p>
           <CalendarHeatmap referrals={allReferrals} weeks={20} />
         </Card>
+      )}
+      {tab === 'Processing Overview' && (
+        <ProcessingOverviewTab referrals={divisionFiltered} />
       )}
       {tab === 'Data Table' && (
         <DataTableTab referrals={divisionFiltered} resolveMarketer={resolveMarketer} resolveSource={resolveSource} />
