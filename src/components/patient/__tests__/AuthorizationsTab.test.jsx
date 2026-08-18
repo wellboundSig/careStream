@@ -62,15 +62,17 @@ beforeEach(() => {
   ]);
 });
 
-async function openResponseEditor(division, { coverage = 'active' } = {}) {
+async function openResponseEditor(division) {
   render(<AuthorizationsTab referral={makeReferral(division)} />);
   const card = await screen.findByTestId('auth-insurance-card');
   await act(async () => { fireEvent.click(within(card).getByTestId('record-auth-response')); });
-  if (coverage) {
-    await act(async () => {
-      fireEvent.change(within(card).getByTestId('auth-coverage-status'), { target: { value: coverage } });
-    });
-  }
+  return card;
+}
+
+async function openRequestEditor(division) {
+  render(<AuthorizationsTab referral={makeReferral(division)} />);
+  const card = await screen.findByTestId('auth-insurance-card');
+  await act(async () => { fireEvent.click(within(card).getByTestId('log-auth-request')); });
   return card;
 }
 
@@ -157,22 +159,30 @@ describe('AuthorizationsTab — save', () => {
   });
 });
 
-describe('AuthorizationsTab — pending request', () => {
-  it('offers Pending as an overall status alongside Active and Inactive', async () => {
-    const card = await openResponseEditor('Special Needs', { coverage: null });
+describe('AuthorizationsTab — request vs response', () => {
+  it('offers separate Log a request and Record a response actions', async () => {
+    render(<AuthorizationsTab referral={makeReferral('Special Needs')} />);
+    const card = await screen.findByTestId('auth-insurance-card');
+    expect(within(card).getByTestId('log-auth-request').textContent).toMatch(/Log a request/);
+    expect(within(card).getByTestId('record-auth-response').textContent).toMatch(/Record a response/);
+  });
+
+  it('response editor only offers Active / Inactive coverage status', async () => {
+    const card = await openResponseEditor('Special Needs');
     const status = within(card).getByTestId('auth-coverage-status');
     const labels = Array.from(status.querySelectorAll('option')).map((o) => o.textContent);
-    expect(labels).toEqual(['Pending', 'Active', 'Inactive']);
-    expect(status.value).toBe('pending');
+    expect(labels).toEqual(['Active', 'Inactive']);
+    expect(status.value).toBe('active');
   });
 
   it('logs a pending request with who / what / from where', async () => {
-    const card = await openResponseEditor('Special Needs', { coverage: 'pending' });
+    const card = await openRequestEditor('Special Needs');
+    expect(within(card).queryByTestId('auth-coverage-status')).toBeNull();
     await act(async () => {
-      fireEvent.change(within(card).getByPlaceholderText('Entity / contact'), { target: { value: 'Fidelis UM' } });
+      fireEvent.change(within(card).getByPlaceholderText('Payer / portal / contact'), { target: { value: 'Fidelis UM' } });
     });
     await addServiceLine(card, 'PT');
-    await act(async () => { fireEvent.click(within(card).getByTestId('save-auth-response')); });
+    await act(async () => { fireEvent.click(within(card).getByTestId('save-auth-request')); });
     expect(createAuthorization).toHaveBeenCalled();
     const payload = createAuthorization.mock.calls[0][0];
     expect(payload.coverage_status).toBe('pending');

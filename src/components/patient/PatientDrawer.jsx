@@ -262,7 +262,7 @@ export default function PatientDrawer() {
 
   return (
     <>
-      <div onClick={close} style={{ position: 'fixed', inset: 0, background: animated ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)', zIndex: 1000, transition: 'background 0.3s ease', backdropFilter: animated ? 'blur(2px)' : 'none' }} />
+      <div onClick={close} style={{ position: 'fixed', inset: 0, background: animated ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0)', zIndex: 1000, transition: 'background 0.3s ease' }} />
       <div
         style={{
           position: 'fixed',
@@ -274,7 +274,7 @@ export default function PatientDrawer() {
           // sideways rubber-banding on iOS Safari.
           left: (split || isMobile) ? 0 : 'auto',
           width: (split || isMobile) ? '100%' : 'min(560px, 100%)',
-          background: split ? hexToRgba(palette.backgroundDark.hex, 0.04) : palette.backgroundLight.hex,
+          background: palette.backgroundLight.hex,
           zIndex: 1001,
           display: 'flex',
           flexDirection: 'row',

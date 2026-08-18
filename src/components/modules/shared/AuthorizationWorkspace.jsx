@@ -5,10 +5,10 @@
  *   - AuthorizationsTab.jsx (patient drawer — variant="drawer")
  *   - StagePanel.jsx        (module-page right panel — variant="panel")
  *
- * Model: ONE Authorizations row per insurance. Staff first log a request
- * (overall status Pending — who asked, what services, from where), then follow
- * up while waiting, then record the payer response (Active / Inactive) with
- * per-service decisions. Follow-ups live as JSON on the same row.
+ * Model: ONE Authorizations row per insurance, two staff actions:
+ *   - Log a request  (Pending — who asked, what services, from where)
+ *   - Record a response (Active / Inactive — per-service payer decisions)
+ * Follow-ups live as JSON on the same row. Existing rows are unchanged.
  *   - ALF: NAR / Follow-up needed (→ Denied or Single Case Agreement) / Approved
  *   - SPN: Approved / Partial Approval (note required) / Denied / Balance bill Medicaid
  *
@@ -52,7 +52,7 @@ import {
 } from '../../../data/eligibilityEnums.js';
 import { determineAllowedServicesByDivision } from '../../../data/policies/serviceAvailabilityPolicies.js';
 import { useAuthorizationData } from './useAuthorizationData.js';
-import { tokens, inputStyle, primaryBtn, secondaryBtn, chipBtn, sectionHeading, cardStyle } from './workspaceStyles.js';
+import { tokens, inputStyle, primaryBtn, secondaryBtn, sectionHeading, cardStyle } from './workspaceStyles.js';
 
 // Decisions that mean "approved with units" (capture date received + limits).
 const UNIT_DECISIONS = new Set([AUTH_DECISION.APPROVED, AUTH_DECISION.PARTIAL]);
@@ -89,6 +89,24 @@ function defaultCoverageStatus(response) {
   return AUTH_COVERAGE_STATUS.ACTIVE;
 }
 
+function requestIsLogged(response) {
+  if (!response) return false;
+  return !!(
+    response.request_initial_date
+    || String(response.request_requested_from || '').trim()
+    || response.requested_by_user_id
+  );
+}
+
+function responseHasDecisions(response) {
+  return safeParse(response?.service_lines, []).some((l) => l.decision);
+}
+
+function followUpTypeLabel(type) {
+  const hit = AUTH_FOLLOW_UP_TYPE_OPTIONS.find((o) => o.value === type);
+  return hit?.label || type || 'Follow-up';
+}
+
 // Roll the per-service decisions up into the single `auth_status` the module
 // queue + legacy consumers read. A Pending coverage status always stays
 // pending — requested, waiting — regardless of leftover line decisions.
@@ -109,13 +127,34 @@ function legacyStatusFromRollup(rollup) {
   return 'Pending';
 }
 
+function asUserId(value) {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] || null) : value;
+}
+
 function userDisplayName(usersById, userId) {
-  if (!userId) return null;
+  const id = asUserId(userId);
+  if (!id) return null;
   const list = Object.values(usersById || {});
-  const u = list.find((x) => x.id === userId || x._id === userId);
-  if (!u) return userId;
+  const u = list.find((x) => x.id === id || x._id === id);
+  if (!u) return id;
   const name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
-  return name || u.email || userId;
+  return name || u.email || id;
+}
+
+function MetaRows({ t, rows }) {
+  const visible = (rows || []).filter((r) => r.value);
+  if (!visible.length) return null;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', gap: '5px 10px', margin: '8px 0 10px' }}>
+      {visible.map((r) => (
+        <div key={r.label} style={{ display: 'contents' }}>
+          <span style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#737373', paddingTop: 1 }}>{r.label}</span>
+          <span style={{ fontSize: t.fontMuted, color: palette.backgroundDark.hex, fontWeight: 550, lineHeight: 1.4 }}>{r.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function fmtRequestStamp(iso) {
@@ -249,22 +288,20 @@ export default function AuthorizationWorkspace({
 
   return (
     <div data-testid="authorization-workspace" data-variant={variant} style={{ padding: variant === 'panel' ? '14px 12px' : '18px 20px 40px' }}>
-      <p style={sectionHeading(t)}>Authorizations — per insurance</p>
+      <p style={sectionHeading(t)}>Authorizations</p>
 
       {alreadyObtained && (
-        <div style={{
-          marginBottom: t.gap, padding: '8px 10px', borderRadius: 8,
-          background: hexToRgba(palette.accentGreen.hex, 0.1),
-          border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.25)}`,
-          fontSize: t.fontMuted, color: palette.accentGreen.hex, fontWeight: 600,
+        <p style={{
+          marginBottom: t.gap, fontSize: t.fontMuted,
+          color: palette.accentGreen.hex, fontWeight: 600,
         }}>
           Authorization obtained {fmtRequestStamp(referral.auth_obtained_at)
             ? `on ${fmtRequestStamp(referral.auth_obtained_at)}`
             : ''}
           {referral.auth_obtained_by_id
-            ? ` · by ${userDisplayName(storeUsers, referral.auth_obtained_by_id)}`
+            ? ` by ${userDisplayName(storeUsers, referral.auth_obtained_by_id)}`
             : ''}
-        </div>
+        </p>
       )}
 
       {loading && insurances.length === 0 && (
@@ -318,7 +355,7 @@ export default function AuthorizationWorkspace({
       {authorizations.length > 0 && canEdit && !alreadyObtained && (
         <div style={{ marginTop: t.sectionGap }}>
           <p style={{ fontSize: t.fontMuted, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginBottom: 8, lineHeight: 1.45 }}>
-            When responses are recorded and any required files are uploaded, mark authorization obtained. This notifies the intake owner and clears the patient from Auth Pending.
+            Mark obtained when the response is in and any required files are uploaded. This notifies the intake owner.
           </p>
           {obtainError && (
             <p style={{ fontSize: t.fontMuted, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{obtainError}</p>
@@ -376,18 +413,14 @@ function PendingAuthBanner({ t, response, storeUsers, canDeleteResponse, patient
   }
 
   return (
-    <div style={{
-      marginTop: t.gap, padding: '10px 12px', borderRadius: 8,
-      background: hexToRgba(palette.accentOrange.hex, 0.08),
-      border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.22)}`,
-    }}>
+    <div style={{ marginTop: t.gap }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div>
-          <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
-            Pending — awaiting response
+          <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: '#92400E', marginBottom: 2 }}>
+            Pending
           </p>
-          <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-            {[when ? `Requested ${when}` : null, who ? `by ${who}` : null].filter(Boolean).join(' · ') || 'Authorization requested'}
+          <p style={{ fontSize: t.fontMuted, color: '#555' }}>
+            {[when ? `Requested ${when}` : null, who ? `by ${who}` : null].filter(Boolean).join(' · ') || 'Waiting on the payer'}
           </p>
         </div>
         {canDeleteResponse && (
@@ -397,8 +430,7 @@ function PendingAuthBanner({ t, response, storeUsers, canDeleteResponse, patient
             onClick={handleDelete}
             disabled={deleting}
             style={{
-              flexShrink: 0, padding: '4px 10px', borderRadius: 6, border: 'none',
-              background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+              flexShrink: 0, padding: '4px 8px', border: 'none', background: 'transparent',
               color: palette.primaryMagenta.hex, fontSize: t.fontMuted - 0.5,
               fontWeight: 650, cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit',
             }}
@@ -418,7 +450,7 @@ function InsuranceAuthCard({
   patient, referral, patientRecordId, verifierRecordId, appUserId, findSupervisorUserId,
   storeUsers,
 }) {
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState(null); // 'request' | 'response'
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
@@ -440,41 +472,53 @@ function InsuranceAuthCard({
 
   const rollupStatus = (response?.auth_status || response?.status || '').toString().toLowerCase();
   const storedLinesPreview = safeParse(response?.service_lines, []);
-  const storedCoverage = defaultCoverageStatus(response);
-  const isAwaitingResponse = !!response && (
-    isPendingCoverage(storedCoverage)
-    || rollupStatus === 'pending'
-    || rollupStatus === 'follow_up_needed'
-    || storedLinesPreview.length === 0
-  );
-  const requestedWhen = fmtRequestStamp(response?.request_initial_date || response?.created_at);
+  const storedCoverage = response ? defaultCoverageStatus(response) : null;
+  const loggedRequest = requestIsLogged(response);
+  const recordedResponse = responseHasDecisions(response);
+  const isAwaitingResponse = loggedRequest && !recordedResponse;
+  const requestedWhen = fmt(response?.request_initial_date) || fmtRequestStamp(response?.created_at);
   const requestedWho = userDisplayName(storeUsers, response?.requested_by_user_id);
+  const decidedWho = userDisplayName(storeUsers, response?.decided_by_user_id);
+  const recordedWhen = fmtRequestStamp(response?.updated_at);
 
   const [form, setForm] = useState(initial);
   const [followUps, setFollowUps] = useState(() => safeParse(response?.follow_ups, []));
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const requestOnly = isPendingCoverage(form.coverage_status);
+  const requestOnly = mode === 'request';
+  const editing = !!mode;
+  const hasLoggedRequest = loggedRequest;
 
-  function startEdit() {
-    setForm(initial);
+  function startRequest() {
+    setForm({
+      ...initial,
+      coverage_status: AUTH_COVERAGE_STATUS.PENDING,
+      request_initial_date: initial.request_initial_date || todayCalendarDate(),
+    });
     setFollowUps(safeParse(response?.follow_ups, []));
     setError(null);
-    setEditing(true);
+    setMode('request');
+  }
+
+  function startResponse() {
+    setForm({
+      ...initial,
+      coverage_status: isPendingCoverage(initial.coverage_status)
+        ? AUTH_COVERAGE_STATUS.ACTIVE
+        : (initial.coverage_status || AUTH_COVERAGE_STATUS.ACTIVE),
+      lines: initial.lines.map((l) => (l.decision ? l : { ...l, decision: AUTH_DECISION.APPROVED })),
+    });
+    setFollowUps(safeParse(response?.follow_ups, []));
+    setError(null);
+    setMode('response');
   }
 
   function addLine(service) {
     if (!service) return;
-    setForm((f) => ({ ...f, lines: [...f.lines, newServiceLine(service, { requestOnly: isPendingCoverage(f.coverage_status) })] }));
+    setForm((f) => ({ ...f, lines: [...f.lines, newServiceLine(service, { requestOnly: mode === 'request' })] }));
   }
 
   function setCoverageStatus(value) {
-    setForm((f) => {
-      let lines = f.lines;
-      if (!isPendingCoverage(value)) {
-        lines = lines.map((l) => (l.decision ? l : { ...l, decision: AUTH_DECISION.APPROVED }));
-      }
-      return { ...f, coverage_status: value, lines };
-    });
+    setForm((f) => ({ ...f, coverage_status: value }));
   }
   function updateLine(idx, patch) {
     setForm((f) => ({ ...f, lines: f.lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)) }));
@@ -510,7 +554,8 @@ function InsuranceAuthCard({
   async function handleDeleteResponse() {
     if (!canDeleteResponse || !response?._id || deleting) return;
     const payerName = insurance.payer_display_name || 'this payer';
-    if (!window.confirm(`Delete the auth response for ${payerName}? This cannot be undone.`)) return;
+    const kind = isAwaitingResponse ? 'authorization request' : 'authorization response';
+    if (!window.confirm(`Delete the ${kind} for ${payerName}? This cannot be undone.`)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -524,10 +569,10 @@ function InsuranceAuthCard({
         detail: `Deleted auth response for ${payerName}.`,
         metadata: { authorizationRecId: response._id, payerInsuranceId: insurance._id },
       }).catch(() => {});
-      setEditing(false);
+      setMode(null);
       triggerDataRefresh();
     } catch (err) {
-      setError(err?.message || 'Failed to delete authorization response');
+      setError(err?.message || 'Failed to delete authorization');
     } finally {
       setDeleting(false);
     }
@@ -535,7 +580,7 @@ function InsuranceAuthCard({
 
   async function handleSave() {
     if (medicareNoAuth || isMedicareNoAuthRequired(form.payer_type)) {
-      setError('Straight Medicare does not require authorization — responses cannot be recorded for this payer.');
+      setError('Straight Medicare does not require authorization. Responses cannot be recorded for this payer.');
       return;
     }
     const v = validate();
@@ -566,7 +611,7 @@ function InsuranceAuthCard({
       patient_id: patientRecordId || undefined,
       payer_insurance_id: insurance._id,
       plan_name: payerName,
-      coverage_status: form.coverage_status,
+      coverage_status: requestOnly ? AUTH_COVERAGE_STATUS.PENDING : form.coverage_status,
       payer_type: form.payer_type,
       payer_order: form.payer_order,
       sources_checked: JSON.stringify(form.sources || []),
@@ -670,7 +715,7 @@ function InsuranceAuthCard({
         },
       }).catch(() => {});
 
-      setEditing(false);
+      setMode(null);
       setSaving(false);
       triggerDataRefresh();
     } catch (err) {
@@ -688,10 +733,32 @@ function InsuranceAuthCard({
   const storedLines = safeParse(response?.service_lines, []);
   const storedFollowUps = safeParse(response?.follow_ups, []);
 
+  const requestMeta = [
+    { label: 'Logged by', value: requestedWho },
+    { label: 'When', value: requestedWhen },
+    { label: 'From', value: response?.request_requested_from || null },
+    {
+      label: 'Docs',
+      value: loggedRequest
+        ? (response?.request_docs_sent === true || response?.request_docs_sent === 'true' ? 'Sent' : 'Not sent')
+        : null,
+    },
+    {
+      label: 'Services',
+      value: storedLinesPreview.length && !recordedResponse
+        ? storedLinesPreview.map((l) => l.service).filter(Boolean).join(', ')
+        : null,
+    },
+  ];
+  const responseMeta = recordedResponse ? [
+    { label: 'Recorded by', value: decidedWho },
+    { label: 'Recorded', value: recordedWhen && recordedWhen !== requestedWhen ? recordedWhen : null },
+  ] : [];
+
   return (
     <div data-testid="auth-insurance-card" style={cardStyle(t)}>
       {/* Header */}
-      <div style={{ padding: `${t.cardPadY}px ${t.cardPadX}px`, borderBottom: '1px solid var(--color-border)' }}>
+      <div style={{ padding: `${t.cardPadY}px ${t.cardPadX}px 0` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <p style={{ fontSize: t.fontBase + 0.5, fontWeight: 650, color: palette.backgroundDark.hex }}>
@@ -702,15 +769,15 @@ function InsuranceAuthCard({
             </p>
           </div>
           {medicareNoAuth ? (
-            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentBlue.hex, 0.12), color: palette.accentBlue.hex, flexShrink: 0 }}>
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 8px', borderRadius: 4, background: '#DBEAFE', color: '#1D4ED8', flexShrink: 0 }}>
               No auth required
             </span>
-          ) : isAwaitingResponse || isPendingCoverage(storedCoverage) ? (
-            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, flexShrink: 0 }}>
+          ) : isAwaitingResponse ? (
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 8px', borderRadius: 4, background: '#FEF3C7', color: '#92400E', flexShrink: 0 }}>
               Pending
             </span>
-          ) : response ? (
-            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
+          ) : recordedResponse ? (
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 8px', borderRadius: 4, background: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
               {storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? 'Inactive' : (rollupStatus === 'approved' || rollupStatus === 'nar' ? 'Responded' : 'Active')}
             </span>
           ) : null}
@@ -719,42 +786,17 @@ function InsuranceAuthCard({
 
       {/* Collapsed summary */}
       {!editing && (
-        <div style={{ padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, fontSize: t.fontMuted }}>
+        <div style={{ padding: `8px ${t.cardPadX}px ${t.cardPadY}px`, fontSize: t.fontMuted }}>
           {medicareNoAuth && (
-            <div style={{
-              marginBottom: response ? 8 : 0, padding: '8px 10px', borderRadius: 7,
-              background: hexToRgba(palette.accentBlue.hex, 0.08),
-              border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.2)}`,
-            }}>
-              <p style={{ fontWeight: 700, color: palette.accentBlue.hex, marginBottom: 2 }}>
-                No authorization required
-              </p>
-              <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-                Straight Medicare does not need a prior-auth response. Medicare Advantage / managed plans still may.
-              </p>
-            </div>
+            <p style={{ color: '#555', marginBottom: 8, lineHeight: 1.4 }}>
+              Straight Medicare does not need prior auth. Medicare Advantage still may.
+            </p>
           )}
-          {!medicareNoAuth && isAwaitingResponse && (
-            <div style={{
-              marginBottom: storedLines.length ? 8 : 0, padding: '8px 10px', borderRadius: 7,
-              background: hexToRgba(palette.accentOrange.hex, 0.08),
-              border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.2)}`,
-            }}>
-              <p style={{ fontWeight: 700, color: palette.accentOrange.hex, marginBottom: 2 }}>
-                Pending — awaiting response
-              </p>
-              <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-                {[
-                  requestedWhen ? `Requested ${requestedWhen}` : null,
-                  requestedWho ? `by ${requestedWho}` : null,
-                  response?.request_requested_from ? `from ${response.request_requested_from}` : null,
-                ].filter(Boolean).join(' · ')
-                  || 'Awaiting payer response'}
-              </p>
-            </div>
+          {!medicareNoAuth && (loggedRequest || recordedResponse) && (
+            <MetaRows t={t} rows={[...requestMeta, ...responseMeta]} />
           )}
-          {storedLines.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {storedLines.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: storedFollowUps.length ? 10 : 0 }}>
               {storedLines.map((l, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ color: palette.backgroundDark.hex, fontWeight: 600 }}>{l.service}</span>
@@ -766,22 +808,63 @@ function InsuranceAuthCard({
                 </div>
               ))}
             </div>
-          ) : !medicareNoAuth && !isAwaitingResponse ? (
-            <p style={{ color: '#888' }}>No auth response recorded yet.</p>
-          ) : null}
-          {storedFollowUps.length > 0 && (
-            <p style={{ color: '#888', marginTop: 6 }}>{storedFollowUps.length} follow-up{storedFollowUps.length === 1 ? '' : 's'} logged</p>
+          )}
+          {(isAwaitingResponse || storedFollowUps.length > 0) && (
+            <div style={{ marginTop: storedLines.length ? 2 : 0, marginBottom: 4 }}>
+              <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+                Follow-ups
+              </p>
+              {storedFollowUps.length === 0 ? (
+                <p style={{ color: '#888' }}>None yet. Use Update request to add one.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {storedFollowUps.map((f, i) => (
+                    <p key={i} style={{ color: '#555', lineHeight: 1.4 }}>
+                      <span style={{ fontWeight: 650 }}>{fmt(f.date)}</span>
+                      {`  ${followUpTypeLabel(f.type)}`}
+                      {f.actions_taken ? `  ${f.actions_taken}` : ''}
+                      {f.notes ? `  ${f.notes}` : ''}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           {error && (
             <p style={{ color: palette.primaryMagenta.hex, marginTop: 6, fontSize: t.fontMuted - 0.5 }}>{error}</p>
           )}
-          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {!readOnly && !medicareNoAuth && (
-              <button onClick={startEdit} data-testid="record-auth-response" style={{ padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer' }}>
-                {!response ? 'Log auth request' : isAwaitingResponse ? 'Update request' : 'Update auth response'}
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {!readOnly && !medicareNoAuth && !recordedResponse && (
+              <button
+                type="button"
+                onClick={startRequest}
+                data-testid="log-auth-request"
+                style={{
+                  padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5,
+                  border: 'none', background: palette.accentOrange.hex,
+                  color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {loggedRequest ? 'Update request' : 'Log a request'}
               </button>
             )}
-            {canDeleteResponse && response?._id && (
+            {!readOnly && !medicareNoAuth && (
+              <button
+                type="button"
+                onClick={startResponse}
+                data-testid="record-auth-response"
+                style={{
+                  padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5,
+                  border: 'none', background: palette.accentGreen.hex,
+                  color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {recordedResponse ? 'Update response' : 'Record a response'}
+              </button>
+            )}
+            {canDeleteResponse && response?._id && (loggedRequest || recordedResponse) && (
               <button
                 type="button"
                 data-testid="delete-auth-response"
@@ -789,12 +872,12 @@ function InsuranceAuthCard({
                 disabled={deleting}
                 style={{
                   padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5, border: 'none',
-                  background: hexToRgba(palette.primaryMagenta.hex, 0.1),
+                  background: 'transparent',
                   color: palette.primaryMagenta.hex, fontSize: t.fontMuted, fontWeight: 650,
                   cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit',
                 }}
               >
-                {deleting ? 'Deleting…' : 'Delete auth response'}
+                {deleting ? 'Deleting…' : isAwaitingResponse ? 'Delete request' : 'Delete response'}
               </button>
             )}
           </div>
@@ -803,62 +886,68 @@ function InsuranceAuthCard({
 
       {/* Editor */}
       {editing && (
-        <div style={{ padding: `${t.cardPadY - 2}px ${t.cardPadX}px ${t.cardPadY}px` }}>
-          {/* Insurance-level response variables */}
-          <Field t={t} label="Status">
-            <select data-testid="auth-coverage-status" value={form.coverage_status} onChange={(e) => setCoverageStatus(e.target.value)} style={inputStyle(t)}>
-              {AUTH_COVERAGE_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          {requestOnly && (
-            <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), margin: '-4px 0 10px', lineHeight: 1.4 }}>
-              Pending means the request is in — waiting on a response. Log who asked, what was requested, and from where. Follow up here until the payer answers, then switch Status to Active or Inactive.
-            </p>
+        <div style={{ padding: `8px ${t.cardPadX}px ${t.cardPadY}px` }}>
+          <p style={{ fontSize: t.fontMuted, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 10 }}>
+            {requestOnly
+              ? (loggedRequest ? 'Update request' : 'Log request')
+              : (recordedResponse ? 'Update response' : 'Record response')}
+          </p>
+
+          {requestOnly ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <Field t={t} label="Date requested">
+                  <input type="date" value={form.request_initial_date} onChange={(e) => set({ request_initial_date: e.target.value })} style={inputStyle(t)} />
+                </Field>
+                <Field t={t} label="Requested from">
+                  <input type="text" value={form.request_requested_from} onChange={(e) => set({ request_requested_from: e.target.value })} style={inputStyle(t)} placeholder="Payer / portal / contact" />
+                </Field>
+              </div>
+              <label style={{ fontSize: t.fontBase - 0.5, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', margin: '2px 0 10px' }}>
+                <input type="checkbox" checked={form.request_docs_sent} onChange={(e) => set({ request_docs_sent: e.target.checked })} />
+                <span>Sent requested documentation</span>
+              </label>
+            </>
+          ) : (
+            <>
+              {hasLoggedRequest && (
+                <MetaRows t={t} rows={requestMeta} />
+              )}
+              <Field t={t} label="Coverage status">
+                <select data-testid="auth-coverage-status" value={form.coverage_status} onChange={(e) => setCoverageStatus(e.target.value)} style={inputStyle(t)}>
+                  {AUTH_COVERAGE_STATUS_OPTIONS
+                    .filter((o) => o.value !== AUTH_COVERAGE_STATUS.PENDING)
+                    .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field t={t} label="Payer Type (staff-confirmed)">
+                <select value={form.payer_type} onChange={(e) => set({ payer_type: e.target.value })} style={inputStyle(t)}>
+                  {PAYER_TYPE_STAFF_OPTIONS
+                    .filter((o) => o.value !== INSURANCE_CATEGORY.MEDICARE)
+                    .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field t={t} label="Payer Order">
+                <select value={form.payer_order} onChange={(e) => set({ payer_order: e.target.value })} style={inputStyle(t)}>
+                  {ORDER_RANK_OPTIONS.filter((o) => o.value !== ORDER_RANK.UNKNOWN).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field t={t} label="Source(s) checked">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {VERIFICATION_SOURCE_OPTIONS.map((s) => (
+                    <label key={s.value} style={{ fontSize: t.fontBase - 0.5, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.sources.includes(s.value)} onChange={() => toggleSource(s.value)} />
+                      <span>{s.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            </>
           )}
-          <Field t={t} label="Payer Type (staff-confirmed)">
-            <select value={form.payer_type} onChange={(e) => set({ payer_type: e.target.value })} style={inputStyle(t)}>
-              {PAYER_TYPE_STAFF_OPTIONS
-                .filter((o) => o.value !== INSURANCE_CATEGORY.MEDICARE)
-                .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field t={t} label="Payer Order">
-            <select value={form.payer_order} onChange={(e) => set({ payer_order: e.target.value })} style={inputStyle(t)}>
-              {ORDER_RANK_OPTIONS.filter((o) => o.value !== ORDER_RANK.UNKNOWN).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field t={t} label="Source(s) checked">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {VERIFICATION_SOURCE_OPTIONS.map((s) => (
-                <label key={s.value} style={{ fontSize: t.fontBase - 0.5, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={form.sources.includes(s.value)} onChange={() => toggleSource(s.value)} />
-                  <span>{s.label}</span>
-                </label>
-              ))}
-            </div>
-          </Field>
 
-          {/* Authorization request process */}
-          <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#555', marginBottom: 6 }}>Authorization request</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Field t={t} label="Initial Date Requested">
-                <input type="date" value={form.request_initial_date} onChange={(e) => set({ request_initial_date: e.target.value })} style={inputStyle(t)} />
-              </Field>
-              <Field t={t} label="Requested from">
-                <input type="text" value={form.request_requested_from} onChange={(e) => set({ request_requested_from: e.target.value })} style={inputStyle(t)} placeholder="Entity / contact" />
-              </Field>
-            </div>
-            <label style={{ fontSize: t.fontBase - 0.5, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', marginTop: 2 }}>
-              <input type="checkbox" checked={form.request_docs_sent} onChange={(e) => set({ request_docs_sent: e.target.checked })} />
-              <span>Sent requested documentation to entity</span>
-            </label>
-          </div>
-
-          {/* Per-service decision lines */}
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ marginTop: 8 }}>
             <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#555', marginBottom: 6 }}>
-              {requestOnly ? 'Services requested' : 'Requested services'}
+              {requestOnly ? 'Services requested' : 'Service decisions'}
             </p>
             {form.lines.map((line, idx) => (
               <ServiceLineRow
@@ -878,25 +967,28 @@ function InsuranceAuthCard({
                 onChange={(e) => { addLine(e.target.value); e.target.value = ''; }}
                 style={{ ...inputStyle(t), marginTop: 4 }}
               >
-                <option value="">+ Add a requested service…</option>
+                <option value="">{requestOnly ? '+ Add a requested service…' : '+ Add a service…'}</option>
                 {remainingServices.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             )}
           </div>
 
-          {/* Follow-up log */}
           <FollowUpLog t={t} followUps={followUps} onLog={logFollowUp} />
 
-          {/* Free-text note (synced to Notes) */}
-          <Field t={t} label="Note (optional — also added to Notes)">
-            <textarea rows={2} value={form.note} onChange={(e) => set({ note: e.target.value })} style={{ ...inputStyle(t), resize: 'vertical' }} placeholder="General note for this authorization…" />
+          <Field t={t} label="Note (also added to Notes)">
+            <textarea rows={2} value={form.note} onChange={(e) => set({ note: e.target.value })} style={{ ...inputStyle(t), resize: 'vertical' }} placeholder={requestOnly ? 'Note about this request…' : 'Note about this response…'} />
           </Field>
 
           {error && <ErrBanner t={t}>{error}</ErrBanner>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            <button onClick={() => setEditing(false)} style={secondaryBtn(t)}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} data-testid="save-auth-response" style={primaryBtn(t, { disabled: saving, color: palette.accentGreen.hex })}>
-              {saving ? 'Saving…' : requestOnly ? 'Save request' : 'Save auth response'}
+            <button onClick={() => setMode(null)} style={secondaryBtn(t)}>Cancel</button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              data-testid={requestOnly ? 'save-auth-request' : 'save-auth-response'}
+              style={primaryBtn(t, { disabled: saving, color: requestOnly ? palette.accentOrange.hex : palette.accentGreen.hex })}
+            >
+              {saving ? 'Saving…' : requestOnly ? 'Save request' : 'Save response'}
             </button>
             {canDeleteResponse && response?._id && (
               <button
@@ -910,7 +1002,7 @@ function InsuranceAuthCard({
                   background: hexToRgba(palette.primaryMagenta.hex, 0.08),
                 }}
               >
-                {deleting ? 'Deleting…' : 'Delete'}
+                {deleting ? 'Deleting…' : requestOnly ? 'Delete request' : 'Delete response'}
               </button>
             )}
           </div>
@@ -925,10 +1017,10 @@ function ServiceLineRow({ t, division, line, onChange, onRemove, requestOnly = f
   const showUnits = UNIT_DECISIONS.has(line.decision);
   const isAlfFollowUp = division === DIVISION.ALF && line.decision === AUTH_DECISION.FOLLOW_UP_NEEDED;
   return (
-    <div data-testid="service-line" style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: `${t.inputPadY}px ${t.inputPadX}px`, marginBottom: 6 }}>
+    <div data-testid="service-line" style={{ background: '#F4F4F5', borderRadius: 6, padding: `${t.inputPadY}px ${t.inputPadX}px`, marginBottom: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: requestOnly ? 0 : 6 }}>
         <span style={{ fontSize: t.fontBase, fontWeight: 700, color: palette.backgroundDark.hex }}>
-          {line.service}{requestOnly ? <span style={{ fontWeight: 550, color: '#888' }}> · requested</span> : null}
+          {line.service}
         </span>
         <button onClick={onRemove} title="Remove service" style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }}>×</button>
       </div>
@@ -991,20 +1083,26 @@ function FollowUpLog({ t, followUps, onLog }) {
   }
 
   return (
-    <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
+    <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#555' }}>Follow-ups ({followUps.length})</p>
+        <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: palette.backgroundDark.hex }}>Follow-up log</p>
         {!open && (
-          <button onClick={() => setOpen(true)} style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 5, padding: '3px 9px', fontSize: t.fontMuted, fontWeight: 600, color: '#555', cursor: 'pointer' }}>
-            + Log a follow up
+          <button onClick={() => setOpen(true)} style={{ background: palette.accentOrange.hex, border: 'none', borderRadius: 5, padding: '4px 10px', fontSize: t.fontMuted, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Add follow-up
           </button>
         )}
       </div>
+      {followUps.length === 0 && !open && (
+        <p style={{ fontSize: t.fontMuted, color: '#888', marginTop: 6 }}>No follow-ups yet.</p>
+      )}
       {followUps.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
           {followUps.map((f, i) => (
-            <p key={i} style={{ fontSize: t.fontMuted, color: '#666' }}>
-              {fmt(f.date)} · {f.type} · {f.actions_taken || '—'}{f.notes ? ` (${f.notes})` : ''}
+            <p key={i} style={{ fontSize: t.fontMuted, color: '#555', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 650 }}>{fmt(f.date)}</span>
+              {`  ${followUpTypeLabel(f.type)}`}
+              {f.actions_taken ? `  ${f.actions_taken}` : ''}
+              {f.notes ? `  ${f.notes}` : ''}
             </p>
           ))}
         </div>
@@ -1038,7 +1136,7 @@ function FollowUpLog({ t, followUps, onLog }) {
 }
 
 function decisionLabel(line) {
-  if (!line.decision) return 'Requested';
+  if (!line.decision) return 'Pending';
   switch (line.decision) {
     case AUTH_DECISION.NAR: return 'NAR';
     case AUTH_DECISION.APPROVED: return 'Approved';
