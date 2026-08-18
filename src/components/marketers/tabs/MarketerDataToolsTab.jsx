@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCareStore } from '../../../store/careStore.js';
-import { FilterInput } from '../../../utils/columnModel.jsx';
+import { ColumnFilterButton } from '../../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive } from '../../../utils/columnFilters.js';
 import { useLockedTableGrid } from '../../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../../../utils/tableScrollMode.js';
@@ -54,11 +55,11 @@ export default function MarketerDataToolsTab({ referrals }) {
 
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [colFilters, setColFilters] = useState({ division: '', licence: '', stage: '', triage: '', source: '', source_entity: '', insurance: '', facility: '', priority: '' });
+  const [colFilters, setColFilters] = useState({ division: [], licence: [], stage: [], triage: [], source: [], source_entity: [], insurance: [], facility: [], priority: [] });
 
   function setColFilter(key, val) { setColFilters((p) => ({ ...p, [key]: val })); }
-  const hasActiveFilters = search.trim() || Object.values(colFilters).some((v) => v.trim());
-  function clearAll() { setSearch(''); setColFilters({ division: '', licence: '', stage: '', triage: '', source: '', source_entity: '', insurance: '', facility: '', priority: '' }); }
+  const hasActiveFilters = search.trim() || Object.values(colFilters).some(filterIsActive);
+  function clearAll() { setSearch(''); setColFilters({ division: [], licence: [], stage: [], triage: [], source: [], source_entity: [], insurance: [], facility: [], priority: [] }); }
 
   const filtered = useMemo(() => {
     let list = referrals;
@@ -67,19 +68,18 @@ export default function MarketerDataToolsTab({ referrals }) {
       list = list.filter((r) => (r.patientName || '').toLowerCase().includes(q) || (r.patient_id || '').toLowerCase().includes(q) || (r.current_stage || '').toLowerCase().includes(q));
     }
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val.trim()) continue;
-      const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
       list = list.filter((r) => {
         switch (key) {
-          case 'division': return (r.division || '').toLowerCase().includes(q);
-          case 'licence': return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
-          case 'stage': return (r.current_stage || '').toLowerCase().includes(q);
+          case 'division': return cellMatchesFilter(r.division, val);
+          case 'licence': return cellMatchesFilter(resolveEntity(r.entity_id), val);
+          case 'stage': return cellMatchesFilter(r.current_stage, val);
           case 'triage': return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
-          case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q);
-          case 'source_entity': return (resolveSourceEntity(r.referral_source_id) || '').toLowerCase().includes(q);
-          case 'insurance': return (r.patient?.insurance_plan || r.insurance_plan || '').toLowerCase().includes(q);
-          case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q);
-          case 'priority': return (r.priority || '').toLowerCase().includes(q);
+          case 'source': return cellMatchesFilter(resolveSource(r.referral_source_id), val);
+          case 'source_entity': return cellMatchesFilter(resolveSourceEntity(r.referral_source_id), val);
+          case 'insurance': return cellMatchesFilter(r.patient?.insurance_plan || r.insurance_plan, val);
+          case 'facility': return cellMatchesFilter(resolveFacility(r.facility_id), val);
+          case 'priority': return cellMatchesFilter(r.priority, val);
           default: return true;
         }
       });
@@ -87,7 +87,7 @@ export default function MarketerDataToolsTab({ referrals }) {
     return [...list].sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0));
   }, [referrals, search, colFilters, resolveSource, resolveSourceEntity, resolveFacility, resolveEntity, triagePresence]);
 
-  const tabHeaderH = showFilters ? 64 : 34;
+  const tabHeaderH = 34;
   const flip = useFlipWindow(filtered, lockedGrid, { rowHeight: 40, headerHeight: tabHeaderH });
 
   const colOptions = useMemo(() => {
@@ -122,7 +122,7 @@ export default function MarketerDataToolsTab({ referrals }) {
           {search && <button onClick={() => setSearch('')} style={{ background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', borderRadius: 3, width: 14, height: 14, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>×</button>}
         </div>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none', fontSize: 11, fontWeight: 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 6px', borderRadius: 6, border: 'none', background: 'transparent', fontSize: 11, fontWeight: showFilters ? 700 : 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Filters
           {hasActiveFilters && <span style={{ width: 5, height: 5, borderRadius: '50%', background: palette.accentBlue.hex }} />}
@@ -140,18 +140,18 @@ export default function MarketerDataToolsTab({ referrals }) {
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
                 {DATA_COLUMNS.map((col) => (
-                  <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '7px 10px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>{col.label}</th>
+                  <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '7px 10px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {col.label}
+                      {col.filterable && (
+                        <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }}>
+                          {showFilters && <ColumnFilterButton value={colFilters[col.key]} onChange={(v) => setColFilter(col.key, v)} label={col.label} options={colOptions[col.key] || []} />}
+                        </span>
+                      )}
+                    </span>
+                  </th>
                 ))}
               </tr>
-              {showFilters && (
-                <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                  {DATA_COLUMNS.map((col) => (
-                    <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '3px 5px' }}>
-                      {col.filterable ? <FilterInput value={colFilters[col.key] || ''} onChange={(v) => setColFilter(col.key, v)} placeholder={col.label} options={colOptions[col.key] || []} /> : null}
-                    </th>
-                  ))}
-                </tr>
-              )}
             </thead>
             <tbody>
               {flip.windowItems.map((ref) => {

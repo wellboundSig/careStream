@@ -248,46 +248,39 @@ describe('ModulePage — Filter system', () => {
     expect(screen.getByText(/Filters/)).toBeTruthy();
   });
 
-  it('shows filter inputs when Filters button is clicked', () => {
+  it('shows column filter menus when Filters is clicked, without extra header rows', () => {
     renderModule();
+    const before = screen.getAllByRole('columnheader').length;
     fireEvent.click(screen.getByText(/Filters/));
-    const filterInputs = screen.getAllByPlaceholderText(/Division|Source|Owner/i);
-    expect(filterInputs.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('Filter Source')).toBeTruthy();
+    expect(screen.getByLabelText('Filter Division')).toBeTruthy();
+    expect(screen.getAllByRole('columnheader').length).toBe(before);
   });
 
-  it('filters by source when text is entered', () => {
+  it('filters by source when a checkbox is checked', () => {
     renderModule();
     fireEvent.click(screen.getByText(/Filters/));
-    const sourceInput = screen.getByPlaceholderText('Source');
-    fireEvent.change(sourceInput, { target: { value: 'Hospital' } });
-    expect(screen.getByText('Hospital A')).toBeTruthy();
-    expect(screen.queryByText('Clinic B')).toBeFalsy();
+    fireEvent.click(screen.getByLabelText('Filter Source'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hospital A' }));
+    expect(screen.getByText('John Doe')).toBeTruthy();
+    expect(screen.queryByText('Jane Smith')).toBeFalsy();
   });
 
-  it('filter input has a clear mechanism (verified via "clears filter" test)', () => {
+  it('clears a column filter from the menu', () => {
     renderModule();
     fireEvent.click(screen.getByText(/Filters/));
-    const sourceInput = screen.getByPlaceholderText('Source');
-    expect(sourceInput).toBeTruthy();
-    expect(sourceInput.parentElement.style.position).toBe('relative');
-  });
-
-  it('clears filter when × button is clicked', () => {
-    renderModule();
-    fireEvent.click(screen.getByText(/Filters/));
-    const sourceInput = screen.getByPlaceholderText('Source');
-    fireEvent.change(sourceInput, { target: { value: 'Hospital' } });
-    expect(screen.queryByText('Clinic B')).toBeFalsy();
-    const clearBtn = sourceInput.parentElement.querySelector('button');
-    fireEvent.click(clearBtn);
-    expect(screen.getByText('Clinic B')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Filter Source'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hospital A' }));
+    expect(screen.queryByText('Jane Smith')).toBeFalsy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByText('Jane Smith')).toBeTruthy();
   });
 
   it('shows "Clear all" button when any filter is active', () => {
     renderModule();
     fireEvent.click(screen.getByText(/Filters/));
-    const sourceInput = screen.getByPlaceholderText('Source');
-    fireEvent.change(sourceInput, { target: { value: 'xyz' } });
+    fireEvent.click(screen.getByLabelText('Filter Source'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hospital A' }));
     const clearAll = screen.getByText('Clear all');
     expect(clearAll.style.visibility).toBe('visible');
   });
@@ -295,8 +288,8 @@ describe('ModulePage — Filter system', () => {
   it('shows active filter dot indicator on Filters button', () => {
     renderModule();
     fireEvent.click(screen.getByText(/Filters/));
-    const sourceInput = screen.getByPlaceholderText('Source');
-    fireEvent.change(sourceInput, { target: { value: 'x' } });
+    fireEvent.click(screen.getByLabelText('Filter Source'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hospital A' }));
     const filtersBtn = screen.getByText(/Filters/).closest('button');
     const dot = filtersBtn.querySelector('span[style*="border-radius: 50%"]');
     expect(dot).toBeTruthy();

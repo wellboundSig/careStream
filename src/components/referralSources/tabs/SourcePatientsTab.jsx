@@ -4,7 +4,8 @@ import DivisionBadge from '../../common/DivisionBadge.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCareStore } from '../../../store/careStore.js';
-import { FilterInput } from '../../../utils/columnModel.jsx';
+import { ColumnFilterButton } from '../../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive } from '../../../utils/columnFilters.js';
 import { useLockedTableGrid } from '../../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../../../utils/tableScrollMode.js';
@@ -51,14 +52,14 @@ export default function SourcePatientsTab({ referrals, loading }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [colFilters, setColFilters] = useState({ division: '', licence: '', stage: '', triage: '', insurance: '' });
+  const [colFilters, setColFilters] = useState({ division: [], licence: [], stage: [], triage: [], insurance: [] });
   const [sortField, setSortField] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
 
   function setColFilter(key, val) { setColFilters((p) => ({ ...p, [key]: val })); }
-  function clearAll() { setSearch(''); setColFilters({ division: '', licence: '', stage: '', triage: '', insurance: '' }); setStatusFilter('all'); }
+  function clearAll() { setSearch(''); setColFilters({ division: [], licence: [], stage: [], triage: [], insurance: [] }); setStatusFilter('all'); }
 
-  const hasActiveFilters = search.trim() || Object.values(colFilters).some((v) => v.trim()) || statusFilter !== 'all';
+  const hasActiveFilters = search.trim() || Object.values(colFilters).some(filterIsActive) || statusFilter !== 'all';
 
   const displayed = useMemo(() => {
     let list = referrals;
@@ -73,15 +74,14 @@ export default function SourcePatientsTab({ referrals, loading }) {
     }
 
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val.trim()) continue;
-      const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
       list = list.filter((r) => {
         switch (key) {
-          case 'division':  return (r.division || '').toLowerCase().includes(q);
-          case 'licence':   return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
-          case 'stage':     return (r.current_stage || '').toLowerCase().includes(q);
+          case 'division':  return cellMatchesFilter(r.division, val);
+          case 'licence':   return cellMatchesFilter(resolveEntity(r.entity_id), val);
+          case 'stage':     return cellMatchesFilter(r.current_stage, val);
           case 'triage':    return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
-          case 'insurance': return (r.insurance_plan || '').toLowerCase().includes(q);
+          case 'insurance': return cellMatchesFilter(r.insurance_plan, val);
           default: return true;
         }
       });
@@ -107,7 +107,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
     });
   }, [referrals, statusFilter, search, colFilters, sortField, sortDir, resolveEntity, triagePresence]);
 
-  const tabHeaderH = showFilters ? 64 : 34;
+  const tabHeaderH = 34;
   const flip = useFlipWindow(displayed, lockedGrid, { rowHeight: 42, headerHeight: tabHeaderH });
 
   const colOptions = useMemo(() => {
@@ -148,7 +148,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 11.5, color: palette.backgroundDark.hex, width: '100%' }} />
           {search && <button onClick={() => setSearch('')} style={{ background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', borderRadius: 3, width: 14, height: 14, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>×</button>}
         </div>
-        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none', fontSize: 11, fontWeight: 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 6px', borderRadius: 6, border: 'none', background: 'transparent', fontSize: 11, fontWeight: showFilters ? 700 : 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
           Filters
           {hasActiveFilters && <span style={{ width: 5, height: 5, borderRadius: '50%', background: palette.accentBlue.hex }} />}
@@ -179,21 +179,21 @@ export default function SourcePatientsTab({ referrals, loading }) {
                       onClick={field ? () => toggleSort(field) : undefined}
                       style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), cursor: field ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
                     >
-                      {col.label}
-                      {field && sortField === field && <span style={{ fontSize: 8 }}> {sortDir === 'asc' ? '▲' : '▼'}</span>}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {col.label}
+                        {field && sortField === field && <span style={{ fontSize: 8 }}> {sortDir === 'asc' ? '▲' : '▼'}</span>}
+                        {col.filterable && (
+                          <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }} onClick={(e) => e.stopPropagation()}>
+                            {showFilters && (
+                              <ColumnFilterButton value={colFilters[col.key]} onChange={(v) => setColFilter(col.key, v)} label={col.label} options={colOptions[col.key] || []} />
+                            )}
+                          </span>
+                        )}
+                      </span>
                     </th>
                   );
                 })}
               </tr>
-              {showFilters && (
-                <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                  {COLUMN_DEFS.map((col) => (
-                    <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '3px 6px' }}>
-                      {col.filterable ? <FilterInput value={colFilters[col.key] || ''} onChange={(v) => setColFilter(col.key, v)} placeholder={col.label} options={colOptions[col.key] || []} /> : null}
-                    </th>
-                  ))}
-                </tr>
-              )}
             </thead>
             <tbody>
               {flip.windowItems.map((ref) => {

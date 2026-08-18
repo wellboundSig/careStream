@@ -35,6 +35,8 @@ import { useLockedTableGrid } from '../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../utils/tableScrollMode.js';
 import FlipTableShell from '../components/common/FlipTableShell.jsx';
+import { ColumnFilterButton } from '../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive, matchesNumericFilter, selectedFilterValues } from '../utils/columnFilters.js';
 import { useCareStore } from '../store/careStore.js';
 import {
   TRIAGE_FILTER_OPTIONS,
@@ -73,7 +75,7 @@ const COLUMN_DEFS = [
 ];
 
 const DEFAULT_COL_FILTERS = Object.fromEntries(
-  COLUMN_DEFS.filter((c) => c.filterable).map((c) => [c.key, ''])
+  COLUMN_DEFS.filter((c) => c.filterable).map((c) => [c.key, []])
 );
 
 function fmtDate(d) {
@@ -280,7 +282,7 @@ export default function PatientList() {
 
   const activeColumns = useMemo(() => COLUMN_DEFS.filter((c) => visibleCols.has(c.key)), [visibleCols]);
 
-  const hasAnyFilter = search.trim() || stageFilter || Object.values(colFilters).some((v) => v.trim());
+  const hasAnyFilter = search.trim() || stageFilter || Object.values(colFilters).some(filterIsActive);
 
   function clearAll() {
     setSearch('');
@@ -360,6 +362,20 @@ export default function PatientList() {
             if (v && v !== '—') vals.add(v);
             break;
           }
+          case 'days_in_stage': {
+            const d = daysInStage(ref);
+            if (Number.isFinite(d)) vals.add(String(d));
+            break;
+          }
+          case 'days_in_pipeline': {
+            const d = daysInPipeline(ref);
+            if (Number.isFinite(d)) vals.add(String(d));
+            break;
+          }
+          case 'post_soc_docs':
+            vals.add('yes'); vals.add('no');
+            vals.add('waiting_docs'); vals.add('waiting_clinical'); vals.add('overdue');
+            break;
         }
       });
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
@@ -389,57 +405,51 @@ export default function PatientList() {
       if (stageFilter) {
         if (!ref || ref.current_stage !== stageFilter) return false;
       }
-      // Per-column filters
+      // Per-column filters (multi-select)
       for (const [key, val] of Object.entries(colFilters)) {
-        if (!val.trim()) continue;
+        if (!filterIsActive(val)) continue;
 
-        // Numeric "days in …" filters: typing a number means "≥ N days".
         if (key === 'days_in_stage' || key === 'days_in_pipeline') {
-          const n = parseInt(val.trim(), 10);
-          if (!Number.isFinite(n)) continue;
           const d = key === 'days_in_stage' ? daysInStage(ref) : daysInPipeline(ref);
-          if (!Number.isFinite(d) || d < n) return false;
+          if (!matchesNumericFilter(d, val)) return false;
           continue;
         }
 
-        const q = val.toLowerCase();
         if (key === 'triage') {
           const label = triageColumnLabel(ref, !!(ref?.id && triagePresence[ref.id]));
           if (!matchesTriageFilter(label, val)) return false;
           continue;
         }
         if (key === 'post_soc_docs') {
-          const v = q.trim().replace(/\s+/g, '_');
           const status = documentationFilterStatus(ref);
           const open = isDocumentationDeferred(ref);
-          if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') { if (!open) return false; continue; }
-          if (v === 'no' || v === 'n' || v === 'false') { if (open) return false; continue; }
-          if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') {
-            if (!(status === 'waiting_docs' || status === 'overdue')) return false;
-            continue;
-          }
-          if (v === 'waiting_clinical' || v === 'clinical') {
-            if (!(status === 'waiting_clinical' || status === 'overdue')) return false;
-            continue;
-          }
-          if (v === 'overdue') { if (status !== 'overdue') return false; continue; }
+          const ok = selectedFilterValues(val).some((raw) => {
+            const v = String(raw).toLowerCase().replace(/\s+/g, '_');
+            if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
+            if (v === 'no' || v === 'n' || v === 'false') return !open;
+            if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
+            if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
+            if (v === 'overdue') return status === 'overdue';
+            return false;
+          });
+          if (!ok) return false;
           continue;
         }
         let cellVal = '';
         switch (key) {
-          case 'division':       cellVal = (p.division || '').toLowerCase(); break;
-          case 'episode_type':   cellVal = episodeTypeLongLabel(ref).toLowerCase(); break;
-          case 'licence':        cellVal = resolveEntity(ref?.entity_id).toLowerCase(); break;
-          case 'stage':          cellVal = (ref?.current_stage || '').toLowerCase(); break;
-          case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id).toLowerCase(); break;
-          case 'insurance':      cellVal = (p.insurance_plan || '').toLowerCase(); break;
-          case 'referral_date':  cellVal = ref?.referral_date ? fmtDate(ref.referral_date).toLowerCase() : ''; break;
-          case 'referral_source':cellVal = resolveSource(ref?.referral_source_id).toLowerCase(); break;
-          case 'source_entity':  cellVal = resolveSourceEntity(ref?.referral_source_id).toLowerCase(); break;
-          case 'facility':       cellVal = resolveFacility(ref?.facility_id).toLowerCase(); break;
-          case 'physician':      cellVal = resolvePhysician(ref?.physician_id).toLowerCase(); break;
+          case 'division':       cellVal = p.division || ''; break;
+          case 'episode_type':   cellVal = episodeTypeLongLabel(ref); break;
+          case 'licence':        cellVal = resolveEntity(ref?.entity_id); break;
+          case 'stage':          cellVal = ref?.current_stage || ''; break;
+          case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id); break;
+          case 'insurance':      cellVal = p.insurance_plan || ''; break;
+          case 'referral_date':  cellVal = ref?.referral_date ? fmtDate(ref.referral_date) : ''; break;
+          case 'referral_source':cellVal = resolveSource(ref?.referral_source_id); break;
+          case 'source_entity':  cellVal = resolveSourceEntity(ref?.referral_source_id); break;
+          case 'facility':       cellVal = resolveFacility(ref?.facility_id); break;
+          case 'physician':      cellVal = resolvePhysician(ref?.physician_id); break;
         }
-        if (!cellVal.includes(q)) return false;
+        if (!cellMatchesFilter(cellVal, val)) return false;
       }
       return true;
     });
@@ -463,7 +473,7 @@ export default function PatientList() {
     });
   }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity, hasDivision, canViewAllCases, triagePresence]);
 
-  const patientHeaderH = showFilters ? 76 : 38;
+  const patientHeaderH = 38;
   const flip = useFlipWindow(filtered, lockedGrid, { rowHeight: 44, headerHeight: patientHeaderH });
 
   function toggleSort(f) {
@@ -559,9 +569,23 @@ export default function PatientList() {
       title={col.tooltip || undefined}
       style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.sortField ? 'pointer' : col.tooltip ? 'help' : 'default', userSelect: 'none' }}
     >
-      {col.label}
-      {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
-      {col.sortField && sortField === col.sortField && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {col.label}
+        {col.tooltip && <span style={{ opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+        {col.sortField && sortField === col.sortField && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+        {col.filterable && (
+          <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }} onClick={(e) => e.stopPropagation()}>
+            {showFilters && (
+              <ColumnFilterButton
+                value={colFilters[col.key]}
+                onChange={(v) => setColFilter(col.key, v)}
+                label={col.label}
+                options={colOptions[col.key] || []}
+              />
+            )}
+          </span>
+        )}
+      </span>
     </th>
   );
 
@@ -754,7 +778,7 @@ export default function PatientList() {
           <button
             onClick={() => setShowFilters((v) => !v)}
             title={showFilters ? 'Hide column filters' : 'Show column filters'}
-            style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 550, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer', flexShrink: 0 }}
+            style={{ height: 34, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: 'none', background: 'transparent', fontSize: 12.5, fontWeight: showFilters ? 700 : 550, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer', flexShrink: 0 }}
           >
             <FilterIcon /> Filters
           </button>
@@ -796,30 +820,6 @@ export default function PatientList() {
                 <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
                   {activeColumns.map(colHdr)}
                 </tr>
-                {showFilters && (
-                  <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                    {activeColumns.map((col) => (
-                      <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '4px 8px' }}>
-                        {col.filterable ? (
-                          <>
-                            <input
-                              list={`col-opts-${col.key}`}
-                              value={colFilters[col.key] || ''}
-                              onChange={(e) => setColFilter(col.key, e.target.value)}
-                              placeholder="Filter…"
-                              style={{ width: '100%', padding: '4px 8px', borderRadius: 5, border: `1px solid ${colFilters[col.key]?.trim() ? palette.accentBlue.hex : 'var(--color-border)'}`, background: palette.backgroundLight.hex, fontSize: 11.5, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                            />
-                            <datalist id={`col-opts-${col.key}`}>
-                              {(colOptions[col.key] || []).map((opt) => (
-                                <option key={opt} value={opt} />
-                              ))}
-                            </datalist>
-                          </>
-                        ) : null}
-                      </th>
-                    ))}
-                  </tr>
-                )}
               </thead>
               <tbody>
                 {filtered.length === 0 ? (

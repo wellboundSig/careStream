@@ -8,7 +8,8 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import TaskComposer from '../tasks/TaskComposer.jsx';
-import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters, ColumnPicker, FilterInput, FilterIcon, ColsIcon } from '../../utils/columnModel.jsx';
+import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters, ColumnPicker, ColumnFilterButton, FilterIcon, ColsIcon } from '../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive } from '../../utils/columnFilters.js';
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EmptyState from '../common/EmptyState.jsx';
@@ -133,27 +134,27 @@ export default function DepartmentDashboard({ department, scope }) {
     let list = scopedReferrals;
     if (search.trim()) { const q = search.toLowerCase(); list = list.filter((r) => (r.patientName || '').toLowerCase().includes(q) || (r.patient_id || '').toLowerCase().includes(q)); }
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val.trim()) continue; const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
       list = list.filter((r) => {
         switch (key) {
-          case 'division': return (r.division || '').toLowerCase().includes(q);
-          case 'stage': return (r.current_stage || '').toLowerCase().includes(q);
-          case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q);
-          case 'source_entity': return (resolveSourceEntity(r.referral_source_id) || '').toLowerCase().includes(q);
-          case 'marketer': return (resolveMarketer(r.marketer_id) || '').toLowerCase().includes(q);
-          case 'owner': return (resolveUser(r.intake_owner_id) || '').toLowerCase().includes(q);
-          case 'insurance': return (r.patient?.insurance_plan || '').toLowerCase().includes(q);
-          case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q);
-          case 'licence': return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
+          case 'division': return cellMatchesFilter(r.division, val);
+          case 'stage': return cellMatchesFilter(r.current_stage, val);
+          case 'source': return cellMatchesFilter(resolveSource(r.referral_source_id), val);
+          case 'source_entity': return cellMatchesFilter(resolveSourceEntity(r.referral_source_id), val);
+          case 'marketer': return cellMatchesFilter(resolveMarketer(r.marketer_id), val);
+          case 'owner': return cellMatchesFilter(resolveUser(r.intake_owner_id), val);
+          case 'insurance': return cellMatchesFilter(r.patient?.insurance_plan, val);
+          case 'facility': return cellMatchesFilter(resolveFacility(r.facility_id), val);
+          case 'licence': return cellMatchesFilter(resolveEntity(r.entity_id), val);
           case 'triage': return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
-          default: return true;
+          default: return cellMatchesFilter('', val) || true;
         }
       });
     }
     return [...list].sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0));
   }, [scopedReferrals, search, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, triagePresence]);
 
-  const deptHeaderH = showFilters ? 76 : 38;
+  const deptHeaderH = 38;
   const flip = useFlipWindow(displayedReferrals, lockedGrid, { rowHeight: 46, headerHeight: deptHeaderH });
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
@@ -450,7 +451,7 @@ export default function DepartmentDashboard({ department, scope }) {
             {search && <button onClick={() => setSearch('')} style={{ background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', borderRadius: 4, width: 16, height: 16, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>×</button>}
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={() => setShowFilters((v) => !v)} style={{ height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none', fontSize: 12, fontWeight: 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={() => setShowFilters((v) => !v)} style={{ height: 32, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, fontWeight: showFilters || hasActiveFilters ? 700 : 600, color: showFilters || hasActiveFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer', flexShrink: 0 }}>
             <FilterIcon /> Filters {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: '50%', background: palette.accentBlue.hex }} />}
           </button>
           <div ref={colPickerRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -465,32 +466,39 @@ export default function DepartmentDashboard({ department, scope }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
               <thead>
                 <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                  {activeColumns.map((col) => (<th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} title={col.tooltip} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default' }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}</th>))}
+                  {activeColumns.map((col) => (
+                    <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} title={col.tooltip} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {col.label}
+                        {col.tooltip && <span style={{ opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+                        {col.filterable && (
+                          <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }}>
+                            {showFilters && (
+                              <ColumnFilterButton
+                                value={colFilters[col.key]}
+                                onChange={(v) => setColFilter(col.key, v)}
+                                label={col.label}
+                                options={
+                                  col.key === 'triage'
+                                    ? TRIAGE_FILTER_OPTIONS
+                                    : col.key === 'licence'
+                                      ? [...new Set(scopedReferrals.map((r) => resolveEntity(r.entity_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
+                                      : col.key === 'source_entity'
+                                        ? [...new Set(scopedReferrals.map((r) => resolveSourceEntity(r.referral_source_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
+                                        : col.key === 'division'
+                                          ? [...new Set(scopedReferrals.map((r) => r.division).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+                                          : col.key === 'stage'
+                                            ? [...new Set(scopedReferrals.map((r) => r.current_stage).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+                                            : undefined
+                                }
+                              />
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
-                {showFilters && (
-                  <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                    {activeColumns.map((col) => (
-                      <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '4px 8px' }}>
-                        {col.filterable ? (
-                          <FilterInput
-                            value={colFilters[col.key] || ''}
-                            onChange={(v) => setColFilter(col.key, v)}
-                            placeholder={col.label}
-                            options={
-                              col.key === 'triage'
-                                ? TRIAGE_FILTER_OPTIONS
-                                : col.key === 'licence'
-                                  ? [...new Set(scopedReferrals.map((r) => resolveEntity(r.entity_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
-                                  : col.key === 'source_entity'
-                                    ? [...new Set(scopedReferrals.map((r) => resolveSourceEntity(r.referral_source_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
-                                  : undefined
-                            }
-                          />
-                        ) : null}
-                      </th>
-                    ))}
-                  </tr>
-                )}
               </thead>
               <tbody>
                 {flip.windowItems.map((ref) => (

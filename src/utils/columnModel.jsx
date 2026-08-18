@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import palette, { hexToRgba } from './colors.js';
+import { filterIsActive, selectedFilterValues } from './columnFilters.js';
 
 // ── Patient list column definitions ─────────────────────────────────────────
 export const PATIENT_COLUMN_DEFS = [
@@ -101,7 +102,7 @@ export function useColumnVisibility(columnDefs) {
 
 export function useColumnFilters(columnDefs) {
   const defaultFilters = useMemo(
-    () => Object.fromEntries(columnDefs.filter((c) => c.filterable).map((c) => [c.key, ''])),
+    () => Object.fromEntries(columnDefs.filter((c) => c.filterable).map((c) => [c.key, []])),
     [columnDefs]
   );
   const [colFilters, setColFilters] = useState({ ...defaultFilters });
@@ -112,62 +113,148 @@ export function useColumnFilters(columnDefs) {
   }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setColFilter(key, val) {
-    setColFilters((prev) => ({ ...prev, [key]: val }));
+    setColFilters((prev) => ({ ...prev, [key]: Array.isArray(val) ? val : selectedFilterValues(val) }));
   }
   function clearFilters() {
     setColFilters({ ...defaultFilters });
   }
   const hasActiveFilters = useMemo(
-    () => Object.values(colFilters).some((v) => String(v || '').trim()),
+    () => Object.values(colFilters).some(filterIsActive),
     [colFilters]
   );
 
   return { colFilters, setColFilter, clearFilters, showFilters, setShowFilters, hasActiveFilters };
 }
 
-// ── FilterInput — polished input with clear × button ────────────────────────
+/** @deprecated use ColumnFilterButton — kept so older imports still resolve */
+export function FilterInput(props) {
+  return <ColumnFilterButton {...props} />;
+}
 
-export function FilterInput({ value, onChange, placeholder, options }) {
-  const hasValue = !!value?.trim();
-  const id = `fi-${placeholder?.replace(/\W/g, '') || 'x'}`;
+/**
+ * Per-column multi-select. Lives in the header so toggling Filters never
+ * inserts a second row or shifts the queue.
+ */
+export function ColumnFilterButton({ value, onChange, placeholder, options = [], label }) {
+  const selected = selectedFilterValues(value);
+  const hasValue = selected.length > 0;
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef(null);
+  const title = label || placeholder || 'Filter';
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const shown = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    const list = options.map(String);
+    if (!query) return list;
+    return list.filter((opt) => opt.toLowerCase().includes(query));
+  }, [options, q]);
+
+  function toggle(opt) {
+    const next = selected.includes(opt)
+      ? selected.filter((s) => s !== opt)
+      : [...selected, opt];
+    onChange(next);
+  }
 
   return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-      <input
-        list={options?.length ? id : undefined}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || 'Filter…'}
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      <button
+        type="button"
+        aria-label={`Filter ${title}`}
+        aria-expanded={open}
+        title={hasValue ? `${title}: ${selected.join(', ')}` : `Filter ${title}`}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         style={{
-          width: '100%', padding: '4px 24px 4px 8px', borderRadius: 5,
-          border: `1px solid ${hasValue ? palette.accentBlue.hex : 'var(--color-border)'}`,
-          background: hasValue ? hexToRgba(palette.accentBlue.hex, 0.04) : palette.backgroundLight.hex,
-          fontSize: 11.5, color: palette.backgroundDark.hex, outline: 'none',
-          fontFamily: 'inherit', boxSizing: 'border-box', transition: 'border-color 0.12s',
+          width: 18, height: 18, padding: 0, border: 'none', borderRadius: 4,
+          background: 'transparent', cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          color: hasValue ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
         }}
-        onFocus={(e) => (e.target.style.borderColor = palette.accentBlue.hex)}
-        onBlur={(e) => (e.target.style.borderColor = hasValue ? palette.accentBlue.hex : 'var(--color-border)')}
-      />
-      {hasValue && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          title="Clear filter"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth={hasValue ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable
           style={{
-            position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)',
-            width: 16, height: 16, borderRadius: 4, border: 'none', cursor: 'pointer',
-            background: hexToRgba(palette.backgroundDark.hex, 0.08), color: hexToRgba(palette.backgroundDark.hex, 0.5),
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-            fontSize: 10, fontWeight: 800, lineHeight: 1,
+            position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 40,
+            minWidth: 200, maxWidth: 280, maxHeight: 280,
+            background: palette.backgroundLight.hex,
+            border: `1px solid var(--color-border)`,
+            borderRadius: 8,
+            boxShadow: `0 8px 24px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}
         >
-          ×
-        </button>
-      )}
-      {options?.length > 0 && (
-        <datalist id={id}>
-          {options.map((opt) => <option key={opt} value={opt} />)}
-        </datalist>
+          <div style={{ padding: '8px 10px 6px', flexShrink: 0 }}>
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={`Search ${title.toLowerCase()}…`}
+              style={{
+                width: '100%', height: 28, padding: '0 8px', borderRadius: 6,
+                border: `1px solid var(--color-border)`, background: palette.backgroundLight.hex,
+                fontSize: 12, color: palette.backgroundDark.hex, outline: 'none',
+                fontFamily: 'inherit', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, padding: '2px 0 6px' }}>
+            {shown.length === 0 ? (
+              <p style={{ padding: '10px 12px', margin: 0, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                No options
+              </p>
+            ) : shown.map((opt) => {
+              const checked = selected.includes(opt);
+              return (
+                <label
+                  key={opt}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 12px', cursor: 'pointer',
+                    background: checked ? hexToRgba(palette.accentBlue.hex, 0.05) : 'transparent',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(opt)}
+                    style={{ accentColor: palette.accentBlue.hex, width: 13, height: 13, flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{opt}</span>
+                </label>
+              );
+            })}
+          </div>
+          {hasValue && (
+            <div style={{ borderTop: `1px solid var(--color-border)`, padding: '6px 10px', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                style={{
+                  border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 650, color: palette.primaryMagenta.hex, fontFamily: 'inherit',
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

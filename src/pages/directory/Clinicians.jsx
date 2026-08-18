@@ -9,11 +9,12 @@ import TabletIcon from '../../components/clinicians/TabletIcon.jsx';
 import {
   useColumnVisibility,
   useColumnFilters,
-  FilterInput,
+  ColumnFilterButton,
   ColumnPicker,
   FilterIcon,
   ColsIcon,
 } from '../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive } from '../../utils/columnFilters.js';
 import {
   titleCase,
   timeAgo,
@@ -152,15 +153,14 @@ export default function Clinicians() {
     }
 
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val?.trim()) continue;
-      const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
       list = list.filter((c) => {
         switch (key) {
-          case 'workerId':   return (c.workerId || '').toLowerCase().includes(q);
-          case 'discipline': return c.discipline.toLowerCase().includes(q);
-          case 'zip':        return (c.zip || '').toLowerCase().includes(q);
-          case 'model':      return (modelLabel(c.device?.hardware) || '').toLowerCase().includes(q);
-          case 'os':         return (osLabel(c.device?.software)   || '').toLowerCase().includes(q);
+          case 'workerId':   return cellMatchesFilter(c.workerId, val);
+          case 'discipline': return cellMatchesFilter(c.discipline, val);
+          case 'zip':        return cellMatchesFilter(c.zip, val);
+          case 'model':      return cellMatchesFilter(modelLabel(c.device?.hardware), val);
+          case 'os':         return cellMatchesFilter(osLabel(c.device?.software), val);
           default: return true;
         }
       });
@@ -223,7 +223,7 @@ export default function Clinicians() {
             <button
               onClick={() => setShowFilters((v) => !v)}
               title={showFilters ? 'Hide column filters' : 'Show column filters'}
-              style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 550, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}
+              style={{ height: 34, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, border: 'none', background: 'transparent', fontSize: 12.5, fontWeight: showFilters ? 700 : 550, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}
             >
               <FilterIcon /> Filters
               {colsHaveFilters && <span style={{ width: 5, height: 5, borderRadius: '50%', background: palette.accentBlue.hex }} />}
@@ -333,27 +333,25 @@ export default function Clinicians() {
                           width: col.key === 'tablet' ? 50 : undefined,
                         }}
                       >
-                        {col.label}{isSort && active && <span style={{ fontSize: 8 }}> {sortDir === 'asc' ? '▲' : '▼'}</span>}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          {col.label}{isSort && active && <span style={{ fontSize: 8 }}> {sortDir === 'asc' ? '▲' : '▼'}</span>}
+                          {col.filterable && (
+                            <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }} onClick={(e) => e.stopPropagation()}>
+                              {showFilters && (
+                                <ColumnFilterButton
+                                  value={colFilters[col.key]}
+                                  onChange={(v) => setColFilter(col.key, v)}
+                                  label={col.label}
+                                  options={colOptions[col.key] || []}
+                                />
+                              )}
+                            </span>
+                          )}
+                        </span>
                       </th>
                     );
                   })}
                 </tr>
-                {showFilters && (
-                  <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: '1px solid var(--color-border)' }}>
-                    {activeColumns.map((col) => (
-                      <th key={col.key} style={{ padding: '4px 8px' }}>
-                        {col.filterable ? (
-                          <FilterInput
-                            value={colFilters[col.key] || ''}
-                            onChange={(v) => setColFilter(col.key, v)}
-                            placeholder={col.label}
-                            options={colOptions[col.key] || []}
-                          />
-                        ) : null}
-                      </th>
-                    ))}
-                  </tr>
-                )}
               </thead>
               <tbody>
                 {filtered.length === 0 ? (

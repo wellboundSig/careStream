@@ -52,9 +52,13 @@ export function triageColumnLabel(referral, hasRecord) {
 }
 
 export function matchesTriageFilter(label, query) {
-  const q = String(query || '').trim().toLowerCase();
-  if (!q) return true;
+  const queries = Array.isArray(query)
+    ? query.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
+    : [String(query || '').trim().toLowerCase()].filter(Boolean);
+  if (!queries.length) return true;
   const normalized = String(label || '');
-  if (normalized.toLowerCase().includes(q)) return true;
-  return (TRIAGE_ALIASES[normalized] || []).some((alias) => alias === q);
+  return queries.some((q) => {
+    if (normalized.toLowerCase().includes(q)) return true;
+    return (TRIAGE_ALIASES[normalized] || []).some((alias) => alias === q);
+  });
 }

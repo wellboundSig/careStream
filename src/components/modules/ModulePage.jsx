@@ -17,10 +17,11 @@ import {
   useColumnVisibility,
   useColumnFilters,
   ColumnPicker,
-  FilterInput,
+  ColumnFilterButton,
   FilterIcon,
   ColsIcon,
 } from '../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive, matchesNumericFilter, matchesYesNoFilter, selectedFilterValues } from '../../utils/columnFilters.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import { useLockedTableGrid } from '../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../hooks/useFlipWindow.js';
@@ -91,7 +92,6 @@ function readFreezePatientPref() {
 
 /** Opaque sticky surfaces — translucent fills let scrolling rows bleed through. */
 const QUEUE_STICKY_HEADER_BG = palette.backgroundLight.hex;
-const QUEUE_STICKY_FILTER_BG = palette.backgroundLight.hex;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -383,79 +383,57 @@ export default function ModulePage({ stage }) {
       );
     }
 
-    // Per-column filters
+    // Per-column filters (multi-select: match any checked value)
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val.trim()) continue;
-      const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
+      const selected = selectedFilterValues(val);
 
-      // Numeric "days in …" filters: typing a number means "≥ N days".
       if (key === 'days_in_stage' || key === 'days_in_pipeline') {
-        const n = parseInt(val.trim(), 10);
-        if (Number.isFinite(n)) {
-          list = list.filter((r) => {
-            const d = key === 'days_in_stage' ? daysInStage(r) : daysInPipeline(r);
-            return Number.isFinite(d) && d >= n;
-          });
-        }
+        list = list.filter((r) => {
+          const d = key === 'days_in_stage' ? daysInStage(r) : daysInPipeline(r);
+          return matchesNumericFilter(d, val);
+        });
         continue;
       }
 
       list = list.filter((r) => {
-        // Boolean-style filter for the urgent care indicator. "yes" / "y" /
-        // "true" → urgent only; "no" / "n" / "false" → not-urgent only.
-        if (key === 'urgent') {
-          const v = q.trim();
-          const wantsUrgent = v === 'yes' || v === 'y' || v === 'true';
-          const wantsNonUrgent = v === 'no' || v === 'n' || v === 'false';
-          if (wantsUrgent) return isUrgentCare(r);
-          if (wantsNonUrgent) return !isUrgentCare(r);
-          return true; // partial typing — don't filter yet
-        }
+        if (key === 'urgent') return matchesYesNoFilter(isUrgentCare(r), val);
         if (key === 'urgent_care_type') {
           const types = getUrgentCareTypes(r);
-          const label = urgentCareTypeLabel(types).toLowerCase();
+          const label = urgentCareTypeLabel(types);
           const raw = types.join(' ');
-          return label.includes(q) || raw.includes(q);
+          return selected.some((s) => cellMatchesFilter(label, [s]) || cellMatchesFilter(raw, [s]));
         }
         if (key === 'emr_onboarded') {
-          const v = q.trim();
-          const onboarded = !!(r.emr_onboarded_at || r.emr_initial_onboarded_at);
-          const wantsYes = v === 'yes' || v === 'y' || v === 'true';
-          const wantsNo = v === 'no' || v === 'n' || v === 'false';
-          if (wantsYes) return onboarded;
-          if (wantsNo) return !onboarded;
-          return true;
+          return matchesYesNoFilter(!!(r.emr_onboarded_at || r.emr_initial_onboarded_at), val);
         }
         if (key === 'post_soc_docs') {
-          const v = q.trim().replace(/\s+/g, '_');
           const status = documentationFilterStatus(r);
           const open = isDocumentationDeferred(r);
-          if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
-          if (v === 'no' || v === 'n' || v === 'false') return !open;
-          if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
-          if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
-          if (v === 'overdue') return status === 'overdue';
-          if (!v) return true;
-          return status.includes(v) || (open && 'deferred'.includes(v));
+          return selected.some((raw) => {
+            const v = String(raw).toLowerCase().replace(/\s+/g, '_');
+            if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
+            if (v === 'no' || v === 'n' || v === 'false') return !open;
+            if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
+            if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
+            if (v === 'overdue') return status === 'overdue';
+            return status.includes(v) || (open && v.includes('deferred'));
+          });
         }
-        if (key === 'waiting_docs') {
-          const v = q.trim();
-          const waiting = isDocumentationDeferred(r);
-          if (v === 'yes' || v === 'y' || v === 'true') return waiting;
-          if (v === 'no' || v === 'n' || v === 'false') return !waiting;
-          return true;
-        }
+        if (key === 'waiting_docs') return matchesYesNoFilter(isDocumentationDeferred(r), val);
         if (key === 'triage') {
           const label = triageColumnLabel(r, !!(r?.id && triagePresence[r.id]));
           return matchesTriageFilter(label, val);
         }
         if (key === 'episode_type') {
-          const et = normalizeEpisodeType(r).toLowerCase();
-          const long = episodeTypeLongLabel(r).toLowerCase();
-          const v = q.trim().toLowerCase();
-          if (v === 'soc' || v === 's' || v.includes('start')) return et === 'soc';
-          if (v === 'roc' || v === 'r' || v.includes('resum')) return et === 'roc';
-          return long.includes(v) || et.includes(v);
+          const et = normalizeEpisodeType(r);
+          const long = episodeTypeLongLabel(r);
+          return selected.some((s) => {
+            const v = s.toLowerCase();
+            if (v === 'soc' || v === 's' || v.includes('start')) return et === 'soc';
+            if (v === 'roc' || v === 'r' || v.includes('resum')) return et === 'roc';
+            return cellMatchesFilter(long, [s]) || cellMatchesFilter(et, [s]);
+          });
         }
         let cellVal = '';
         switch (key) {
@@ -473,7 +451,7 @@ export default function ModulePage({ stage }) {
           case 'clinical_rn': cellVal = resolveClinicalRnLabel(r, resolveUser) || ''; break;
           default: return true;
         }
-        return cellVal.toLowerCase().includes(q);
+        return cellMatchesFilter(cellVal, val);
       });
     }
 
@@ -527,7 +505,7 @@ export default function ModulePage({ stage }) {
     return { active, deferred: list.length - active, all: list.length };
   }, [isClinicalRnModule, decoratedReferrals, meta, hasDivision, division]);
 
-  const queueHeaderH = (showFilters ? 2 : 1) * QUEUE_HEADER_HEIGHT;
+  const queueHeaderH = QUEUE_HEADER_HEIGHT;
   const flip = useFlipWindow(stageReferrals, lockedGrid, {
     rowHeight: QUEUE_ROW_HEIGHT,
     headerHeight: queueHeaderH,
@@ -600,6 +578,16 @@ export default function ModulePage({ stage }) {
           }
           case 'episode_type': vals.add(episodeTypeLongLabel(r)); break;
           case 'waiting_docs': vals.add('yes'); vals.add('no'); break;
+          case 'days_in_stage': {
+            const d = daysInStage(r);
+            if (Number.isFinite(d)) vals.add(String(d));
+            break;
+          }
+          case 'days_in_pipeline': {
+            const d = daysInPipeline(r);
+            if (Number.isFinite(d)) vals.add(String(d));
+            break;
+          }
         }
       });
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
@@ -1648,7 +1636,12 @@ export default function ModulePage({ stage }) {
             <button
               onClick={() => setShowFilters((v) => !v)}
               title={showFilters ? 'Hide column filters' : 'Show column filters'}
-              style={{ height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none', fontSize: 12, fontWeight: 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer', flexShrink: 0, transition: 'all 0.12s' }}
+              style={{
+                height: 32, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7,
+                border: 'none', background: 'transparent', fontSize: 12, fontWeight: showFilters || hasActiveFilters ? 700 : 600,
+                color: showFilters || hasActiveFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                cursor: 'pointer', flexShrink: 0,
+              }}
             >
               <FilterIcon /> Filters
               {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: '50%', background: palette.accentBlue.hex, flexShrink: 0 }} />}
@@ -1661,12 +1654,11 @@ export default function ModulePage({ stage }) {
               title={pinPatientCol ? 'Unpin patient name (scrolls with columns)' : 'Pin patient name while scrolling columns'}
               aria-pressed={pinPatientCol}
               style={{
-                height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
-                border: `1px solid ${pinPatientCol ? palette.accentBlue.hex : 'var(--color-border)'}`,
-                background: pinPatientCol ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
-                fontSize: 12, fontWeight: 600,
+                height: 32, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
+                border: 'none', background: 'transparent',
+                fontSize: 12, fontWeight: pinPatientCol ? 700 : 600,
                 color: pinPatientCol ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
-                cursor: 'pointer', transition: 'all 0.12s',
+                cursor: 'pointer',
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -1841,48 +1833,26 @@ export default function ModulePage({ stage }) {
                               } : {}),
                             }}
                           >
-                            {col.label}
-                            {col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {col.label}
+                              {col.tooltip && <span style={{ opacity: 0.5, fontSize: 9 }}>ⓘ</span>}
+                              {col.filterable && (
+                                <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }}>
+                                  {showFilters && (
+                                    <ColumnFilterButton
+                                      value={colFilters[col.key]}
+                                      onChange={(v) => setColFilter(col.key, v)}
+                                      label={col.label}
+                                      options={colOptions[col.key] || []}
+                                    />
+                                  )}
+                                </span>
+                              )}
+                            </span>
                           </th>
                         );
                       })}
                     </tr>
-                    {showFilters && (
-                      <tr style={{ height: QUEUE_HEADER_HEIGHT, borderBottom: `1px solid var(--color-border)` }}>
-                        {activeColumns.map((col) => {
-                          const isPatient = col.key === 'patient';
-                          return (
-                            <th
-                              key={col.key}
-                              style={{
-                                padding: '0 8px',
-                                height: QUEUE_HEADER_HEIGHT,
-                                verticalAlign: 'middle',
-                                position: 'sticky',
-                                top: QUEUE_HEADER_HEIGHT,
-                                zIndex: isPatient && freezePatientCol ? 5 : 3,
-                                background: QUEUE_STICKY_FILTER_BG,
-                                boxShadow: `inset 0 -1px 0 var(--color-border)`,
-                                ...(isPatient && freezePatientCol ? {
-                                  left: 0,
-                                  minWidth: 160,
-                                  boxShadow: `inset 0 -1px 0 var(--color-border), 2px 0 0 ${hexToRgba(palette.backgroundDark.hex, 0.06)}`,
-                                } : {}),
-                              }}
-                            >
-                              {col.filterable ? (
-                                <FilterInput
-                                  value={colFilters[col.key] || ''}
-                                  onChange={(v) => setColFilter(col.key, v)}
-                                  placeholder={col.label}
-                                  options={colOptions[col.key] || []}
-                                />
-                              ) : null}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    )}
                   </thead>
                   <tbody>
                     {flip.windowItems.map((ref) => (

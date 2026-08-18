@@ -32,5 +32,7 @@ describe('triageColumn', () => {
     expect(matchesTriageFilter('N/A', 'na')).toBe(true);
     expect(matchesTriageFilter('Done', 'needed')).toBe(false);
     expect(matchesTriageFilter('Needed', '')).toBe(true);
+    expect(matchesTriageFilter('Done', ['Needed', 'Done'])).toBe(true);
+    expect(matchesTriageFilter('N/A', ['Done'])).toBe(false);
   });
 });

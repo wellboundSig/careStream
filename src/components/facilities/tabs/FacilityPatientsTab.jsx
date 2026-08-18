@@ -5,7 +5,8 @@ import { useCareStore } from '../../../store/careStore.js';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
-import { FilterInput } from '../../../utils/columnModel.jsx';
+import { ColumnFilterButton } from '../../../utils/columnModel.jsx';
+import { cellMatchesFilter, filterIsActive } from '../../../utils/columnFilters.js';
 import { useLockedTableGrid } from '../../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../../../utils/tableScrollMode.js';
@@ -42,11 +43,11 @@ export default function FacilityPatientsTab({ referrals, loading }) {
   );
   const [filter, setFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [colFilters, setColFilters] = useState({ division: '', licence: '', source_entity: '', stage: '', triage: '' });
+  const [colFilters, setColFilters] = useState({ division: [], licence: [], source_entity: [], stage: [], triage: [] });
 
   function setColFilter(key, val) { setColFilters((p) => ({ ...p, [key]: val })); }
-  function clearAll() { setColFilters({ division: '', licence: '', source_entity: '', stage: '', triage: '' }); setFilter('all'); }
-  const hasActiveFilters = Object.values(colFilters).some((v) => v.trim());
+  function clearAll() { setColFilters({ division: [], licence: [], source_entity: [], stage: [], triage: [] }); setFilter('all'); }
+  const hasActiveFilters = Object.values(colFilters).some(filterIsActive);
 
   const displayed = useMemo(() => {
     let list = referrals;
@@ -54,14 +55,13 @@ export default function FacilityPatientsTab({ referrals, loading }) {
     else if (filter === 'admitted') list = list.filter((r) => isSocCompletedReferral(r));
 
     for (const [key, val] of Object.entries(colFilters)) {
-      if (!val.trim()) continue;
-      const q = val.toLowerCase();
+      if (!filterIsActive(val)) continue;
       list = list.filter((r) => {
         switch (key) {
-          case 'division': return (r.division || '').toLowerCase().includes(q);
-          case 'licence': return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
-          case 'source_entity': return (resolveSourceEntity(r.referral_source_id) || '').toLowerCase().includes(q);
-          case 'stage': return (r.current_stage || '').toLowerCase().includes(q);
+          case 'division': return cellMatchesFilter(r.division, val);
+          case 'licence': return cellMatchesFilter(resolveEntity(r.entity_id), val);
+          case 'source_entity': return cellMatchesFilter(resolveSourceEntity(r.referral_source_id), val);
+          case 'stage': return cellMatchesFilter(r.current_stage, val);
           case 'triage': return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
           default: return true;
         }
@@ -70,7 +70,7 @@ export default function FacilityPatientsTab({ referrals, loading }) {
     return list;
   }, [referrals, filter, colFilters, resolveEntity, resolveSourceEntity, triagePresence]);
 
-  const tabHeaderH = showFilters ? 64 : 34;
+  const tabHeaderH = 34;
   const flip = useFlipWindow(displayed, lockedGrid, { rowHeight: 42, headerHeight: tabHeaderH });
 
   const colOptions = useMemo(() => {
@@ -102,7 +102,7 @@ export default function FacilityPatientsTab({ referrals, loading }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${showFilters ? palette.accentBlue.hex : 'var(--color-border)'}`, background: showFilters ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none', fontSize: 11, fontWeight: 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>
+        <button onClick={() => setShowFilters((v) => !v)} style={{ height: 28, padding: '0 6px', borderRadius: 6, border: 'none', background: 'transparent', fontSize: 11, fontWeight: showFilters ? 700 : 600, color: showFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.5), cursor: 'pointer' }}>
           Filters{hasActiveFilters ? ' ·' : ''}
         </button>
         {hasActiveFilters && <button onClick={clearAll} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'none', fontSize: 11, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer' }}>Clear</button>}
@@ -116,18 +116,18 @@ export default function FacilityPatientsTab({ referrals, loading }) {
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
                 {COLUMN_DEFS.map((col) => (
-                  <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{col.label}</th>
+                  <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {col.label}
+                      {col.filterable && (
+                        <span style={{ width: 18, display: 'inline-flex', visibility: showFilters ? 'visible' : 'hidden' }}>
+                          {showFilters && <ColumnFilterButton value={colFilters[col.key]} onChange={(v) => setColFilter(col.key, v)} label={col.label} options={colOptions[col.key] || []} />}
+                        </span>
+                      )}
+                    </span>
+                  </th>
                 ))}
               </tr>
-              {showFilters && (
-                <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                  {COLUMN_DEFS.map((col) => (
-                    <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '3px 8px' }}>
-                      {col.filterable ? <FilterInput value={colFilters[col.key] || ''} onChange={(v) => setColFilter(col.key, v)} placeholder={col.label} options={colOptions[col.key] || []} /> : null}
-                    </th>
-                  ))}
-                </tr>
-              )}
             </thead>
             <tbody>
               {flip.windowItems.map((ref) => (
