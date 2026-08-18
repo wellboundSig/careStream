@@ -5,7 +5,7 @@ import {
   normalizeGuardianRelationship,
   splitContactNameAndRelationship,
 } from '../../data/guardianRelationships.js';
-import { guardianDisplay, guardianPhoneDigits } from '../../utils/knownGuardians.js';
+import { guardianDisplay, guardianPhoneDigits, isStaffDirectoryEmail } from '../../utils/knownGuardians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /**
@@ -148,6 +148,7 @@ export default function GuardianContactFields({
                 onChange={(e) => patchPrimary({ email: e.target.value })}
                 placeholder="optional"
                 type="email"
+                autoComplete="off"
                 style={inputStyle}
               />
             </Field>
@@ -225,6 +226,7 @@ export default function GuardianContactFields({
                   onChange={(e) => setSlot('emergency', { email: e.target.value, same_as_primary: false })}
                   placeholder="optional"
                   type="email"
+                  autoComplete="off"
                   style={inputStyle}
                 />
               </Field>
@@ -500,7 +502,7 @@ export function contactsFromPatient(patient) {
   }
 
   const demoPhone = phoneDigits(patient.phone_primary) || phoneDigits(patient.phone_secondary);
-  const demoEmail = patient.email || '';
+  const demoEmail = isStaffDirectoryEmail(patient.email) ? '' : (patient.email || '');
   let primaryPhone = phoneDigits(patient.primary_contact_phone) || demoPhone;
   let primaryEmail = patient.primary_contact_email || demoEmail || '';
   let primaryName = patient.primary_contact_name || '';

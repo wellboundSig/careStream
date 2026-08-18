@@ -5,12 +5,10 @@
  *   - AuthorizationsTab.jsx (patient drawer — variant="drawer")
  *   - StagePanel.jsx        (module-page right panel — variant="panel")
  *
- * Model: ONE Authorizations row per insurance "response". Per-service decisions
- * (PT approved, ST denied) and the follow-up log are stored as JSON on that row
- * so a single response carries multiple disciplines without a child table.
- *
- * Mirrors the Eligibility per-insurance card pattern: one card per insurance on
- * file, expand to "Record auth response". Options branch by division:
+ * Model: ONE Authorizations row per insurance. Staff first log a request
+ * (overall status Pending — who asked, what services, from where), then follow
+ * up while waiting, then record the payer response (Active / Inactive) with
+ * per-service decisions. Follow-ups live as JSON on the same row.
  *   - ALF: NAR / Follow-up needed (→ Denied or Single Case Agreement) / Approved
  *   - SPN: Approved / Partial Approval (note required) / Denied / Balance bill Medicaid
  *
@@ -44,6 +42,7 @@ import {
   VERIFICATION_SOURCE_OPTIONS,
   AUTH_UNIT_TYPE,
   AUTH_UNIT_TYPE_OPTIONS,
+  AUTH_STATUS,
   AUTH_COVERAGE_STATUS,
   AUTH_COVERAGE_STATUS_OPTIONS,
   AUTH_DECISION,
@@ -63,10 +62,10 @@ function safeParse(json, fallback) {
   try { const v = JSON.parse(json); return v ?? fallback; } catch { return fallback; }
 }
 
-function newServiceLine(service, division) {
+function newServiceLine(service, { requestOnly = false } = {}) {
   return {
     service,
-    decision: division === DIVISION.ALF ? AUTH_DECISION.APPROVED : AUTH_DECISION.APPROVED,
+    decision: requestOnly ? '' : AUTH_DECISION.APPROVED,
     follow_up_outcome: '',     // ALF only, when decision === follow_up_needed
     visit_limit: '',
     unit_type: AUTH_UNIT_TYPE.VISIT,
@@ -75,17 +74,33 @@ function newServiceLine(service, division) {
   };
 }
 
+function isPendingCoverage(status) {
+  return status === AUTH_COVERAGE_STATUS.PENDING;
+}
+
+function defaultCoverageStatus(response) {
+  if (response?.coverage_status) return response.coverage_status;
+  if (!response) return AUTH_COVERAGE_STATUS.PENDING;
+  const rollup = (response.auth_status || response.status || '').toString().toLowerCase();
+  const lines = safeParse(response.service_lines, []);
+  if (rollup === 'pending' || rollup === 'follow_up_needed' || !lines.length) {
+    return AUTH_COVERAGE_STATUS.PENDING;
+  }
+  return AUTH_COVERAGE_STATUS.ACTIVE;
+}
+
 // Roll the per-service decisions up into the single `auth_status` the module
-// queue + legacy consumers read. Anything still in flight keeps the patient in
-// the Authorization queue.
-function rollupAuthStatus(lines) {
-  if (!lines.length) return 'pending';
+// queue + legacy consumers read. A Pending coverage status always stays
+// pending — requested, waiting — regardless of leftover line decisions.
+function rollupAuthStatus(lines, coverageStatus) {
+  if (isPendingCoverage(coverageStatus)) return AUTH_STATUS.PENDING;
+  if (!lines.length) return AUTH_STATUS.PENDING;
   const decisions = lines.map((l) => l.decision);
-  if (decisions.some((d) => d === AUTH_DECISION.FOLLOW_UP_NEEDED)) return 'follow_up_needed';
-  if (decisions.every((d) => d === AUTH_DECISION.NAR)) return 'nar';
-  if (decisions.some((d) => d === AUTH_DECISION.APPROVED || d === AUTH_DECISION.PARTIAL)) return 'approved';
-  if (decisions.some((d) => d === AUTH_DECISION.DENIED)) return 'denied';
-  return 'pending';
+  if (decisions.some((d) => d === AUTH_DECISION.FOLLOW_UP_NEEDED)) return AUTH_STATUS.FOLLOW_UP_NEEDED;
+  if (decisions.every((d) => d === AUTH_DECISION.NAR)) return AUTH_STATUS.NAR;
+  if (decisions.some((d) => d === AUTH_DECISION.APPROVED || d === AUTH_DECISION.PARTIAL)) return AUTH_STATUS.APPROVED;
+  if (decisions.some((d) => d === AUTH_DECISION.DENIED)) return AUTH_STATUS.DENIED;
+  return AUTH_STATUS.PENDING;
 }
 
 function legacyStatusFromRollup(rollup) {
@@ -410,11 +425,13 @@ function InsuranceAuthCard({
   const medicareNoAuth = isMedicareNoAuthRequired(insurance);
 
   const initial = useMemo(() => ({
-    coverage_status: response?.coverage_status || AUTH_COVERAGE_STATUS.ACTIVE,
+    coverage_status: defaultCoverageStatus(response),
     payer_type: response?.payer_type || insurance.insurance_category || INSURANCE_CATEGORY.MEDICAID,
     payer_order: response?.payer_order || insurance.order_rank || ORDER_RANK.PRIMARY,
     sources: safeParse(response?.sources_checked, []),
-    request_initial_date: response?.request_initial_date ? String(response.request_initial_date).split('T')[0] : '',
+    request_initial_date: response?.request_initial_date
+      ? String(response.request_initial_date).split('T')[0]
+      : (response ? '' : todayCalendarDate()),
     request_requested_from: response?.request_requested_from || '',
     request_docs_sent: response?.request_docs_sent === true || response?.request_docs_sent === 'true',
     lines: safeParse(response?.service_lines, []),
@@ -423,8 +440,10 @@ function InsuranceAuthCard({
 
   const rollupStatus = (response?.auth_status || response?.status || '').toString().toLowerCase();
   const storedLinesPreview = safeParse(response?.service_lines, []);
+  const storedCoverage = defaultCoverageStatus(response);
   const isAwaitingResponse = !!response && (
-    rollupStatus === 'pending'
+    isPendingCoverage(storedCoverage)
+    || rollupStatus === 'pending'
     || rollupStatus === 'follow_up_needed'
     || storedLinesPreview.length === 0
   );
@@ -434,6 +453,7 @@ function InsuranceAuthCard({
   const [form, setForm] = useState(initial);
   const [followUps, setFollowUps] = useState(() => safeParse(response?.follow_ups, []));
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const requestOnly = isPendingCoverage(form.coverage_status);
 
   function startEdit() {
     setForm(initial);
@@ -444,7 +464,17 @@ function InsuranceAuthCard({
 
   function addLine(service) {
     if (!service) return;
-    setForm((f) => ({ ...f, lines: [...f.lines, newServiceLine(service, division)] }));
+    setForm((f) => ({ ...f, lines: [...f.lines, newServiceLine(service, { requestOnly: isPendingCoverage(f.coverage_status) })] }));
+  }
+
+  function setCoverageStatus(value) {
+    setForm((f) => {
+      let lines = f.lines;
+      if (!isPendingCoverage(value)) {
+        lines = lines.map((l) => (l.decision ? l : { ...l, decision: AUTH_DECISION.APPROVED }));
+      }
+      return { ...f, coverage_status: value, lines };
+    });
   }
   function updateLine(idx, patch) {
     setForm((f) => ({ ...f, lines: f.lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)) }));
@@ -457,6 +487,12 @@ function InsuranceAuthCard({
   }
 
   function validate() {
+    if (requestOnly) {
+      if (!form.request_initial_date) return 'Enter the date the authorization was requested.';
+      if (!String(form.request_requested_from || '').trim()) return 'Enter who the authorization was requested from.';
+      if (!form.lines.length) return 'Add at least one requested service.';
+      return null;
+    }
     for (const l of form.lines) {
       if (division === DIVISION.ALF && l.decision === AUTH_DECISION.FOLLOW_UP_NEEDED && !l.follow_up_outcome) {
         return `Choose a follow-up outcome (Denied or Single Case Agreement) for ${l.service}.`;
@@ -506,17 +542,20 @@ function InsuranceAuthCard({
     if (v) { setError(v); return; }
     setSaving(true); setError(null);
 
-    const rollup = rollupAuthStatus(form.lines);
+    const rollup = rollupAuthStatus(form.lines, form.coverage_status);
     const payerName = insurance.payer_display_name || '';
-    const cleanLines = form.lines.map((l) => ({
-      service: l.service,
-      decision: l.decision,
-      ...(l.follow_up_outcome ? { follow_up_outcome: l.follow_up_outcome } : {}),
-      ...(l.visit_limit !== '' && l.visit_limit != null ? { visit_limit: Number(l.visit_limit) } : {}),
-      unit_type: l.unit_type,
-      ...(l.approval_received_date ? { approval_received_date: l.approval_received_date } : {}),
-      ...(String(l.note || '').trim() ? { note: l.note.trim() } : {}),
-    }));
+    const cleanLines = form.lines.map((l) => {
+      if (requestOnly) return { service: l.service };
+      return {
+        service: l.service,
+        decision: l.decision,
+        ...(l.follow_up_outcome ? { follow_up_outcome: l.follow_up_outcome } : {}),
+        ...(l.visit_limit !== '' && l.visit_limit != null ? { visit_limit: Number(l.visit_limit) } : {}),
+        unit_type: l.unit_type,
+        ...(l.approval_received_date ? { approval_received_date: l.approval_received_date } : {}),
+        ...(String(l.note || '').trim() ? { note: l.note.trim() } : {}),
+      };
+    });
 
     const prevReq = response?.request_initial_date
       ? String(response.request_initial_date).split('T')[0]
@@ -539,9 +578,9 @@ function InsuranceAuthCard({
       auth_status: rollup,
       status: legacyStatusFromRollup(rollup),
       ...(String(form.note || '').trim() ? { notes: form.note.trim() } : {}),
-      decided_by_user_id: verifierRecordId || undefined,
-      // Stamp requester when the request date is first set or changed.
-      ...(nextReq && nextReq !== prevReq
+      decided_by_user_id: requestOnly ? undefined : (verifierRecordId || undefined),
+      // Stamp requester on first save, or when the request date changes.
+      ...(!response?._id || (nextReq && nextReq !== prevReq)
         ? { requested_by_user_id: appUserId || undefined }
         : (response?.requested_by_user_id
           ? { requested_by_user_id: response.requested_by_user_id }
@@ -580,7 +619,7 @@ function InsuranceAuthCard({
 
       // ALF "Denied" side effects: raise a Conflict flag + a supervisor task.
       // No stage change — conflict routing lives in the Conflict module.
-      const deniedAlf = division === DIVISION.ALF && form.lines.filter(
+      const deniedAlf = !requestOnly && division === DIVISION.ALF && form.lines.filter(
         (l) => l.decision === AUTH_DECISION.FOLLOW_UP_NEEDED && l.follow_up_outcome === AUTH_DECISION.DENIED,
       );
       if (deniedAlf && deniedAlf.length) {
@@ -610,15 +649,25 @@ function InsuranceAuthCard({
         });
       }
 
+      const requestedFrom = form.request_requested_from.trim();
       await recordActivity({
         actorUserId: appUserId,
-        action: rollup === 'denied' ? AUDIT_ACTION.AUTH_DENIED
+        action: requestOnly ? AUDIT_ACTION.AUTH_REQUESTED
+          : rollup === 'denied' ? AUDIT_ACTION.AUTH_DENIED
           : rollup === 'approved' ? AUDIT_ACTION.AUTH_APPROVED
           : AUDIT_ACTION.AUTH_FOLLOW_UP_SCHEDULED,
         patientId: patient?.id,
         referralId: referral?.id,
-        detail: `Auth response recorded for ${payerName} (${rollup}).`,
-        metadata: { payerInsuranceId: insurance._id, rollup, services: cleanLines.map((l) => `${l.service}:${l.decision}`) },
+        detail: requestOnly
+          ? `Auth requested for ${payerName}${requestedFrom ? ` from ${requestedFrom}` : ''} (${cleanLines.map((l) => l.service).join(', ') || 'no services'}).`
+          : `Auth response recorded for ${payerName} (${rollup}).`,
+        metadata: {
+          payerInsuranceId: insurance._id,
+          rollup,
+          coverageStatus: form.coverage_status,
+          requestedFrom: requestedFrom || null,
+          services: cleanLines.map((l) => l.decision ? `${l.service}:${l.decision}` : l.service),
+        },
       }).catch(() => {});
 
       setEditing(false);
@@ -656,13 +705,13 @@ function InsuranceAuthCard({
             <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentBlue.hex, 0.12), color: palette.accentBlue.hex, flexShrink: 0 }}>
               No auth required
             </span>
-          ) : isAwaitingResponse ? (
+          ) : isAwaitingResponse || isPendingCoverage(storedCoverage) ? (
             <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, flexShrink: 0 }}>
               Pending
             </span>
           ) : response ? (
-            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
-              {response.coverage_status === AUTH_COVERAGE_STATUS.INACTIVE ? 'Inactive' : (rollupStatus === 'approved' || rollupStatus === 'nar' ? 'Responded' : 'Active')}
+            <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 9px', borderRadius: 20, background: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#E5E5E5' : '#DCFCE7', color: storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? '#666' : '#15803d', flexShrink: 0 }}>
+              {storedCoverage === AUTH_COVERAGE_STATUS.INACTIVE ? 'Inactive' : (rollupStatus === 'approved' || rollupStatus === 'nar' ? 'Responded' : 'Active')}
             </span>
           ) : null}
         </div>
@@ -695,7 +744,11 @@ function InsuranceAuthCard({
                 Pending — awaiting response
               </p>
               <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
-                {[requestedWhen ? `Last requested ${requestedWhen}` : null, requestedWho ? `by ${requestedWho}` : null].filter(Boolean).join(' · ')
+                {[
+                  requestedWhen ? `Requested ${requestedWhen}` : null,
+                  requestedWho ? `by ${requestedWho}` : null,
+                  response?.request_requested_from ? `from ${response.request_requested_from}` : null,
+                ].filter(Boolean).join(' · ')
                   || 'Awaiting payer response'}
               </p>
             </div>
@@ -725,7 +778,7 @@ function InsuranceAuthCard({
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {!readOnly && !medicareNoAuth && (
               <button onClick={startEdit} data-testid="record-auth-response" style={{ padding: `${Math.max(4, t.inputPadY - 1)}px ${t.inputPadX + 2}px`, borderRadius: 5, border: 'none', background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer' }}>
-                {response ? 'Update auth response' : 'Record auth response'}
+                {!response ? 'Log auth request' : isAwaitingResponse ? 'Update request' : 'Update auth response'}
               </button>
             )}
             {canDeleteResponse && response?._id && (
@@ -753,10 +806,15 @@ function InsuranceAuthCard({
         <div style={{ padding: `${t.cardPadY - 2}px ${t.cardPadX}px ${t.cardPadY}px` }}>
           {/* Insurance-level response variables */}
           <Field t={t} label="Status">
-            <select value={form.coverage_status} onChange={(e) => set({ coverage_status: e.target.value })} style={inputStyle(t)}>
+            <select data-testid="auth-coverage-status" value={form.coverage_status} onChange={(e) => setCoverageStatus(e.target.value)} style={inputStyle(t)}>
               {AUTH_COVERAGE_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
+          {requestOnly && (
+            <p style={{ fontSize: t.fontMuted - 0.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), margin: '-4px 0 10px', lineHeight: 1.4 }}>
+              Pending means the request is in — waiting on a response. Log who asked, what was requested, and from where. Follow up here until the payer answers, then switch Status to Active or Inactive.
+            </p>
+          )}
           <Field t={t} label="Payer Type (staff-confirmed)">
             <select value={form.payer_type} onChange={(e) => set({ payer_type: e.target.value })} style={inputStyle(t)}>
               {PAYER_TYPE_STAFF_OPTIONS
@@ -799,13 +857,16 @@ function InsuranceAuthCard({
 
           {/* Per-service decision lines */}
           <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#555', marginBottom: 6 }}>Requested services</p>
+            <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#555', marginBottom: 6 }}>
+              {requestOnly ? 'Services requested' : 'Requested services'}
+            </p>
             {form.lines.map((line, idx) => (
               <ServiceLineRow
                 key={idx}
                 t={t}
                 division={division}
                 line={line}
+                requestOnly={requestOnly}
                 onChange={(patch) => updateLine(idx, patch)}
                 onRemove={() => removeLine(idx)}
               />
@@ -835,7 +896,7 @@ function InsuranceAuthCard({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
             <button onClick={() => setEditing(false)} style={secondaryBtn(t)}>Cancel</button>
             <button onClick={handleSave} disabled={saving} data-testid="save-auth-response" style={primaryBtn(t, { disabled: saving, color: palette.accentGreen.hex })}>
-              {saving ? 'Saving…' : 'Save auth response'}
+              {saving ? 'Saving…' : requestOnly ? 'Save request' : 'Save auth response'}
             </button>
             {canDeleteResponse && response?._id && (
               <button
@@ -859,16 +920,20 @@ function InsuranceAuthCard({
   );
 }
 
-function ServiceLineRow({ t, division, line, onChange, onRemove }) {
+function ServiceLineRow({ t, division, line, onChange, onRemove, requestOnly = false }) {
   const decisionOptions = authDecisionOptionsForDivision(division);
   const showUnits = UNIT_DECISIONS.has(line.decision);
   const isAlfFollowUp = division === DIVISION.ALF && line.decision === AUTH_DECISION.FOLLOW_UP_NEEDED;
   return (
     <div data-testid="service-line" style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: `${t.inputPadY}px ${t.inputPadX}px`, marginBottom: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: t.fontBase, fontWeight: 700, color: palette.backgroundDark.hex }}>{line.service}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: requestOnly ? 0 : 6 }}>
+        <span style={{ fontSize: t.fontBase, fontWeight: 700, color: palette.backgroundDark.hex }}>
+          {line.service}{requestOnly ? <span style={{ fontWeight: 550, color: '#888' }}> · requested</span> : null}
+        </span>
         <button onClick={onRemove} title="Remove service" style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 14 }}>×</button>
       </div>
+      {requestOnly ? null : (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Field t={t} label="Decision">
           <select value={line.decision} onChange={(e) => onChange({ decision: e.target.value, follow_up_outcome: '' })} style={inputStyle(t)}>
@@ -905,6 +970,8 @@ function ServiceLineRow({ t, division, line, onChange, onRemove }) {
         <Field t={t} label={line.decision === AUTH_DECISION.PARTIAL ? 'Note (required for Partial)' : 'Note'}>
           <textarea rows={2} value={line.note} onChange={(e) => onChange({ note: e.target.value })} style={{ ...inputStyle(t), resize: 'vertical' }} />
         </Field>
+      )}
+      </>
       )}
     </div>
   );
@@ -971,6 +1038,7 @@ function FollowUpLog({ t, followUps, onLog }) {
 }
 
 function decisionLabel(line) {
+  if (!line.decision) return 'Requested';
   switch (line.decision) {
     case AUTH_DECISION.NAR: return 'NAR';
     case AUTH_DECISION.APPROVED: return 'Approved';

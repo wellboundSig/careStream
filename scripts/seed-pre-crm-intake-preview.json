@@ -1,0 +1,3010 @@
+{
+  "keepCount": 126,
+  "dropCount": 17,
+  "drop": [
+    {
+      "index": 5,
+      "name": "Dechen Sherpa",
+      "reason": "already in CRM (pat_1786567599952_6npy)"
+    },
+    {
+      "index": 45,
+      "name": "Johan Florencio",
+      "reason": "already in CRM (pat_1786646642169_ng1x)"
+    },
+    {
+      "index": 51,
+      "name": "Zion Callahan",
+      "reason": "already in CRM (pat_1786645804607_oeyf)"
+    },
+    {
+      "index": 54,
+      "name": "Jaiden Fernandez",
+      "reason": "already in CRM (pat_1786016642778_fu81)"
+    },
+    {
+      "index": 70,
+      "name": "Sincere Leone",
+      "reason": "already in CRM (pat_1784836645084_qopo)"
+    },
+    {
+      "index": 71,
+      "name": "Henry Rodriguez",
+      "reason": "already in CRM (pat_1784924518958_17bd)"
+    },
+    {
+      "index": 72,
+      "name": "Benjamin Rosenberg",
+      "reason": "already in CRM (pat_1785446701519_e6e1)"
+    },
+    {
+      "index": 97,
+      "name": "Laura Vargas",
+      "reason": "missing/unmapped case type (need Adult vs Pediatric)"
+    },
+    {
+      "index": 98,
+      "name": "Angelina Rodriguez",
+      "reason": "already in CRM (pat_1785185786803_d54w)"
+    },
+    {
+      "index": 110,
+      "name": "mila voznyy",
+      "reason": "bad referral date \"null\""
+    },
+    {
+      "index": 123,
+      "name": "Alexa Iturralde",
+      "reason": "already in CRM (pat_1786551648679_xeod)"
+    },
+    {
+      "index": 124,
+      "name": "Alexander Barnett",
+      "reason": "could not derive county"
+    },
+    {
+      "index": 128,
+      "name": "MESHAE A HAMPTON",
+      "reason": "already in CRM (pat_1786553501275_kji6, pat_1786553503875_1htz, pat_1786553498160_mky0)"
+    },
+    {
+      "index": 133,
+      "name": "Imaan Rahman",
+      "reason": "missing/unmapped case type (need Adult vs Pediatric)"
+    },
+    {
+      "index": 134,
+      "name": "Melford Hogan",
+      "reason": "already in CRM (pat_1785171531935_wl40)"
+    },
+    {
+      "index": 135,
+      "name": "Selena Mendez",
+      "reason": "already in CRM (pat_1785172216902_7d2p)"
+    },
+    {
+      "index": 136,
+      "name": "GUZMAN, BETANIA",
+      "reason": "bad referral date \"null\""
+    }
+  ],
+  "keep": [
+    {
+      "name": "Abigail Batista Hernandez",
+      "from": "Abigail Batista Hernandez",
+      "age": "Pediatric",
+      "date": "2026-03-18",
+      "city": "Bronx",
+      "zip": "10453",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Mia Esbri",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Zavion Anderson",
+      "from": "ANDERSON, ZAVION",
+      "age": "Pediatric",
+      "date": "2026-06-08",
+      "city": "New York",
+      "zip": "10030",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Mia Esbri",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Gael Roque Flores",
+      "from": "ROQUE FLORES, GAEL",
+      "age": "Pediatric",
+      "date": "2026-04-20",
+      "city": "Bronx",
+      "zip": "10468",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": null,
+      "owner": "Mia Esbri",
+      "source": "Unknown",
+      "method": "Call-In",
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "UnitedHealthcare Community Plan"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Dylon John",
+      "from": "JOHN, DYLON",
+      "age": "Pediatric",
+      "date": "2026-05-12",
+      "city": "Brooklyn",
+      "zip": "11212",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Mia Esbri",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Chizaram Nwoke",
+      "from": "NWOKE, CHIZARAM",
+      "age": "Pediatric",
+      "date": "2026-07-15",
+      "city": "Bronx",
+      "zip": "10469",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Mia Esbri",
+      "source": "Jinell Buckle @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ajani Brightley",
+      "from": "Ajani Brightley",
+      "age": "Pediatric",
+      "date": "2026-03-10",
+      "city": "New York",
+      "zip": "10027",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Kecha Perrin @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Josiah Maldonado",
+      "from": "Josiah Maldonado",
+      "age": "Pediatric",
+      "date": "2026-03-12",
+      "city": "Long Island City",
+      "zip": "11101",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Gail Dominique @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Alexander Sebastian",
+      "from": "Alexander Sebastian",
+      "age": "Pediatric",
+      "date": "2026-03-17",
+      "city": "Bronx",
+      "zip": "10468",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Monira Begum",
+      "source": "Sonnia Villao @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Carter Quick",
+      "from": "Carter Quick",
+      "age": "Pediatric",
+      "date": "2026-03-18",
+      "city": "Brooklyn",
+      "zip": null,
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Tamara Easy @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Aaron Philip",
+      "from": "Aaron Philip",
+      "age": "Adult",
+      "date": "2026-03-25",
+      "city": "Bronx",
+      "zip": "10452",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Miriam Berger @ High Standard Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Diyarah Mody",
+      "from": "Diyarah Mody",
+      "age": "Pediatric",
+      "date": "2026-04-01",
+      "city": "Rego Park",
+      "zip": "11374",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Tamara Easy @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Kayden Hooks",
+      "from": "Kayden Hooks",
+      "age": "Pediatric",
+      "date": "2026-04-14",
+      "city": "Brooklyn",
+      "zip": "11233",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Lashawna Ricketts @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Afchana Aziz",
+      "from": "Afchana Aziz",
+      "age": "Adult",
+      "date": "2026-04-15",
+      "city": "Queens Village",
+      "zip": "11429",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Paul Randall @ Tri-County Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Hari Achary",
+      "from": "Hari Achary",
+      "age": "Pediatric",
+      "date": "2026-04-20",
+      "city": "Bellerose",
+      "zip": "11426",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Mohammed Sahid @ EZ Living Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Alyssa Kopacz",
+      "from": "Alyssa Kopacz",
+      "age": "Pediatric",
+      "date": "2026-04-20",
+      "city": "Brooklyn",
+      "zip": "11234",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Unknown",
+      "method": "Email",
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Elliot Santos",
+      "from": "Elliot Santos",
+      "age": "Pediatric",
+      "date": "2026-04-27",
+      "city": "Bronx",
+      "zip": "10459",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Monira Begum",
+      "source": "Blizelle Tormis @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Yisroel Pollak",
+      "from": "Yisroel Pollak",
+      "age": "Pediatric",
+      "date": "2026-05-04",
+      "city": "Brooklyn",
+      "zip": "11211",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Robyn Wright @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Quentin Ngoa",
+      "from": "Quentin Ngoa",
+      "age": "Adult",
+      "date": "2026-05-11",
+      "city": "Bronx",
+      "zip": "10469",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Monira Begum",
+      "source": "Karline Balan @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Deziya Powell",
+      "from": "Deziya Powell",
+      "age": "Pediatric",
+      "date": "2026-05-15",
+      "city": "Bronx",
+      "zip": "10453",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Annie Barkor @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "James Cleckley",
+      "from": "James Cleckley",
+      "age": "Adult",
+      "date": "2026-05-20",
+      "city": "Rosedale",
+      "zip": "11422",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Michelle Montoro @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT"
+      ],
+      "plans": [
+        "Medicare"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Muhammad Yaser",
+      "from": "Muhammad Yaser",
+      "age": "Pediatric",
+      "date": "2026-05-20",
+      "city": "Brooklyn",
+      "zip": "11235",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Unknown",
+      "method": "Word of Mouth",
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Amabelle Singh",
+      "from": "Amabelle Singh",
+      "age": "Pediatric",
+      "date": "2026-05-26",
+      "city": "Kew Gardens",
+      "zip": "11415",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Monira Begum",
+      "source": "Sandra Telles @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Mahdi Khalid",
+      "from": "Mahdi Khalid",
+      "age": "Pediatric",
+      "date": "2026-06-01",
+      "city": "Ozone Park",
+      "zip": "11416",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Salena Knapp @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Nvjot Mahil",
+      "from": "Nvjot Mahil",
+      "age": "Pediatric",
+      "date": "2026-06-08",
+      "city": "Richmond Hill",
+      "zip": "11418",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Salena Knapp @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Mir Farabi",
+      "from": "Mir Farabi",
+      "age": "Pediatric",
+      "date": "2026-06-08",
+      "city": "Jamaica",
+      "zip": "11432",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Mohammed Sahid @ EZ Living Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Aron Medina",
+      "from": "Aron Medina",
+      "age": "Pediatric",
+      "date": "2026-06-11",
+      "city": "Bronx",
+      "zip": "10462",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Annie Barkor @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [],
+      "unknownSource": false
+    },
+    {
+      "name": "Esther Stollman",
+      "from": "Esther Stollman",
+      "age": "Adult",
+      "date": "2026-06-12",
+      "city": "Brooklyn",
+      "zip": "11230",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Daisy Harringtondupuis",
+      "from": "Daisy Harringtondupuis",
+      "age": "Pediatric",
+      "date": "2026-06-17",
+      "city": "Brooklyn",
+      "zip": "11230",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Chaya Schwartz @ High Standard Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Legacy Jimenez",
+      "from": "Legacy Jimenez",
+      "age": "Pediatric",
+      "date": "2026-06-18",
+      "city": "Ozone Park",
+      "zip": "11416",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Gail Dominique @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Fidelis Care"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Terrell Lancaster",
+      "from": "Terrell Lancaster",
+      "age": "Pediatric",
+      "date": "2026-06-22",
+      "city": "New York",
+      "zip": "10009",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Marina Marte @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Makaiel Oates",
+      "from": "Makaiel Oates",
+      "age": "Pediatric",
+      "date": "2026-06-29",
+      "city": "Brooklyn",
+      "zip": "11207",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Robyn Wright @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ma-Vonte Peters",
+      "from": "Ma-Vonte Peters",
+      "age": "Pediatric",
+      "date": "2026-06-30",
+      "city": "Bronx",
+      "zip": "10456",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Josefa Gonzalez @ Boulevard Homecare Associates",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jason Sherpa",
+      "from": "Jason Sherpa",
+      "age": "Pediatric",
+      "date": "2026-07-07",
+      "city": "Elmhurst",
+      "zip": "11373",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Melissa Davis @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Campbell Sophie",
+      "from": "Campbell Sophie",
+      "age": "Pediatric",
+      "date": "2026-07-07",
+      "city": "Brooklyn",
+      "zip": "11209",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Jessica Perez @ Anchor HC",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Molina Healthcare"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Shifa Muntaha",
+      "from": "Shifa Muntaha",
+      "age": "Pediatric",
+      "date": "2026-07-08",
+      "city": "Jamaica",
+      "zip": "11432",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Mayisha Nawar @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Alex Bhujel",
+      "from": "Alex Bhujel",
+      "age": "Pediatric",
+      "date": "2026-07-08",
+      "city": "Jackson Heights",
+      "zip": "11372",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Tenzin Metok @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Amelia McDowell",
+      "from": "Amelia Mcdowell",
+      "age": "Pediatric",
+      "date": "2026-07-13",
+      "city": "Brooklyn",
+      "zip": "11208",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Kamola Kelesidi @ Wellbound (Readmit)",
+      "method": null,
+      "episode": "ROC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Islam Alzabidi",
+      "from": "Islam Alzabidi",
+      "age": "Pediatric",
+      "date": "2026-07-14",
+      "city": "Bronx",
+      "zip": "10462",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Tibile Camara @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "James Stone",
+      "from": "James Stone",
+      "age": "Pediatric",
+      "date": "2026-07-15",
+      "city": "Staten Island",
+      "zip": "10304",
+      "county": "Richmond",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Ekaterine Gutashvili @ Tri-County Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "UnitedHealthcare"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Carlos Lora",
+      "from": "Carlos Lora",
+      "age": "Pediatric",
+      "date": "2026-07-17",
+      "city": "New York",
+      "zip": "10023",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Miriam Indig @ Hamaspik HC",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Damon Chan",
+      "from": "Damon Chan",
+      "age": "Pediatric",
+      "date": "2026-07-17",
+      "city": "New York",
+      "zip": "10021",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Hudson Joachim @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "James Liu",
+      "from": "James Liu",
+      "age": "Pediatric",
+      "date": "2026-07-21",
+      "city": "Brooklyn",
+      "zip": "11230",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Monira Begum",
+      "source": "Kamola Kelesidi @ Wellbound (Readmit)",
+      "method": null,
+      "episode": "ROC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Mia Aguilar Castro",
+      "from": "Mia Aguilar Castro",
+      "age": "Pediatric",
+      "date": "2026-01-22",
+      "city": "Bronx",
+      "zip": "10455",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Sonnia Villao @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Elias Fernandez",
+      "from": "Elias Fernandez",
+      "age": "Pediatric",
+      "date": "2026-06-01",
+      "city": "Bronx",
+      "zip": "10459",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Sonnia Villao @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Empire BlueCross BlueShield"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Bryana Estrella Pena",
+      "from": "Bryana Estrella Pena",
+      "age": "Pediatric",
+      "date": "2026-06-12",
+      "city": "Bronx",
+      "zip": "10458",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Sabrina Aguilar @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Christpoher Casaccio",
+      "from": "Christpoher Casaccio",
+      "age": "Pediatric",
+      "date": "2026-06-12",
+      "city": "Huntington Station",
+      "zip": "11746",
+      "county": "Suffolk",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Noemi Martinez",
+      "source": "Yvel Boucicaut @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Yaneryris Melendez",
+      "from": "Yaneryris Melendez",
+      "age": "Adult",
+      "date": "2026-06-12",
+      "city": "Bronx",
+      "zip": "10465",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Corina Nieto @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Aiden Smith",
+      "from": "Aiden Smith",
+      "age": "Pediatric",
+      "date": "2026-06-16",
+      "city": "New York",
+      "zip": "10039",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Marina Marte @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Xavier Rodriguez",
+      "from": "Xavier Rodriguez",
+      "age": "Pediatric",
+      "date": "2026-06-17",
+      "city": "Middle Village",
+      "zip": "11379",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Monica Gonzalez @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Arturo Martinez Navarro",
+      "from": "Arturo Martinez Navarro",
+      "age": "Pediatric",
+      "date": "2026-06-23",
+      "city": "New York",
+      "zip": "10025",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Sabrina Aguilar @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Mia De La Cruz",
+      "from": "Mia De La Cruz",
+      "age": "Pediatric",
+      "date": "2026-06-23",
+      "city": "Bronx",
+      "zip": "10457",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Kissena Long @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jahira Rosa",
+      "from": "Jahira Rosa",
+      "age": "Adult",
+      "date": "2026-06-25",
+      "city": "Bronx",
+      "zip": "10459",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Jacqueline Martinez @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ethan La Luz",
+      "from": "Ethan La Luz",
+      "age": "Pediatric",
+      "date": "2026-06-29",
+      "city": "New York",
+      "zip": "10128",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Josefa Gonzalez @ Boulevard Homecare Associates",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "HHA"
+      ],
+      "plans": [
+        "HIP"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Emmah La Luz",
+      "from": "Emmah La Luz",
+      "age": "Pediatric",
+      "date": "2026-06-29",
+      "city": "New York",
+      "zip": "10128",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Josefa Gonzalez @ Boulevard Homecare Associates",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "HIP"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "King Ogarro",
+      "from": "King Ogarro",
+      "age": "Pediatric",
+      "date": "2026-07-01",
+      "city": "Brooklyn",
+      "zip": "11201",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Maria Galan Hernandez @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Amere Jones",
+      "from": "Amere Jones",
+      "age": "Adult",
+      "date": "2026-07-02",
+      "city": "Brooklyn",
+      "zip": "11229",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Roselene Blanco @ Human Care NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ronnie Carmona",
+      "from": "Ronnie Carmona",
+      "age": "Pediatric",
+      "date": "2026-07-07",
+      "city": "Bronx",
+      "zip": "10459",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Sabrina Aguilar @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Molina Healthcare"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Armand Krcishta",
+      "from": "Armand Krcishta",
+      "age": "Pediatric",
+      "date": "2026-07-10",
+      "city": "Brooklyn",
+      "zip": "11229",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Madeline Russell @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Isaiah Morrison",
+      "from": "Isaiah Morrison",
+      "age": "Pediatric",
+      "date": "2026-07-13",
+      "city": "Bronx",
+      "zip": "10454",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Tibile Camara @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Arianna Diaz",
+      "from": "Arianna Diaz",
+      "age": "Pediatric",
+      "date": "2026-07-13",
+      "city": "Bronx",
+      "zip": "10456",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Carolina Morris @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jmair Spencer",
+      "from": "Jmair Spencer",
+      "age": "Pediatric",
+      "date": "2026-07-14",
+      "city": "Bronx",
+      "zip": "10472",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Noemi Martinez",
+      "source": "Stella Esele @ Tri-County Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Empire BlueCross BlueShield"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Xavier Jimenez",
+      "from": "Xavier Jimenez",
+      "age": "Adult",
+      "date": "2026-07-16",
+      "city": "Fresh Meadows",
+      "zip": "11365",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Tenzin Metok @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "David Gonzalez",
+      "from": "David Gonzalez",
+      "age": "Adult",
+      "date": "2026-07-20",
+      "city": "Maspeth",
+      "zip": "11378",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Jaxon Sutton",
+      "from": "Jaxon Sutton",
+      "age": "Pediatric",
+      "date": "2026-07-21",
+      "city": "Brooklyn",
+      "zip": "11221",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Unknown",
+      "method": "Website",
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Joshuan Paucar Rodriguez",
+      "from": "Joshuan Paucar Rodriguez",
+      "age": "Pediatric",
+      "date": "2026-07-21",
+      "city": "Bronx",
+      "zip": "10472",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Noemi Martinez",
+      "source": "Unknown",
+      "method": "Call-In",
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Henry M Alcantara Morillo",
+      "from": "Henry M Alcantara Morillo",
+      "age": "Adult",
+      "date": "2026-07-22",
+      "city": "Bronx",
+      "zip": "10456",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Noemi Martinez",
+      "source": "Flor Cabrera @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ethan Mencia",
+      "from": "Ethan Mencia",
+      "age": "Pediatric",
+      "date": "2026-04-29",
+      "city": "Jamaica",
+      "zip": "11435",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Michelle Lovell @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Johann Florencio",
+      "from": "Johann Florencio",
+      "age": "Pediatric",
+      "date": "2026-03-31",
+      "city": "New York",
+      "zip": "10031",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Julieta Ignacio @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Justin I Mendez",
+      "from": "JUSTIN I MENDEZ",
+      "age": "Adult",
+      "date": "2026-04-01",
+      "city": "New York",
+      "zip": "10029",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Amy Fine @ Rebecca School",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Darlenys Nunez",
+      "from": "Darlenys Nunez",
+      "age": "Pediatric",
+      "date": "2026-04-01",
+      "city": "Bronx",
+      "zip": "10457",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Aleny Lora @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ashley Chabla",
+      "from": "Ashley CHABLA",
+      "age": "Adult",
+      "date": "2026-05-11",
+      "city": "Brooklyn",
+      "zip": "11220",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Maria Hernandez @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Sherman Rivera Corporan",
+      "from": "Sherman Rivera Corporan",
+      "age": "Adult",
+      "date": "2026-05-12",
+      "city": "Bronx",
+      "zip": "10473",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": null,
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Stanley Campos Paulino",
+      "from": "Stanley Campos Paulino",
+      "age": "Pediatric",
+      "date": "2026-05-15",
+      "city": "Bronx",
+      "zip": "10457",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Sabrina Aguilar @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Soraida Rivera Tomas",
+      "from": "Soraida Rivera Tomas",
+      "age": "Adult",
+      "date": "2026-05-15",
+      "city": "Jamaica",
+      "zip": "11435",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Elaine Perez @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Fidelis Care"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Gabriel Estavillo",
+      "from": "Gabriel Estavillo",
+      "age": "Pediatric",
+      "date": "2026-05-18",
+      "city": "Queens Village",
+      "zip": "11427",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Sandy Grounon",
+      "source": "Michelle Lovell @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Christofhe Contreras Alcantara",
+      "from": "Christofhe Contreras Alcantara",
+      "age": "Pediatric",
+      "date": "2026-05-27",
+      "city": "Brooklyn",
+      "zip": "11237",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "MetroPlus Health Plan"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Brandon Estrella",
+      "from": "Brandon Estrella",
+      "age": "Pediatric",
+      "date": "2026-05-29",
+      "city": "Bronx",
+      "zip": "10463",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Diego Rojas @ New York Health Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Angel Santana Mendez",
+      "from": "Angel Santana Mendez",
+      "age": "Adult",
+      "date": "2026-06-04",
+      "city": "Brooklyn",
+      "zip": "11208",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": null,
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Mohammad Talhah",
+      "from": "Mohammad Talhah",
+      "age": "Pediatric",
+      "date": "2026-06-04",
+      "city": "Brooklyn",
+      "zip": "11235",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Sandy Grounon",
+      "source": "Lashawna Ricketts @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "1199SEIU National Benefit Fund",
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Minha Munawar",
+      "from": "MINHA MUNAWAR",
+      "age": "Pediatric",
+      "date": "2026-06-05",
+      "city": "Westbury",
+      "zip": "11590",
+      "county": "Nassau",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Malka Steinmetz @ Tri-County Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Tareek Woods",
+      "from": "TAREEK WOODS",
+      "age": "Adult",
+      "date": "2026-06-06",
+      "city": "New York",
+      "zip": "10029",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Jennifer Dieudonne @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Aiden Delaguila",
+      "from": "Aiden Delaguila",
+      "age": "Pediatric",
+      "date": "2026-06-09",
+      "city": "Middle Village",
+      "zip": "11379",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Aetna Better Health"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Alfredo Lara Garcia",
+      "from": "Alfredo Lara Garcia",
+      "age": "Pediatric",
+      "date": "2026-06-10",
+      "city": "Bronx",
+      "zip": "10458",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Tuvia Adler",
+      "from": "Tuvia Adler",
+      "age": "Adult",
+      "date": "2026-06-11",
+      "city": "Brooklyn",
+      "zip": "11219",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "UnitedHealthcare Community Plan"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "William Amezquita",
+      "from": "William Amezquita",
+      "age": "Adult",
+      "date": "2026-06-12",
+      "city": "New York",
+      "zip": "10034",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Angie Castillo @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "GHI",
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jayden Encarnacion Ovalles",
+      "from": "Jayden Encarnacion Ovalles",
+      "age": "Pediatric",
+      "date": "2026-06-15",
+      "city": "Bronx",
+      "zip": "10472",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Sonnia Villao @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jason Poddubni",
+      "from": "Jason Poddubni",
+      "age": "Adult",
+      "date": "2026-06-15",
+      "city": "Brooklyn",
+      "zip": "11229",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Omarion Arzu Guity",
+      "from": "Omarion Arzu Guity",
+      "age": "Pediatric",
+      "date": "2026-06-17",
+      "city": "Bronx",
+      "zip": "10465",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Sandy Grounon",
+      "source": "Sonnia Villao @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "MetroPlus Health Plan"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Victoria Moreira Ordenana",
+      "from": "Victoria Moreira Ordenana",
+      "age": "Pediatric",
+      "date": "2026-06-17",
+      "city": "East Elmhurst",
+      "zip": "11370",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": null,
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "George Quiroz",
+      "from": "George Quiroz",
+      "age": "Adult",
+      "date": "2026-06-18",
+      "city": "Flushing",
+      "zip": "11355",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Johanni Garcia @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Landen Price",
+      "from": "Landen Price",
+      "age": "Pediatric",
+      "date": "2026-07-02",
+      "city": "Brooklyn",
+      "zip": "11208",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Sandy Grounon",
+      "source": "Melissa Davis @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Aetna Better Health"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jay Tello Carreon",
+      "from": "Jay Tello Carreon",
+      "age": "Pediatric",
+      "date": "2026-07-14",
+      "city": "Brooklyn",
+      "zip": "11220",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Emily Rodriguez @ Anchor HC",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Etienne Ozyman Dias",
+      "from": "Etienne Ozyman Dias",
+      "age": "Pediatric",
+      "date": "2026-07-14",
+      "city": "Bronx",
+      "zip": "10452",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Carl Birkett",
+      "from": "Carl Birkett",
+      "age": "Adult",
+      "date": "2026-07-16",
+      "city": "Bronx",
+      "zip": "10473",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Bernadette Blocker @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "Medicare",
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Anthony Infante Lopez",
+      "from": "Anthony Infante Lopez",
+      "age": "Pediatric",
+      "date": "2026-07-17",
+      "city": "Jackson Heights",
+      "zip": "11372",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Roselene Blanco @ Human Care NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Legend Vanwright",
+      "from": "Legend Vanwright",
+      "age": "Pediatric",
+      "date": "2026-07-21",
+      "city": "Bronx",
+      "zip": "10456",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Sandy Grounon",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Fidelis Care"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Khalil Copper",
+      "from": "COPPER, KHALIL",
+      "age": "Pediatric",
+      "date": "2026-04-13",
+      "city": "New York",
+      "zip": "10039",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": "Website",
+      "episode": "SOC",
+      "services": [],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Jayden Garcia Santiago",
+      "from": "GARCIA SANTIAGO, JAYDEN",
+      "age": "Pediatric",
+      "date": "2026-04-13",
+      "city": "Bronx",
+      "zip": "10455",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "MetroPlus Health Plan"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Ernest Gay",
+      "from": "GAY, ERNEST",
+      "age": "Pediatric",
+      "date": "2025-06-05",
+      "city": "Bronx",
+      "zip": "10474",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Arisa Lewis",
+      "from": "LEWIS, ARISA",
+      "age": "Pediatric",
+      "date": "2025-04-29",
+      "city": "S Ozone Park",
+      "zip": "11420",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Gail Dominique @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "HHA"
+      ],
+      "plans": [
+        "Medicaid",
+        "GHI"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Altagracia Fernandez",
+      "from": "Altagracia Fernandez",
+      "age": "Adult",
+      "date": "2026-03-30",
+      "city": "Woodhaven",
+      "zip": "11421",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Vanessa Villa",
+      "source": "Gabrielle Allen @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Rabdu Giliing",
+      "from": "Rabdu Giliing",
+      "age": "Adult",
+      "date": "2026-03-24",
+      "city": "Brooklyn",
+      "zip": "11212",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "N/A @ Brooklyn DD Council Family Support Fair",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid",
+        "Medicare"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Harry Sanchez Fernandez",
+      "from": "Harry Sanchez  Fernandez",
+      "age": "Adult",
+      "date": "2026-03-25",
+      "city": "Brooklyn",
+      "zip": "11201",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "David Krasner @ —",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Jaslene Pichardo",
+      "from": "Jaslene Pichardo",
+      "age": "Pediatric",
+      "date": "2026-03-27",
+      "city": "New York",
+      "zip": "10026",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Karen Dennis @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Inaya Shahvaiz",
+      "from": "Inaya Shahvaiz",
+      "age": "Pediatric",
+      "date": "2026-05-22",
+      "city": "Brentwood",
+      "zip": "11717",
+      "county": "Suffolk",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Cheyenne Wilson @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Omar Lecor",
+      "from": "Omar Lecor",
+      "age": "Pediatric",
+      "date": "2026-05-26",
+      "city": "New York",
+      "zip": "10030",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Manhattan ddc 2026 @ —",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Vito Harris",
+      "from": "Vito Harris",
+      "age": "Adult",
+      "date": "2026-05-26",
+      "city": "Bronx",
+      "zip": "10475",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Abdullah Alwakzeh",
+      "from": "ABDULLAH ALWAKZEH",
+      "age": "Pediatric",
+      "date": "2026-05-26",
+      "city": "Jamaica",
+      "zip": "11432",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Simon Liao @ Crown Care HC",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Imraan Thompson",
+      "from": "Imraan Thompson",
+      "age": "Pediatric",
+      "date": "2026-05-29",
+      "city": "New York",
+      "zip": "10026",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Milagros Vasquez @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Briana Ramsundar",
+      "from": "BRIANA RAMSUNDAR",
+      "age": "Adult",
+      "date": "2026-06-11",
+      "city": "Baldwin",
+      "zip": "11510",
+      "county": "Nassau",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Chaya Schwartz @ High Standard Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Lukas Boland",
+      "from": "LUKAS BOLAND",
+      "age": "Pediatric",
+      "date": "2026-06-11",
+      "city": "New York",
+      "zip": "10025",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Alan Davidov @ Welcome Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Cigna"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Liam Shell",
+      "from": "SHELL, LIAM",
+      "age": "Pediatric",
+      "date": "2026-06-08",
+      "city": "Jamaica",
+      "zip": "11432",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Daniel Biffle",
+      "from": "Daniel Biffle",
+      "age": "Adult",
+      "date": "2026-06-16",
+      "city": "Bronx",
+      "zip": "10460",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Maurice Ahamad",
+      "from": "Maurice Ahamad",
+      "age": "Adult",
+      "date": "2026-06-22",
+      "city": "Kew Gardens",
+      "zip": "11415",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Taia Thomas Mumby @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Matthew Lonergan",
+      "from": "Matthew Lonergan",
+      "age": "Adult",
+      "date": "2026-06-24",
+      "city": "Staten Island",
+      "zip": "10314",
+      "county": "Richmond",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT"
+      ],
+      "plans": [
+        "Anthem BCBS"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Royal Haynes",
+      "from": "Royal Haynes",
+      "age": "Pediatric",
+      "date": "2026-07-09",
+      "city": "Bronx",
+      "zip": "10469",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": "Call-In",
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "MetroPlus Health Plan"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Sylvia Charles",
+      "from": "Sylvia Charles",
+      "age": "Adult",
+      "date": "2026-07-13",
+      "city": "Bronx",
+      "zip": "10473",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Afriyie Scott @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "PT",
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Geancarlos Pilliza",
+      "from": "Geancarlos Pilliza",
+      "age": "Pediatric",
+      "date": "2026-07-13",
+      "city": "Bronx",
+      "zip": "10457",
+      "county": "Bronx",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Jennifer Antwi @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST",
+        "HHA",
+        "ABA"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Mishaal Sharjeel",
+      "from": "Mishaal Sharjeel",
+      "age": "Pediatric",
+      "date": "2026-07-14",
+      "city": "Richmond Hill",
+      "zip": "11418",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Keisha Deane @ Tri-County Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Christian Harper",
+      "from": "Christian Harper",
+      "age": "Pediatric",
+      "date": "2026-07-15",
+      "city": "Brooklyn",
+      "zip": "11208",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Chaya Schwartz @ High Standard Home Care",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST",
+        "ABA"
+      ],
+      "plans": [
+        "GHI"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Sachini Weerawardena",
+      "from": "sachini weerawardena",
+      "age": "Adult",
+      "date": "2026-01-05",
+      "city": "South Richmond Hill",
+      "zip": "11419",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Lashawna Ricketts @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Ava Ianelli",
+      "from": "Ava, Ianelli",
+      "age": "Adult",
+      "date": "2026-04-30",
+      "city": "Rockaway Park",
+      "zip": "11694",
+      "county": "Queens",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "OT",
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Donald Simon",
+      "from": "Donald Simon",
+      "age": "Adult",
+      "date": "2026-04-20",
+      "city": "Staten Island",
+      "zip": "10312",
+      "county": "Richmond",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Meile Tapiapauliukaityte",
+      "from": "Meile Tapiapauliukaityte",
+      "age": "Pediatric",
+      "date": "2026-03-06",
+      "city": "New York",
+      "zip": "10025",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "Janay Fernand",
+      "owner": "Monira Begum",
+      "source": "Afriyie Scott @ Advance Care Alliance",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Healthfirst"
+      ],
+      "unknownSource": false
+    },
+    {
+      "name": "Liam Jelev",
+      "from": "Liam Jelev",
+      "age": "Pediatric",
+      "date": "2026-03-27",
+      "city": "New York",
+      "zip": "10036",
+      "county": "New York",
+      "entity": "WB",
+      "marketer": "David Krasner",
+      "owner": "Vanessa Villa",
+      "source": "Unknown",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": true
+    },
+    {
+      "name": "Matthew I Freeman",
+      "from": "Matthew I Freeman",
+      "age": "Adult",
+      "date": "2026-06-02",
+      "city": "Brooklyn",
+      "zip": "11224",
+      "county": "Kings",
+      "entity": "WB",
+      "marketer": "Noelia Reyes",
+      "owner": "Vanessa Villa",
+      "source": "Arthur Muse @ Care Design NY",
+      "method": null,
+      "episode": "SOC",
+      "services": [
+        "ST"
+      ],
+      "plans": [
+        "Medicaid"
+      ],
+      "unknownSource": false
+    }
+  ]
+}

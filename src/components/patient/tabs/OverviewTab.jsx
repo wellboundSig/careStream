@@ -794,6 +794,10 @@ function InsuranceEditor({ patient, patientId, onSave }) {
   const [plans, setPlans] = useState([]);
   const [details, setDetails] = useState({});
   const seededRef = useRef(false);
+  const detailsRef = useRef(details);
+  const plansRef = useRef(plans);
+  detailsRef.current = details;
+  plansRef.current = plans;
 
   useEffect(() => {
     if (seededRef.current) return;
@@ -855,13 +859,20 @@ function InsuranceEditor({ patient, patientId, onSave }) {
     let cancelled = false;
     (async () => {
       try {
+        const localDetails = detailsRef.current || {};
+        const jsonDetails = getInsuranceDetailsMap(patient);
+        const mergedDetails = { ...jsonDetails, ...localDetails };
         const { healed } = await ensurePatientInsurancesFromJson({
-          patient,
+          patient: {
+            ...patient,
+            insurance_plan_details: JSON.stringify(mergedDetails),
+          },
           patientRecordId: patientId,
           patientBusinessId,
         });
         if (healed && !cancelled) {
-          seededRef.current = false; // re-seed from healed PatientInsurances
+          // Keep typed member IDs. Re-seeding from the just-healed rows
+          // used to wipe a CIN the user had typed but not yet persisted.
           triggerDataRefresh();
         }
       } catch (err) {
@@ -956,9 +967,9 @@ function InsuranceEditor({ patient, patientId, onSave }) {
   function handleDetailBlur(plan) {
     const real = realRows.find((r) => r.payer_display_name === plan);
     const serverVal = real?.member_id || '';
-    const localVal  = details[plan] || '';
+    const localVal = detailsRef.current[plan] || '';
     if (serverVal === localVal) return;
-    persist(plans, details);
+    persist(plansRef.current, detailsRef.current);
   }
 
   return (
@@ -1024,7 +1035,7 @@ function InsuranceEditor({ patient, patientId, onSave }) {
                 onChange={(e) => handleDetailChange(plan, e.target.value)}
                 onBlur={() => handleDetailBlur(plan)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                placeholder={`${plan} member ID or plan #`}
+                placeholder={`${plan} member ID or CIN`}
                 style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: 'none', background: hexToRgba(palette.backgroundDark.hex, 0.05), fontSize: 12, color: palette.backgroundDark.hex, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
               />
             </div>
@@ -1128,19 +1139,7 @@ function ContactsEditor({ patient, patientId, onSave }) {
 
   useEffect(() => {
     setDraft(contactsFromPatient(patient));
-  }, [
-    patient?._id,
-    patient?.primary_contact_name,
-    patient?.primary_contact_phone,
-    patient?.primary_contact_email,
-    patient?.primary_contact_relationship,
-    patient?.emergency_contact_name,
-    patient?.emergency_contact_phone,
-    patient?.emergency_contact_email,
-    patient?.emergency_contact_relationship,
-    patient?.phone_primary,
-    patient?.email,
-  ]);
+  }, [patient?._id]);
 
   async function handleSave() {
     if (saving) return;

@@ -671,7 +671,7 @@ const DESIRED_NEW_FIELDS = {
   // status/unit columns remain for back-compat + the module-queue rollup.
   Authorizations: [
     t.longText('service_lines'),          // JSON: [{ service, decision, visit_limit, unit_type, approval_received_date, note }]
-    t.single('coverage_status', ['active', 'inactive']),
+    t.single('coverage_status', ['pending', 'active', 'inactive']),
     t.text('payer_type'),                 // staff-confirmed INSURANCE_CATEGORY value
     t.single('payer_order', ['primary', 'secondary', 'tertiary', 'informational']),
     t.longText('sources_checked'),        // JSON array of verification source codes

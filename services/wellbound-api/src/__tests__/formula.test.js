@@ -128,6 +128,16 @@ describe('formula translator — Support app patterns (found at cutover)', () =>
     expect(sql).toBe('(("patient_id" = $1 OR "patient_id" IN (SELECT rec_id FROM "patients" WHERE id = $1)))');
     expect(params).toEqual(['recT1']);
   });
+  it('{link} = business id matches stored rec_id (Support requester tickets)', () => {
+    const { sql, params } = compileFormula(`{patient_id} = 'usr_031'`, T);
+    expect(sql).toBe('("patient_id" = $1 OR "patient_id" IN (SELECT rec_id FROM "patients" WHERE id = $1))');
+    expect(params).toEqual(['usr_031']);
+  });
+  it('{link} = rec id still matches directly', () => {
+    const { sql, params } = compileFormula(`{patient_id} = 'recABC'`, T);
+    expect(sql).toBe('("patient_id" = $1 OR "patient_id" IN (SELECT rec_id FROM "patients" WHERE id = $1))');
+    expect(params).toEqual(['recABC']);
+  });
   it('SEARCH with LOWER(literal) needle and LOWER({field}) hay', () => {
     const { sql, params } = compileFormula(`SEARCH(LOWER('JoHn'), LOWER({name}))`, T);
     expect(sql).toContain('ILIKE');

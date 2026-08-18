@@ -1,10 +1,10 @@
 /**
  * Post-SOC documentation deferral — cases advanced to scheduling without
- * F2F + clinical. Both are completed after SOC; a 30-day clock starts when
- * SOC is scheduled.
+ * F2F + clinical. Intake obtains paperwork after SOC, then sends the case
+ * to Clinical Review. Those are separate staff jobs.
  */
 
-import { updateReferralOptimistic } from '../store/mutations.js';
+import { updateReferralOptimistic, createNoteOptimistic } from '../store/mutations.js';
 import { recordActivity } from '../api/activityLog.js';
 
 export const DOCUMENTATION_CLOCK_DAYS = 30;
@@ -65,8 +65,8 @@ export function isDocumentationOverdue(referral) {
 /**
  * Filter bucket for UI:
  *   none | waiting_docs | waiting_clinical | overdue | cleared
- * "waiting_docs" = deferred + missing F2F (may also need clinical)
- * "waiting_clinical" = deferred + has F2F + missing clinical
+ * "waiting_docs" = deferred + missing F2F
+ * "waiting_clinical" = deferred + F2F in (ready for intake to send to Clinical)
  * "overdue" = deferred + past due (takes priority for urgency filters)
  */
 export function documentationFilterStatus(referral) {
@@ -74,8 +74,6 @@ export function documentationFilterStatus(referral) {
   if (!isDocumentationDeferred(referral)) return 'none';
   if (isDocumentationOverdue(referral)) return 'overdue';
   if (needsPostSocF2F(referral)) return 'waiting_docs';
-  if (needsPostSocClinical(referral)) return 'waiting_clinical';
-  // Both done but not cleared yet — treat as waiting_clinical until clear runs
   return 'waiting_clinical';
 }
 
@@ -96,91 +94,146 @@ export function documentationDeferredStartFields(actorUserId) {
   };
 }
 
+function isInClinicalReview(referral) {
+  return referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
+}
+
 /**
  * Checklist for closing post-SOC deferred documentation.
- * Default clear needs both F2F + clinical; UI may offer a force override.
+ * Intake can clear the docs hold without waiting on Clinical Review.
  */
 export function getDocumentationClearChecklist(referral) {
   const deferred = isDocumentationDeferred(referral);
   const f2f = hasF2FReceived(referral);
   const clinical = hasClinicalCompleted(referral);
+  const inReview = isInClinicalReview(referral);
   const missing = [];
   if (!f2f) missing.push('f2f');
-  if (!clinical) missing.push('clinical');
   return {
     deferred,
     f2f,
     clinical,
-    canClear: deferred && f2f && clinical,
+    inReview,
+    canClear: deferred,
+    shouldSendToClinical: deferred && !clinical && !inReview,
     missing,
   };
 }
 
+function docsClearFields(now, actorUserId) {
+  return {
+    documentation_deferred: false,
+    documentation_cleared_at: now,
+    ...(actorUserId ? { documentation_cleared_by_id: actorUserId } : {}),
+  };
+}
+
+function clinicalHandoffFields(now, actorUserId) {
+  return {
+    in_clinical_review: true,
+    clinical_review_pushed_at: now,
+    ...(actorUserId ? { clinical_review_pushed_by_id: actorUserId } : {}),
+    returned_from_clinical: false,
+  };
+}
+
 /**
- * Explicit clear of deferred documentation (Pending Log / panel / drawer).
- * Default: still deferred + F2F + clinical.
- * Pass `force: true` to clear anyway (manual override; logged).
+ * Explicit clear of the deferred-docs hold. Does not wait on Clinical Review.
  *
- * @returns {{ ok: boolean, reason?: string, cleared?: boolean, forced?: boolean }}
+ * @returns {{ ok: boolean, reason?: string, cleared?: boolean }}
  */
 export async function clearDocumentationDeferred(referral, {
   actorUserId,
   source = 'unknown',
-  force = false,
 } = {}) {
   if (!referral?._id) return { ok: false, reason: 'missing_referral' };
   if (!isDocumentationDeferred(referral)) {
     return { ok: false, reason: 'not_deferred' };
   }
-  const checklist = getDocumentationClearChecklist(referral);
-  if (!checklist.canClear && !force) {
-    return {
-      ok: false,
-      reason: checklist.missing.includes('f2f') && checklist.missing.includes('clinical')
-        ? 'need_f2f_and_clinical'
-        : checklist.missing.includes('f2f')
-          ? 'need_f2f'
-          : 'need_clinical',
-      checklist,
-    };
-  }
 
   const now = new Date().toISOString();
-  const forced = !checklist.canClear && !!force;
-  await updateReferralOptimistic(referral._id, {
-    documentation_deferred: false,
-    documentation_cleared_at: now,
-    ...(actorUserId ? { documentation_cleared_by_id: actorUserId } : {}),
-  });
-  const missingLabel = checklist.missing.length
-    ? checklist.missing.map((m) => (m === 'f2f' ? 'F2F' : 'clinical')).join(' + ')
-    : null;
+  await updateReferralOptimistic(referral._id, docsClearFields(now, actorUserId));
   recordActivity({
     actorUserId,
-    action: forced
-      ? 'Post-SOC Documentation Cleared (override)'
-      : 'Post-SOC Documentation Cleared',
+    action: 'Post-SOC Documentation Cleared',
     patientId: referral.patient_id,
     referralId: referral.id,
-    detail: forced
-      ? `Cleared without ${missingLabel}`
-      : 'F2F and clinical review completed — deferred-documentation flag cleared',
+    detail: 'Deferred-documentation hold cleared',
     metadata: {
       dueDate: referral.documentation_due_date || null,
       source,
-      forced,
-      missing: checklist.missing,
     },
   }).catch(() => {});
-  return { ok: true, cleared: true, forced };
+  return { ok: true, cleared: true };
 }
 
 /**
- * If deferred and both F2F + clinical are done, clear the flag.
- * Safe to call after either side stamps; no-op when incomplete.
- * Never force-clears.
+ * Intake action: drop the docs hold and hand the case to Clinical Review.
+ * Clinical completion is a separate RN step and is not required here.
+ */
+export async function markDocsCompleteAndSendToClinical(referral, {
+  actorUserId,
+  source = 'unknown',
+} = {}) {
+  if (!referral?._id) return { ok: false, reason: 'missing_referral' };
+  if (!isDocumentationDeferred(referral)) {
+    return { ok: false, reason: 'not_deferred' };
+  }
+
+  const checklist = getDocumentationClearChecklist(referral);
+  const now = new Date().toISOString();
+  const send = checklist.shouldSendToClinical;
+  const fields = {
+    ...docsClearFields(now, actorUserId),
+    ...(send ? clinicalHandoffFields(now, actorUserId) : {}),
+  };
+
+  await updateReferralOptimistic(referral._id, fields);
+
+  const detail = send
+    ? 'Docs marked complete and sent to Clinical Review'
+    : 'Deferred-documentation hold cleared';
+  recordActivity({
+    actorUserId,
+    action: send
+      ? 'Post-SOC Docs Complete → Clinical Review'
+      : 'Post-SOC Documentation Cleared',
+    patientId: referral.patient_id,
+    referralId: referral.id,
+    detail,
+    metadata: {
+      dueDate: referral.documentation_due_date || null,
+      source,
+      sentToClinical: send,
+    },
+  }).catch(() => {});
+
+  if (send) {
+    try {
+      await createNoteOptimistic({
+        id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        patient_id: referral.patient_id || null,
+        referral_id: referral.id || null,
+        author_id: actorUserId || 'unknown',
+        content: 'Post-SOC paperwork marked complete. Sent to Clinical Review.',
+        created_at: now,
+        is_pinned: false,
+      });
+    } catch (err) {
+      console.warn('[markDocsCompleteAndSendToClinical] note failed:', err?.message || err);
+    }
+  }
+
+  return { ok: true, cleared: true, sentToClinical: send };
+}
+
+/**
+ * Safety net after F2F or clinical stamps: only auto-clear when both
+ * halves are already done and intake never clicked the handoff button.
  */
 export async function maybeClearDocumentationDeferred(referral, { actorUserId, source = 'auto' } = {}) {
-  const result = await clearDocumentationDeferred(referral, { actorUserId, source, force: false });
+  if (!isDocumentationDeferred(referral)) return false;
+  if (!hasF2FReceived(referral) || !hasClinicalCompleted(referral)) return false;
+  const result = await clearDocumentationDeferred(referral, { actorUserId, source });
   return !!(result.ok && result.cleared);
 }

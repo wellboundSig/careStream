@@ -11,12 +11,13 @@ export function useMarketerData(marketer) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!marketer?.id) return;
+    const marketerId = String(marketer?.id || '').trim();
+    if (!marketerId) return;
     setLoading(true);
 
     Promise.all([
-      getReferrals({ filterByFormula: `{marketer_id} = "${marketer.id}"` }),
-      getMarketerFacilities(marketer.id),
+      getReferrals({ filterByFormula: `{marketer_id} = "${marketerId}"` }),
+      getMarketerFacilities(marketerId),
       getFacilities(),
     ])
       .then(async ([refs, mfLinks, allFacilities]) => {

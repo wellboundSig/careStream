@@ -6,6 +6,7 @@ vi.mock('../../../api/authorizations.js', () => ({
   getAuthorizationsByReferral: vi.fn().mockResolvedValue([]),
   createAuthorization: vi.fn(),
   updateAuthorization: vi.fn(),
+  deleteAuthorization: vi.fn(),
 }));
 vi.mock('../../../api/patientInsurances.js', () => ({
   getInsurancesByPatient: vi.fn().mockResolvedValue([]),
@@ -18,6 +19,7 @@ vi.mock('../../../api/activityLog.js', () => ({ recordActivity: vi.fn().mockReso
 vi.mock('../../../store/careStore.js', () => ({
   useCareStore: (sel) => sel({ departments: {}, users: {}, authorizations: {} }),
   mergeEntities: vi.fn(),
+  removeEntity: vi.fn(),
 }));
 vi.mock('../../../store/mutations.js', () => ({
   createNoteOptimistic: vi.fn().mockResolvedValue({}),
@@ -56,14 +58,19 @@ function insRec(id, fields) { return { id, fields }; }
 beforeEach(() => {
   createAuthorization.mockReset().mockResolvedValue({ id: 'auth_1', fields: {} });
   getInsurancesByPatient.mockReset().mockResolvedValue([
-    insRec('rec_ins_1', { patient_id: ['rec_p_1'], payer_display_name: 'Medicare', insurance_category: 'medicare', order_rank: 'primary' }),
+    insRec('rec_ins_1', { patient_id: ['rec_p_1'], payer_display_name: 'Fidelis', insurance_category: 'medicaid_managed', order_rank: 'primary' }),
   ]);
 });
 
-async function openResponseEditor(division) {
+async function openResponseEditor(division, { coverage = 'active' } = {}) {
   render(<AuthorizationsTab referral={makeReferral(division)} />);
   const card = await screen.findByTestId('auth-insurance-card');
   await act(async () => { fireEvent.click(within(card).getByTestId('record-auth-response')); });
+  if (coverage) {
+    await act(async () => {
+      fireEvent.change(within(card).getByTestId('auth-coverage-status'), { target: { value: coverage } });
+    });
+  }
   return card;
 }
 
@@ -146,5 +153,32 @@ describe('AuthorizationsTab — save', () => {
     expect(payload.auth_status).toBe('denied');
     const lines = JSON.parse(payload.service_lines);
     expect(lines[0]).toMatchObject({ service: 'PT', decision: 'denied' });
+    expect(payload.coverage_status).toBe('active');
+  });
+});
+
+describe('AuthorizationsTab — pending request', () => {
+  it('offers Pending as an overall status alongside Active and Inactive', async () => {
+    const card = await openResponseEditor('Special Needs', { coverage: null });
+    const status = within(card).getByTestId('auth-coverage-status');
+    const labels = Array.from(status.querySelectorAll('option')).map((o) => o.textContent);
+    expect(labels).toEqual(['Pending', 'Active', 'Inactive']);
+    expect(status.value).toBe('pending');
+  });
+
+  it('logs a pending request with who / what / from where', async () => {
+    const card = await openResponseEditor('Special Needs', { coverage: 'pending' });
+    await act(async () => {
+      fireEvent.change(within(card).getByPlaceholderText('Entity / contact'), { target: { value: 'Fidelis UM' } });
+    });
+    await addServiceLine(card, 'PT');
+    await act(async () => { fireEvent.click(within(card).getByTestId('save-auth-response')); });
+    expect(createAuthorization).toHaveBeenCalled();
+    const payload = createAuthorization.mock.calls[0][0];
+    expect(payload.coverage_status).toBe('pending');
+    expect(payload.auth_status).toBe('pending');
+    expect(payload.request_requested_from).toBe('Fidelis UM');
+    expect(payload.requested_by_user_id).toBe('u_test');
+    expect(JSON.parse(payload.service_lines)).toEqual([{ service: 'PT' }]);
   });
 });

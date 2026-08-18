@@ -1,10 +1,19 @@
 import airtable from '../api/airtable.js';
 import { useCareStore, mergeEntities } from './careStore.js';
 
+function trimField(v) {
+  return typeof v === 'string' ? v.trim() : v;
+}
+
 function normalize(records) {
   const map = {};
   for (const r of records) {
-    map[r.id] = { _id: r.id, ...r.fields };
+    const fields = { ...r.fields };
+    // Imported cells sometimes carry a trailing newline (Janay / mkt_004).
+    if ('id' in fields) fields.id = trimField(fields.id);
+    if ('email' in fields) fields.email = trimField(fields.email);
+    if ('marketer_id' in fields) fields.marketer_id = trimField(fields.marketer_id);
+    map[r.id] = { _id: r.id, ...fields };
   }
   return map;
 }
@@ -233,6 +242,7 @@ export async function hydrateStore() {
     }
 
     useCareStore.setState(batch);
+    queueSnAgeGroupSweep();
   } catch (err) {
     useCareStore.setState({
       hydrating: false,
@@ -269,7 +279,14 @@ export async function silentRehydrate() {
       if (result) mergeEntities(result.key, result.data);
     }
     useCareStore.setState({ lastSyncAt: Date.now() });
+    queueSnAgeGroupSweep();
   } catch {
     // Silent failure — background sync should never disrupt the UI
   }
+}
+
+function queueSnAgeGroupSweep() {
+  import('../utils/promoteSnAgeGroup.js')
+    .then((m) => m.sweepSnAgeGroupPromotions())
+    .catch((err) => console.warn('[hydrate] SN age-group sweep:', err?.message || err));
 }

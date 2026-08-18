@@ -5,6 +5,7 @@ import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import ChangeIntakeOwnerModal from '../../referrals/ChangeIntakeOwnerModal.jsx';
+import ChangeMarketerModal from '../../referrals/ChangeMarketerModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -569,7 +570,9 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
   const { resolveMarketer, resolveUser, resolveFacility } = useLookups();
   const { can } = usePermissions();
   const canChangeOwner = can(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
+  const canChangeMarketer = can(PERMISSION_KEYS.REFERRAL_CHANGE_MARKETER);
   const [showChangeOwner, setShowChangeOwner] = useState(false);
+  const [showChangeMarketer, setShowChangeMarketer] = useState(false);
 
   function handleReferralSave(field, value) { updateReferralLocal({ [field]: value }); }
 
@@ -598,6 +601,17 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           }}
         />
       )}
+      {showChangeMarketer && (
+        <ChangeMarketerModal
+          referral={referral}
+          patientName={patientLabel}
+          onCancel={() => setShowChangeMarketer(false)}
+          onDone={(fields) => {
+            updateReferralLocal(fields);
+            setShowChangeMarketer(false);
+          }}
+        />
+      )}
       <Section title="Referral Info">
         <ReadField label="Referral ID" value={referral.id} />
         <ReadField label="Referral Date" value={referral.referral_date ? fmtCalendarDate(referral.referral_date, null) : null} />
@@ -611,7 +625,32 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           optionLabels={{ SOC: 'Start of Care', ROC: 'Resumption of Care' }}
           readOnly={readOnly}
         />
-        <ReadField label="Marketer" value={resolveMarketer(referral.marketer_id)} />
+        <div>
+          <p style={fl()}>Marketer</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
+            <p style={{
+              fontSize: 13, flex: 1, margin: 0,
+              color: referral.marketer_id ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
+              fontStyle: referral.marketer_id ? 'normal' : 'italic',
+            }}>
+              {resolveMarketer(referral.marketer_id) || '—'}
+            </p>
+            {canChangeMarketer && !readOnly && (
+              <button
+                type="button"
+                onClick={() => setShowChangeMarketer(true)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 650,
+                  background: hexToRgba(palette.accentBlue.hex, 0.12),
+                  color: palette.accentBlue.hex, flexShrink: 0,
+                }}
+              >
+                Change
+              </button>
+            )}
+          </div>
+        </div>
         <ReadField
           label="Lead submitted by"
           value={resolveUser(referral.lead_created_by_id)}

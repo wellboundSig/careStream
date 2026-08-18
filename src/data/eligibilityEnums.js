@@ -233,15 +233,18 @@ export function authDecisionOptionsForDivision(division) {
   return division === DIVISION.ALF ? AUTH_DECISION_OPTIONS_ALF : AUTH_DECISION_OPTIONS_SPN;
 }
 
-// Coverage status shown on each per-insurance auth response (mirrors the
-// eligibility Active/Inactive concept — nothing else needed since conflict /
-// OPWDD routing is handled by their own modules).
+// Overall status on each per-insurance auth row.
+// Pending  = requested, waiting on a payer response (follow-ups live here)
+// Active   = coverage / auth is in force
+// Inactive = coverage / auth is not in force
 export const AUTH_COVERAGE_STATUS = Object.freeze({
+  PENDING:  'pending',
   ACTIVE:   'active',
   INACTIVE: 'inactive',
 });
 
 export const AUTH_COVERAGE_STATUS_OPTIONS = [
+  { value: AUTH_COVERAGE_STATUS.PENDING,  label: 'Pending' },
   { value: AUTH_COVERAGE_STATUS.ACTIVE,   label: 'Active' },
   { value: AUTH_COVERAGE_STATUS.INACTIVE, label: 'Inactive' },
 ];
@@ -408,6 +411,7 @@ export const AUDIT_ACTION = Object.freeze({
   AUTH_APPROVED:                 'auth_approved',
   AUTH_DENIED:                   'auth_denied',
   AUTH_NAR_RECORDED:             'auth_nar_recorded',
+  AUTH_REQUESTED:                'auth_requested',
   AUTH_FOLLOW_UP_SCHEDULED:      'auth_follow_up_scheduled',
   OPWDD_ROUTE_TRIGGERED:         'opwdd_route_triggered',
   DISENROLLMENT_ASSIST_FLAGGED:  'disenrollment_assist_flagged',

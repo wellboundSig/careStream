@@ -94,6 +94,20 @@ describe('usePermissions — feature permissions (existing behavior)', () => {
     expect(result.current.can('leads.change_intake_owner')).toBe(false);
   });
 
+  it('denies referral.change_marketer by default even with no permissions row', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {};
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('referral.change_marketer')).toBe(false);
+  });
+
+  it('denies clinical.rn_review by default even with no permissions row', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {};
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('clinical.rn_review')).toBe(false);
+  });
+
   it('grants leads.change_intake_owner only when explicitly listed', () => {
     mockAppUserId = 'usr_1';
     mockUserPermissions = {

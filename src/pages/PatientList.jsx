@@ -55,7 +55,7 @@ const COLUMN_DEFS = [
     label: 'Post-SOC/ROC Docs',
     defaultOn: true,
     filterable: true,
-    tooltip: 'Deferred F2F/clinical. Filter: waiting_docs · waiting_clinical · overdue · yes · no',
+    tooltip: 'Deferred post-SOC paperwork. Filter: waiting_docs · waiting_clinical · overdue · yes · no',
   },
 ];
 
@@ -347,6 +347,9 @@ export default function PatientList() {
       // (already scoped in usePipelineData) appear in the list.
       if (!canViewAllCases && !refByPatientId[p.id]) return false;
       if (showActive && p.is_active === 'FALSE') return false;
+      // Failed-create retries leave patient rows with no referral. Hide those
+      // from Active only so Patients matches Intake / Command+K.
+      if (showActive && !refByPatientId[p.id]) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         if (!`${p.first_name} ${p.last_name}`.toLowerCase().includes(q) &&
@@ -1083,7 +1086,7 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
           return <td key="post_soc_docs" style={{ ...TD, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
         }
         const daysLeft = daysUntilDocumentationDue(referral);
-        const label = status === 'overdue' ? 'Overdue' : status === 'waiting_docs' ? 'Need F2F' : 'Need clinical';
+        const label = status === 'overdue' ? 'Overdue' : status === 'waiting_docs' ? 'Need F2F' : 'Send to clinical';
         const color = status === 'overdue' ? palette.primaryMagenta.hex : palette.accentOrange.hex;
         return (
           <td key="post_soc_docs" style={TD} title={referral?.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : 'Deferred docs'}>

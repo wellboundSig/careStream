@@ -772,13 +772,10 @@ export default function ModulePage({ stage }) {
         );
         const detail = !waiting
           ? (docsCleared ? 'Docs complete' : (clinicalAssigned ? 'Clinical assigned' : null))
-          : checklist.canClear
-            ? 'Ready to clear — select row'
-            : [
-                !checklist.f2f ? 'Need F2F' : null,
-                !checklist.clinical ? 'Need clinical' : null,
-                clinicalAssigned ? 'RN assigned' : null,
-              ].filter(Boolean).join(' · ');
+          : [
+              !checklist.f2f ? 'Need F2F' : 'Ready to send',
+              clinicalAssigned ? 'RN assigned' : null,
+            ].filter(Boolean).join(' · ');
         return (
           <td key="waiting_docs" style={td({ maxWidth: 170, textAlign: 'left' })}>
             {waiting ? (
@@ -913,12 +910,12 @@ export default function ModulePage({ stage }) {
           ? 'Overdue'
           : status === 'waiting_docs'
             ? 'Need F2F'
-            : 'Need clinical';
+            : 'Send to clinical';
         const color = status === 'overdue'
           ? palette.primaryMagenta.hex
           : palette.accentOrange.hex;
         const title = [
-          'Deferred documentation (F2F + clinical after SOC)',
+          'Deferred documentation after SOC',
           referral.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : null,
           daysLeft != null ? (daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`) : null,
         ].filter(Boolean).join(' · ');

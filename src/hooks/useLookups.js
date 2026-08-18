@@ -43,7 +43,10 @@ export function useLookups() {
     Object.values(marketers).forEach((m) => {
       const name = `${m.first_name || ''} ${m.last_name || ''}`.trim();
       if (!name) return;
-      if (m.id) map[m.id] = name;
+      if (m.id) {
+        map[m.id] = name;
+        map[String(m.id).trim()] = name;
+      }
       if (m._id) map[m._id] = name;
     });
     return map;

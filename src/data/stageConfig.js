@@ -183,7 +183,7 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'F2F/MD Orders Pending',
   },
   'Clinical Intake RN Review': {
-    description: 'Skilled need + safety review by clinical RN. Includes assigned post-SOC cases. Use Deferred for older docs-only holds without an assignment.',
+    description: 'Skilled need + safety review by clinical RN. Includes assigned post-SOC cases after intake marks docs complete.',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryMagenta.hex,
@@ -194,12 +194,8 @@ export const STAGE_META = {
         || r.in_clinical_review === true
         || r.in_clinical_review === 'true'
       ) return true;
-      // Explicit post-SOC handoff (marketer → Clinical RN)
-      if (r.clinical_review_assigned_to_id && !r.clinical_review_completed_at) return true;
-      // Post-SOC clinical for fast-tracked cases (still open until cleared)
-      const deferred = (r.documentation_deferred === true || r.documentation_deferred === 'true')
-        && !r.documentation_cleared_at;
-      return deferred && !r.clinical_review_completed_at;
+      // Explicit post-SOC handoff (intake or marketer → Clinical RN)
+      return !!(r.clinical_review_assigned_to_id && !r.clinical_review_completed_at);
     },
   },
   'Authorization Pending': {

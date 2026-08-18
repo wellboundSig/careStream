@@ -48,7 +48,7 @@ export const MODULE_COLUMN_DEFS = [
     label: 'Post-SOC/ROC Docs',
     defaultOn: true,
     filterable: true,
-    tooltip: 'Deferred F2F/clinical cases. Filter: waiting_docs · waiting_clinical · overdue · yes (any open) · no',
+    tooltip: 'Deferred post-SOC paperwork. Filter: waiting_docs · waiting_clinical · overdue · yes (any open) · no',
   },
 ];
 

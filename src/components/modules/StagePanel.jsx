@@ -1237,44 +1237,43 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                   />
                 </PanelSection>
               )}
-
-              {(isF2F || selectedReferral.f2f_date) && (
-              <PanelSection title="Document Review">
-                <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '10px 10px 8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#4A4458' }}>Cursory review</span>
-                  <span style={{ fontSize: 12, fontWeight: 750, color: reviewComplete ? '#2F6B2A' : '#5A5466' }}>{completedReq}/{totalReq}</span>
-                </div>
-                <div style={{ height: 4, borderRadius: 2, background: '#E8E6ED', overflow: 'hidden', marginBottom: 8 }}>
-                  <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
-                </div>
-                {F2F_REVIEW_CHECKLIST.map((item) => (
-                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 2px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12.5, color: reviewChecked[item.key] ? '#5A5466' : palette.backgroundDark.hex, fontWeight: item.required ? 600 : 500 }}>
-                      {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
-                    </span>
-                  </label>
-                ))}
-                <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
-                </div>
-
-                {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
-                    checkboxes per spec — it's only clickable once every
-                    required item is checked off. Once fired it flips the
-                    `in_clinical_review` flag but does NOT change current_stage
-                    (the patient remains in Intake until Insurance Details are
-                    collected and the user pushes to Eligibility). */}
-                <PushToClinicalRNButton
-                  referral={selectedReferral}
-                  cursoryReviewComplete={reviewComplete}
-                  actorUserId={appUserId}
-                  onSelectedReferralLeftModule={onSelectedReferralLeftModule}
-                />
-              </PanelSection>
-              )}
             </>
           )}
+
+          <PanelSection title="Document Review">
+            <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '10px 10px 8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#4A4458' }}>Cursory review</span>
+              <span style={{ fontSize: 12, fontWeight: 750, color: reviewComplete ? '#2F6B2A' : '#5A5466' }}>{completedReq}/{totalReq}</span>
+            </div>
+            <div style={{ height: 4, borderRadius: 2, background: '#E8E6ED', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ height: '100%', width: `${totalReq > 0 ? Math.round((completedReq / totalReq) * 100) : 0}%`, background: reviewComplete ? palette.accentGreen.hex : palette.accentOrange.hex, borderRadius: 2, transition: 'width 0.3s' }} />
+            </div>
+            {F2F_REVIEW_CHECKLIST.map((item) => (
+              <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 2px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!reviewChecked[item.key]} onChange={() => toggleReview(item.key)} style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, color: reviewChecked[item.key] ? '#5A5466' : palette.backgroundDark.hex, fontWeight: item.required ? 600 : 500 }}>
+                  {item.label}{item.required && !reviewChecked[item.key] ? ' *' : ''}
+                </span>
+              </label>
+            ))}
+            <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
+            </div>
+
+            {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
+                checkboxes per spec — it's only clickable once every
+                required item is checked off. Once fired it flips the
+                `in_clinical_review` flag but does NOT change current_stage
+                (the patient remains in Intake until Insurance Details are
+                collected and the user pushes to Eligibility). Shown for
+                every Intake case, not only after an F2F date is logged. */}
+            <PushToClinicalRNButton
+              referral={selectedReferral}
+              cursoryReviewComplete={reviewComplete}
+              actorUserId={appUserId}
+              onSelectedReferralLeftModule={onSelectedReferralLeftModule}
+            />
+          </PanelSection>
 
           {/* Forward movement out of Intake happens via "Push to Clinical RN"
               (above, under the cursory review) — that's what leaves Intake now.

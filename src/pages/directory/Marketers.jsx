@@ -36,7 +36,7 @@ export default function Marketers() {
   const statsByMarketer = useMemo(() => {
     const map = {};
     allReferrals.forEach((ref) => {
-      const mid = ref.marketer_id;
+      const mid = String(ref.marketer_id || '').trim();
       if (!mid) return;
       if (!map[mid]) map[mid] = { total: 0, admitted: 0, ntuc: 0, lastDate: null };
       map[mid].total++;
@@ -117,7 +117,7 @@ export default function Marketers() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={8} style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No marketers found.</td></tr>
               ) : filtered.map((marketer) => {
-                const s = statsByMarketer[marketer.id] || { total: 0, admitted: 0, ntuc: 0, convRate: 0, lastDate: null };
+                const s = statsByMarketer[String(marketer.id || '').trim()] || { total: 0, admitted: 0, ntuc: 0, convRate: 0, lastDate: null };
                 return <MarketerRow key={marketer._id} marketer={marketer} stats={s} onOpen={() => setSelected(marketer)} />;
               })}
             </tbody>

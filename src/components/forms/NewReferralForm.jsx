@@ -3,12 +3,12 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
-import { createPatient } from '../../api/patients.js';
+import { createPatient, updatePatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
 import { createNote } from '../../api/notes.js';
 import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
 import { openCaseForReferral } from '../../store/opwddOrchestration.js';
-import { useCareStore, mergeEntities } from '../../store/careStore.js';
+import { useCareStore, mergeEntities, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
@@ -37,11 +37,12 @@ import {
   normalizeContactName,
 } from '../../utils/personName.js';
 import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.js';
-import { savePatientContactSlot } from '../../utils/knownGuardians.js';
+import { savePatientContactSlot, isStaffDirectoryEmail } from '../../utils/knownGuardians.js';
 import { splitContactNameAndRelationship } from '../../data/guardianRelationships.js';
 import HchbDupWarning from '../common/HchbDupWarning.jsx';
 import InsurancePlanPicker from '../common/InsurancePlanPicker.jsx';
 import { EPISODE_TYPES, normalizeEpisodeType } from '../../utils/episodeType.js';
+import { memberIdFromDetail } from '../../utils/insuranceDetails.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -128,7 +129,7 @@ const inputBase = {
   boxSizing: 'border-box',
 };
 
-function Input({ value, onChange, onBlurNormalize, onPaste, placeholder, type = 'text', hasError, min, max, title }) {
+function Input({ value, onChange, onBlurNormalize, onPaste, placeholder, type = 'text', hasError, min, max, title, autoComplete }) {
   return (
     <input
       type={type}
@@ -136,6 +137,7 @@ function Input({ value, onChange, onBlurNormalize, onPaste, placeholder, type = 
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       title={title}
+      autoComplete={autoComplete}
       min={min || undefined}
       max={max || undefined}
       style={{ ...inputBase, boxShadow: hasError ? `0 0 0 1.5px ${palette.primaryMagenta.hex}` : 'none' }}
@@ -454,7 +456,7 @@ function InsuranceMultiSelect({ selected, onChange, planDetails, onPlanDetailCha
               <input
                 value={planDetails[plan] || ''}
                 onChange={(e) => onPlanDetailChange(plan, e.target.value)}
-                placeholder={`${plan} member ID or plan #`}
+                placeholder={`${plan} member ID or CIN`}
                 style={{ ...inputBase, fontSize: 12 }}
               />
             </div>
@@ -541,6 +543,9 @@ export default function NewReferralForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // If patient insert succeeds and referral insert fails, reuse this row on
+  // retry instead of minting another pat_… shell.
+  const orphanPatientRef = useRef(null);
   const [errors, setErrors] = useState({});
   const [dirty, setDirty] = useState(!!draftRecordId);
   const [showCloseGate, setShowCloseGate] = useState(false);
@@ -753,6 +758,7 @@ export default function NewReferralForm({
       ...prev,
       insurance_plan_details: { ...prev.insurance_plan_details, [plan]: value },
     }));
+    if (errors.insurance_cin) setErrors((prev) => ({ ...prev, insurance_cin: null }));
   }
 
   useEffect(() => {
@@ -769,31 +775,49 @@ export default function NewReferralForm({
 
   const needsCloseGate = dirty || hasActiveDraft || !!draftRecId;
 
+  const retireOrphanPatient = useCallback(async () => {
+    const orphan = orphanPatientRef.current;
+    if (!orphan?.recId) return;
+    try {
+      await updatePatient(orphan.recId, {
+        is_active: 'FALSE',
+        updated_at: new Date().toISOString(),
+      });
+      updateEntity('patients', orphan.recId, { is_active: 'FALSE' });
+    } catch (err) {
+      console.warn('Could not retire orphan patient', err);
+    }
+    orphanPatientRef.current = null;
+  }, []);
+
   const requestClose = useCallback(() => {
     if (submitting || closeBusy) return;
     // Inbound convert keeps its own submission record — no draft gate.
     if (embedded || !needsCloseGate) {
+      retireOrphanPatient();
       onClose?.();
       return;
     }
     setShowCloseGate(true);
-  }, [submitting, closeBusy, embedded, needsCloseGate, onClose]);
+  }, [submitting, closeBusy, embedded, needsCloseGate, onClose, retireOrphanPatient]);
 
   const keepDraftAndClose = useCallback(async () => {
     setCloseBusy(true);
     try {
       await flushDraftSave();
+      await retireOrphanPatient();
       setShowCloseGate(false);
       onClose?.();
     } finally {
       setCloseBusy(false);
     }
-  }, [flushDraftSave, onClose]);
+  }, [flushDraftSave, onClose, retireOrphanPatient]);
 
   const discardDraftAndClose = useCallback(async () => {
     setCloseBusy(true);
     try {
       await discardDraft();
+      await retireOrphanPatient();
       setShowCloseGate(false);
       onClose?.();
     } catch (err) {
@@ -802,7 +826,7 @@ export default function NewReferralForm({
     } finally {
       setCloseBusy(false);
     }
-  }, [discardDraft, onClose]);
+  }, [discardDraft, onClose, retireOrphanPatient]);
 
   useEffect(() => {
     function onKey(e) {
@@ -851,10 +875,18 @@ export default function NewReferralForm({
       const phoneResult = normalizePhone(contactPhone);
       if (!phoneResult.valid) errs.emergency_contact_phone = phoneResult.error;
     }
-    const contactEmail = (form.emergency_contact_email || form.email || '').trim();
+    const contactEmail = (form.emergency_contact_email || '').trim();
     if (contactEmail) {
       const emailResult = validateEmail(contactEmail);
       if (!emailResult.valid) errs.emergency_contact_email = emailResult.error;
+    }
+    if (form.insurance_plans.length > 0) {
+      const missingCin = form.insurance_plans.some(
+        (plan) => !memberIdFromDetail(form.insurance_plan_details?.[plan]),
+      );
+      if (missingCin) {
+        errs.insurance_cin = 'Enter a member ID or CIN for each selected plan';
+      }
     }
     if (form.address_zip && form.address_zip.trim()) {
       const zipResult = lookupZip(form.address_zip);
@@ -910,11 +942,17 @@ export default function NewReferralForm({
       form.phone_primary = contactPhoneNorm.digits;
       form.primary_contact_phone = contactPhoneNorm.digits;
     }
-    const contactEmail = (form.emergency_contact_email || form.email || '').trim();
-    if (contactEmail) {
+    const contactEmail = (form.emergency_contact_email || '').trim();
+    if (contactEmail && !isStaffDirectoryEmail(contactEmail)) {
       form.emergency_contact_email = contactEmail;
       form.email = contactEmail;
       form.primary_contact_email = contactEmail;
+    } else {
+      form.emergency_contact_email = '';
+      form.primary_contact_email = '';
+      if (isStaffDirectoryEmail(form.email) || isStaffDirectoryEmail(contactEmail)) {
+        form.email = '';
+      }
     }
     const contactName = (form.emergency_contact_name || form.primary_contact_name || '').trim();
     if (contactName) {
@@ -940,7 +978,8 @@ export default function NewReferralForm({
     setError(null);
 
     try {
-      const patientCustomId = generateId('pat');
+      const orphan = orphanPatientRef.current;
+      const patientCustomId = orphan?.businessId || generateId('pat');
       const referralCustomId = generateId('ref');
 
       const insurancePrimary = form.insurance_plans[0] || '';
@@ -955,7 +994,7 @@ export default function NewReferralForm({
       // Lead Entry "Primary Contact" UI stores on emergency_contact_* and
       // dual-writes primary_contact_* (same person / same-as-primary).
       const resolvedPrimaryPhone = form.emergency_contact_phone || form.phone_primary || form.phone_secondary || '';
-      const resolvedPrimaryEmail = form.emergency_contact_email || form.email || '';
+      const resolvedPrimaryEmail = (form.emergency_contact_email || '').trim();
       const resolvedPrimaryName = form.emergency_contact_name || form.primary_contact_name || '';
       const resolvedPrimaryRel = form.emergency_contact_relationship || form.primary_contact_relationship || '';
       const primaryParsed = splitContactNameAndRelationship(resolvedPrimaryName);
@@ -1008,8 +1047,21 @@ export default function NewReferralForm({
         }),
       };
 
-      const patientRecord = await createPatient(patientFields);
+      let patientRecord;
+      if (orphan?.recId) {
+        const updated = await updatePatient(orphan.recId, patientFields);
+        patientRecord = updated?.id
+          ? updated
+          : { id: orphan.recId, fields: { ...orphan.fields, ...patientFields } };
+      } else {
+        patientRecord = await createPatient(patientFields);
+      }
       const createdPatientId = patientRecord.fields?.id || patientCustomId;
+      orphanPatientRef.current = {
+        recId: patientRecord.id,
+        businessId: createdPatientId,
+        fields: patientRecord.fields || patientFields,
+      };
 
       // System of record: known_guardians + patient_guardians (non-fatal if API lags).
       const primaryName = primaryParsed.cleanName || resolvedPrimaryName;
@@ -1119,7 +1171,7 @@ export default function NewReferralForm({
       const referralFields = {
         id: referralCustomId,
         patient_id: createdPatientId,
-        marketer_id: resolvedMarketer,
+        marketer_id: typeof resolvedMarketer === 'string' ? resolvedMarketer.trim() : resolvedMarketer,
         referral_source_id: resolvedSource,
         ...(form.referral_method ? { referral_method: form.referral_method } : {}),
         current_stage: stage,
@@ -1148,6 +1200,7 @@ export default function NewReferralForm({
       };
 
       const referralRecord = await createReferral(referralFields);
+      orphanPatientRef.current = null;
 
       mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
       mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
@@ -1204,6 +1257,14 @@ export default function NewReferralForm({
       onClose();
     } catch (err) {
       console.error('[NewReferralForm] Submission failed:', err);
+      const orphan = orphanPatientRef.current;
+      if (orphan?.recId) {
+        updatePatient(orphan.recId, {
+          is_active: 'FALSE',
+          updated_at: new Date().toISOString(),
+        }).catch((retireErr) => console.warn('Could not hide failed-create patient', retireErr));
+        try { updateEntity('patients', orphan.recId, { is_active: 'FALSE' }); } catch { /* store optional */ }
+      }
       setError(`Submission failed: ${err.message}`);
     } finally {
       setSubmitting(false);
@@ -1801,7 +1862,7 @@ export default function NewReferralForm({
             </FieldBox>
             <FieldBox label="Email">
               <Input
-                value={form.emergency_contact_email || form.email}
+                value={form.emergency_contact_email || ''}
                 onChange={(v) => {
                   setDirty(true);
                   setForm((prev) => ({
@@ -1813,6 +1874,7 @@ export default function NewReferralForm({
                 }}
                 placeholder="caregiver@email.com"
                 type="email"
+                autoComplete="off"
                 hasError={!!errors.emergency_contact_email}
               />
               {errors.emergency_contact_email && (
@@ -1831,6 +1893,9 @@ export default function NewReferralForm({
                   planDetails={form.insurance_plan_details}
                   onPlanDetailChange={setInsurancePlanDetail}
                 />
+                {errors.insurance_cin && (
+                  <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 4 }}>{errors.insurance_cin}</p>
+                )}
               </FieldBox>
               <div>
                 <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 10 }}>

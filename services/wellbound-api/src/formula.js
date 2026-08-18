@@ -142,6 +142,15 @@ export function compileFormula(formula, tableDef) {
     return { ref: `"${def.column}"`, def };
   }
 
+  // Airtable `{link} = "primary"` matched the linked record's primary field.
+  // We store rec_id, so accept either the rec_id or the target's business id.
+  function linkEqualsSql(ref, def, valueParam) {
+    if (def.wire !== 'linkArray' || !def.linkTable) return null;
+    const targetPg = tableDef.registry?.[def.linkTable]?.pgTable;
+    if (!targetPg) return `${ref} = ${valueParam}`;
+    return `(${ref} = ${valueParam} OR ${ref} IN (SELECT rec_id FROM "${targetPg}" WHERE id = ${valueParam}))`;
+  }
+
   // Unwrap LOWER({field}) → the field node + a case-fold flag.
   function fieldOperand(node) {
     if (node?.type === 'call' && node.fn === 'LOWER' && node.args.length === 1 && node.args[0].type === 'field') {
@@ -167,8 +176,8 @@ export function compileFormula(formula, tableDef) {
     }
     const operand = fieldOperand(left);
     if (!operand) throw new FormulaError('Comparison must start with a field');
-    let { ref, def } = col(operand.fieldNode.name);
-    if (operand.lower) ref = `LOWER(${ref}::text)`;
+    const { ref: colRef, def } = col(operand.fieldNode.name);
+    let ref = operand.lower ? `LOWER(${colRef}::text)` : colRef;
 
     if (right.type === 'str') {
       const v = right.value;
@@ -177,9 +186,14 @@ export function compileFormula(formula, tableDef) {
         if (op === '!=') return `(${ref} IS NOT NULL AND ${ref}::text <> '')`;
       }
       // Text compare mirrors Airtable string equality; range ops on temporal
-      // columns cast the operand.
-      if (op === '=') return `${ref}::text = ${P(v)}`;
-      if (op === '!=') return `(${ref} IS NULL OR ${ref}::text <> ${P(v)})`;
+      // columns cast the operand. Link fields also accept the linked primary.
+      if (op === '=' || op === '!=') {
+        const p = P(v);
+        const linkSql = !operand.lower ? linkEqualsSql(colRef, def, p) : null;
+        if (linkSql) return op === '=' ? linkSql : `NOT ${linkSql}`;
+        if (op === '=') return `${ref}::text = ${p}`;
+        return `(${ref} IS NULL OR ${ref}::text <> ${p})`;
+      }
       if (['>', '<', '>=', '<='].includes(op)) {
         const cast = def.wire === 'timestamp' || def.wire === 'date' ? '::timestamptz' : '';
         return `${ref} ${op} ${P(v)}${cast}`;
@@ -238,12 +252,7 @@ export function compileFormula(formula, tableDef) {
             // Callers pass either the target's rec id or its business id.
             // Stored value is the rec_id — match either directly or via the
             // target table's business id.
-            const targetPg = tableDef.registry[def.linkTable]?.pgTable;
-            const p = P(needle.value);
-            if (targetPg) {
-              return `(${ref} = ${p} OR ${ref} IN (SELECT rec_id FROM "${targetPg}" WHERE id = ${p}))`;
-            }
-            return `${ref} = ${p}`;
+            return linkEqualsSql(ref, def, P(needle.value));
           }
           if (def.wire === 'textArray') {
             return `${P(needle.value)} = ANY(${ref})`;

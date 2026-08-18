@@ -40,6 +40,11 @@ export const PERMISSION_KEYS = {
   REFERRAL_VIEW_ALL: 'referral.view_all',
   REFERRAL_EDIT: 'referral.edit',
   REFERRAL_EDIT_SOURCE: 'referral.edit_source',
+  /**
+   * Reassign marketer_id on an existing referral from the Referral tab.
+   * Deny-by-default — grant only to named users (Rafi / David).
+   */
+  REFERRAL_CHANGE_MARKETER: 'referral.change_marketer',
   REFERRAL_TRANSITION: 'referral.transition',
   REFERRAL_HOLD: 'referral.hold',
   REFERRAL_NTUC: 'referral.ntuc',
@@ -211,6 +216,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
   K.REFERRAL_DISCARD_ANY,
+  K.REFERRAL_CHANGE_MARKETER,
 ]);
 
 /**
@@ -223,6 +229,8 @@ export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
   K.REFERRAL_DISCARD_ANY,
   K.REFERRAL_MERGE_DUPLICATES,
+  K.REFERRAL_CHANGE_MARKETER,
+  K.CLINICAL_RN_REVIEW,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -302,6 +310,7 @@ export const PERMISSION_CATALOG = [
   { key: K.REFERRAL_VIEW_ALL,   label: 'View all cases',                   category: 'Referrals', description: 'See every referral in the Patients list and module queues. Without this, marketers only see cases where they are the marketer or the lead they personally entered.', sort: 13.5 },
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Referrals', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
   { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Referrals', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
+  { key: K.REFERRAL_CHANGE_MARKETER, label: 'Change referral marketer',    category: 'Referrals', description: 'Reassign the marketer on an existing referral from the Referral tab (writes a timeline event). Deny-by-default — grant only to named users.', sort: 14.6 },
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 15 },
   { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',          category: 'Referrals', description: 'Move any active referral to Hold stage', sort: 16 },
   { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',           category: 'Referrals', description: 'Move referrals to Unable to Convert (terminal)', sort: 17 },
@@ -323,7 +332,7 @@ export const PERMISSION_CATALOG = [
   // ── Clinical Review ───────────────────────────────────────────────────────
   { key: K.CLINICAL_APPROVED_SERVICES, label: 'Edit approved services', category: 'Clinical Review', description: 'Update which services are approved for a patient in Demographics', sort: 40 },
   { key: K.CLINICAL_TRIAGE,      label: 'Submit triage assessments',     category: 'Clinical Review', description: 'Fill or edit adult/pediatric triage forms', sort: 41 },
-  { key: K.CLINICAL_RN_REVIEW,   label: 'Perform Clinical RN review',    category: 'Clinical Review', description: 'Approve or route from Clinical Intake RN Review stage', sort: 42 },
+  { key: K.CLINICAL_RN_REVIEW,   label: 'Perform Clinical RN review',    category: 'Clinical Review', description: 'Approve or Confirm from Clinical Intake RN Review (moves the case to EMR Onboarding). Deny-by-default — grant only to Clinical RNs, not intake.', sort: 42 },
   { key: K.CLINICAL_RN_UNLOCK,   label: 'Unlock completed clinical review', category: 'Clinical Review', description: 'Unaccept a finalized Clinical RN review so checklist/decision can be corrected and Accept can be hit again (error-correction tool)', sort: 42.5 },
 
   // ── F2F / MD Orders (non-clinical for our purposes) ───────────────────────

@@ -22,6 +22,11 @@ function digits(phone) {
   return String(phone || '').replace(/\D/g, '').slice(0, 10);
 }
 
+/** Browser autofill often drops a marketer's Wellbound address into caregiver email. */
+export function isStaffDirectoryEmail(email) {
+  return /@wellboundhc\.com$/i.test(String(email || '').trim());
+}
+
 function splitDisplayName(displayName) {
   const clean = normalizeContactName(displayName);
   if (!clean) return { first_name: '', last_name: '', display_name: '' };
@@ -75,6 +80,10 @@ export async function upsertKnownGuardian({ name, phone, email }) {
     if (display && !guardianDisplay(existing)) patch.display_name = display;
     if (digits(phone) && !digits(existing.phone)) patch.phone = digits(phone);
     if (email && !existing.email) patch.email = String(email).trim();
+    // Explicit empty from the form: drop a staff autofill so delete+save sticks.
+    if (email !== undefined && !String(email || '').trim() && isStaffDirectoryEmail(existing.email)) {
+      patch.email = '';
+    }
     if (Object.keys(patch).length && existing._id) {
       const names = splitDisplayName(display || guardianDisplay(existing));
       const fields = { ...patch, ...names, updated_at: new Date().toISOString() };
@@ -219,7 +228,12 @@ export async function syncPatientContactMirrors(patientBusinessId, patientRecord
     if (g) {
       patch.primary_contact_name = guardianDisplay(g);
       patch.primary_contact_phone = digits(g.phone) || patient.primary_contact_phone || '';
-      if (g.email) patch.primary_contact_email = g.email;
+      if (g.email && !isStaffDirectoryEmail(g.email)) {
+        const current = String(patient.primary_contact_email || '').trim();
+        if (!current || current === String(g.email).trim()) {
+          patch.primary_contact_email = g.email;
+        }
+      }
       if (primaryLink.relationship) patch.primary_contact_relationship = primaryLink.relationship;
     }
   }
@@ -228,7 +242,12 @@ export async function syncPatientContactMirrors(patientBusinessId, patientRecord
     if (g) {
       patch.emergency_contact_name = guardianDisplay(g);
       patch.emergency_contact_phone = digits(g.phone) || patient.emergency_contact_phone || '';
-      if (g.email) patch.emergency_contact_email = g.email;
+      if (g.email && !isStaffDirectoryEmail(g.email)) {
+        const current = String(patient.emergency_contact_email || '').trim();
+        if (!current || current === String(g.email).trim()) {
+          patch.emergency_contact_email = g.email;
+        }
+      }
       if (emergencyLink.relationship) patch.emergency_contact_relationship = emergencyLink.relationship;
     }
   }
