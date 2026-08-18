@@ -20,6 +20,17 @@ import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysSinceCalendarDate } from '../utils/dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import OverduePatientsModal from '../components/dashboard/OverduePatientsModal.jsx';
+import { useLockedTableGrid } from '../hooks/useLockedTableGrid.js';
+import { useFlipWindow } from '../hooks/useFlipWindow.js';
+import { lockedGridClass, lockColClass } from '../utils/tableScrollMode.js';
+import FlipTableShell from '../components/common/FlipTableShell.jsx';
+import {
+  INACTIVE_FOR_ACTIVE_KPI,
+  isCaseloadOverdue,
+  isExecutiveOverdue,
+  listOverdueReferrals,
+} from '../utils/dashboardOverdue.js';
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -27,19 +38,6 @@ const PIPELINE_STAGES = [
   'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
-
-/** Stages counted in "Active Referrals" KPI are everything except these. */
-const INACTIVE_FOR_ACTIVE_KPI = new Set([
-  'SOC Completed',
-  'Conflict',
-  'NTUC',
-  'Admin Confirmation',
-  'Hold',
-  'Discarded Leads',
-]);
-
-/** Overdue KPI: same exits + anything already SOC-completed concurrently. */
-const TERMINAL_STAGES = new Set(['NTUC', 'SOC Completed', 'Hold', 'Discarded Leads']);
 
 // Maps each stage to its dedicated module route
 const STAGE_ROUTE = {
@@ -210,6 +208,7 @@ function CaseloadDashboard({ modeToggle = null }) {
   const navigate = useNavigate();
   const allTasks = useCareStore((s) => s.tasks);
   const isMobile = useIsMobile();
+  const lockedGrid = useLockedTableGrid();
 
   const myReferrals = useMemo(() => {
     if (!appUserId) return [];
@@ -228,6 +227,7 @@ function CaseloadDashboard({ modeToggle = null }) {
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('days');
   const [sortDir, setSortDir] = useState('desc');
+  const [showOverdue, setShowOverdue] = useState(false);
 
   const filteredRefs = useMemo(() => {
     let list = myReferrals;
@@ -258,6 +258,8 @@ function CaseloadDashboard({ modeToggle = null }) {
     });
   }, [myReferrals, search, sortField, sortDir]);
 
+  const caseloadFlip = useFlipWindow(filteredRefs, lockedGrid, { rowHeight: 48, headerHeight: 40 });
+
   function toggleSort(field) {
     if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('desc'); }
@@ -269,10 +271,11 @@ function CaseloadDashboard({ modeToggle = null }) {
     return Object.entries(buckets).sort(([, a], [, b]) => b - a);
   }, [myReferrals]);
 
-  const overdue = myReferrals.filter((r) => {
-    if (!r.updated_at || r.current_stage === 'Hold') return false;
-    return Math.floor((Date.now() - new Date(r.updated_at).getTime()) / 86400000) > 14;
-  }).length;
+  const overdueReferrals = useMemo(
+    () => listOverdueReferrals(myReferrals, isCaseloadOverdue),
+    [myReferrals],
+  );
+  const overdue = overdueReferrals.length;
 
   if (loading) return <DashboardSkeleton isMobile={isMobile} />;
 
@@ -350,7 +353,7 @@ function CaseloadDashboard({ modeToggle = null }) {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
         <StatCard label="My Cases" value={myReferrals.length} sub="active referrals" color={palette.primaryMagenta.hex} />
         <StatCard label="Open Tasks" value={myTasks.length} sub="assigned to me" color={palette.accentBlue.hex} />
-        <StatCard label="Overdue" value={overdue} sub="in stage >14 days" color={overdue > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdue > 0} />
+        <StatCard label="Overdue" value={overdue} sub="in stage >14 days" color={overdue > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdue > 0} onClick={() => setShowOverdue(true)} />
         <StatCard label="Stages" value={stageBuckets.length} sub="across modules" color={palette.primaryDeepPlum.hex} />
       </div>
 
@@ -383,7 +386,7 @@ function CaseloadDashboard({ modeToggle = null }) {
       </div>
 
       {/* Queue table */}
-      <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+      <FlipTableShell flip={caseloadFlip} headerHeight={40} className={lockedGridClass(lockedGrid)} style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: '1px solid var(--color-border)', overflow: lockedGrid ? undefined : 'hidden', maxHeight: lockedGrid ? 'min(70vh, 720px)' : undefined }}>
         {filteredRefs.length === 0 ? (
           <EmptyState title="No cases in your caseload" subtitle={search ? 'Try a different search.' : 'Cases assigned to you will appear here.'} />
         ) : (
@@ -391,12 +394,12 @@ function CaseloadDashboard({ modeToggle = null }) {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--color-border)', background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
                 {['Patient', 'Module / Stage', 'Division', 'Days', 'Source', 'Referral Date'].map((h) => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.4), textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} className={h === 'Patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', color: hexToRgba(palette.backgroundDark.hex, 0.4), textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filteredRefs.map((ref) => {
+              {caseloadFlip.windowItems.map((ref) => {
                 const days = ref.updated_at ? Math.max(0, Math.floor((Date.now() - new Date(ref.updated_at).getTime()) / 86400000)) : 0;
                 return (
                   <tr key={ref._id}
@@ -406,7 +409,7 @@ function CaseloadDashboard({ modeToggle = null }) {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     title="Double-click to open"
                   >
-                    <td style={{ padding: '11px 14px' }}>
+                    <td className={lockColClass(lockedGrid)} style={{ padding: '11px 14px' }}>
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
                     </td>
                     <td style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
@@ -424,7 +427,14 @@ function CaseloadDashboard({ modeToggle = null }) {
             </tbody>
           </table>
         )}
-      </div>
+      </FlipTableShell>
+      {showOverdue && (
+        <OverduePatientsModal
+          referrals={overdueReferrals}
+          onClose={() => setShowOverdue(false)}
+          onOpenPatient={(ref) => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
+        />
+      )}
     </div>
   );
 }
@@ -456,6 +466,8 @@ function ExecutiveDashboard({ modeToggle = null }) {
   const isMobile = useIsMobile();
   const { can } = usePermissions();
   const [showNewReferral, setShowNewReferral] = useState(false);
+  const [showOverdue, setShowOverdue] = useState(false);
+  const lockedGrid = useLockedTableGrid();
 
   const filtered = useMemo(
     () => division === 'All' ? referrals : referrals.filter((r) => r.division === division),
@@ -514,7 +526,6 @@ function ExecutiveDashboard({ modeToggle = null }) {
   }).length;
 
   // New this week vs last week (WoW delta)
-  const now = Date.now();
   const newThisWeek = filtered.filter((r) => {
     const days = daysSinceCalendarDate(r.referral_date);
     return days != null && days >= 0 && days < 7;
@@ -525,14 +536,11 @@ function ExecutiveDashboard({ modeToggle = null }) {
   }).length;
 
   // Referrals that have been in their current (non-terminal) stage for > 14 days
-  const overdueCount = useMemo(() =>
-    filtered.filter((r) => {
-      if (INACTIVE_FOR_ACTIVE_KPI.has(r.current_stage) || isSocCompletedReferral(r)) return false;
-      if (!r.updated_at) return false;
-      return Math.floor((now - new Date(r.updated_at).getTime()) / 86400000) > 14;
-    }).length,
+  const overdueReferrals = useMemo(
+    () => listOverdueReferrals(filtered, isExecutiveOverdue),
     [filtered],
   );
+  const overdueCount = overdueReferrals.length;
 
   const recentPatients = useMemo(() =>
     [...filtered]
@@ -540,6 +548,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
       .slice(0, 12),
     [filtered],
   );
+  const recentFlip = useFlipWindow(recentPatients, lockedGrid, { rowHeight: 48, headerHeight: 40 });
 
   // With the hydration gate in AppShell, `loading` is almost always false.
   // But as a safety fallback, show skeletons (not a spinner) if data isn't ready.
@@ -569,14 +578,17 @@ function ExecutiveDashboard({ modeToggle = null }) {
             { label: 'SOC done', value: socStaffBreakdown.socDone, color: palette.accentGreen.hex },
             { label: 'ROC done', value: socStaffBreakdown.rocDone, color: palette.accentBlue.hex },
             { label: 'New / wk', value: newThisWeek, color: palette.accentBlue.hex },
-            { label: 'Overdue', value: overdueCount, color: overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex },
+            { label: 'Overdue', value: overdueCount, color: overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex, onClick: () => setShowOverdue(true) },
           ].map((k) => (
             <div
               key={k.label}
+              role={k.onClick ? 'button' : undefined}
+              onClick={k.onClick}
               style={{
                 flex: '0 0 auto', minWidth: 88, padding: '10px 12px', borderRadius: 12,
                 background: palette.backgroundLight.hex,
                 border: `1px solid var(--color-border)`,
+                cursor: k.onClick ? 'pointer' : 'default',
               }}
             >
               <p style={{ fontSize: 11, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>{k.label}</p>
@@ -656,6 +668,13 @@ function ExecutiveDashboard({ modeToggle = null }) {
             }}
           />
         )}
+        {showOverdue && (
+          <OverduePatientsModal
+            referrals={overdueReferrals}
+            onClose={() => setShowOverdue(false)}
+            onOpenPatient={(ref) => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
+          />
+        )}
       </div>
     );
   }
@@ -712,7 +731,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
             owners={socStaffBreakdown.rocOwners}
           />
         </div>
-        <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} />
+        <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} onClick={() => setShowOverdue(true)} />
       </div>
 
       {/* ── Stage distribution bar ── */}
@@ -731,7 +750,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
           <Link to="/patients" style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 550 }}>View all</Link>
         </div>
 
-        <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: 'hidden' }}>
+        <FlipTableShell flip={recentFlip} headerHeight={40} className={lockedGridClass(lockedGrid)} style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: lockedGrid ? undefined : 'hidden', maxHeight: lockedGrid ? 'min(70vh, 640px)' : undefined }}>
           {recentPatients.length === 0 ? (
             <EmptyState title="No referrals yet" subtitle="New referrals will appear here." />
           ) : (
@@ -739,14 +758,14 @@ function ExecutiveDashboard({ modeToggle = null }) {
               <thead>
                 <tr style={{ borderBottom: `1px solid var(--color-border)`, background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
                   {['Patient', 'Division', 'Stage', 'Priority', 'Referral Date'].map((h) => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>
+                    <th key={h} className={h === 'Patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 650, letterSpacing: '0.04em', color: hexToRgba(palette.backgroundDark.hex, 0.45), textTransform: 'uppercase' }}>
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {recentPatients.map((ref) => (
+                {recentFlip.windowItems.map((ref) => (
                   <tr
                     key={ref._id}
                     onDoubleClick={() => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
@@ -755,7 +774,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     title="Double-click to open patient"
                   >
-                    <td style={{ padding: '11px 16px' }}>
+                    <td className={lockColClass(lockedGrid)} style={{ padding: '11px 16px' }}>
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
                     </td>
                     <td style={{ padding: '11px 16px' }}><DivisionBadge division={ref.division} size="small" /></td>
@@ -772,7 +791,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
               </tbody>
             </table>
           )}
-        </div>
+        </FlipTableShell>
       </div>
 
       {/* ── Pipeline snapshot ── */}
@@ -799,16 +818,27 @@ function ExecutiveDashboard({ modeToggle = null }) {
           }}
         />
       )}
+      {showOverdue && (
+        <OverduePatientsModal
+          referrals={overdueReferrals}
+          onClose={() => setShowOverdue(false)}
+          onOpenPatient={(ref) => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
+        />
+      )}
     </div>
   );
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color, delta, alert, icon }) {
+function StatCard({ label, value, sub, color, delta, alert, icon, onClick }) {
   const hasDelta = delta !== undefined && delta !== null;
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
       style={{
         background:    palette.backgroundLight.hex,
         borderRadius:  12,
@@ -816,11 +846,15 @@ function StatCard({ label, value, sub, color, delta, alert, icon }) {
         display:       'flex',
         flexDirection: 'column',
         gap:           6,
-        borderTop:     `3px solid ${color}`,
         border:        `1px solid var(--color-border)`,
         borderTop:     `3px solid ${color}`,
         position:      'relative',
+        cursor:        onClick ? 'pointer' : 'default',
+        outline:       'none',
+        transition:    'box-shadow 0.15s, transform 0.15s',
       }}
+      onMouseEnter={onClick ? (e) => { e.currentTarget.style.boxShadow = `0 6px 18px ${hexToRgba(palette.backgroundDark.hex, 0.08)}`; e.currentTarget.style.transform = 'translateY(-1px)'; } : undefined}
+      onMouseLeave={onClick ? (e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; } : undefined}
     >
       {icon && (
         <div style={{ position: 'absolute', top: 14, right: 16 }}>
@@ -849,7 +883,9 @@ function StatCard({ label, value, sub, color, delta, alert, icon }) {
           <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>→ same</span>
         )}
       </div>
-      <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>{sub}</p>
+      <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+        {sub}{onClick ? ' · view' : ''}
+      </p>
     </div>
   );
 }

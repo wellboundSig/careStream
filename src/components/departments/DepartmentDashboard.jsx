@@ -19,7 +19,17 @@ import { useClinicalReviewInProgress } from '../../hooks/useClinicalReviewInProg
 import { STAGE_SLUGS } from '../../data/stageConfig.js';
 import { buildTeamActivityEvents, activityColor } from '../../utils/teamActivity.js';
 import { fmtCalendarDate, fmtDateTime, daysUntilCalendarDate } from '../../utils/dateFormat.js';
+import { useLockedTableGrid } from '../../hooks/useLockedTableGrid.js';
+import { useFlipWindow } from '../../hooks/useFlipWindow.js';
+import { lockedGridClass, lockColClass } from '../../utils/tableScrollMode.js';
+import FlipTableShell from '../common/FlipTableShell.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import {
+  TRIAGE_FILTER_OPTIONS,
+  buildTriagePresenceMap,
+  matchesTriageFilter,
+  triageColumnLabel,
+} from '../../utils/triageColumn.js';
 
 const TERMINAL = new Set(['NTUC', 'SOC Completed']);
 const STAGE_BAR_COLOR = {
@@ -35,7 +45,7 @@ function initials(f, l) { return `${(f || '?')[0]}${(l || '')[0] || ''}`.toUpper
 
 export default function DepartmentDashboard({ department, scope }) {
   const { data: referrals } = usePipelineData();
-  const { resolveUser, resolveMarketer, resolveSource, resolveRole, resolveFacility } = useLookups();
+  const { resolveUser, resolveMarketer, resolveSource, resolveSourceEntity, resolveRole, resolveFacility, resolveEntity } = useLookups();
   const { open: openPatient } = usePatientDrawer();
   const { appUserId } = useCurrentAppUser();
   const navigate = useNavigate();
@@ -59,6 +69,7 @@ export default function DepartmentDashboard({ department, scope }) {
   const opwddChecklistItems = useCareStore((s) => s.opwddChecklistItems);
   const disenrollmentAssistanceFlags = useCareStore((s) => s.disenrollmentAssistanceFlags);
   const { can, hasDivision } = usePermissions();
+  const lockedGrid = useLockedTableGrid();
   const isAdmin = can(PERMISSION_KEYS.TASK_ASSIGN);
   const [expandedMember, setExpandedMember] = useState(null);
   const [search, setSearch] = useState('');
@@ -113,15 +124,37 @@ export default function DepartmentDashboard({ department, scope }) {
   const stageCounts = useMemo(() => { const c = {}; scopedReferrals.forEach((r) => { c[r.current_stage] = (c[r.current_stage] || 0) + 1; }); return c; }, [scopedReferrals]);
   const activeStages = scopeStages.length > 0 ? scopeStages.filter((s) => stageCounts[s] > 0) : Object.keys(stageCounts).filter((s) => stageCounts[s] > 0);
 
+  const triagePresence = useMemo(
+    () => buildTriagePresenceMap(triageAdult, triagePediatric),
+    [triageAdult, triagePediatric]
+  );
+
   const displayedReferrals = useMemo(() => {
     let list = scopedReferrals;
     if (search.trim()) { const q = search.toLowerCase(); list = list.filter((r) => (r.patientName || '').toLowerCase().includes(q) || (r.patient_id || '').toLowerCase().includes(q)); }
     for (const [key, val] of Object.entries(colFilters)) {
       if (!val.trim()) continue; const q = val.toLowerCase();
-      list = list.filter((r) => { switch (key) { case 'division': return (r.division || '').toLowerCase().includes(q); case 'stage': return (r.current_stage || '').toLowerCase().includes(q); case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q); case 'marketer': return (resolveMarketer(r.marketer_id) || '').toLowerCase().includes(q); case 'owner': return (resolveUser(r.intake_owner_id) || '').toLowerCase().includes(q); case 'insurance': return (r.patient?.insurance_plan || '').toLowerCase().includes(q); case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q); default: return true; } });
+      list = list.filter((r) => {
+        switch (key) {
+          case 'division': return (r.division || '').toLowerCase().includes(q);
+          case 'stage': return (r.current_stage || '').toLowerCase().includes(q);
+          case 'source': return (resolveSource(r.referral_source_id) || '').toLowerCase().includes(q);
+          case 'source_entity': return (resolveSourceEntity(r.referral_source_id) || '').toLowerCase().includes(q);
+          case 'marketer': return (resolveMarketer(r.marketer_id) || '').toLowerCase().includes(q);
+          case 'owner': return (resolveUser(r.intake_owner_id) || '').toLowerCase().includes(q);
+          case 'insurance': return (r.patient?.insurance_plan || '').toLowerCase().includes(q);
+          case 'facility': return (resolveFacility(r.facility_id) || '').toLowerCase().includes(q);
+          case 'licence': return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
+          case 'triage': return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
+          default: return true;
+        }
+      });
     }
     return [...list].sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0));
-  }, [scopedReferrals, search, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility]);
+  }, [scopedReferrals, search, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, triagePresence]);
+
+  const deptHeaderH = showFilters ? 76 : 38;
+  const flip = useFlipWindow(displayedReferrals, lockedGrid, { rowHeight: 46, headerHeight: deptHeaderH });
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
 
@@ -182,7 +215,7 @@ export default function DepartmentDashboard({ department, scope }) {
         const isMine = !!(appUserId && ref.intake_owner_id && ref.intake_owner_id === appUserId);
         const review = getReviewInProgress(ref);
         return (
-          <td key="patient" style={{ padding: '11px 14px' }}>
+          <td key="patient" className={lockColClass(lockedGrid)} style={{ padding: '11px 14px' }}>
             <p
               title={isMine ? 'You own this case' : undefined}
               style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}
@@ -196,9 +229,47 @@ export default function DepartmentDashboard({ department, scope }) {
       }
       case 'division': return <td key="division" style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>;
       case 'source': return <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>;
+      case 'source_entity': return <td key="source_entity" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSourceEntity(ref.referral_source_id) || '—'}</td>;
       case 'marketer': return <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{ref?.marketer_id ? resolveMarketer(ref.marketer_id) : '—'}</td>;
       case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
-      case 'triage': return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+      case 'licence': {
+        const label = resolveEntity(ref.entity_id);
+        if (!ref.entity_id || !label || label === '—') {
+          return <td key="licence" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
+        }
+        const isWBII = /WBII|WELLBOUND II/i.test(label);
+        return (
+          <td key="licence" style={{ padding: '11px 14px' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
+              fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
+              background: isWBII ? hexToRgba(palette.accentBlue.hex, 0.14) : hexToRgba(palette.accentGreen.hex, 0.14),
+              color: isWBII ? palette.accentBlue.hex : palette.accentGreen.hex,
+            }}>
+              {label}
+            </span>
+          </td>
+        );
+      }
+      case 'triage': {
+        const label = triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]));
+        if (label === 'N/A') {
+          return <td key="triage" style={{ padding: '11px 14px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>N/A</td>;
+        }
+        const done = label === 'Done';
+        return (
+          <td key="triage" style={{ padding: '11px 14px' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: done ? 650 : 600,
+              color: done ? palette.accentGreen.hex : hexToRgba(palette.accentOrange.hex, 0.9),
+              background: done ? hexToRgba(palette.accentGreen.hex, 0.1) : hexToRgba(palette.accentOrange.hex, 0.1),
+              padding: '2px 8px', borderRadius: 20,
+            }}>
+              {label}
+            </span>
+          </td>
+        );
+      }
       case 'days': return <td key="days" style={{ padding: '11px 14px' }}><span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>{days === 0 ? 'Today' : `${days}d`}</span></td>;
       case 'f2f': {
         const daysLeft = daysUntilCalendarDate(ref.f2f_expiration);
@@ -388,22 +459,41 @@ export default function DepartmentDashboard({ department, scope }) {
           </div>
           {hasAnyFilter && <button onClick={() => { setSearch(''); clearFilters(); }} style={{ height: 32, padding: '0 12px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'none', fontSize: 12, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer', flexShrink: 0 }}>Clear all</button>}
         </div>
-        <div style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: 'hidden' }}>
+        <FlipTableShell flip={flip} headerHeight={deptHeaderH} className={lockedGridClass(lockedGrid)} style={{ background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, overflow: lockedGrid ? undefined : 'hidden', maxHeight: lockedGrid ? 'min(70vh, 720px)' : undefined }}>
           {displayedReferrals.length === 0 ? <EmptyState title="No patients under department scope" subtitle={hasAnyFilter ? 'Try clearing filters.' : 'Patients will appear when they enter stages within this department scope.'} />
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
               <thead>
                 <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                  {activeColumns.map((col) => (<th key={col.key} title={col.tooltip} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default' }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}</th>))}
+                  {activeColumns.map((col) => (<th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} title={col.tooltip} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.tooltip ? 'help' : 'default' }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, opacity: 0.5, fontSize: 9 }}>ⓘ</span>}</th>))}
                 </tr>
                 {showFilters && (
                   <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
-                    {activeColumns.map((col) => (<th key={col.key} style={{ padding: '4px 8px' }}>{col.filterable ? <FilterInput value={colFilters[col.key] || ''} onChange={(v) => setColFilter(col.key, v)} placeholder={col.label} /> : null}</th>))}
+                    {activeColumns.map((col) => (
+                      <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '4px 8px' }}>
+                        {col.filterable ? (
+                          <FilterInput
+                            value={colFilters[col.key] || ''}
+                            onChange={(v) => setColFilter(col.key, v)}
+                            placeholder={col.label}
+                            options={
+                              col.key === 'triage'
+                                ? TRIAGE_FILTER_OPTIONS
+                                : col.key === 'licence'
+                                  ? [...new Set(scopedReferrals.map((r) => resolveEntity(r.entity_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
+                                  : col.key === 'source_entity'
+                                    ? [...new Set(scopedReferrals.map((r) => resolveSourceEntity(r.referral_source_id)).filter((v) => v && v !== '—'))].sort((a, b) => a.localeCompare(b))
+                                  : undefined
+                            }
+                          />
+                        ) : null}
+                      </th>
+                    ))}
                   </tr>
                 )}
               </thead>
               <tbody>
-                {displayedReferrals.map((ref) => (
+                {flip.windowItems.map((ref) => (
                   <tr key={ref._id} onDoubleClick={() => openPatient(ref.patient || { id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)}
                     style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, cursor: 'default', transition: 'background 0.1s' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.03))}
@@ -414,7 +504,7 @@ export default function DepartmentDashboard({ department, scope }) {
               </tbody>
             </table>
           )}
-        </div>
+        </FlipTableShell>
       </div>
       {/* Right-click context menu — same pattern as Team.jsx */}
       {contextMenu && (

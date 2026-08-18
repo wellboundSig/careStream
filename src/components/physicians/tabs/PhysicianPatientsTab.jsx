@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { getFilesByReferral } from '../../../api/patientFiles.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
+import { useLookups } from '../../../hooks/useLookups.js';
+import { useCareStore } from '../../../store/careStore.js';
 import { openSignedFile } from '../../../utils/r2Upload.js';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
+import { buildTriagePresenceMap, triageColumnLabel } from '../../../utils/triageColumn.js';
 
 const DOC_CATEGORIES = ['F2F', 'MD Orders'];
 
@@ -70,6 +73,13 @@ function FilesSection({ referralId, onClose }) {
 
 export default function PhysicianPatientsTab({ referrals, loading }) {
   const { open: openPatient } = usePatientDrawer();
+  const { resolveEntity } = useLookups();
+  const triageAdult = useCareStore((s) => s.triageAdult);
+  const triagePediatric = useCareStore((s) => s.triagePediatric);
+  const triagePresence = useMemo(
+    () => buildTriagePresenceMap(triageAdult, triagePediatric),
+    [triageAdult, triagePediatric]
+  );
   const [expanded, setExpanded] = useState(null);
 
   if (loading) return <LoadingState message="Loading patients…" size="small" />;
@@ -81,7 +91,9 @@ export default function PhysicianPatientsTab({ referrals, loading }) {
         {referrals.length} patient{referrals.length !== 1 ? 's' : ''} · double-click to open patient snapshot
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {referrals.map((ref) => (
+        {referrals.map((ref) => {
+          const entityLabel = resolveEntity(ref.entity_id);
+          return (
           <div key={ref._id} style={{ padding: '12px 14px', borderRadius: 10, background: hexToRgba(palette.backgroundDark.hex, 0.025) }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
               <div
@@ -90,9 +102,14 @@ export default function PhysicianPatientsTab({ referrals, loading }) {
                 title="Double-click to open patient"
               >
                 <p style={{ fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 4 }}>{ref.patientName || ref.patient_id}</p>
-                <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
                   <DivisionBadge division={ref.division} size="small" />
                   <StageBadge stage={ref.current_stage} size="small" />
+                  <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+                    {entityLabel && entityLabel !== '—' ? entityLabel : 'No entity'}
+                    {' · '}
+                    Triage {triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]))}
+                  </span>
                 </div>
               </div>
               <FilesSection
@@ -101,7 +118,8 @@ export default function PhysicianPatientsTab({ referrals, loading }) {
               />
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

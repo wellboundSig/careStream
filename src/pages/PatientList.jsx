@@ -31,6 +31,17 @@ import {
 } from '../utils/documentationDeferred.js';
 import { episodeTypeLongLabel } from '../utils/episodeType.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
+import { useLockedTableGrid } from '../hooks/useLockedTableGrid.js';
+import { useFlipWindow } from '../hooks/useFlipWindow.js';
+import { lockedGridClass, lockColClass } from '../utils/tableScrollMode.js';
+import FlipTableShell from '../components/common/FlipTableShell.jsx';
+import { useCareStore } from '../store/careStore.js';
+import {
+  TRIAGE_FILTER_OPTIONS,
+  buildTriagePresenceMap,
+  matchesTriageFilter,
+  triageColumnLabel,
+} from '../utils/triageColumn.js';
 
 const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
 
@@ -39,8 +50,9 @@ const COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',          defaultOn: true,  alwaysOn: true,  sortField: 'last_name',     filterable: false },
   { key: 'division',        label: 'Division',          defaultOn: true,  sortField: 'division',       filterable: true  },
   { key: 'episode_type',    label: 'Episode',           defaultOn: true,  filterable: true, tooltip: 'Start of Care or Resumption of Care' },
-  { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
+  { key: 'licence',         label: 'Entity',            defaultOn: true,  filterable: true, tooltip: 'Wellbound licence (WB / WBII), assigned by county' },
   { key: 'stage',           label: 'Stage',             defaultOn: true,  sortField: 'stage',          filterable: true  },
+  { key: 'triage',          label: 'Triage',            defaultOn: true,  filterable: true, tooltip: 'Special Needs triage. Filter: Done · Needed · N/A' },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
   { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter by a number (≥ N).' },
   { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter by a number (≥ N).' },
@@ -48,6 +60,7 @@ const COLUMN_DEFS = [
   { key: 'insurance',       label: 'Insurance',         defaultOn: true,  sortField: 'insurance_plan', filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',     defaultOn: true,  filterable: true  },
   { key: 'referral_source', label: 'Referral Source',   defaultOn: true, filterable: true  },
+  { key: 'source_entity',   label: 'Referral Entity',   defaultOn: true, filterable: true, tooltip: 'Company or CCO of the referral source — not the Wellbound licence' },
   { key: 'facility',        label: 'Facility',          defaultOn: true, filterable: true  },
   { key: 'physician',       label: 'Physician',         defaultOn: true, filterable: true  },
   {
@@ -177,7 +190,7 @@ function ColumnPicker({ visibleCols, onChange, onClose }) {
   }, [onClose]);
 
   return (
-    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 200, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
+    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, maxHeight: 'min(70vh, calc(100vh - 140px))', overflowY: 'auto', overscrollBehavior: 'contain', background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 200, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Columns</p>
       {COLUMN_DEFS.map((col) => (
         <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 14px', cursor: col.alwaysOn ? 'default' : 'pointer', opacity: col.alwaysOn ? 0.45 : 1 }}>
@@ -213,7 +226,14 @@ export default function PatientList() {
   const { division } = useOutletContext();
   const { data: patients, loading: pLoading } = usePatients();
   const { data: enriched, loading: eLoading } = usePipelineData();
+  const triageAdultStore = useCareStore((s) => s.triageAdult);
+  const triagePedStore = useCareStore((s) => s.triagePediatric);
+  const triagePresence = useMemo(
+    () => buildTriagePresenceMap(triageAdultStore, triagePedStore),
+    [triageAdultStore, triagePedStore]
+  );
   const isMobile = useIsMobile();
+  const lockedGrid = useLockedTableGrid();
   const {
     resolveMarketer,
     resolveSource,
@@ -221,6 +241,7 @@ export default function PatientList() {
     resolvePhysician,
     resolveUser,
     resolveEntity = (id) => id || '—',
+    resolveSourceEntity = () => '—',
   } = useLookups();
   const { open: openPatient } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
@@ -253,8 +274,8 @@ export default function PatientList() {
 
   const getReviewInProgress = useClinicalReviewInProgress();
   const resolvers = useMemo(
-    () => ({ resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress }),
-    [resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress]
+    () => ({ resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress, triagePresence }),
+    [resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress, triagePresence]
   );
 
   const activeColumns = useMemo(() => COLUMN_DEFS.filter((c) => visibleCols.has(c.key)), [visibleCols]);
@@ -302,6 +323,9 @@ export default function PatientList() {
               if (v && v !== '—') vals.add(v);
             }
             break;
+          case 'triage':
+            TRIAGE_FILTER_OPTIONS.forEach((opt) => vals.add(opt));
+            break;
           case 'stage':
             if (ref?.current_stage) vals.add(ref.current_stage);
             break;
@@ -321,6 +345,11 @@ export default function PatientList() {
             if (v && v !== '—') vals.add(v);
             break;
           }
+          case 'source_entity': {
+            const v = resolveSourceEntity(ref?.referral_source_id);
+            if (v && v !== '—') vals.add(v);
+            break;
+          }
           case 'facility': {
             const v = resolveFacility(ref?.facility_id);
             if (v && v !== '—') vals.add(v);
@@ -336,7 +365,7 @@ export default function PatientList() {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity]);
+  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity]);
 
   const filtered = useMemo(() => {
     let list = patients.filter((p) => {
@@ -374,6 +403,11 @@ export default function PatientList() {
         }
 
         const q = val.toLowerCase();
+        if (key === 'triage') {
+          const label = triageColumnLabel(ref, !!(ref?.id && triagePresence[ref.id]));
+          if (!matchesTriageFilter(label, val)) return false;
+          continue;
+        }
         if (key === 'post_soc_docs') {
           const v = q.trim().replace(/\s+/g, '_');
           const status = documentationFilterStatus(ref);
@@ -401,6 +435,7 @@ export default function PatientList() {
           case 'insurance':      cellVal = (p.insurance_plan || '').toLowerCase(); break;
           case 'referral_date':  cellVal = ref?.referral_date ? fmtDate(ref.referral_date).toLowerCase() : ''; break;
           case 'referral_source':cellVal = resolveSource(ref?.referral_source_id).toLowerCase(); break;
+          case 'source_entity':  cellVal = resolveSourceEntity(ref?.referral_source_id).toLowerCase(); break;
           case 'facility':       cellVal = resolveFacility(ref?.facility_id).toLowerCase(); break;
           case 'physician':      cellVal = resolvePhysician(ref?.physician_id).toLowerCase(); break;
         }
@@ -426,7 +461,10 @@ export default function PatientList() {
       }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });
-  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, hasDivision, canViewAllCases]);
+  }, [patients, enriched, refByPatientId, division, search, stageFilter, showActive, sortField, sortDir, colFilters, resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity, hasDivision, canViewAllCases, triagePresence]);
+
+  const patientHeaderH = showFilters ? 76 : 38;
+  const flip = useFlipWindow(filtered, lockedGrid, { rowHeight: 44, headerHeight: patientHeaderH });
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -516,6 +554,7 @@ export default function PatientList() {
   const colHdr = (col) => (
     <th
       key={col.key}
+      className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined}
       onClick={col.sortField ? () => toggleSort(col.sortField) : undefined}
       title={col.tooltip || undefined}
       style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: col.sortField ? 'pointer' : col.tooltip ? 'help' : 'default', userSelect: 'none' }}
@@ -748,7 +787,7 @@ export default function PatientList() {
         </div>
 
         {/* Table */}
-        <div style={{ flex: 1, overflow: 'auto', background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
+        <FlipTableShell flip={flip} headerHeight={patientHeaderH} className={lockedGridClass(lockedGrid)} style={{ flex: 1, minHeight: 0, background: palette.backgroundLight.hex, borderRadius: 12, border: `1px solid var(--color-border)`, boxShadow: `0 1px 4px ${hexToRgba(palette.backgroundDark.hex, 0.04)}` }}>
           {patients.length === 0 ? (
             <EmptyState title="No patients found" subtitle="No patient records exist yet." />
           ) : (
@@ -760,7 +799,7 @@ export default function PatientList() {
                 {showFilters && (
                   <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
                     {activeColumns.map((col) => (
-                      <th key={col.key} style={{ padding: '4px 8px' }}>
+                      <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '4px 8px' }}>
                         {col.filterable ? (
                           <>
                             <input
@@ -795,7 +834,7 @@ export default function PatientList() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((patient) => {
+                  flip.windowItems.map((patient) => {
                     const ref = refByPatientId[patient.id];
                     const days = ref ? daysInStage(ref) : null;
                     const totalDays = ref ? daysInPipeline(ref) : null;
@@ -806,6 +845,7 @@ export default function PatientList() {
                         referral={ref}
                         days={days}
                         totalDays={totalDays}
+                        lockFirstCol={false}
                         resolvers={resolvers}
                         activeColumns={activeColumns}
                         onDoubleClick={() => openPatient(buildPatient(patient), ref || null)}
@@ -827,7 +867,7 @@ export default function PatientList() {
               </tbody>
             </table>
           )}
-        </div>
+        </FlipTableShell>
       </div>
 
       {/* Context menu */}
@@ -929,9 +969,9 @@ const ELLIPSIS = {
 };
 
 // ── Patient row ────────────────────────────────────────────────────────────────
-function PatientRow({ patient, referral, days, totalDays, resolvers, activeColumns, onDoubleClick, onContextMenu }) {
+function PatientRow({ patient, referral, days, totalDays, resolvers, activeColumns, onDoubleClick, onContextMenu, lockFirstCol = false }) {
   const [hovered, setHovered] = useState(false);
-  const { resolveMarketer, resolveSource, resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress } = resolvers;
+  const { resolveMarketer, resolveSource, resolveSourceEntity = () => '—', resolveFacility, resolvePhysician, resolveEntity, getReviewInProgress, triagePresence = {} } = resolvers;
 
   const renderCell = (col) => {
     switch (col.key) {
@@ -939,7 +979,17 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
         const review = getReviewInProgress ? getReviewInProgress(referral) : null;
         const fullName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
         return (
-          <td key="patient" style={{ ...TD, maxWidth: 280 }}>
+          <td
+            key="patient"
+            className={lockFirstCol ? 'table-lock-col' : undefined}
+            style={{
+              ...TD,
+              maxWidth: 280,
+              ...(lockFirstCol ? {
+                background: hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : palette.backgroundLight.hex,
+              } : {}),
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span
                 title={fullName}
@@ -992,6 +1042,25 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
             {referral?.current_stage ? <StageBadge stage={referral.current_stage} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
           </td>
         );
+      case 'triage': {
+        const label = triageColumnLabel(referral, !!(referral?.id && triagePresence[referral.id]));
+        if (label === 'N/A') {
+          return <td key="triage" style={{ ...TD, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>N/A</td>;
+        }
+        const done = label === 'Done';
+        return (
+          <td key="triage" style={TD}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: done ? 650 : 600,
+              color: done ? palette.accentGreen.hex : hexToRgba(palette.accentOrange.hex, 0.9),
+              background: done ? hexToRgba(palette.accentGreen.hex, 0.1) : hexToRgba(palette.accentOrange.hex, 0.1),
+              padding: '2px 8px', borderRadius: 20,
+            }}>
+              {label}
+            </span>
+          </td>
+        );
+      }
       case 'f2f':
         return <td key="f2f" style={TD}><F2FCell referral={referral} /></td>;
       case 'days_in_stage': {
@@ -1064,6 +1133,16 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
             </span>
           </td>
         );
+      case 'source_entity': {
+        const label = referral?.referral_source_id ? resolveSourceEntity(referral.referral_source_id) : '—';
+        return (
+          <td key="source_entity" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>
+            <span title={label && label !== '—' ? label : ''} style={ELLIPSIS}>
+              {label && label !== '—' ? label : '—'}
+            </span>
+          </td>
+        );
+      }
       case 'facility':
         return (
           <td key="facility" style={{ ...TD, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 200 }}>

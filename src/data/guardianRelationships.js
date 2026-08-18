@@ -9,6 +9,7 @@ export const GUARDIAN_RELATIONSHIPS = [
   'Spouse',
   'Grandparent',
   'Legal Guardian',
+  'Facility',
   'Other',
 ];
 
@@ -41,6 +42,11 @@ const ALIAS_TO_RELATIONSHIP = {
   guardian: 'Legal Guardian',
   'legal gaurdian': 'Legal Guardian', // common misspelling in legacy data
   gaurdian: 'Legal Guardian',
+  facility: 'Facility',
+  alf: 'Facility',
+  'nursing home': 'Facility',
+  'adult home': 'Facility',
+  residence: 'Facility',
   other: 'Other',
 };
 

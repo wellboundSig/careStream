@@ -13,6 +13,7 @@
 //
 // Legacy mode (VITE_API_URL unset): the old Cloudflare SSE path.
 
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable, { invalidateTable } from '../api/airtable.js';
 import { useCareStore, mergeEntities, removeEntity } from './careStore.js';
 import { TABLE_TO_STORE_KEY } from './hydrate.js';

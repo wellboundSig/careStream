@@ -150,7 +150,19 @@ export function useLookups() {
   // <img> with an initials fallback, so a null sentinel is more useful
   // than the "—" placeholder used by the name resolvers.
   const resolveUserImage = useMemo(() => (id) => { const k = asId(id); return k ? (userImageMap[k] || null) : null; }, [userImageMap]);
+  const sourceEntityMap = useMemo(() => {
+    const map = {};
+    Object.values(referralSources).forEach((s) => {
+      const entity = (s.source_entity || '').trim();
+      if (!entity) return;
+      if (s.id)  map[s.id]  = entity;
+      if (s._id) map[s._id] = entity;
+    });
+    return map;
+  }, [referralSources]);
+
   const resolveSource    = useMemo(() => (id) => { const k = asId(id); return (k && sourceMap[k])    || '—'; }, [sourceMap]);
+  const resolveSourceEntity = useMemo(() => (id) => { const k = asId(id); return (k && sourceEntityMap[k]) || '—'; }, [sourceEntityMap]);
   const resolveRole      = useMemo(() => (id) => { const k = asId(id); return (k && roleMap[k])     || '—'; }, [roleMap]);
   const resolveFacility  = useMemo(() => (id) => { const k = asId(id); return (k && facilityMap[k]) || '—'; }, [facilityMap]);
   const resolvePhysician = useMemo(() => (id) => { const k = asId(id); return (k && physicianMap[k])|| '—'; }, [physicianMap]);
@@ -162,6 +174,7 @@ export function useLookups() {
     resolveUser,
     resolveUserImage,
     resolveSource,
+    resolveSourceEntity,
     resolveRole,
     resolveFacility,
     resolvePhysician,

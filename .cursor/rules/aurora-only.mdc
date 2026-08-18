@@ -1,0 +1,14 @@
+---
+description: CareStream is Aurora/AWS only — never Airtable
+alwaysApply: true
+---
+
+# Aurora only — no Airtable
+
+CareStream is fully migrated. **Do not use Airtable** in production, development, new code, comments that imply it is live, or fallbacks.
+
+- Data lives in **Aurora PostgreSQL** on AWS, via **wellbound-api**.
+- `src/api/airtable.js` is a **legacy filename**. It is the Aurora records client (Airtable-shaped JSON wire). Do not add `api.airtable.com`, PATs, base IDs, or worker URLs.
+- Require `VITE_API_URL`. If it is missing, fail — do not fall back to Airtable.
+- New columns go in `db/migrations/`, `db/registry.json`, and `services/wellbound-api/registry.json`. The live API must be rebuilt/redeployed after registry changes (`npm run api:build` + Lambda update) or it returns 422 Unknown field.
+- When you touch a file that still says `import airtable`, leave or keep the LEGACY FILENAME comment. Do not introduce new Airtable-named modules.

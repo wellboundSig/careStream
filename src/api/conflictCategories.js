@@ -1,3 +1,4 @@
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from './airtable.js';
 
 // Admin-managed list of conflict categories (the structured "reasons" staff

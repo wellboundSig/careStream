@@ -80,7 +80,12 @@ describe('Module permission keys', () => {
 
 const mockCan = vi.fn().mockReturnValue(true);
 vi.mock('../../../hooks/usePermissions.js', () => ({
-  usePermissions: () => ({ can: mockCan, canAny: (...keys) => keys.some((k) => mockCan(k)), granted: new Set() }),
+  usePermissions: () => ({
+    can: mockCan,
+    canAny: (...keys) => keys.some((k) => mockCan(k)),
+    hasDivision: () => true,
+    granted: new Set(),
+  }),
 }));
 
 vi.mock('../../../hooks/useCurrentAppUser.js', () => ({
@@ -91,9 +96,16 @@ vi.mock('../../../hooks/useIsMobile.js', () => ({
   useIsMobile: () => false,
 }));
 
+vi.mock('../../../context/UserPreferencesContext.jsx', () => ({
+  usePreferences: () => ({
+    prefs: { tableScrollMode: 'full', socCompletedView: null },
+    save: vi.fn(),
+  }),
+}));
+
 vi.mock('react-router-dom', () => ({
   useOutletContext: () => ({ division: 'All' }),
-  useLocation: () => ({ pathname: '/modules/lead-entry' }),
+  useLocation: () => ({ pathname: '/modules/lead-entry', state: null }),
   NavLink: ({ children, ...props }) => <a {...props}>{children}</a>,
 }));
 
@@ -122,13 +134,14 @@ vi.mock('../../../hooks/useLookups.js', () => ({
     resolveUser: (id) => id === 'usr_1' ? 'Alice' : id === 'usr_2' ? 'Bob' : id || '—',
     resolveMarketer: (id) => id || '—',
     resolveSource: (id) => id === 'src_1' ? 'Hospital A' : id === 'src_2' ? 'Clinic B' : '—',
+    resolveSourceEntity: (id) => id === 'src_1' ? 'Tri-County Care' : id === 'src_2' ? 'NYU' : '—',
     resolveFacility: (id) => id === 'fac_1' ? 'Sunrise ALF' : '—',
     resolvePhysician: (id) => '—',
   }),
 }));
 
 vi.mock('../../../context/PatientDrawerContext.jsx', () => ({
-  usePatientDrawer: () => ({ open: vi.fn() }),
+  usePatientDrawer: () => ({ open: vi.fn(), isOpen: false }),
 }));
 
 vi.mock('../../../store/careStore.js', () => ({
@@ -150,11 +163,16 @@ vi.mock('../../../utils/recordTransition.js', () => ({
   recordTransition: vi.fn(),
 }));
 
-vi.mock('../../../data/stageConfig.js', () => ({
-  STAGE_META: {
-    'Lead Entry': { displayName: 'Leads', description: 'New referral submissions', color: '#06D4FF', isGlobal: false, isTerminal: false },
-  },
-}));
+vi.mock('../../../data/stageConfig.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    STAGE_META: {
+      ...actual.STAGE_META,
+      'Lead Entry': { displayName: 'Leads', description: 'New referral submissions', color: '#06D4FF', isGlobal: false, isTerminal: false },
+    },
+  };
+});
 
 vi.mock('../../../utils/stageTransitions.js', () => ({
   canMoveFromTo: () => true,
@@ -180,6 +198,8 @@ describe('ModulePage — Column system', () => {
     const headerTexts = headers.map((h) => h.textContent.replace('ⓘ', '').trim());
     expect(headerTexts).toContain('Patient');
     expect(headerTexts).toContain('Division');
+    expect(headerTexts).toContain('Entity');
+    expect(headerTexts).toContain('Referral Entity');
     expect(headerTexts).toContain('Source');
     expect(headerTexts).toContain('Marketer');
     expect(headerTexts).toContain('Triage');
@@ -319,9 +339,9 @@ describe('ModulePage — search with clear × button', () => {
 describe('ModulePage — button color conventions', () => {
   beforeEach(() => { vi.clearAllMocks(); mockCan.mockReturnValue(true); });
 
-  it('renders "+ New Referral" as a green (actionable) button for Lead Entry', () => {
+  it('renders "+ New Lead" as a green (actionable) button for Lead Entry', () => {
     renderModule();
-    const newRefBtns = screen.getAllByText('+ New Referral');
+    const newRefBtns = screen.getAllByText('+ New Lead');
     const greenBtn = newRefBtns.find((el) => el.style.background?.includes('#6EC72B'));
     expect(greenBtn).toBeTruthy();
   });

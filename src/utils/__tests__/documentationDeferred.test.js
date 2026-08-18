@@ -15,6 +15,9 @@ import {
   markDocsCompleteAndSendToClinical,
   maybeClearDocumentationDeferred,
   isDocumentationDeferred,
+  clinicalConfirmDestination,
+  CLINICAL_CONFIRM_SOC_COMPLETED,
+  CLINICAL_CONFIRM_EMR,
 } from '../documentationDeferred.js';
 
 describe('documentationDeferred clear path', () => {
@@ -106,6 +109,17 @@ describe('documentationDeferred clear path', () => {
     expect(createNoteOptimistic).not.toHaveBeenCalled();
   });
 
+  it('docs-only clear never sets in_clinical_review', async () => {
+    const result = await clearDocumentationDeferred({
+      _id: 'rec1',
+      id: 'ref_1',
+      documentation_deferred: true,
+    }, { actorUserId: 'u1', source: 'intake_panel' });
+    expect(result.ok).toBe(true);
+    expect(updateReferralOptimistic.mock.calls[0][1].in_clinical_review).toBeUndefined();
+    expect(createNoteOptimistic).not.toHaveBeenCalled();
+  });
+
   it('auto-clear still waits for both F2F and clinical', async () => {
     const skipped = await maybeClearDocumentationDeferred({
       _id: 'rec1',
@@ -123,5 +137,39 @@ describe('documentationDeferred clear path', () => {
     }, { actorUserId: 'u1' });
     expect(cleared).toBe(true);
     expect(updateReferralOptimistic).toHaveBeenCalled();
+  });
+});
+
+describe('clinicalConfirmDestination', () => {
+  it('sends post-SOC cases to SOC Completed (skips EMR / staffing / scheduling)', () => {
+    expect(clinicalConfirmDestination({
+      current_stage: 'Clinical Intake RN Review',
+      soc_completed_date: '2026-07-02',
+    })).toBe(CLINICAL_CONFIRM_SOC_COMPLETED);
+    expect(clinicalConfirmDestination({
+      current_stage: 'Intake',
+      soc_completed_date: '2026-07-02',
+    })).toBe(CLINICAL_CONFIRM_SOC_COMPLETED);
+    expect(clinicalConfirmDestination({
+      current_stage: 'SOC Completed',
+      soc_completed_date: '2026-07-02',
+    })).toBe(CLINICAL_CONFIRM_SOC_COMPLETED);
+  });
+
+  it('stamps only when deferred docs are already past the clinical gate', () => {
+    expect(clinicalConfirmDestination({
+      current_stage: 'EMR Onboarding',
+      documentation_deferred: true,
+    })).toBeNull();
+    expect(clinicalConfirmDestination({
+      current_stage: 'Staffing Feasibility',
+      documentation_deferred: true,
+    })).toBeNull();
+  });
+
+  it('sends normal pre-SOC clinical confirms to EMR Onboarding', () => {
+    expect(clinicalConfirmDestination({
+      current_stage: 'Clinical Intake RN Review',
+    })).toBe(CLINICAL_CONFIRM_EMR);
   });
 });

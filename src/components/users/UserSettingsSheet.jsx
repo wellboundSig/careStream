@@ -3,6 +3,7 @@ import { getReferrals } from '../../api/referrals.js';
 import { createUserPermission, updateUserPermission } from '../../api/userPermissions.js';
 import { syncUserLanguages } from '../../api/userLanguages.js';
 import { syncCocNurseFacilities } from '../../api/cocNurseFacilities.js';
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../../api/airtable.js';
 import { useCareStore, mergeEntities, removeEntity, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';

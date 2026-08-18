@@ -6,6 +6,7 @@
 
 import { updateReferralOptimistic, createNoteOptimistic } from '../store/mutations.js';
 import { recordActivity } from '../api/activityLog.js';
+import { isSocCompletedReferral } from '../data/stageConfig.js';
 
 export const DOCUMENTATION_CLOCK_DAYS = 30;
 
@@ -96,6 +97,32 @@ export function documentationDeferredStartFields(actorUserId) {
 
 function isInClinicalReview(referral) {
   return referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
+}
+
+/** Stages already past the pre-SOC clinical gate — stamp only, do not hop to EMR. */
+const PAST_CLINICAL_GATE = new Set([
+  'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Intake',
+]);
+
+export const CLINICAL_CONFIRM_SOC_COMPLETED = 'SOC Completed';
+export const CLINICAL_CONFIRM_EMR = 'EMR Onboarding';
+
+/**
+ * Where Clinical RN "mark completed" should land.
+ *   'SOC Completed'  — SOC already happened; skip EMR / staffing / scheduling
+ *   null             — concurrent mid-pipeline (stamp only, stay put)
+ *   'EMR Onboarding' — normal pre-SOC clinical confirm
+ */
+export function clinicalConfirmDestination(referral) {
+  if (!referral) return CLINICAL_CONFIRM_EMR;
+  if (isSocCompletedReferral(referral)) return CLINICAL_CONFIRM_SOC_COMPLETED;
+  if (
+    PAST_CLINICAL_GATE.has(referral.current_stage)
+    && (isDocumentationDeferred(referral) || needsPostSocClinical(referral))
+  ) {
+    return null;
+  }
+  return CLINICAL_CONFIRM_EMR;
 }
 
 /**

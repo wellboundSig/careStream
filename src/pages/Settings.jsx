@@ -262,6 +262,16 @@ export default function Settings() {
         </SettingRow>
 
         <SettingRow
+          label="Locked table grid"
+          hint="The grid stays put — scrolling flips records through the same row slots instead of moving the table. Off keeps the current full-table scroll."
+        >
+          <Toggle
+            checked={(prefs.tableScrollMode || 'full') === 'locked'}
+            onChange={() => save({ tableScrollMode: (prefs.tableScrollMode || 'full') === 'locked' ? 'full' : 'locked' })}
+          />
+        </SettingRow>
+
+        <SettingRow
           label="Pop-Out Window"
           hint="Open any page in a separate window with shared data. Use the pop-out button in the top bar."
         >

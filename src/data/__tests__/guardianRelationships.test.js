@@ -13,6 +13,7 @@ describe('normalizeGuardianRelationship', () => {
 
   it('keeps catalog values', () => {
     expect(normalizeGuardianRelationship('Spouse')).toBe('Spouse');
+    expect(normalizeGuardianRelationship('Facility')).toBe('Facility');
   });
 });
 

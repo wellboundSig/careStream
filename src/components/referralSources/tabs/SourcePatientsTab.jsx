@@ -2,10 +2,22 @@ import { useState, useMemo } from 'react';
 import StageBadge from '../../common/StageBadge.jsx';
 import DivisionBadge from '../../common/DivisionBadge.jsx';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
+import { useLookups } from '../../../hooks/useLookups.js';
+import { useCareStore } from '../../../store/careStore.js';
 import { FilterInput } from '../../../utils/columnModel.jsx';
+import { useLockedTableGrid } from '../../../hooks/useLockedTableGrid.js';
+import { useFlipWindow } from '../../../hooks/useFlipWindow.js';
+import { lockedGridClass, lockColClass } from '../../../utils/tableScrollMode.js';
+import FlipTableShell from '../../common/FlipTableShell.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 import { isSocCompletedReferral } from '../../../data/stageConfig.js';
+import {
+  TRIAGE_FILTER_OPTIONS,
+  buildTriagePresenceMap,
+  matchesTriageFilter,
+  triageColumnLabel,
+} from '../../../utils/triageColumn.js';
 
 const F2F_COLORS = {
   Green:   palette.accentGreen.hex,
@@ -18,7 +30,9 @@ const F2F_COLORS = {
 const COLUMN_DEFS = [
   { key: 'patient',   label: 'Patient',   filterable: false },
   { key: 'division',  label: 'Division',  filterable: true },
+  { key: 'licence',   label: 'Entity',     filterable: true },
   { key: 'stage',     label: 'Stage',     filterable: true },
+  { key: 'triage',    label: 'Triage',    filterable: true },
   { key: 'insurance', label: 'Insurance', filterable: true },
   { key: 'f2f',       label: 'F2F',       filterable: false },
   { key: 'date',      label: 'Received',  filterable: false },
@@ -26,15 +40,23 @@ const COLUMN_DEFS = [
 
 export default function SourcePatientsTab({ referrals, loading }) {
   const { open: openPatient } = usePatientDrawer();
+  const { resolveEntity } = useLookups();
+  const lockedGrid = useLockedTableGrid();
+  const triageAdult = useCareStore((s) => s.triageAdult);
+  const triagePediatric = useCareStore((s) => s.triagePediatric);
+  const triagePresence = useMemo(
+    () => buildTriagePresenceMap(triageAdult, triagePediatric),
+    [triageAdult, triagePediatric]
+  );
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [colFilters, setColFilters] = useState({ division: '', stage: '', insurance: '' });
+  const [colFilters, setColFilters] = useState({ division: '', licence: '', stage: '', triage: '', insurance: '' });
   const [sortField, setSortField] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
 
   function setColFilter(key, val) { setColFilters((p) => ({ ...p, [key]: val })); }
-  function clearAll() { setSearch(''); setColFilters({ division: '', stage: '', insurance: '' }); setStatusFilter('all'); }
+  function clearAll() { setSearch(''); setColFilters({ division: '', licence: '', stage: '', triage: '', insurance: '' }); setStatusFilter('all'); }
 
   const hasActiveFilters = search.trim() || Object.values(colFilters).some((v) => v.trim()) || statusFilter !== 'all';
 
@@ -56,7 +78,9 @@ export default function SourcePatientsTab({ referrals, loading }) {
       list = list.filter((r) => {
         switch (key) {
           case 'division':  return (r.division || '').toLowerCase().includes(q);
+          case 'licence':   return (resolveEntity(r.entity_id) || '').toLowerCase().includes(q);
           case 'stage':     return (r.current_stage || '').toLowerCase().includes(q);
+          case 'triage':    return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
           case 'insurance': return (r.insurance_plan || '').toLowerCase().includes(q);
           default: return true;
         }
@@ -81,7 +105,10 @@ export default function SourcePatientsTab({ referrals, loading }) {
       }
       return 0;
     });
-  }, [referrals, statusFilter, search, colFilters, sortField, sortDir]);
+  }, [referrals, statusFilter, search, colFilters, sortField, sortDir, resolveEntity, triagePresence]);
+
+  const tabHeaderH = showFilters ? 64 : 34;
+  const flip = useFlipWindow(displayed, lockedGrid, { rowHeight: 42, headerHeight: tabHeaderH });
 
   const colOptions = useMemo(() => {
     const opts = {};
@@ -90,14 +117,16 @@ export default function SourcePatientsTab({ referrals, loading }) {
       referrals.forEach((r) => {
         switch (col.key) {
           case 'division':  if (r.division) vals.add(r.division); break;
+          case 'licence':   { const v = resolveEntity(r.entity_id); if (v && v !== '—') vals.add(v); break; }
           case 'stage':     if (r.current_stage) vals.add(r.current_stage); break;
+          case 'triage':    TRIAGE_FILTER_OPTIONS.forEach((opt) => vals.add(opt)); break;
           case 'insurance': if (r.insurance_plan) vals.add(r.insurance_plan); break;
         }
       });
       opts[col.key] = [...vals].sort();
     });
     return opts;
-  }, [referrals]);
+  }, [referrals, resolveEntity]);
 
   function toggleSort(field) {
     if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -127,7 +156,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
         {hasActiveFilters && <button onClick={clearAll} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'none', fontSize: 11, fontWeight: 600, color: palette.primaryMagenta.hex, cursor: 'pointer' }}>Clear</button>}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <FlipTableShell flip={flip} headerHeight={tabHeaderH} className={lockedGridClass(lockedGrid)} style={{ flex: 1, minHeight: 0 }}>
         {loading ? (
           <p style={{ padding: '32px 22px', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', textAlign: 'center' }}>
             Loading patients…
@@ -146,6 +175,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
                   return (
                     <th
                       key={col.key}
+                      className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined}
                       onClick={field ? () => toggleSort(field) : undefined}
                       style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), cursor: field ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
                     >
@@ -158,7 +188,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
               {showFilters && (
                 <tr style={{ background: hexToRgba(palette.accentBlue.hex, 0.03), borderBottom: `1px solid var(--color-border)` }}>
                   {COLUMN_DEFS.map((col) => (
-                    <th key={col.key} style={{ padding: '3px 6px' }}>
+                    <th key={col.key} className={col.key === 'patient' ? lockColClass(lockedGrid) : undefined} style={{ padding: '3px 6px' }}>
                       {col.filterable ? <FilterInput value={colFilters[col.key] || ''} onChange={(v) => setColFilter(col.key, v)} placeholder={col.label} options={colOptions[col.key] || []} /> : null}
                     </th>
                   ))}
@@ -166,7 +196,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
               )}
             </thead>
             <tbody>
-              {displayed.map((ref) => {
+              {flip.windowItems.map((ref) => {
                 const f2fColor = F2F_COLORS[ref.f2f_urgency] || null;
                 return (
                   <tr key={ref._id}
@@ -175,11 +205,13 @@ export default function SourcePatientsTab({ referrals, loading }) {
                       style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, cursor: 'pointer' }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.03))}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '9px 12px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>
+                    <td className={lockColClass(lockedGrid)} style={{ padding: '9px 12px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>
                       {ref.patientName || ref.patient_id || <em style={{ color: hexToRgba(palette.backgroundDark.hex, 0.4), fontWeight: 400 }}>Unnamed</em>}
                     </td>
                     <td style={{ padding: '9px 12px' }}><DivisionBadge division={ref.division} size="small" /></td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveEntity(ref.entity_id) || '—'}</td>
                     <td style={{ padding: '9px 12px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '9px 12px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>{triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]))}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{ref.insurance_plan || '—'}</td>
                     <td style={{ padding: '9px 12px' }}>
                       {f2fColor
@@ -193,7 +225,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
             </tbody>
           </table>
         )}
-      </div>
+      </FlipTableShell>
 
       <div style={{ padding: '8px 16px', borderTop: `1px solid var(--color-border)`, flexShrink: 0, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
         {displayed.length} of {referrals.length} {referrals.length === 1 ? 'patient' : 'patients'}

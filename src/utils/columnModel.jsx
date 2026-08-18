@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import palette, { hexToRgba } from './colors.js';
 
 // ── Patient list column definitions ─────────────────────────────────────────
@@ -6,8 +6,9 @@ export const PATIENT_COLUMN_DEFS = [
   { key: 'patient',         label: 'Patient',         defaultOn: true,  alwaysOn: true,  sortField: 'last_name',      filterable: false },
   { key: 'division',        label: 'Division',         defaultOn: true,  sortField: 'division',        filterable: true  },
   { key: 'episode_type',    label: 'Episode',          defaultOn: true,  filterable: true, tooltip: 'Start of Care or Resumption of Care' },
-  { key: 'licence',         label: 'Entity',           defaultOn: true,  filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
+  { key: 'licence',         label: 'Entity',           defaultOn: true,  filterable: true, tooltip: 'Wellbound licence (WB / WBII), assigned by county' },
   { key: 'stage',           label: 'Stage',            defaultOn: true,  sortField: 'stage',           filterable: true  },
+  { key: 'triage',          label: 'Triage',           defaultOn: true,  filterable: true, tooltip: 'Special Needs triage. Filter: Done · Needed · N/A' },
   { key: 'f2f',  label: 'F2F',  tooltip: 'Face-to-Face authorization — shows days until the F2F order expires (red = expired, orange = ≤14d remaining)',  defaultOn: true, filterable: false },
   { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter accepts a number; matches stages with at least that many days.' },
   { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter accepts a number.' },
@@ -15,6 +16,7 @@ export const PATIENT_COLUMN_DEFS = [
   { key: 'insurance',       label: 'Insurance',        defaultOn: true,  sortField: 'insurance_plan',  filterable: true  },
   { key: 'referral_date',   label: 'Referral Date',    defaultOn: true,  filterable: true  },
   { key: 'referral_source', label: 'Referral Source',  defaultOn: true, filterable: true  },
+  { key: 'source_entity',   label: 'Referral Entity',  defaultOn: true, filterable: true, tooltip: 'Company or CCO of the referral source — not the Wellbound licence' },
   { key: 'facility',        label: 'Facility',         defaultOn: true, filterable: true  },
   { key: 'physician',       label: 'Physician',        defaultOn: true, filterable: true  },
   // Urgent care lives at the END so it doesn't crowd the patient label
@@ -27,11 +29,12 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'patient',   label: 'Patient',    defaultOn: true, alwaysOn: true, filterable: false },
   { key: 'division',  label: 'Division',   defaultOn: true, filterable: true },
   { key: 'episode_type', label: 'Episode', defaultOn: true, filterable: true, tooltip: 'Start of Care or Resumption of Care' },
-  { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'Entity name from the Entities table (selected by county)' },
+  { key: 'licence',   label: 'Entity',     defaultOn: true, filterable: true, tooltip: 'Wellbound licence (WB / WBII), assigned by county' },
   { key: 'source',    label: 'Source',     defaultOn: true, filterable: true },
+  { key: 'source_entity', label: 'Referral Entity', defaultOn: true, filterable: true, tooltip: 'Company or CCO of the referral source — not the Wellbound licence' },
   { key: 'marketer',  label: 'Marketer',   defaultOn: true, filterable: true },
   { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: true, tooltip: 'Current pipeline stage' },
-  { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: false },
+  { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: true, tooltip: 'Special Needs triage. Filter: Done · Needed · N/A' },
   { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter accepts a number; matches stages with at least that many days.' },
   { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter accepts a number.' },
   { key: 'f2f',       label: 'F2F',        defaultOn: true, filterable: false, tooltip: 'F2F authorization countdown' },
@@ -61,6 +64,9 @@ export const SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS = [
   { key: 'patient', label: 'Patient', defaultOn: true, alwaysOn: true, filterable: false, sortField: 'name' },
   { key: 'facility', label: 'Facility', defaultOn: true, filterable: true },
   { key: 'episode_type', label: 'Episode', defaultOn: true, filterable: true, tooltip: 'Start of Care or Resumption of Care' },
+  { key: 'licence', label: 'Entity', defaultOn: true, filterable: true, tooltip: 'Wellbound licence (WB / WBII), assigned by county' },
+  { key: 'source_entity', label: 'Referral Entity', defaultOn: true, filterable: true, tooltip: 'Company or CCO of the referral source — not the Wellbound licence' },
+  { key: 'triage', label: 'Triage', defaultOn: true, filterable: true, tooltip: 'Special Needs triage. Filter: Done · Needed · N/A' },
   { key: 'insurance', label: 'Insurance', defaultOn: true, filterable: true },
   { key: 'urgent', label: 'Urgent care', defaultOn: true, filterable: true, tooltip: 'Urgent / pre-care flag. Filter: yes / no' },
   { key: 'urgent_care_type', label: 'Urgent type', defaultOn: true, filterable: true, tooltip: 'Wound care, Insulin, and Injection. Multiple can be selected.' },
@@ -178,6 +184,7 @@ export function ColumnPicker({
   onFreezePatientChange = null,
 }) {
   const ref = useRef(null);
+  const [maxHeight, setMaxHeight] = useState(480);
   const showFreezeToggle = typeof freezePatient === 'boolean' && typeof onFreezePatientChange === 'function';
 
   useEffect(() => {
@@ -188,32 +195,63 @@ export function ColumnPicker({
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    function update() {
+      const top = el.getBoundingClientRect().top;
+      setMaxHeight(Math.max(180, window.innerHeight - top - 12));
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   return (
-    <div ref={ref} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 200, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 8, padding: '8px 0', minWidth: 220, boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}` }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Columns</p>
-      {columnDefs.map((col) => (
-        <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 14px', cursor: col.alwaysOn ? 'default' : 'pointer', opacity: col.alwaysOn ? 0.45 : 1 }}>
-          <input
-            type="checkbox"
-            checked={visibleCols.has(col.key)}
-            disabled={col.alwaysOn}
-            onChange={() => {
-              if (col.alwaysOn) return;
-              const next = new Set(visibleCols);
-              if (next.has(col.key)) next.delete(col.key);
-              else next.add(col.key);
-              onChange(next);
-            }}
-            style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13 }}
-          />
-          <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{col.label}</span>
-        </label>
-      ))}
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        top: '100%',
+        right: 0,
+        marginTop: 4,
+        zIndex: 200,
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight,
+        minWidth: 220,
+        background: palette.backgroundLight.hex,
+        border: `1px solid var(--color-border)`,
+        borderRadius: 8,
+        padding: '8px 0',
+        boxShadow: `0 6px 20px ${hexToRgba(palette.backgroundDark.hex, 0.12)}`,
+      }}
+    >
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px', flexShrink: 0 }}>Columns</p>
+      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, overscrollBehavior: 'contain' }}>
+        {columnDefs.map((col) => (
+          <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 14px', cursor: col.alwaysOn ? 'default' : 'pointer', opacity: col.alwaysOn ? 0.45 : 1 }}>
+            <input
+              type="checkbox"
+              checked={visibleCols.has(col.key)}
+              disabled={col.alwaysOn}
+              onChange={() => {
+                if (col.alwaysOn) return;
+                const next = new Set(visibleCols);
+                if (next.has(col.key)) next.delete(col.key);
+                else next.add(col.key);
+                onChange(next);
+              }}
+              style={{ accentColor: palette.primaryMagenta.hex, width: 13, height: 13 }}
+            />
+            <span style={{ fontSize: 12.5, color: palette.backgroundDark.hex }}>{col.label}</span>
+          </label>
+        ))}
+      </div>
       {showFreezeToggle && (
-        <>
-          <div style={{ height: 1, background: 'var(--color-border)', margin: '8px 0' }} />
+        <div style={{ flexShrink: 0, borderTop: '1px solid var(--color-border)', marginTop: 4, paddingTop: 8 }}>
           <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), padding: '2px 14px 8px' }}>Freeze</p>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 14px', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 14px 4px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={freezePatient}
@@ -227,7 +265,7 @@ export function ColumnPicker({
               </span>
             </span>
           </label>
-        </>
+        </div>
       )}
     </div>
   );

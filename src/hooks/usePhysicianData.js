@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
 

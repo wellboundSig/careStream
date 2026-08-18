@@ -15,6 +15,9 @@ import {
   documentationDueFieldsForSocDate,
   maybeClearDocumentationDeferred,
   needsPostSocClinical,
+  clinicalConfirmDestination,
+  CLINICAL_CONFIRM_SOC_COMPLETED,
+  CLINICAL_CONFIRM_EMR,
 } from '../../utils/documentationDeferred.js';
 import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { discardReferral } from '../../utils/discardReferral.js';
@@ -2206,15 +2209,53 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       ...postSocClinicalCompleteClearFields(),
     };
 
-    // Post-SOC / concurrent clinical: stamp only — stay on SOC Completed.
-    // Do not bounce to EMR Onboarding.
-    const alreadyPastClinicalGate = [
-      'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Intake',
-    ].includes(selectedReferral.current_stage);
-    if (isPostSocClinical || (
-      alreadyPastClinicalGate
-      && (isDocumentationDeferred(selectedReferral) || needsPostSocClinical(selectedReferral))
-    )) {
+    const destination = clinicalConfirmDestination(selectedReferral);
+
+    // SOC already happened — finish clinical and land on SOC Completed.
+    // Skip EMR Onboarding, staffing, and scheduling.
+    if (destination === CLINICAL_CONFIRM_SOC_COMPLETED) {
+      try {
+        if (selectedReferral.current_stage !== 'SOC Completed') {
+          const result = attemptTransition({
+            referral: selectedReferral,
+            toStage: 'SOC Completed',
+            context: {
+              system: true,
+              actorUserId: appUserId,
+              extraFields: clinicalFields,
+              note: '[Post-SOC clinical completed → SOC Completed]',
+            },
+          });
+          if (result.allowed) {
+            onSelectedReferralLeftModule?.();
+            await applyTransition({
+              referral: selectedReferral,
+              result,
+              context: { actorUserId: appUserId },
+            });
+          } else {
+            await updateReferralOptimistic(selectedReferral._id, {
+              ...clinicalFields,
+              current_stage: 'SOC Completed',
+            });
+            onSelectedReferralLeftModule?.();
+          }
+        } else {
+          await updateReferralOptimistic(selectedReferral._id, clinicalFields);
+          onSelectedReferralLeftModule?.();
+        }
+        await maybeClearDocumentationDeferred(
+          { ...selectedReferral, ...clinicalFields },
+          { actorUserId: appUserId, source: 'clinical_post_soc' },
+        );
+        triggerDataRefresh();
+      } catch {}
+      return;
+    }
+
+    // Concurrent mid-pipeline (deferred docs, already past the clinical gate):
+    // stamp only — do not hop to EMR Onboarding.
+    if (destination == null) {
       try {
         await updateReferralOptimistic(selectedReferral._id, clinicalFields);
         await maybeClearDocumentationDeferred(
@@ -2230,7 +2271,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     // Clinical RN's confirm is the exit from this module → EMR Onboarding.
     const result = attemptTransition({
       referral: selectedReferral,
-      toStage: 'EMR Onboarding',
+      toStage: destination === CLINICAL_CONFIRM_EMR ? 'EMR Onboarding' : destination,
       context: {
         note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
         actorUserId: appUserId,
@@ -2437,6 +2478,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
                 referral={selectedReferral}
                 source="clinical_post_soc_panel"
                 compact
+                offerSendToClinical={false}
                 onOpenF2F={() => onOpenFiles?.(selectedReferral)}
               />
             </PanelSection>
@@ -2466,7 +2508,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             </button>
             {isPostSocClinical && canConfirm && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '0 0 6px', lineHeight: 1.4 }}>
-                Leaves Clinical. Stays on SOC/ROC Completed. Clears docs hold when F2F is also done.
+                {clinicalConfirmDestination(selectedReferral) === CLINICAL_CONFIRM_SOC_COMPLETED
+                  ? 'Leaves Clinical and goes to SOC/ROC Completed. Does not go through EMR, staffing, or scheduling.'
+                  : 'Leaves Clinical. Stays on the current stage. Clears docs hold when F2F is also done.'}
               </p>
             )}
           </PanelSection>

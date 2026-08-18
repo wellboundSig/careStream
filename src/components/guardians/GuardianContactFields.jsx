@@ -1,11 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import {
   GUARDIAN_RELATIONSHIPS,
   normalizeGuardianRelationship,
   splitContactNameAndRelationship,
 } from '../../data/guardianRelationships.js';
-import { guardianDisplay, guardianPhoneDigits, isStaffDirectoryEmail } from '../../utils/knownGuardians.js';
+import {
+  guardianDisplay,
+  guardianPhoneDigits,
+  isStaffDirectoryEmail,
+  buildContactLookupList,
+  deactivateUnnamedKnownGuardians,
+} from '../../utils/knownGuardians.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /**
@@ -35,12 +41,13 @@ export default function GuardianContactFields({
   }
 
   function applyGuardian(slot, guardian, relationship) {
+    const isFacility = guardian.kind === 'facility';
     const next = {
-      name: guardianDisplay(guardian),
+      name: guardian.display_name || guardianDisplay(guardian),
       phone: guardianPhoneDigits(guardian.phone) || '',
       email: guardian.email || '',
-      relationship: relationship || v[slot]?.relationship || '',
-      guardian_id: guardian.id,
+      relationship: relationship || (isFacility ? 'Facility' : '') || v[slot]?.relationship || '',
+      guardian_id: isFacility ? undefined : guardian.id,
     };
     if (slot === 'primary' && sameAsPrimary) {
       onChange?.({
@@ -372,22 +379,26 @@ function normalize(s) {
 
 function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
   const storeGuardians = useCareStore((s) => s.knownGuardians) || {};
+  const storeFacilities = useCareStore((s) => s.facilities) || {};
+  const storeNetworkFacilities = useCareStore((s) => s.networkFacilities) || {};
   const [q, setQ] = useState('');
   const [relationship, setRelationship] = useState(defaultRelationship || '');
 
+  useEffect(() => {
+    deactivateUnnamedKnownGuardians();
+  }, []);
+
   const list = useMemo(() => {
-    const all = Object.values(storeGuardians)
-      .filter((g) => g.is_active !== false)
-      .sort((a, b) => guardianDisplay(a).localeCompare(guardianDisplay(b)));
-    const query = q.trim().toLowerCase();
-    if (!query) return all.slice(0, 40);
-    const phoneQ = query.replace(/\D/g, '');
-    return all.filter((g) => {
-      const name = guardianDisplay(g).toLowerCase();
-      const phone = guardianPhoneDigits(g.phone);
-      return name.includes(query) || (phoneQ && phone.includes(phoneQ));
-    }).slice(0, 40);
-  }, [storeGuardians, q]);
+    const facilities = [
+      ...Object.values(storeFacilities),
+      ...Object.values(storeNetworkFacilities),
+    ];
+    return buildContactLookupList({
+      guardians: Object.values(storeGuardians),
+      facilities,
+      query: q,
+    });
+  }, [storeGuardians, storeFacilities, storeNetworkFacilities, q]);
 
   return (
     <div
@@ -406,7 +417,10 @@ function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
       }}>
         <div style={{ padding: '16px 18px', borderBottom: `1px solid var(--color-border)` }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>
-            Find known guardian
+            Find known contact
+          </p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '4px 0 0' }}>
+            Named people and facilities
           </p>
         </div>
 
@@ -443,9 +457,9 @@ function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
           ) : (
             list.map((g) => (
               <button
-                key={g._id || g.id}
+                key={`${g.kind}:${g._id || g.id}`}
                 type="button"
-                onClick={() => onSelect(g, relationship)}
+                onClick={() => onSelect(g, relationship || (g.kind === 'facility' ? 'Facility' : ''))}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left',
                   padding: '12px 18px', border: 'none', borderBottom: `1px solid var(--color-border)`,
@@ -453,10 +467,18 @@ function KnownGuardianPicker({ onClose, onSelect, defaultRelationship }) {
                 }}
               >
                 <p style={{ fontSize: 14, fontWeight: 650, color: palette.backgroundDark.hex, margin: 0 }}>
-                  {guardianDisplay(g) || '—'}
+                  {g.display_name}
+                  {g.kind === 'facility' && (
+                    <span style={{
+                      marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+                      textTransform: 'uppercase', color: palette.accentBlue.hex,
+                    }}>
+                      Facility
+                    </span>
+                  )}
                 </p>
                 <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '3px 0 0' }}>
-                  {[g.phone, g.email].filter(Boolean).join(' · ') || 'No phone on file'}
+                  {[g.phone, g.email].filter(Boolean).join(' · ') || (g.kind === 'facility' ? 'Facility' : 'No phone on file')}
                 </p>
               </button>
             ))

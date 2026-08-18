@@ -48,6 +48,83 @@ function guardianDisplay(g) {
     || '';
 }
 
+/** Phone / digit junk typed into a name field (including partials like "917"). */
+export function isPhoneLikeContactLabel(s) {
+  const raw = String(s || '').trim();
+  if (!raw) return false;
+  const d = raw.replace(/\D/g, '');
+  if (d.length < 3) return false;
+  return /^[\d\s().+\-]+$/.test(raw);
+}
+
+/**
+ * Directory rows must be a named person or entity — not a dash, role word,
+ * email, or a phone (full or partial) sitting in the name slot.
+ */
+export function isNamedLookupContact(g) {
+  const display = guardianDisplay(g);
+  const { cleanName } = splitContactNameAndRelationship(display);
+  const name = String(cleanName || display || '').trim();
+  if (!name) return false;
+  if (isPhoneLikeContactLabel(name)) return false;
+  if (/@/.test(name)) return false;
+  if (normalizeGuardianRelationship(name)) return false;
+  return /[a-zA-Z]/.test(name);
+}
+
+export function facilityToLookupItem(facility) {
+  const name = String(facility?.name || '').trim();
+  if (!name || !/[a-zA-Z]/.test(name) || isPhoneLikeContactLabel(name)) return null;
+  return {
+    kind: 'facility',
+    id: facility.id || facility._id,
+    _id: facility._id || facility.id,
+    display_name: name,
+    phone: facility.phone || facility.primary_contact_phone || '',
+    email: facility.primary_contact_email || '',
+  };
+}
+
+/**
+ * Unified lookup list: named known contacts + named facilities.
+ * Dedupes when a guardian already exists under the same display name.
+ */
+export function buildContactLookupList({ guardians = [], facilities = [], query = '' } = {}) {
+  const namedPeople = (guardians || [])
+    .filter((g) => g.is_active !== false && isNamedLookupContact(g))
+    .map((g) => ({
+      kind: 'person',
+      id: g.id,
+      _id: g._id || g.id,
+      display_name: guardianDisplay(g),
+      phone: g.phone || '',
+      email: g.email || '',
+    }));
+
+  const seen = new Set(namedPeople.map((p) => p.display_name.trim().toLowerCase()));
+  const namedFacilities = [];
+  for (const f of facilities || []) {
+    const item = facilityToLookupItem(f);
+    if (!item) continue;
+    const key = item.display_name.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    namedFacilities.push(item);
+  }
+
+  const all = [...namedPeople, ...namedFacilities]
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return all.slice(0, 60);
+  const phoneQ = q.replace(/\D/g, '');
+  return all.filter((row) => {
+    const name = row.display_name.toLowerCase();
+    const phone = digits(row.phone);
+    return name.includes(q) || (phoneQ && phone.includes(phoneQ));
+  }).slice(0, 60);
+}
+
 /**
  * Find an existing known guardian by phone (preferred) or exact display name.
  */
@@ -72,7 +149,8 @@ export function findKnownGuardianMatch({ phone, displayName }, store = getStore(
 export async function upsertKnownGuardian({ name, phone, email }) {
   const { cleanName } = splitContactNameAndRelationship(name);
   const display = normalizeContactName(cleanName);
-  if (!display && !digits(phone)) return null;
+  // Directory is named people/entities only — never create a phone stub.
+  if (!display || !isNamedLookupContact({ display_name: display })) return null;
 
   const existing = findKnownGuardianMatch({ phone, displayName: display });
   if (existing) {
@@ -315,6 +393,8 @@ export async function savePatientContactSlot({
     phone,
     email,
   });
+  // Phone-only / nameless: keep patient mirrors (caller already wrote them)
+  // but do not add a dash-and-digits row to the known-contact directory.
   if (!guardian) return null;
 
   return linkGuardianToPatient({
@@ -452,6 +532,26 @@ export async function syncTriageCaregiversToGuardians({ patient, triageType, dat
       });
     }
   }
+}
+
+let unnamedCleanupStarted = false;
+
+/** Soft-deactivate nameless / phone-stub directory rows (once per session). */
+export async function deactivateUnnamedKnownGuardians() {
+  if (unnamedCleanupStarted) return 0;
+  unnamedCleanupStarted = true;
+  const store = getStore();
+  const junk = Object.values(store.knownGuardians || {})
+    .filter((g) => g.is_active !== false && !isNamedLookupContact(g));
+  if (!junk.length) return 0;
+  const now = new Date().toISOString();
+  await Promise.all(junk.map(async (g) => {
+    if (!g._id) return;
+    const fields = { is_active: false, updated_at: now };
+    await updateKnownGuardian(g._id, fields).catch(() => {});
+    updateEntity('knownGuardians', g._id, fields);
+  }));
+  return junk.length;
 }
 
 export { guardianDisplay, digits as guardianPhoneDigits };

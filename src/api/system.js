@@ -4,6 +4,7 @@
 // behind the "access soon" page (see MaintenanceGate). Reads fail OPEN: a
 // network/parse error must never lock everyone out of the app.
 
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from './airtable.js';
 
 /**

@@ -65,7 +65,8 @@ vi.mock('../../hooks/usePipelineData.js', () => ({
 vi.mock('../../hooks/useLookups.js', () => ({
   useLookups: () => ({
     resolveUser: () => '—', resolveMarketer: () => '—', resolveSource: () => 'Hospital',
-    resolveFacility: () => '—', resolvePhysician: () => '—',
+    resolveSourceEntity: () => 'Tri-County Care',
+    resolveFacility: () => '—', resolvePhysician: () => '—', resolveEntity: () => 'WB',
   }),
 }));
 

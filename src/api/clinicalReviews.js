@@ -12,7 +12,9 @@
  *     led to that decision, plus the in-progress decision/auth-required
  *     state so a user can leave + return without losing work.
  *
- * Airtable shape (created via airtable-apply-schema.js, 2026-05-27):
+ * LEGACY NOTE: field list below was first sketched against Airtable. Live
+ * store is Aurora `clinical_reviews`. Do not write to Airtable.
+ * Field list (historical schema note, 2026-05-27):
  *   id              singleLineText  (custom id)
  *   referral_id     multipleRecordLinks → Referrals
  *   reviewed_by     multilineText   (user business id — last editor)
@@ -27,6 +29,7 @@
  *     `npm run schema:apply`.
  */
 
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from './airtable.js';
 import { toLinks } from './_linkHelpers.js';
 import { CLINICAL_UI_TO_DB, CLINICAL_DB_TO_UI } from '../data/clinicalChecklist.js';

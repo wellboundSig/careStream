@@ -22,6 +22,7 @@
  *     dbToUiFields helpers so the mapping lives in one place.
  */
 
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from './airtable.js';
 import { toLinks } from './_linkHelpers.js';
 import { CURSORY_UI_TO_DB, CURSORY_DB_TO_UI } from '../data/f2fChecklist.js';

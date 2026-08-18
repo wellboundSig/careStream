@@ -1,23 +1,24 @@
-// Backend selection (migration cutover flag — see the Airtable→Aurora plan):
-//   VITE_API_URL set   → wellbound-api on AWS (Airtable-wire-compatible, backed
-//                        by Aurora PostgreSQL). Used in BOTH dev and prod — no
-//                        Airtable PAT ever ships in any bundle.
-//   VITE_API_URL unset → legacy path: dev hits Airtable directly with the .env
-//                        PAT; prod routes through the Cloudflare worker.
-// Rollback = unset VITE_API_URL and rebuild.
-const API_URL = import.meta.env.VITE_API_URL || null;
+/**
+ * LEGACY FILENAME — this is NOT Airtable.
+ *
+ * CareStream is Aurora PostgreSQL only (AWS wellbound-api). Dev and prod both
+ * use VITE_API_URL. There is no Airtable PAT, base, worker, or api.airtable.com
+ * fallback. The filename and default export (`airtable`) are leftovers from the
+ * old JSON wire shape ({ fields }, filterByFormula).
+ *
+ * If VITE_API_URL is missing, requests fail loud. Do not add Airtable back.
+ */
+const API_URL = import.meta.env.VITE_API_URL || '';
 
-const BASE_URL = API_URL
-  || (import.meta.env.DEV
-    ? `https://api.airtable.com/v0/${import.meta.env.VITE_AIRTABLE_BASE_ID}`
-    : import.meta.env.VITE_AIRTABLE_WORKER_URL);
+function auroraBaseUrl() {
+  if (!API_URL) {
+    throw new Error('VITE_API_URL is required. CareStream is Aurora-only (wellbound-api). There is no Airtable path.');
+  }
+  return API_URL;
+}
 
-const DEV_TOKEN = !API_URL && import.meta.env.DEV ? import.meta.env.VITE_AIRTABLE_TOKEN : null;
-
-// Both wellbound-api and the Cloudflare worker require a Clerk session JWT.
-// `window.Clerk` is the global the Clerk React SDK installs.
+// Clerk session JWT — the only auth wellbound-api accepts.
 async function authHeader() {
-  if (DEV_TOKEN) return { Authorization: `Bearer ${DEV_TOKEN}` };
   try {
     const token = typeof window !== 'undefined' && window.Clerk?.session
       ? await window.Clerk.session.getToken()
@@ -38,17 +39,10 @@ async function fetchWithRetry(url, options, retries = 3) {
     }
     return res;
   }
-  throw new Error('Airtable rate limit exceeded after retries');
+  throw new Error('wellbound-api rate limit exceeded after retries');
 }
 
 // ── Short-TTL read cache + in-flight de-duplication ──────────────────────────
-// Kills the "navigate away, come back, watch it click in again" flicker:
-// identical reads within the TTL return instantly (and concurrent identical
-// reads share ONE request). Any write to a table invalidates that table's
-// cached reads, and the store's optimistic updates + tiered polling (45s+,
-// longer than the TTL) keep cross-user freshness — so worst-case staleness
-// is bounded at TTL seconds, which this workflow already tolerated on
-// Airtable (45s polling).
 const READ_CACHE_TTL_MS = 20_000;
 const READ_CACHE_MAX = 300;
 const readCache = new Map(); // key -> { at, promise }
@@ -66,18 +60,14 @@ function cacheSet(key, promise) {
     for (const [k, v] of readCache) {
       if (now - v.at > READ_CACHE_TTL_MS) readCache.delete(k);
     }
-    // Still over? Drop oldest entries.
     while (readCache.size >= READ_CACHE_MAX) {
       readCache.delete(readCache.keys().next().value);
     }
   }
   readCache.set(key, { at: Date.now(), promise });
-  // A failed fetch must not poison the cache for TTL seconds.
   promise.catch(() => readCache.delete(key));
 }
 
-// Exported for the realtime layer: a push event for a table means our cached
-// reads for it are stale RIGHT NOW, ahead of the TTL.
 export function invalidateTable(tableName) {
   const prefix = `${tableName}|`;
   for (const k of readCache.keys()) {
@@ -97,6 +87,7 @@ async function fetchAll(tableName, params = {}) {
 async function fetchAllUncached(tableName, params = {}) {
   const records = [];
   let offset = null;
+  const BASE_URL = auroraBaseUrl();
 
   do {
     const url = new URL(`${BASE_URL}/${encodeURIComponent(tableName)}`);
@@ -117,7 +108,7 @@ async function fetchAllUncached(tableName, params = {}) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Airtable error ${res.status}`);
+      throw new Error(err?.error?.message || `wellbound-api error ${res.status}`);
     }
 
     const data = await res.json();
@@ -134,7 +125,7 @@ async function fetchOne(tableName, recordId) {
   if (cached) return cached;
   const promise = (async () => {
     const res = await fetch(
-      `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
+      `${auroraBaseUrl()}/${encodeURIComponent(tableName)}/${recordId}`,
       { headers: await authHeader() }
     );
     if (!res.ok) throw new Error(`Record not found: ${recordId}`);
@@ -145,7 +136,7 @@ async function fetchOne(tableName, recordId) {
 }
 
 async function create(tableName, fields, { silent = false } = {}) {
-  const res = await fetch(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
+  const res = await fetch(`${auroraBaseUrl()}/${encodeURIComponent(tableName)}`, {
     method: 'POST',
     headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
@@ -153,21 +144,19 @@ async function create(tableName, fields, { silent = false } = {}) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = err?.error?.message || 'Create failed';
-    // `silent` lets callers that expect-and-handle a failure (e.g. the audit
-    // log retrying without select-locked fields) skip the scary console noise.
     if (!silent) {
       try {
         // eslint-disable-next-line no-console
-        console.error('[airtable.create] failed', {
+        console.error('[aurora.create] failed', {
           table: tableName,
           status: res.status,
-          airtableError: err?.error || err,
+          auroraError: err?.error || err,
           fields,
         });
       } catch {}
     }
     const error = new Error(`[${tableName}] ${msg}`);
-    error.airtable = err?.error || err;
+    error.aurora = err?.error || err;
     error.table = tableName;
     error.fields = fields;
     throw error;
@@ -178,7 +167,7 @@ async function create(tableName, fields, { silent = false } = {}) {
 
 async function update(tableName, recordId, fields) {
   const res = await fetch(
-    `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
+    `${auroraBaseUrl()}/${encodeURIComponent(tableName)}/${recordId}`,
     {
       method: 'PATCH',
       headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
@@ -190,16 +179,16 @@ async function update(tableName, recordId, fields) {
     const msg = err?.error?.message || 'Update failed';
     try {
       // eslint-disable-next-line no-console
-      console.error('[airtable.update] failed', {
+      console.error('[aurora.update] failed', {
         table: tableName,
         recordId,
         status: res.status,
-        airtableError: err?.error || err,
+        auroraError: err?.error || err,
         fields,
       });
     } catch {}
     const error = new Error(`[${tableName}] ${msg}`);
-    error.airtable = err?.error || err;
+    error.aurora = err?.error || err;
     error.table = tableName;
     error.recordId = recordId;
     error.fields = fields;
@@ -211,7 +200,7 @@ async function update(tableName, recordId, fields) {
 
 async function remove(tableName, recordId) {
   const res = await fetch(
-    `${BASE_URL}/${encodeURIComponent(tableName)}/${recordId}`,
+    `${auroraBaseUrl()}/${encodeURIComponent(tableName)}/${recordId}`,
     { method: 'DELETE', headers: await authHeader() }
   );
   if (!res.ok) throw new Error('Delete failed');
@@ -219,12 +208,11 @@ async function remove(tableName, recordId) {
   return res.json();
 }
 
-// ── Batch operations (up to 10 records per call) ────────────────────────────
-
 const BATCH_SIZE = 10;
 
 async function createBatch(tableName, recordsFields) {
   const results = [];
+  const BASE_URL = auroraBaseUrl();
   for (let i = 0; i < recordsFields.length; i += BATCH_SIZE) {
     const chunk = recordsFields.slice(i, i + BATCH_SIZE);
     const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
@@ -245,6 +233,7 @@ async function createBatch(tableName, recordsFields) {
 
 async function updateBatch(tableName, recordUpdates) {
   const results = [];
+  const BASE_URL = auroraBaseUrl();
   for (let i = 0; i < recordUpdates.length; i += BATCH_SIZE) {
     const chunk = recordUpdates.slice(i, i + BATCH_SIZE);
     const res = await fetchWithRetry(`${BASE_URL}/${encodeURIComponent(tableName)}`, {
@@ -263,6 +252,7 @@ async function updateBatch(tableName, recordUpdates) {
   return results;
 }
 
+// LEGACY export name — same client. Prefer importing default as `api` in new files.
 export const airtable = {
   fetchAll, fetchOne, create, update, remove,
   createBatch, updateBatch,

@@ -1,6 +1,6 @@
 /**
- * Mark post-SOC deferred documentation complete and send to Clinical Review.
- * Intake can do this before the RN finishes clinical review. The docs hold
+ * Mark post-SOC deferred documentation complete.
+ * Offers send-to-clinical (existing) and docs-only complete. The docs hold
  * (and orange DOCS badge) clears immediately; clinical stays a separate job.
  */
 import { useState } from 'react';
@@ -11,6 +11,7 @@ import {
   isDocumentationDeferred,
   daysUntilDocumentationDue,
   markDocsCompleteAndSendToClinical,
+  clearDocumentationDeferred,
 } from '../../utils/documentationDeferred.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
 import palette from '../../utils/colors.js';
@@ -51,6 +52,7 @@ function StatusCheck({ complete }) {
  *   onOpenF2F?: () => void,
  *   onOpenClinical?: () => void,
  *   compact?: boolean,
+ *   offerSendToClinical?: boolean,
  * }} props
  */
 export default function DocumentationCompleteAction({
@@ -59,9 +61,10 @@ export default function DocumentationCompleteAction({
   onCleared,
   onOpenF2F,
   compact = false,
+  offerSendToClinical = true,
 }) {
   const { appUserId } = useCurrentAppUser();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
 
   if (!referral || !isDocumentationDeferred(referral)) return null;
@@ -69,30 +72,46 @@ export default function DocumentationCompleteAction({
   const checklist = getDocumentationClearChecklist(referral);
   const daysLeft = daysUntilDocumentationDue(referral);
   const overdue = daysLeft != null && daysLeft < 0;
-  const send = checklist.shouldSendToClinical;
-  const buttonLabel = send
-    ? 'Mark docs complete and send to clinical review'
-    : 'Mark docs complete';
+  const send = offerSendToClinical && checklist.shouldSendToClinical;
 
-  async function runClear() {
+  async function finish(result) {
+    if (!result.ok) {
+      setError('Could not mark documentation complete.');
+      return;
+    }
+    triggerDataRefresh();
+    onCleared?.();
+  }
+
+  async function runSendToClinical() {
     if (busy) return;
-    setBusy(true);
+    setBusy('send');
     setError('');
     try {
-      const result = await markDocsCompleteAndSendToClinical(referral, {
+      await finish(await markDocsCompleteAndSendToClinical(referral, {
         actorUserId: appUserId,
         source,
-      });
-      if (!result.ok) {
-        setError('Could not mark documentation complete.');
-        return;
-      }
-      triggerDataRefresh();
-      onCleared?.();
+      }));
     } catch (err) {
       setError(err?.message || 'Failed to mark complete');
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function runDocsOnly() {
+    if (busy) return;
+    setBusy('clear');
+    setError('');
+    try {
+      await finish(await clearDocumentationDeferred(referral, {
+        actorUserId: appUserId,
+        source,
+      }));
+    } catch (err) {
+      setError(err?.message || 'Failed to mark complete');
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -129,7 +148,7 @@ export default function DocumentationCompleteAction({
             color: '#3A3545',
           }}>
             {send
-              ? 'Get the paperwork, then send to Clinical. Clinical review is a separate RN step.'
+              ? 'Get the paperwork, then send to Clinical — or mark docs complete if clinical review is not needed.'
               : 'Paperwork hold is still open. Mark docs complete to drop the orange DOCS badge.'}
           </p>
           {referral.documentation_due_date && (
@@ -201,35 +220,62 @@ export default function DocumentationCompleteAction({
         </ul>
       )}
 
-      <button
-        type="button"
-        data-testid="mark-docs-complete"
-        disabled={busy}
-        onClick={runClear}
-        title={
-          send
-            ? 'Clear the docs hold and send this case to Clinical Review.'
-            : 'Clear the docs hold. Clinical review is already in progress or done.'
-        }
-        style={{
-          marginTop: 10,
-          width: '100%',
-          minHeight: 36,
-          padding: '8px 10px',
-          borderRadius: 8,
-          border: 'none',
-          fontSize: 13,
-          fontWeight: 700,
-          fontFamily: 'inherit',
-          lineHeight: 1.25,
-          cursor: busy ? 'wait' : 'pointer',
-          background: palette.accentGreen.hex,
-          color: palette.backgroundLight.hex,
-          opacity: busy ? 0.7 : 1,
-        }}
-      >
-        {busy ? (send ? 'Sending…' : 'Clearing…') : buttonLabel}
-      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+        {send && (
+          <button
+            type="button"
+            data-testid="mark-docs-complete"
+            disabled={!!busy}
+            onClick={runSendToClinical}
+            title="Clear the docs hold and send this case to Clinical Review."
+            style={{
+              width: '100%',
+              minHeight: 36,
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              lineHeight: 1.25,
+              cursor: busy ? 'wait' : 'pointer',
+              background: palette.accentGreen.hex,
+              color: palette.backgroundLight.hex,
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {busy === 'send' ? 'Sending…' : 'Mark docs complete and send to clinical review'}
+          </button>
+        )}
+        <button
+          type="button"
+          data-testid={send ? 'mark-docs-complete-only' : 'mark-docs-complete'}
+          disabled={!!busy}
+          onClick={runDocsOnly}
+          title={
+            send
+              ? 'Clear the docs hold only. Does not send to Clinical Review.'
+              : 'Clear the docs hold. Clinical review is already in progress or done.'
+          }
+          style={{
+            width: '100%',
+            minHeight: 36,
+            padding: '8px 10px',
+            borderRadius: 8,
+            border: send ? '1.5px solid #C07A3A' : 'none',
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: 'inherit',
+            lineHeight: 1.25,
+            cursor: busy ? 'wait' : 'pointer',
+            background: send ? '#FFFFFF' : palette.accentGreen.hex,
+            color: send ? '#9A4E12' : palette.backgroundLight.hex,
+            opacity: busy ? 0.7 : 1,
+          }}
+        >
+          {busy === 'clear' ? 'Clearing…' : 'Mark docs complete'}
+        </button>
+      </div>
 
       {error && (
         <p style={{ margin: '8px 0 0', fontSize: 12.5, color: palette.primaryMagenta.hex }}>

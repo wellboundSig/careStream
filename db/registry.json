@@ -2887,6 +2887,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "table_scroll_mode": {
+        "column": "table_scroll_mode",
+        "pg": "text",
+        "wire": "text"
+      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",

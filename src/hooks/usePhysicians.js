@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useCareStore, updateEntity } from '../store/careStore.js';
+// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
 
 // ── Backward-compat exports ────────────────────────────────────────────────

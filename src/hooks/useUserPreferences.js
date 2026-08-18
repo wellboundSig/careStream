@@ -1,8 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '@clerk/react';
-import { fetchPreferences, createPreferences, updatePreferences } from '../api/userPreferences.js';
+import { fetchPreferences, createPreferences, updatePreferences, canPersistScrollMode } from '../api/userPreferences.js';
 
 const MAX_PINS = 6;
+const SCROLL_MODE_LS = (clerkUserId) => `wb.prefs.tableScrollMode.${clerkUserId}`;
+
+function readLocalScrollMode(clerkUserId) {
+  try {
+    const v = localStorage.getItem(SCROLL_MODE_LS(clerkUserId));
+    return v === 'locked' || v === 'full' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalScrollMode(clerkUserId, mode) {
+  try {
+    if (mode === 'locked' || mode === 'full') {
+      localStorage.setItem(SCROLL_MODE_LS(clerkUserId), mode);
+    }
+  } catch { /* ignore quota / private mode */ }
+}
 
 function safeParseJSON(str, fallback) {
   try { return JSON.parse(str) ?? fallback; } catch { return fallback; }
@@ -20,6 +38,7 @@ export function useUserPreferences() {
     splitScreenEnabled: false,
     dashboardMode: 'executive',
     socCompletedView: null,
+    tableScrollMode: 'full',
   });
   const [loading, setLoading] = useState(true);
 
@@ -37,7 +56,11 @@ export function useUserPreferences() {
             splitScreenEnabled: rec.fields.split_screen_enabled ?? false,
             dashboardMode:      rec.fields.dashboard_mode || 'executive',
             socCompletedView:   rec.fields.soc_completed_view || null,
+            tableScrollMode:    rec.fields.table_scroll_mode || readLocalScrollMode(user.id) || 'full',
           });
+        } else {
+          const localScroll = readLocalScrollMode(user.id);
+          if (localScroll) setPrefs((prev) => ({ ...prev, tableScrollMode: localScroll }));
         }
       })
       .catch(console.error)
@@ -50,19 +73,26 @@ export function useUserPreferences() {
 
     setPrefs((prev) => {
       const next = { ...prev, ...updates };
+      if (updates.tableScrollMode !== undefined) {
+        writeLocalScrollMode(user.id, next.tableScrollMode);
+      }
 
-      // Persist in background; revert on error
+      // Persist known Aurora columns only. table_scroll_mode is omitted until
+      // the live API returns that key (migration 0032 + Lambda redeploy).
       const persist = async () => {
         try {
+          const payload = { ...updates };
+          if (!canPersistScrollMode()) delete payload.tableScrollMode;
+          if (Object.keys(payload).length === 0) return;
           if (recordIdRef.current) {
-            await updatePreferences(recordIdRef.current, next);
+            await updatePreferences(recordIdRef.current, payload);
           } else {
-            const rec = await createPreferences(user.id, next);
+            const rec = await createPreferences(user.id, { ...next, ...payload });
             recordIdRef.current = rec.id;
           }
         } catch (err) {
           console.error('Failed to save preferences:', err);
-          setPrefs(prev); // revert
+          setPrefs(prev);
         }
       };
 

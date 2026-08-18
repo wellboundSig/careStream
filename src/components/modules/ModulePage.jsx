@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useLocation } from 'react-router-dom';
 import { usePipelineData } from '../../hooks/usePipelineData.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
@@ -22,6 +22,10 @@ import {
   ColsIcon,
 } from '../../utils/columnModel.jsx';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
+import { useLockedTableGrid } from '../../hooks/useLockedTableGrid.js';
+import { useFlipWindow } from '../../hooks/useFlipWindow.js';
+import { lockedGridClass } from '../../utils/tableScrollMode.js';
+import FlipScrollBar from '../common/FlipScrollBar.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
@@ -55,6 +59,12 @@ import {
   getDocumentationClearChecklist,
 } from '../../utils/documentationDeferred.js';
 import { normalizeEpisodeType, episodeTypeLabel, episodeTypeLongLabel } from '../../utils/episodeType.js';
+import {
+  TRIAGE_FILTER_OPTIONS,
+  buildTriagePresenceMap,
+  matchesTriageFilter,
+  triageColumnLabel,
+} from '../../utils/triageColumn.js';
 import ChangeIntakeOwnerModal from '../referrals/ChangeIntakeOwnerModal.jsx';
 import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import MobileSocQueue from '../mobile/MobileSocQueue.jsx';
@@ -153,6 +163,7 @@ function F2FCountdown({ referral }) {
 
 export default function ModulePage({ stage }) {
   const { division } = useOutletContext();
+  const location = useLocation();
   const { data: allReferrals, loading, refetch } = usePipelineData();
   const {
     resolveUser,
@@ -161,8 +172,9 @@ export default function ModulePage({ stage }) {
     resolveFacility,
     resolvePhysician,
     resolveEntity = (id) => id || '—',
+    resolveSourceEntity = () => '—',
   } = useLookups();
-  const { open: openPatient } = usePatientDrawer();
+  const { open: openPatient, isOpen: isPatientDrawerOpen } = usePatientDrawer();
   const { appUser, appUserId } = useCurrentAppUser();
   const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
   const { prefs, save: savePrefs } = usePreferences();
@@ -175,7 +187,16 @@ export default function ModulePage({ stage }) {
   // which meant any in-flight optimistic update to the store (Schedule SOC,
   // Mark Complete, etc.) didn't reach the panel until a manual refresh.
   // Tracking by id makes the selection automatically reflect the latest data.
-  const [selectedReferralId, setSelectedReferralId] = useState(null);
+  const [selectedReferralId, setSelectedReferralId] = useState(() => location.state?.selectReferralId || null);
+
+  useEffect(() => {
+    const id = location.state?.selectReferralId;
+    if (!id) return;
+    setSelectedReferralId(id);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-queue-row="${id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }, [location.state?.selectReferralId]);
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('days');
   const [sortDir, setSortDir] = useState('desc');
@@ -191,7 +212,9 @@ export default function ModulePage({ stage }) {
   const [pendingTransition, setPendingTransition] = useState(null);
   const [toast, setToast] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
-  const [freezePatientCol, setFreezePatientCol] = useState(readFreezePatientPref);
+  const lockedGrid = useLockedTableGrid();
+  const [pinPatientCol, setFreezePatientCol] = useState(readFreezePatientPref);
+  const freezePatientCol = pinPatientCol;
   const colPickerRef = useRef(null);
 
   const isSocCompleted = stage === 'SOC Completed';
@@ -317,6 +340,11 @@ export default function ModulePage({ stage }) {
     return map;
   }, [triageAdultStore, triagePedStore]);
 
+  const triagePresence = useMemo(
+    () => buildTriagePresenceMap(triageAdultStore, triagePedStore),
+    [triageAdultStore, triagePedStore]
+  );
+
   function resolvePcpName(referral) {
     const fromTriage = referral?.id ? pcpByReferralId[referral.id] : '';
     if (fromTriage) return fromTriage;
@@ -417,6 +445,10 @@ export default function ModulePage({ stage }) {
           if (v === 'no' || v === 'n' || v === 'false') return !waiting;
           return true;
         }
+        if (key === 'triage') {
+          const label = triageColumnLabel(r, !!(r?.id && triagePresence[r.id]));
+          return matchesTriageFilter(label, val);
+        }
         if (key === 'episode_type') {
           const et = normalizeEpisodeType(r).toLowerCase();
           const long = episodeTypeLongLabel(r).toLowerCase();
@@ -432,6 +464,7 @@ export default function ModulePage({ stage }) {
           case 'episode_type': cellVal = episodeTypeLongLabel(r); break;
           case 'licence': cellVal = resolveEntity(r.entity_id) || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
+          case 'source_entity': cellVal = resolveSourceEntity(r.referral_source_id) || ''; break;
           case 'marketer': cellVal = resolveMarketer(r.marketer_id) || ''; break;
           case 'owner': cellVal = resolveUser(r.intake_owner_id) || ''; break;
           case 'insurance': cellVal = r.patient?.insurance_plan || ''; break;
@@ -476,7 +509,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, isClinicalRnModule, includeDeferredClinical]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, triagePresence, isClinicalRnModule, includeDeferredClinical]);
 
   // Counts for the Clinical queue-scope toggle (division-scoped, ignores search/col filters).
   const clinicalQueueCounts = useMemo(() => {
@@ -493,6 +526,22 @@ export default function ModulePage({ stage }) {
     const active = list.filter(isActiveClinicalQueueRow).length;
     return { active, deferred: list.length - active, all: list.length };
   }, [isClinicalRnModule, decoratedReferrals, meta, hasDivision, division]);
+
+  const queueHeaderH = (showFilters ? 2 : 1) * QUEUE_HEADER_HEIGHT;
+  const flip = useFlipWindow(stageReferrals, lockedGrid, {
+    rowHeight: QUEUE_ROW_HEIGHT,
+    headerHeight: queueHeaderH,
+  });
+
+  useEffect(() => {
+    if (!lockedGrid || !selectedReferral) return;
+    const idx = stageReferrals.findIndex((r) => r._id === selectedReferral._id);
+    if (idx < 0) return;
+    if (idx < flip.startIndex) flip.setStart(idx);
+    else if (idx >= flip.startIndex + flip.slotCount) {
+      flip.setStart(idx - flip.slotCount + 1);
+    }
+  }, [lockedGrid, selectedReferral, stageReferrals, flip.startIndex, flip.slotCount, flip.setStart]);
 
   // If the selected row drops out of the filtered queue (e.g. toggle flipped), clear it.
   useEffect(() => {
@@ -534,7 +583,11 @@ export default function ModulePage({ stage }) {
             if (v && v !== '—') vals.add(v);
             break;
           }
+          case 'triage':
+            TRIAGE_FILTER_OPTIONS.forEach((opt) => vals.add(opt));
+            break;
           case 'source': { const v = resolveSource(r.referral_source_id); if (v && v !== '—') vals.add(v); break; }
+          case 'source_entity': { const v = resolveSourceEntity(r.referral_source_id); if (v && v !== '—') vals.add(v); break; }
           case 'marketer': { const v = resolveMarketer(r.marketer_id); if (v && v !== '—' && v !== r.marketer_id) vals.add(v); break; }
           case 'owner': { const v = resolveUser(r.intake_owner_id); if (v && v !== r.intake_owner_id && v !== '—') vals.add(v); break; }
           case 'insurance': { const v = r.patient?.insurance_plan; if (v) vals.add(v); break; }
@@ -552,22 +605,9 @@ export default function ModulePage({ stage }) {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [decoratedReferrals, stage, resolveSource, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, columnDefs, pcpByReferralId, isClinicalRnModule, includeDeferredClinical]);
+  }, [decoratedReferrals, stage, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, columnDefs, pcpByReferralId, isClinicalRnModule, includeDeferredClinical]);
 
-  const triageStatus = useMemo(() => {
-    const snRefIds = new Set(
-      stageReferrals.filter((r) => r.division === 'Special Needs' && r.id).map((r) => r.id)
-    );
-    if (!snRefIds.size) return {};
-    const status = {};
-    for (const t of Object.values(triageAdultStore)) {
-      if (t.referral_id && snRefIds.has(t.referral_id)) status[t.referral_id] = true;
-    }
-    for (const t of Object.values(triagePedStore)) {
-      if (t.referral_id && snRefIds.has(t.referral_id)) status[t.referral_id] = true;
-    }
-    return status;
-  }, [stageReferrals, triageAdultStore, triagePedStore]);
+  const triageStatus = triagePresence;
 
   // File upload flags
   const filesStore = useCareStore((s) => s.files);
@@ -603,6 +643,21 @@ export default function ModulePage({ stage }) {
 
   function handleRowSelect(referral) { setSelectedReferralId(referral?._id || null); }
   function handleRowOpen(referral) { setSelectedReferralId(referral?._id || null); openPatient(buildPatient(referral), referral); }
+
+  const selectAdjacentReferral = useCallback((delta) => {
+    if (!stageReferrals.length) return;
+    const idx = stageReferrals.findIndex((r) => r._id === selectedReferralId);
+    const nextIdx = idx < 0
+      ? (delta > 0 ? 0 : stageReferrals.length - 1)
+      : Math.max(0, Math.min(stageReferrals.length - 1, idx + delta));
+    const next = stageReferrals[nextIdx];
+    if (!next) return;
+    if (isPatientDrawerOpen) handleRowOpen(next);
+    else handleRowSelect(next);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-queue-row="${next._id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }, [stageReferrals, selectedReferralId, isPatientDrawerOpen]);
   function handleRowOpenTab(referral, tab) {
     setSelectedReferralId(referral?._id || null);
     openPatient(buildPatient(referral), referral, tab);
@@ -1062,6 +1117,14 @@ export default function ModulePage({ stage }) {
             {resolveSource(referral.referral_source_id) || '—'}
           </td>
         );
+      case 'source_entity': {
+        const label = resolveSourceEntity(referral.referral_source_id);
+        return (
+          <td key="source_entity" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6), maxWidth: 180 })} title={label && label !== '—' ? label : ''}>
+            {label && label !== '—' ? label : '—'}
+          </td>
+        );
+      }
       case 'marketer':
         return (
           <td key="marketer" style={td({ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), maxWidth: 140 })}>
@@ -1594,26 +1657,26 @@ export default function ModulePage({ stage }) {
             {/* Pin / unpin patient column */}
             <button
               type="button"
-              onClick={() => setFreezePatient(!freezePatientCol)}
-              title={freezePatientCol ? 'Unpin patient name (scrolls with columns)' : 'Pin patient name while scrolling columns'}
-              aria-pressed={freezePatientCol}
+              onClick={() => setFreezePatient(!pinPatientCol)}
+              title={pinPatientCol ? 'Unpin patient name (scrolls with columns)' : 'Pin patient name while scrolling columns'}
+              aria-pressed={pinPatientCol}
               style={{
                 height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
-                border: `1px solid ${freezePatientCol ? palette.accentBlue.hex : 'var(--color-border)'}`,
-                background: freezePatientCol ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+                border: `1px solid ${pinPatientCol ? palette.accentBlue.hex : 'var(--color-border)'}`,
+                background: pinPatientCol ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
                 fontSize: 12, fontWeight: 600,
-                color: freezePatientCol ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                color: pinPatientCol ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
                 cursor: 'pointer', transition: 'all 0.12s',
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
-                {freezePatientCol ? (
+                {pinPatientCol ? (
                   <path d="M12 17v5M9 3h6l1 7h2a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4h2L9 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
                 ) : (
                   <path d="M12 17v5M9 3h6l1 7h2a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4h2L9 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
                 )}
               </svg>
-              {freezePatientCol ? 'Pinned' : 'Pin patient'}
+              {pinPatientCol ? 'Pinned' : 'Pin patient'}
             </button>
 
             {/* SOC Completed — Pending Log alternate view */}
@@ -1737,7 +1800,14 @@ export default function ModulePage({ stage }) {
             {stageReferrals.length === 0 ? (
               <EmptyState title={`No patients in ${meta.displayName || stage}`} subtitle={hasAnyFilter ? 'Try clearing filters or search.' : 'Patients will appear here when they reach this stage.'} />
             ) : (
-              <QueueScrollFrame freezePatientCol={freezePatientCol}>
+              <QueueScrollFrame
+                freezePatientCol={freezePatientCol}
+                lockedGrid={lockedGrid}
+                flip={flip}
+                headerHeight={queueHeaderH}
+                keyboardEnabled={!showNewReferral && !pendingTransition && !discardTarget && !changeOwnerTarget && !contextMenu}
+                onNavigateRow={selectAdjacentReferral}
+              >
                 <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'auto' }}>
                   <thead>
                     <tr style={{ height: QUEUE_HEADER_HEIGHT, borderBottom: `1px solid var(--color-border)` }}>
@@ -1815,7 +1885,7 @@ export default function ModulePage({ stage }) {
                     )}
                   </thead>
                   <tbody>
-                    {stageReferrals.map((ref) => (
+                    {flip.windowItems.map((ref) => (
                       <QueueRow
                         key={ref._id}
                         referral={ref}
@@ -1859,8 +1929,20 @@ export default function ModulePage({ stage }) {
  * bottom track so Windows / mouse users can pan wide column sets without a
  * trackpad. Vertical scroll stays on the same pane.
  */
-function QueueScrollFrame({ children, freezePatientCol = false }) {
+function isTypingTarget(el) {
+  if (!el || el === document.body) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (el.isContentEditable) return true;
+  return !!el.closest?.('[contenteditable="true"], [role="dialog"], [data-modal]');
+}
+
+function QueueScrollFrame({ children, freezePatientCol = false, lockedGrid = false, flip = null, headerHeight = QUEUE_HEADER_HEIGHT, keyboardEnabled = true, onNavigateRow }) {
   const scrollerRef = useRef(null);
+  const setScroller = useCallback((node) => {
+    scrollerRef.current = node;
+    if (flip?.viewportRef) flip.viewportRef.current = node;
+  }, [flip]);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
   const [metrics, setMetrics] = useState({ scrollLeft: 0, maxScroll: 0, viewW: 0 });
@@ -1890,6 +1972,21 @@ function QueueScrollFrame({ children, freezePatientCol = false }) {
   function scrollBy(delta) {
     scrollerRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   }
+
+  useEffect(() => {
+    if (!keyboardEnabled) return undefined;
+    function onKey(e) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') scrollBy(-240);
+      else if (e.key === 'ArrowRight') scrollBy(240);
+      else onNavigateRow?.(e.key === 'ArrowDown' ? 1 : -1);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [keyboardEnabled, onNavigateRow]);
 
   function seekFromClientX(clientX, trackEl) {
     const el = scrollerRef.current;
@@ -1991,24 +2088,34 @@ function QueueScrollFrame({ children, freezePatientCol = false }) {
         {!freezePatientCol && chevronBtn('left')}
         {chevronBtn('right')}
         <div
-          ref={scrollerRef}
+          ref={setScroller}
+          className={`queue-h-scroll ${lockedGridClass(lockedGrid)}`.trim()}
           data-testid="queue-h-scroll"
           style={{
             height: '100%',
-            overflow: 'auto',
-            scrollbarWidth: 'thin',
-            scrollbarColor: `${hexToRgba(palette.backgroundDark.hex, 0.22)} transparent`,
+            overflowX: 'auto',
+            overflowY: lockedGrid ? 'hidden' : 'auto',
           }}
         >
           {children}
         </div>
+        {lockedGrid && flip && (
+          <FlipScrollBar
+            start={flip.startIndex}
+            maxStart={flip.maxStart}
+            slotCount={flip.slotCount}
+            total={flip.total}
+            headerHeight={headerHeight}
+            onChange={flip.setStart}
+          />
+        )}
       </div>
 
       {/* Bottom track — always-available horizontal slider for mouse users */}
       <div
         data-testid="queue-h-track"
         onPointerDown={onTrackPointerDown}
-        title="Drag or click to scroll columns"
+        title="Scroll columns · Arrow keys: left/right scroll, up/down next patient"
         style={{
           flexShrink: 0,
           height: 14,
@@ -2045,6 +2152,7 @@ function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, on
   const [hovered, setHovered] = useState(false);
   return (
     <tr
+      data-queue-row={referral._id}
       onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
