@@ -62,7 +62,14 @@ export function usePermissions() {
     return { allowedAssignees: null, isAssignmentRestricted: false };
   }, [record]);
 
-  const can    = useCallback((key) => granted.has(key), [granted]);
+  const can = useCallback((key) => {
+    if (granted.has(key)) return true;
+    // Anyone who can open Clinical RN Review can confirm / send to EMR.
+    if (key === PERMISSION_KEYS.CLINICAL_RN_REVIEW && granted.has(PERMISSION_KEYS.MODULE_CLINICAL)) {
+      return true;
+    }
+    return false;
+  }, [granted]);
   const canAny = useCallback((...keys) => keys.some((k) => granted.has(k)), [granted]);
   const canAll = useCallback((...keys) => keys.every((k) => granted.has(k)), [granted]);
 

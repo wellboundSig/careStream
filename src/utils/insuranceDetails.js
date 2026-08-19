@@ -56,3 +56,47 @@ export function hasInsuranceDetails(patient) {
   const details = getInsuranceDetailsMap(patient);
   return plans.some((plan) => memberIdFromDetail(details[plan]).length > 0);
 }
+
+/** Strip spaces / dashes so "AB 12345 C" matches "AB12345C". */
+export function normalizeInsuranceId(value) {
+  return String(value || '').toLowerCase().replace(/[\s\-._]/g, '');
+}
+
+/**
+ * Every member / CIN-style ID on a patient we can search locally:
+ * legacy Patients columns plus `insurance_plan_details` member IDs.
+ */
+export function collectInsuranceSearchIds(patient, extraIds = []) {
+  const ids = [];
+  if (patient) {
+    for (const key of ['medicaid_number', 'medicare_number', 'insurance_id']) {
+      const v = String(patient[key] || '').trim();
+      if (v) ids.push(v);
+    }
+    for (const val of Object.values(getInsuranceDetailsMap(patient))) {
+      const mid = memberIdFromDetail(val);
+      if (mid) ids.push(mid);
+    }
+  }
+  for (const raw of extraIds) {
+    const v = String(raw || '').trim();
+    if (v) ids.push(v);
+  }
+  return ids;
+}
+
+export function matchesInsuranceQuery(patient, query, extraIds = []) {
+  const nq = normalizeInsuranceId(query);
+  if (!nq) return false;
+  return collectInsuranceSearchIds(patient, extraIds).some((id) =>
+    normalizeInsuranceId(id).includes(nq)
+  );
+}
+
+export function findMatchingInsuranceId(patient, query, extraIds = []) {
+  const ids = collectInsuranceSearchIds(patient, extraIds);
+  const nq = normalizeInsuranceId(query);
+  if (!ids.length) return '';
+  if (!nq) return ids[0];
+  return ids.find((id) => normalizeInsuranceId(id).includes(nq)) || ids[0];
+}

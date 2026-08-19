@@ -1,9 +1,10 @@
 /**
  * Soft/strong HCHB logship duplicate warnings (non-blocking).
- * Clear path: small green confirmation when name is not active in HCHB.
+ * Shows latest episode / discharge date when the closet agent returns case facts.
  */
 import { useEffect, useRef, useState } from 'react';
 import { runHchbDupCheck } from '../../api/hchbDupCheck.js';
+import { hchbBody, hchbCaseLines, hchbTitle, hchbTone } from '../../utils/hchbDupResult.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 function useDebounced(value, ms) {
@@ -58,9 +59,8 @@ export default function HchbDupWarning({ firstName, lastName, dob = '' }) {
   }, [dFirst, dLast, dDob]);
 
   const r = state.status === 'result' ? (state.result || {}) : null;
-  const strong = !!(r && (r.confidence === 'strong' || r.duplicate === true));
-  const soft = !!(r && !strong && (r.confidence === 'soft' || r.possible_match === true));
-  const clear = !!(r && r.ok !== false && !soft && !strong && r.configured !== false);
+  const tone = r ? hchbTone(r) : null;
+  const clear = tone === 'clear';
 
   useEffect(() => {
     if (!clear || dismissedKey === key) {
@@ -95,8 +95,10 @@ export default function HchbDupWarning({ firstName, lastName, dob = '' }) {
   if (!r?.ok && r?.configured === false) return null;
 
   const display = `${dFirst} ${dLast}`.trim();
+  const caseLines = hchbCaseLines(r);
+  const withDob = !!dDob;
 
-  if (clear) {
+  if (tone === 'clear') {
     return (
       <div
         data-testid="hchb-dup-clear"
@@ -132,7 +134,7 @@ export default function HchbDupWarning({ firstName, lastName, dob = '' }) {
           letterSpacing: '-0.01em',
           lineHeight: 1.35,
         }}>
-          {display} is not an active patient in HCHB
+          {hchbTitle('clear', { display })}
         </span>
         <button
           type="button"
@@ -158,32 +160,24 @@ export default function HchbDupWarning({ firstName, lastName, dob = '' }) {
     );
   }
 
-  if (strong) {
+  if (tone === 'strong' || tone === 'former' || tone === 'soft') {
+    const accent = tone === 'strong'
+      ? palette.primaryMagenta.hex
+      : tone === 'former'
+        ? palette.primaryDeepPlum.hex
+        : palette.accentOrange.hex;
     return (
-      <Row accent={palette.primaryMagenta.hex} data-testid="hchb-dup-warning">
+      <Row accent={accent} data-testid="hchb-dup-warning">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Title color={palette.primaryMagenta.hex}>Same name and date of birth in HCHB</Title>
-          <Text>
-            {display} matches an active HCHB patient. Confirm there before creating a new chart.
-          </Text>
-        </div>
-        <Dismiss onClick={() => setDismissedKey(key)} />
-      </Row>
-    );
-  }
-
-  if (soft) {
-    return (
-      <Row accent={palette.accentOrange.hex} data-testid="hchb-dup-warning">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Title color={palette.accentOrange.hex}>
-            {dDob ? 'Same name in HCHB, different date of birth' : 'Name found in HCHB'}
-          </Title>
-          <Text>
-            {dDob
-              ? `${display} is an active HCHB name, but not with this date of birth. Confirm in HCHB if you are unsure.`
-              : `${display} matches an active HCHB patient name. Add a date of birth to confirm, or look them up in HCHB.`}
-          </Text>
+          <Title color={accent}>{hchbTitle(tone, { display, withDob, caseStatus: r?.hchb_case?.case_status })}</Title>
+          <Text>{hchbBody(tone, { display, withDob })}</Text>
+          {caseLines.length > 0 && (
+            <div data-testid="hchb-dup-case" style={{ marginTop: 6 }}>
+              {caseLines.map((line) => (
+                <Text key={line}>{line}</Text>
+              ))}
+            </div>
+          )}
         </div>
         <Dismiss onClick={() => setDismissedKey(key)} />
       </Row>

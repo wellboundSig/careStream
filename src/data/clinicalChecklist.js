@@ -111,3 +111,11 @@ export const CLINICAL_DECISIONS = [
   { key: 'accept', label: 'Accept', color: 'green' },
   { key: 'conditional', label: 'Conditional', color: 'yellow' },
 ];
+
+/** Normalize stored / UI decision values to 'accept' | 'conditional' | null. */
+export function normalizeClinicalDecision(value) {
+  const v = String(value || '').trim().toLowerCase();
+  if (v === 'accept' || v === 'accepted') return 'accept';
+  if (v === 'conditional' || v.startsWith('conditional')) return 'conditional';
+  return null;
+}

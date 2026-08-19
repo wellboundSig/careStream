@@ -7,6 +7,7 @@ import { runHchbDupCheck } from '../../api/hchbDupCheck.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { hchbBody, hchbCaseLines, hchbTitle, hchbTone } from '../../utils/hchbDupResult.js';
 import DuplicateMergeWizard from './DuplicateMergeWizard.jsx';
 
 /** Stages where duplicate intake still matters. */
@@ -111,18 +112,11 @@ const DupIcon = () => (
   </svg>
 );
 
-function hchbTone(result) {
-  if (!result) return null;
-  if (result.confidence === 'strong' || result.duplicate) return 'strong';
-  if (result.confidence === 'soft' || result.possible_match) return 'soft';
-  if (result.ok === false) return 'error';
-  return 'clear';
-}
-
 function HchbChip({ tone }) {
   if (!tone) return null;
   const map = {
-    strong: { bg: hexToRgba(palette.primaryMagenta.hex, 0.12), fg: palette.primaryMagenta.hex, label: 'HCHB strong' },
+    strong: { bg: hexToRgba(palette.primaryMagenta.hex, 0.12), fg: palette.primaryMagenta.hex, label: 'HCHB active' },
+    former: { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), fg: palette.primaryDeepPlum.hex, label: 'HCHB discharged' },
     soft: { bg: hexToRgba(palette.accentOrange.hex, 0.14), fg: palette.accentOrange.hex, label: 'HCHB name' },
     clear: { bg: hexToRgba(palette.accentGreen.hex, 0.12), fg: palette.accentGreen.hex, label: 'Not in HCHB' },
     error: { bg: hexToRgba(palette.backgroundDark.hex, 0.06), fg: hexToRgba(palette.backgroundDark.hex, 0.45), label: 'HCHB n/a' },
@@ -473,7 +467,9 @@ export default function DuplicateChecker({
                               </button>
                             )}
                             {group.members.map((r, ri) => {
-                              const tone = hchbTone(hchbByPatient[r.patient_id]);
+                              const hchbHit = hchbByPatient[r.patient_id];
+                              const tone = hchbTone(hchbHit);
+                              const caseLine = hchbCaseLines(hchbHit)[0];
                               const isSelected = selectedReferral?._id === r._id;
                               return (
                                 <div
@@ -506,6 +502,14 @@ export default function DuplicateChecker({
                                       {r.division ? ` · ${r.division}` : ''}
                                       {ri === 0 ? ' · oldest' : ''}
                                     </div>
+                                    {caseLine && (
+                                      <div style={{
+                                        fontSize: 10.5, fontWeight: 650, marginTop: 2,
+                                        color: palette.backgroundDark.hex,
+                                      }}>
+                                        {caseLine}
+                                      </div>
+                                    )}
                                   </div>
                                   <HchbChip tone={tone} />
                                   <button
@@ -552,7 +556,7 @@ export default function DuplicateChecker({
           {tab === 'hchb' && (
             <div style={{ padding: '12px 14px 14px' }}>
               <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.48), margin: '0 0 10px', lineHeight: 1.45 }}>
-                Active HCHB patients only. Warnings — does not block. No PHI returned; confirm in HCHB when flagged.
+                Checks HCHB including discharged patients. Shows the latest episode and discharge date. Does not block.
               </p>
               {!selectedReferral && (
                 <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.42), margin: '0 0 10px' }}>
@@ -602,35 +606,41 @@ export default function DuplicateChecker({
               {hchbError && (
                 <p style={{ marginTop: 8, fontSize: 12, color: palette.primaryMagenta.hex }}>{hchbError}</p>
               )}
-              {hchbResult && (
-                <div style={{
-                  marginTop: 12, paddingLeft: 10,
-                  borderLeft: `3px solid ${
-                    hchbTone(hchbResult) === 'strong'
-                      ? palette.primaryMagenta.hex
-                      : hchbTone(hchbResult) === 'soft'
-                        ? palette.accentOrange.hex
-                        : palette.accentGreen.hex
-                  }`,
-                }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: palette.backgroundDark.hex }}>
-                    {hchbTone(hchbResult) === 'strong'
-                      ? 'Same name and date of birth in HCHB'
-                      : hchbTone(hchbResult) === 'soft'
-                        ? (hchbManual.dob ? 'Same name in HCHB, different date of birth' : 'Name found in HCHB')
-                        : `${hchbManual.first} ${hchbManual.last}`.trim() + ' is not an active patient in HCHB'}
-                  </p>
-                  <p style={{ margin: '3px 0 0', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.4 }}>
-                    {hchbTone(hchbResult) === 'strong'
-                      ? 'Confirm in HCHB before creating or advancing a new chart.'
-                      : hchbTone(hchbResult) === 'soft'
-                        ? (hchbManual.dob
-                          ? 'Confirm in HCHB if you are unsure.'
-                          : 'Add a date of birth to confirm, or look them up in HCHB.')
-                        : 'Clear for intake from an HCHB perspective.'}
-                  </p>
-                </div>
-              )}
+              {hchbResult && (() => {
+                const tone = hchbTone(hchbResult);
+                const display = `${hchbManual.first} ${hchbManual.last}`.trim();
+                const withDob = !!hchbManual.dob;
+                const accent = tone === 'strong'
+                  ? palette.primaryMagenta.hex
+                  : tone === 'former'
+                    ? palette.primaryDeepPlum.hex
+                    : tone === 'soft'
+                      ? palette.accentOrange.hex
+                      : palette.accentGreen.hex;
+                const caseLines = hchbCaseLines(hchbResult);
+                return (
+                  <div
+                    data-testid="hchb-dup-result"
+                    style={{ marginTop: 12, paddingLeft: 10, borderLeft: `3px solid ${accent}` }}
+                  >
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: palette.backgroundDark.hex }}>
+                      {hchbTitle(tone, { display, withDob, caseStatus: hchbResult?.hchb_case?.case_status })}
+                    </p>
+                    <p style={{ margin: '3px 0 0', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.4 }}>
+                      {hchbBody(tone, { display, withDob })}
+                    </p>
+                    {caseLines.map((line) => (
+                      <p
+                        key={line}
+                        data-testid="hchb-dup-case-line"
+                        style={{ margin: '4px 0 0', fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex, lineHeight: 1.4 }}
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

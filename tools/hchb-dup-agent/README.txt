@@ -2,7 +2,8 @@ Wellbound HCHB duplicate agent (Windows on-prem)
 ================================================
 
 Runs 24/7 on the closet PC. Speaks to LOGSHIP over the LAN. Speaks to AWS
-outbound only. Returns true/false — never patient rows.
+outbound only. Returns match flags plus latest-episode status/dates —
+never names, SSN, MRN, or DOB.
 
 Quick start (closet PC)
 -----------------------

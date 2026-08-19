@@ -12,7 +12,12 @@ vi.mock('../../api/syncPatientInsurances.js', () => ({
 }));
 
 const { ensurePatientInsurancesFromJson } = await import('../ensurePatientInsurances.js');
-const { memberIdFromDetail, hasInsuranceDetails } = await import('../insuranceDetails.js');
+const {
+  memberIdFromDetail,
+  hasInsuranceDetails,
+  matchesInsuranceQuery,
+  findMatchingInsuranceId,
+} = await import('../insuranceDetails.js');
 
 describe('insuranceDetails helpers', () => {
   it('reads bare string and object member ids', () => {
@@ -30,6 +35,26 @@ describe('insuranceDetails helpers', () => {
       insurance_plans: JSON.stringify(['Fidelis Care']),
       insurance_plan_details: JSON.stringify({ 'Fidelis Care': '' }),
     })).toBe(false);
+  });
+
+  it('matches CIN and insurance numbers from plan details, ignoring spaces', () => {
+    const patient = {
+      medicaid_number: '',
+      insurance_plan_details: JSON.stringify({
+        'Fidelis Care': 'AB 12345 C',
+        'Medicare': { member_id: '1EG4-TE5-MK73' },
+      }),
+    };
+    expect(matchesInsuranceQuery(patient, 'AB12345C')).toBe(true);
+    expect(matchesInsuranceQuery(patient, 'ab 123')).toBe(true);
+    expect(matchesInsuranceQuery(patient, '1EG4TE5MK73')).toBe(true);
+    expect(matchesInsuranceQuery(patient, 'ZZ999')).toBe(false);
+    expect(findMatchingInsuranceId(patient, '1EG4')).toBe('1EG4-TE5-MK73');
+  });
+
+  it('matches extra IDs from eligibility checks', () => {
+    expect(matchesInsuranceQuery({}, 'MC9988', ['MC9988'])).toBe(true);
+    expect(findMatchingInsuranceId({ medicaid_number: 'OLD' }, 'MC9988', ['MC9988'])).toBe('MC9988');
   });
 });
 

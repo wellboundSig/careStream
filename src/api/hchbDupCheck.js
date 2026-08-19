@@ -1,6 +1,7 @@
 /**
  * Client → wellbound-api HCHB duplicate check.
- * Pepper + bridge token stay on the Lambda. Response is flags only (no PHI).
+ * Pepper + bridge token stay on the Lambda. Response is match flags plus
+ * latest-episode case facts (status + dates). No names/SSN/MRN from HCHB.
  */
 
 const API_URL = import.meta.env.VITE_API_URL || '';

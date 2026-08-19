@@ -1,4 +1,4 @@
-"""SQL Server helpers: ping + live plaintext duplicate check (active patients)."""
+"""SQL Server helpers: ping + live plaintext duplicate check."""
 from __future__ import annotations
 
 from typing import Any
@@ -7,7 +7,14 @@ import pyodbc
 
 from .config import Config, odbc_conn_str
 from . import hashutil
-from .sql_queries import LIVE_CHECK_SQL
+from .case_facts import CaseFacts, match_result
+from .sql_queries import (
+    ACTIVE_EPISODE_STATUSES,
+    EPISODE_COLUMNS_SQL,
+    build_case_facts_sql,
+    build_find_match_sql,
+    pick_episode_date_columns,
+)
 
 
 def connect(cfg: Config) -> pyodbc.Connection:
@@ -22,10 +29,24 @@ def ping(cfg: Config) -> str:
         return f'{server} / {db} as {user}'
 
 
+def discover_episode_date_columns(cur) -> tuple[str | None, str | None]:
+    cur.execute(EPISODE_COLUMNS_SQL)
+    names = [row[0] for row in cur.fetchall()]
+    return pick_episode_date_columns(names)
+
+
+def _fetch_case_facts(cur, pa_id: Any) -> CaseFacts | None:
+    soc_col, dc_col = discover_episode_date_columns(cur)
+    cur.execute(build_case_facts_sql(soc_col, dc_col), (pa_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0].lower() for d in cur.description]
+    return CaseFacts.from_row(dict(zip(cols, row)))
+
+
 def inspect_name(cfg: Config, last_name: str, first_name: str) -> dict[str, Any]:
     """Show raw CLIENTS_ALL hits for a name — with and without active filter."""
-    from .sql_queries import ACTIVE_EPISODE_STATUSES
-
     last_n = hashutil.normalize_name(last_name)
     first_n = hashutil.normalize_name(first_name)
     active_in = ", ".join(f"'{s}'" for s in ACTIVE_EPISODE_STATUSES)
@@ -53,7 +74,9 @@ def inspect_name(cfg: Config, last_name: str, first_name: str) -> dict[str, Any]
         SELECT TOP 1 e4.epi_status
         FROM dbo.CLIENT_EPISODES_ALL AS e4 WITH (NOLOCK)
         WHERE e4.epi_paid = c.pa_id
-        ORDER BY e4.epi_id DESC
+        ORDER BY
+          CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(e4.epi_status, '')))) IN ({active_in}) THEN 0 ELSE 1 END,
+          e4.epi_id DESC
       ) AS latest_episode_status
     FROM dbo.CLIENTS_ALL AS c WITH (NOLOCK)
     WHERE UPPER(LTRIM(RTRIM(c.pa_lastname))) = ?
@@ -72,6 +95,7 @@ def inspect_name(cfg: Config, last_name: str, first_name: str) -> dict[str, Any]
     """
     with connect(cfg) as conn:
         cur = conn.cursor()
+        soc_col, dc_col = discover_episode_date_columns(cur)
         cur.execute(sql, (last_n, first_n))
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, row)) for row in cur.fetchall()]
@@ -104,6 +128,7 @@ def inspect_name(cfg: Config, last_name: str, first_name: str) -> dict[str, Any]
     return {
         'queried': {'last': last_n, 'first': first_n},
         'active_statuses_used': list(ACTIVE_EPISODE_STATUSES),
+        'episode_date_columns': {'soc': soc_col, 'discharge': dc_col},
         'matches_in_CLIENTS_ALL': rows,
         'match_count': len(rows),
         'would_soft_flag_active_only': any(r.get('has_active_episode') for r in rows),
@@ -126,14 +151,14 @@ def check_duplicate_live(
     dob: str | None = None,
     ssn: str | None = None,  # accepted but unused — CareStream does not collect SSN
 ) -> dict[str, Any]:
-    """Plaintext live check against ACTIVE clients only. Closet PC / CLI only."""
+    """Plaintext live check. Closet PC / CLI only. Includes discharged patients."""
     med_n = hashutil.normalize_medicaid(medicaid)
     mrn_n = hashutil.normalize_mrn(mrn)
     last_n = hashutil.normalize_name(last_name)
     first_n = hashutil.normalize_name(first_name)
     dob_n = hashutil.normalize_dob(dob)
 
-    # Param order matches LIVE_CHECK_SQL unions:
+    # Param order matches FIND_MATCH_SQL unions:
     # medicaid×2, mrn×2, name_dob (flag, dob, last, first), name (flag, last, first)
     name_ready = '1' if (last_n and first_n) else ''
     dob_ready = '1' if (last_n and first_n and dob_n) else ''
@@ -145,22 +170,10 @@ def check_duplicate_live(
     )
     with connect(cfg) as conn:
         cur = conn.cursor()
-        cur.execute(LIVE_CHECK_SQL, params)
+        cur.execute(build_find_match_sql(), params)
         row = cur.fetchone()
         if not row:
-            return {
-                'duplicate': False,
-                'possible_match': False,
-                'confidence': None,
-                'match_type': None,
-                'allow_override': False,
-            }
-        match_type, confidence = str(row[0]), str(row[1])
-        strong = confidence == 'strong'
-        return {
-            'duplicate': strong,
-            'possible_match': True,
-            'confidence': confidence,
-            'match_type': match_type,
-            'allow_override': strong,
-        }
+            return match_result(None, None, None)
+        match_type, confidence, pa_id = str(row[0]), str(row[1]), row[2]
+        facts = _fetch_case_facts(cur, pa_id)
+        return match_result(match_type, confidence, facts)

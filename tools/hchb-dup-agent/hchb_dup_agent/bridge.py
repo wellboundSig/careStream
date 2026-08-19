@@ -1,7 +1,8 @@
 """Outbound job transport: HTTP bridge (preferred) or SQS.
 
-Agent never opens inbound ports. CareStream (later) enqueues jobs; this PC
-claims them, queries logship locally, posts boolean results.
+Agent never opens inbound ports. CareStream enqueues hashed jobs; this PC
+claims them, queries logship locally, posts match flags plus latest-episode
+case facts (status / dates only — no names, SSN, or MRN).
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from typing import Any
 import boto3
 import requests
 
+from .case_facts import sanitize_hchb_case
 from .config import Config
 
 log = logging.getLogger('hchb-dup')
@@ -73,14 +75,18 @@ class HttpBridge:
         possible_match: bool | None = None,
         confidence: str | None = None,
         allow_override: bool | None = None,
+        former_patient: bool | None = None,
+        hchb_case: dict[str, Any] | None = None,
     ) -> None:
         body: dict[str, Any] = {
             'job_id': job_id,
             'duplicate': bool(duplicate) if error is None else False,
             'possible_match': bool(possible_match) if error is None else False,
+            'former_patient': bool(former_patient) if error is None else False,
             'confidence': confidence,
             'match_type': match_type,
             'allow_override': bool(allow_override) if error is None else False,
+            'hchb_case': sanitize_hchb_case(hchb_case) if (error is None and hchb_case) else {},
             'error': error,
         }
         r = self.session.post(f'{self.base}/agent/result', json=body, timeout=30)
@@ -127,14 +133,18 @@ class SqsBridge:
         possible_match: bool | None = None,
         confidence: str | None = None,
         allow_override: bool | None = None,
+        former_patient: bool | None = None,
+        hchb_case: dict[str, Any] | None = None,
     ) -> None:
         payload = {
             'job_id': job_id,
             'duplicate': bool(duplicate) if error is None else False,
             'possible_match': bool(possible_match) if error is None else False,
+            'former_patient': bool(former_patient) if error is None else False,
             'confidence': confidence,
             'match_type': match_type,
             'allow_override': bool(allow_override) if error is None else False,
+            'hchb_case': sanitize_hchb_case(hchb_case) if (error is None and hchb_case) else {},
             'error': error,
         }
         if self.results_url:

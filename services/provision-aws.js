@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IAMClient, CreateRoleCommand, AttachRolePolicyCommand, PutRolePolicyCommand, GetRoleCommand } from '@aws-sdk/client-iam';
+import { S3Client, PutBucketCorsCommand } from '@aws-sdk/client-s3';
 import {
   LambdaClient, CreateFunctionCommand, UpdateFunctionCodeCommand,
   UpdateFunctionConfigurationCommand, GetFunctionCommand, AddPermissionCommand, waitUntilFunctionUpdatedV2,
@@ -39,6 +40,25 @@ const CLERK_ISSUER = 'https://clerk.wellboundcarestream.com';
 const iam = new IAMClient({ region: REGION });
 const lambda = new LambdaClient({ region: REGION });
 const apigw = new ApiGatewayV2Client({ region: REGION });
+const s3 = new S3Client({ region: REGION });
+
+const STORE_BUCKET = 'wellbound-prod-store';
+const STORE_CORS = {
+  CORSRules: [{
+    AllowedOrigins: [
+      'https://wellboundcarestream.com',
+      'https://www.wellboundcarestream.com',
+      'https://support.wellboundcarestream.com',
+      'https://field-support.wellboundcarestream.com',
+      'http://localhost:5173',
+      'http://localhost:5174',
+    ],
+    AllowedMethods: ['GET', 'PUT', 'HEAD'],
+    AllowedHeaders: ['*'],
+    ExposeHeaders: ['ETag', 'x-amz-request-id', 'x-amz-server-side-encryption'],
+    MaxAgeSeconds: 3600,
+  }],
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -115,7 +135,7 @@ async function main() {
   const filesRole = await ensureRole('files-api-role', {
     Version: '2012-10-17',
     Statement: [
-      { Effect: 'Allow', Action: ['s3:PutObject', 's3:GetObject'], Resource: 'arn:aws:s3:::wellbound-prod-store/*' },
+      { Effect: 'Allow', Action: ['s3:PutObject', 's3:GetObject'], Resource: `arn:aws:s3:::${STORE_BUCKET}/*` },
       { Effect: 'Allow', Action: ['kms:GenerateDataKey', 'kms:Decrypt'], Resource: '*', Condition: { StringEquals: { 'kms:ViaService': `s3.${REGION}.amazonaws.com` } } },
     ],
   });
@@ -141,9 +161,16 @@ async function main() {
     name: 'files-api', roleArn: filesRole, memory: 256,
     zipPath: path.join(HERE, 'files-api/dist/files-api.zip'),
     env: {
-      WB_BUCKET: 'wellbound-prod-store', CLERK_ISSUER, INTERNAL_API_KEY, SIGN_TTL_SECONDS: '600',
+      WB_BUCKET: STORE_BUCKET, CLERK_ISSUER, INTERNAL_API_KEY, SIGN_TTL_SECONDS: '600',
     },
   });
+
+  try {
+    await s3.send(new PutBucketCorsCommand({ Bucket: STORE_BUCKET, CORSConfiguration: STORE_CORS }));
+    console.log(`S3 CORS on ${STORE_BUCKET} updated (browser PUT/GET)`);
+  } catch (err) {
+    console.warn(`S3 CORS update skipped: ${err.message}`);
+  }
 
   // ── 4. API Gateway (one per environment) ───────────────────────────────────
   async function ensureApi(name, dataFnArn) {

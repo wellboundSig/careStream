@@ -30,14 +30,18 @@ MATCH PRIORITY (ideal)
 
 HOW THE SYSTEM USES THIS
 ------------------------
-  Closet PC loads patients + MRNs with LOAD_* SQL (see sql_queries.py),
-  HMAC-hashes them in memory, refreshes every 5 minutes.
+  Closet PC loads patients + latest episode (active and discharged) with
+  LOAD SQL in sql_queries.py, HMAC-hashes them in memory, refreshes every
+  5 minutes. DELETED episodes are ignored.
 
-  CareStream (later) / curl sends only HMAC digests over the internet.
-  Agent answers: { duplicate: true|false, match_type: ssn|medicaid|mrn|name_dob }
+  CareStream / curl sends only HMAC digests over the internet.
+  Agent answers match flags plus hchb_case:
+    case_status, episode_status, episode_start, discharged_on,
+    has_active_episode, episode_count
+  No names / SSN / MRN / DOB come back from HCHB.
 
-  Marketer types name + birthday → CareStream hashes name_dob → same path
-  → banner "Possible existing HCHB patient" if duplicate true.
+  Strong name+DOB on an active case → duplicate true (do not open a new chart).
+  Strong name+DOB on a discharged case → former_patient true + discharge date.
 
 
 LIVE CHECK SQL (closet CLI — plaintext, never via AWS)

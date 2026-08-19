@@ -101,11 +101,20 @@ describe('usePermissions — feature permissions (existing behavior)', () => {
     expect(result.current.can('referral.change_marketer')).toBe(false);
   });
 
-  it('denies clinical.rn_review by default even with no permissions row', () => {
+  it('grants clinical.rn_review when no permissions row exists (nurses must confirm)', () => {
     mockAppUserId = 'usr_1';
     mockUserPermissions = {};
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.can('clinical.rn_review')).toBe(false);
+    expect(result.current.can('clinical.rn_review')).toBe(true);
+  });
+
+  it('grants clinical.rn_review when the user can open the Clinical module', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {
+      up1: { _id: 'up1', user_id: 'usr_1', permissions: '["module.clinical","referral.view"]' },
+    };
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('clinical.rn_review')).toBe(true);
   });
 
   it('grants leads.change_intake_owner only when explicitly listed', () => {

@@ -4,7 +4,8 @@ import { useClinicalReview } from '../../../hooks/useClinicalReview.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
-import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
+import { PERMISSION_KEYS, canPerformClinicalRnReview } from '../../../data/permissionKeys.js';
+import { completeClinicalReview, resolveClinicalConfirmDecision } from '../../../utils/completeClinicalReview.js';
 import ClinicalChecklistUI from '../../clinical/ClinicalChecklistUI.jsx';
 import { unlockClinicalReview } from '../../../utils/clinicalReviewUnlock.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
@@ -42,8 +43,11 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const isPreClinical = PRE_CLINICAL_STAGES.has(currentStage);
 
   const canUnlock = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
+  const canConfirmReview = canPerformClinicalRnReview(canPerm);
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState(null);
 
   const reviewerName = reviewedBy ? resolveUser(reviewedBy) : null;
   const reviewDate = reviewedAt
@@ -72,6 +76,36 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     || workingDecision === 'accept'
     || workingDecision === 'conditional';
   const editingLocked = readOnly || decisionLocked;
+  const confirmDecision = resolveClinicalConfirmDecision(workingDecision, referral);
+  const stillInClinical = !referral?.clinical_review_completed_at
+    || referral?.in_clinical_review === true
+    || referral?.in_clinical_review === 'true'
+    || referral?.current_stage === 'Clinical Intake RN Review';
+
+  async function handleConfirm() {
+    if (!referral || confirming || readOnly) return;
+    if (!confirmDecision) {
+      setConfirmError('Choose Accept or Conditional, then confirm.');
+      return;
+    }
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      await completeClinicalReview({
+        referral,
+        decision: confirmDecision,
+        appUserId,
+        onLeftModule: () => updateReferralLocal?.({
+          clinical_review_decision: confirmDecision,
+          in_clinical_review: false,
+        }),
+      });
+    } catch (err) {
+      setConfirmError(err.message || 'Confirm failed. Try again.');
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   async function handleUnlock() {
     if (!canUnlock || !referral || unlocking || readOnly) return;
@@ -98,6 +132,29 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         source="clinical_review_tab"
         onOpenF2F={() => setActiveTab?.('f2f')}
       />
+
+      {canConfirmReview && stillInClinical && !readOnly && (
+        <div style={{ marginBottom: 20 }}>
+          <button
+            type="button"
+            data-testid="confirm-patient-btn"
+            onClick={handleConfirm}
+            disabled={confirming}
+            style={{
+              width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
+              background: confirmDecision ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+              color: confirmDecision ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+              fontSize: 14, fontWeight: 700, cursor: confirming ? 'wait' : 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            {confirming ? 'Saving…' : confirmDecision ? 'Confirm → EMR Onboarding' : 'Select Accept or Conditional to confirm'}
+          </button>
+          {confirmError && (
+            <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '8px 0 0' }}>{confirmError}</p>
+          )}
+        </div>
+      )}
 
       {hasReview && (
         <div data-testid="clinical-review-result" style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(decisionColor, 0.08), border: `1px solid ${hexToRgba(decisionColor, 0.2)}`, marginBottom: 20 }}>

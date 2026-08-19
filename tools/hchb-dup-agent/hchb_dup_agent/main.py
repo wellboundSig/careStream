@@ -27,9 +27,11 @@ def _report(bridge, job, result=None, error=None):
     kwargs = dict(
         duplicate=bool(result and result.get('duplicate')),
         possible_match=bool(result and result.get('possible_match')),
+        former_patient=bool(result and result.get('former_patient')),
         confidence=(result or {}).get('confidence'),
         match_type=(result or {}).get('match_type'),
         allow_override=bool(result and result.get('allow_override')),
+        hchb_case=(result or {}).get('hchb_case'),
         error=error,
     )
     if job.receipt_handle is not None:
@@ -45,7 +47,7 @@ def run_loop() -> int:
     log.info('bridge mode: %s', 'http' if cfg.use_http_bridge else 'sqs')
 
     refresh = float(os.environ.get('INDEX_REFRESH_SECONDS', '300'))
-    log.info('building ACTIVE patient index (refresh every %ss)…', int(refresh))
+    log.info('building patient index, active + discharged (refresh every %ss)…', int(refresh))
     index = RefreshingIndex(cfg, refresh_seconds=refresh)
 
     wait = max(1, int(cfg.poll_seconds))
@@ -68,9 +70,11 @@ def run_loop() -> int:
                 hmac_name_dob=job.hmac_name_dob,
             )
             _report(bridge, job, result=result)
+            case = (result.get('hchb_case') or {})
             log.info(
-                'job %s done confidence=%s match_type=%s duplicate=%s',
-                job.job_id, result.get('confidence'), result.get('match_type'), result.get('duplicate'),
+                'job %s done confidence=%s match_type=%s duplicate=%s case=%s dc=%s',
+                job.job_id, result.get('confidence'), result.get('match_type'),
+                result.get('duplicate'), case.get('case_status'), case.get('discharged_on'),
             )
         except Exception as exc:
             log.exception('job %s failed', job.job_id)
@@ -120,8 +124,9 @@ def cmd_hash(args: argparse.Namespace) -> int:
 def cmd_rebuild_index() -> int:
     idx = RefreshingIndex(load_config(), refresh_seconds=10**9).get()
     print({
-        'active_patients': idx.patient_count,
-        'active_mrn_rows': idx.mrn_count,
+        'patients': idx.patient_count,
+        'active_patients': idx.active_count,
+        'mrn_rows': idx.mrn_count,
         'name_hashes_soft': len(idx.by_name),
         'name_dob_hashes_strong': len(idx.by_name_dob),
         'medicaid_hashes': len(idx.by_medicaid),
@@ -143,13 +148,13 @@ def main(argv: list[str] | None = None) -> int:
         format='%(asctime)s %(levelname)s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
-    parser = argparse.ArgumentParser(description='HCHB active-patient duplicate agent')
+    parser = argparse.ArgumentParser(description='HCHB duplicate agent (active + discharged)')
     sub = parser.add_subparsers(dest='cmd')
     sub.add_parser('run')
     sub.add_parser('ping')
     sub.add_parser('rebuild-index')
 
-    p_check = sub.add_parser('check', help='Live check (active patients only)')
+    p_check = sub.add_parser('check', help='Live check (active + discharged)')
     p_check.add_argument('--medicaid')
     p_check.add_argument('--mrn')
     p_check.add_argument('--last')

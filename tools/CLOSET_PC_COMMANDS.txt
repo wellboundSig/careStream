@@ -1,3 +1,18 @@
+CLOSET PC — UPDATE THE DUP AGENT (episode / discharge details)
+==============================================================
+After copying the new hchb-dup-agent files onto this PC (keep the existing .env):
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\.venv\Scripts\Activate.ps1
+  python -m hchb_dup_agent.test_case_facts
+  python run_agent.py rebuild-index
+  python run_agent.py check --last ANSBRO --first LORETTA
+  .\nssm.exe restart WellboundHchbDupAgent
+
+You should see case_status / discharged_on in the check output.
+Then prove CareStream: New Referral or Duplicates → HCHB check.
+
+==============================================================
 CLOSET PC — POWER OFF / MOVE / OUTAGE
 =====================================
 

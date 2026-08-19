@@ -2,10 +2,17 @@
  * files-api — patient-document storage on S3, mirroring worker-r2's contract.
  *
  * Routes (behind the same API Gateway as wellbound-api):
- *   PUT  /upload/{ownerId}/{filename}          store under CareStream/files/{ownerId}/…   (JWT)
+ *   PUT  /upload/{ownerId}/{filename}           store under CareStream/files/{ownerId}/…   (JWT)
  *   PUT  /upload-tickets/{ticketKey}/{filename} store under Tickets/{ticketKey}/…          (JWT or internal key)
- *   GET  /sign?key={s3Key}[&download=1]        mint short-lived presigned GET               (JWT)
- *   Response shapes identical to worker-r2: { r2Key, url } / { url, expiresAt }
+ *   GET  /sign?key={s3Key}[&download=1]         mint short-lived presigned GET              (JWT)
+ *   GET  /sign?presign=1&ownerId=&filename=     mint short-lived presigned PUT              (JWT)
+ *       [&scope=files|tickets&contentType=]
+ *   Response shapes: { r2Key, url } / { url, expiresAt } / { r2Key, uploadUrl }
+ *
+ * Browser uploads MUST use the presigned PUT. Proxying the file through this
+ * Lambda hits API Gateway (~10 MB) and Lambda (~6 MB, worse after base64)
+ * limits; those resets surface in the browser as "Failed to fetch" with no
+ * HTTP status. The PUT /upload body path stays for inbound email / workers.
  *
  * Key strings are preserved verbatim from R2 (rclone copy keeps keys), so the
  * `Files.r2_key` column needs no data rewrite. The bucket is private
@@ -20,6 +27,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { authenticate } from './clerkJwt.js';
+import { buildObjectKey, sanitizeFilename, sanitizeOwnerId } from './pathUtil.js';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
 const BUCKET = process.env.WB_BUCKET || 'wellbound-prod-store';
@@ -45,6 +53,10 @@ function corsHeaders(origin) {
   };
 }
 
+function wantsPresign(qs) {
+  return ['1', 'true'].includes(String(qs?.presign || '').toLowerCase());
+}
+
 function json(statusCode, body, origin) {
   return {
     statusCode,
@@ -59,20 +71,40 @@ async function isAuthorized(event) {
   return !!(await authenticate(event));
 }
 
-export async function handler(event) {
+async function presignPut(origin, qs) {
+  const ownerId = sanitizeOwnerId(qs.ownerId || qs.id);
+  const filename = sanitizeFilename(qs.filename);
+  if (!ownerId) return json(400, { error: 'ownerId required' }, origin);
+  const prefix = qs.scope === 'tickets' ? `Tickets/${ownerId}` : `CareStream/files/${ownerId}`;
+  const key = buildObjectKey(prefix, filename);
+  const contentType = String(qs.contentType || 'application/octet-stream').slice(0, 200);
+  const uploadUrl = await getSignedUrl(
+    s3,
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }),
+    { expiresIn: TTL },
+  );
+  return json(200, { r2Key: key, uploadUrl }, origin);
+}
+
+async function handle(event) {
   // EventBridge warmer ping — keeps a container (and its JWKS cache) hot.
   if (event?.warmer) return { statusCode: 200, body: 'warm' };
 
   const origin = event.headers?.origin || event.headers?.Origin || '';
   const method = event.requestContext?.http?.method || 'GET';
   const rawPath = (event.rawPath || '/').replace(/^\/files/, ''); // optional mount prefix
+  const qs = event.queryStringParameters || {};
 
   if (method === 'OPTIONS') return { statusCode: 204, headers: corsHeaders(origin) };
   if (!(await isAuthorized(event))) return json(401, { error: 'Unauthorized' }, origin);
 
-  // ── GET /sign?key=…[&download=1] ─────────────────────────────────────────
+  // ── GET /sign ────────────────────────────────────────────────────────────
   if (method === 'GET' && rawPath === '/sign') {
-    const key = event.queryStringParameters?.key;
+    // Presigned PUT for browser uploads (existing APIGW route; old Lambdas
+    // return 400 "key required" and the client falls back to proxy PUT).
+    if (wantsPresign(qs)) return presignPut(origin, qs);
+
+    const key = qs.key;
     if (!key) return json(400, { error: 'key required' }, origin);
     // Fail fast if the object is missing — otherwise clients get a signed URL
     // that downloads S3/XML or worker JSON error bodies as "files".
@@ -86,7 +118,7 @@ export async function handler(event) {
       }
       throw err;
     }
-    const download = ['1', 'true'].includes(event.queryStringParameters?.download || '');
+    const download = ['1', 'true'].includes(qs.download || '');
     const filename = (key.split('/').pop() || 'file').replace(/"/g, '');
     const cmd = new GetObjectCommand({
       Bucket: BUCKET,
@@ -103,12 +135,12 @@ export async function handler(event) {
   const match = ticketMatch || fileMatch;
 
   if (match && method === 'PUT') {
-    const id = decodeURIComponent(match[1]);
-    const filename = decodeURIComponent(match[2]);
+    const id = sanitizeOwnerId(decodeURIComponent(match[1]));
+    const filename = sanitizeFilename(decodeURIComponent(match[2]));
+    if (!id) return json(400, { error: 'ownerId required' }, origin);
     const prefix = ticketMatch ? `Tickets/${id}` : `CareStream/files/${id}`;
-    const rand = Math.random().toString(36).slice(2, 8);
-    const key = `${prefix}/${Date.now()}_${rand}_${filename}`;
-    const contentType = event.headers?.['content-type'] || 'application/octet-stream';
+    const key = buildObjectKey(prefix, filename);
+    const contentType = event.headers?.['content-type'] || event.headers?.['Content-Type'] || 'application/octet-stream';
     const body = event.isBase64Encoded
       ? Buffer.from(event.body || '', 'base64')
       : Buffer.from(event.body || '', 'utf8');
@@ -126,4 +158,14 @@ export async function handler(event) {
   }
 
   return json(404, { error: 'Not found' }, origin);
+}
+
+export async function handler(event) {
+  try {
+    return await handle(event);
+  } catch (err) {
+    console.error('[files-api]', err);
+    const origin = event?.headers?.origin || event?.headers?.Origin || '';
+    return json(500, { error: err?.message || 'Internal error' }, origin);
+  }
 }

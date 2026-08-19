@@ -1,7 +1,9 @@
 """API Gateway handlers: enqueue hashed jobs, agent claim/result, status poll.
 
-Bodies must never include raw name/DOB — only HMAC hex digests + match flags.
-CareStream does not collect SSN; soft=name, strong=name+DOB.
+Inbound bodies must never include raw name/DOB — only HMAC hex digests.
+Results may include latest-episode case facts (status + dates). No names,
+SSN, MRN, or DOB from HCHB. CareStream does not collect SSN;
+soft=name, strong=name+DOB.
 """
 from __future__ import annotations
 
@@ -65,6 +67,30 @@ def _valid_hmac(val: str) -> bool:
     return len(val) == 64 and all(c in '0123456789abcdef' for c in val.lower())
 
 
+def _sanitize_hchb_case(raw: Any) -> dict[str, Any]:
+    """Status + dates only. Never persist names / MRN / SSN / DOB."""
+    if not isinstance(raw, dict):
+        return {}
+    status = str(raw.get('episode_status') or '').upper().strip()[:40]
+    case_status = str(raw.get('case_status') or '').lower().strip()
+    if case_status not in {'active', 'discharged', 'non_admit', 'other', 'unknown'}:
+        case_status = ''
+    start = str(raw.get('episode_start') or '')[:10]
+    dc = str(raw.get('discharged_on') or '')[:10]
+    try:
+        count = int(raw.get('episode_count') or 0)
+    except (TypeError, ValueError):
+        count = 0
+    return {
+        'case_status': case_status,
+        'episode_status': status,
+        'episode_start': start,
+        'discharged_on': dc,
+        'has_active_episode': bool(raw.get('has_active_episode')),
+        'episode_count': count,
+    }
+
+
 def create_job(event, context):
     if CARESTREAM_TOKEN and _bearer(event) != CARESTREAM_TOKEN:
         return _resp(401, {'error': 'unauthorized'})
@@ -99,12 +125,14 @@ def create_job(event, context):
         'hmac_name_dob': hmac_name_dob,
         'created_at': now,
         'expires_at': now + JOB_TTL_HOURS * 3600,
-        'duplicate': None,
-        'possible_match': None,
-        'confidence': None,
-        'match_type': None,
-        'allow_override': None,
-        'error': None,
+        'duplicate': False,
+        'possible_match': False,
+        'former_patient': False,
+        'confidence': '',
+        'match_type': '',
+        'allow_override': False,
+        'hchb_case': {},
+        'error': '',
     }
     table.put_item(Item=item)
     sqs.send_message(
@@ -134,10 +162,12 @@ def get_job(event, context):
         'status': item.get('status'),
         'duplicate': item.get('duplicate'),
         'possible_match': item.get('possible_match'),
-        'confidence': item.get('confidence'),
-        'match_type': item.get('match_type'),
+        'former_patient': item.get('former_patient'),
+        'confidence': item.get('confidence') or None,
+        'match_type': item.get('match_type') or None,
         'allow_override': item.get('allow_override'),
-        'error': item.get('error'),
+        'hchb_case': item.get('hchb_case') or {},
+        'error': item.get('error') or None,
         'created_at': item.get('created_at'),
         'completed_at': item.get('completed_at'),
     })
@@ -199,18 +229,21 @@ def agent_result(event, context):
     table.update_item(
         Key={'job_id': job_id},
         UpdateExpression=(
-            'SET #s = :st, duplicate = :d, possible_match = :pm, confidence = :c, '
-            'match_type = :m, allow_override = :ao, #e = :err, completed_at = :t'
+            'SET #s = :st, duplicate = :d, possible_match = :pm, former_patient = :fp, '
+            'confidence = :c, match_type = :m, allow_override = :ao, hchb_case = :hc, '
+            '#e = :err, completed_at = :t'
         ),
         ExpressionAttributeNames={'#s': 'status', '#e': 'error'},
         ExpressionAttributeValues={
             ':st': status,
             ':d': bool(data.get('duplicate')) if not error else False,
             ':pm': bool(data.get('possible_match')) if not error else False,
-            ':c': data.get('confidence'),
-            ':m': data.get('match_type'),
+            ':fp': bool(data.get('former_patient')) if not error else False,
+            ':c': data.get('confidence') or '',
+            ':m': data.get('match_type') or '',
             ':ao': bool(data.get('allow_override')) if not error else False,
-            ':err': error,
+            ':hc': _sanitize_hchb_case(data.get('hchb_case')) if not error else {},
+            ':err': error or '',
             ':t': int(time.time()),
         },
     )

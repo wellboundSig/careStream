@@ -38,6 +38,7 @@ import FlipTableShell from '../components/common/FlipTableShell.jsx';
 import { ColumnFilterButton } from '../utils/columnModel.jsx';
 import { cellMatchesFilter, filterIsActive, matchesNumericFilter, selectedFilterValues } from '../utils/columnFilters.js';
 import { useCareStore } from '../store/careStore.js';
+import { matchesInsuranceQuery } from '../utils/insuranceDetails.js';
 import {
   TRIAGE_FILTER_OPTIONS,
   buildTriagePresenceMap,
@@ -398,8 +399,7 @@ export default function PatientList() {
       if (search.trim()) {
         const q = search.toLowerCase();
         if (!`${p.first_name} ${p.last_name}`.toLowerCase().includes(q) &&
-            !(p.medicaid_number || '').toLowerCase().includes(q) &&
-            !(p.medicare_number || '').toLowerCase().includes(q)) return false;
+            !matchesInsuranceQuery(p, search)) return false;
       }
       const ref = refByPatientId[p.id];
       if (stageFilter) {

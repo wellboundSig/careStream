@@ -5,6 +5,7 @@ import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useDirectoryDrawer } from '../../context/DirectoryDrawerContext.jsx';
 import { useReferralVisibility } from '../../hooks/useReferralVisibility.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { findMatchingInsuranceId, matchesInsuranceQuery } from '../../utils/insuranceDetails.js';
 
 function matchStr(text, q) {
   if (!text || !q) return false;
@@ -55,6 +56,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   const storeSources  = useCareStore((s) => s.referralSources);
   const storeMarketers = useCareStore((s) => s.marketers);
   const storeFacilities = useCareStore((s) => s.facilities);
+  const insuranceChecks = useCareStore((s) => s.insuranceChecks);
   const { isVisible } = useReferralVisibility();
 
   const searchData = useMemo(() => {
@@ -62,6 +64,15 @@ export default function CommandPalette({ isOpen, onClose }) {
     for (const p of Object.values(patients)) {
       if (p.id) patientMap[p.id] = p;
       patientMap[p._id] = p;
+    }
+
+    const extraIdsByPatient = {};
+    for (const check of Object.values(insuranceChecks || {})) {
+      const pid = check.patient_id;
+      const mid = String(check.managed_care_id || '').trim();
+      if (!pid || !mid) continue;
+      if (!extraIdsByPatient[pid]) extraIdsByPatient[pid] = [];
+      extraIdsByPatient[pid].push(mid);
     }
 
     const seenPatients = new Set();
@@ -79,6 +90,7 @@ export default function CommandPalette({ isOpen, onClose }) {
           patientName: p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : pid,
           patientDob:  p?.dob || null,
           patient:     p || null,
+          extraInsuranceIds: extraIdsByPatient[pid] || [],
         });
       });
 
@@ -89,7 +101,7 @@ export default function CommandPalette({ isOpen, onClose }) {
       marketers:  Object.values(storeMarketers),
       facilities: Object.values(storeFacilities),
     };
-  }, [patients, referrals, storePhysicians, storeSources, storeMarketers, storeFacilities, isVisible]);
+  }, [patients, referrals, storePhysicians, storeSources, storeMarketers, storeFacilities, insuranceChecks, isVisible]);
 
   // Focus input & reset on open
   useEffect(() => {
@@ -114,7 +126,7 @@ export default function CommandPalette({ isOpen, onClose }) {
 
     const matchedPatients = searchData.patients.filter((r) =>
       matchStr(r.patientName, q) ||
-      matchStr(r.patient?.medicaid_number, q) ||
+      matchesInsuranceQuery(r.patient, q, r.extraInsuranceIds) ||
       matchStr(r.patient?.phone_primary, q) ||
       matchStr(r.patient?.dob, q) ||
       matchStr(r.current_stage, q) ||
@@ -239,7 +251,7 @@ export default function CommandPalette({ isOpen, onClose }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search patients, physicians, sources, facilities…"
+            placeholder="Search name, CIN, insurance number…"
             style={{
               flex: 1, border: 'none', outline: 'none',
               fontSize: 15, fontFamily: 'inherit',
@@ -264,7 +276,7 @@ export default function CommandPalette({ isOpen, onClose }) {
           {!query.trim() && (
             <div style={{ padding: '28px 20px', textAlign: 'center' }}>
               <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), lineHeight: 1.6 }}>
-                Search by patient name, Medicaid number, phone, physician, facility, referral source, or marketer.
+                Search by patient name, CIN, insurance number, phone, physician, facility, referral source, or marketer.
               </p>
             </div>
           )}
@@ -306,7 +318,7 @@ export default function CommandPalette({ isOpen, onClose }) {
                   if (cat === 'patients') {
                     primary   = item.patientName || '—';
                     secondary = [item.division, item.current_stage].filter(Boolean).join(' · ');
-                    badge     = item.patient?.medicaid_number || '';
+                    badge     = findMatchingInsuranceId(item.patient, query, item.extraInsuranceIds);
                   } else if (cat === 'physicians') {
                     primary   = `${item.first_name || ''} ${item.last_name || ''}`.trim() || '—';
                     secondary = item.npi ? `NPI: ${item.npi}` : '';

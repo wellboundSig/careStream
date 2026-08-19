@@ -59,6 +59,24 @@ aws cloudformation deploy \
     "CodeS3Bucket=${BUCKET}" \
     "CodeS3Key=${KEY}"
 
+# CloudFormation skips updates when the S3 key is unchanged. Always push the
+# new zip onto the four Lambdas so code changes actually go live.
+echo "Updating Lambda function code…"
+FNS=$(aws cloudformation list-stack-resources \
+  --stack-name "$STACK" \
+  --region "$REGION" \
+  --query "StackResourceSummaries[?ResourceType=='AWS::Lambda::Function'].PhysicalResourceId" \
+  --output text)
+for fn in $FNS; do
+  aws lambda update-function-code \
+    --function-name "$fn" \
+    --s3-bucket "$BUCKET" \
+    --s3-key "$KEY" \
+    --region "$REGION" >/dev/null
+  aws lambda wait function-updated --function-name "$fn" --region "$REGION"
+  echo "  updated $fn"
+done
+
 API_URL=$(aws cloudformation describe-stacks \
   --stack-name "$STACK" \
   --region "$REGION" \

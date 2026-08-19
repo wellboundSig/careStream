@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  HCHB duplicate-check bridge. CareStream (later) POSTs HMAC digests only;
-  on-prem Windows agent claims jobs and posts boolean results. No PHI in transit.
+  HCHB duplicate-check bridge. CareStream POSTs HMAC digests only;
+  on-prem Windows agent claims jobs and posts match flags plus latest-episode
+  status/dates. No names, SSN, MRN, or DOB in transit.
 
 Parameters:
   AgentToken:

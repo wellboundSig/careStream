@@ -1,7 +1,8 @@
 /**
  * HCHB logship duplicate check proxy.
  * Hashes identifiers with HCHB_LINK_PEPPER (Lambda env), calls the AWS bridge,
- * polls until the on-prem agent returns soft/strong flags. Never returns PHI.
+ * polls until the on-prem agent returns soft/strong flags plus latest-episode
+ * case facts (status + dates). Does not return names, SSN, MRN, or DOB from HCHB.
  *
  * Env:
  *   HCHB_LINK_PEPPER
@@ -60,6 +61,32 @@ function hashNameDob(pepper, last, first, dob) {
   const d = normalizeDob(dob);
   if (!l || !f || !d) return '';
   return hmacHex(pepper, `NAMEDOB|${l}|${f}|${d}`);
+}
+
+function sanitizeHchbCase(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      case_status: null,
+      episode_status: null,
+      episode_start: null,
+      discharged_on: null,
+      has_active_episode: false,
+      episode_count: 0,
+    };
+  }
+  const caseStatus = String(raw.case_status || '').trim().toLowerCase();
+  const allowed = new Set(['active', 'discharged', 'non_admit', 'other', 'unknown']);
+  const start = String(raw.episode_start || '').slice(0, 10);
+  const dc = String(raw.discharged_on || '').slice(0, 10);
+  const count = Number(raw.episode_count);
+  return {
+    case_status: allowed.has(caseStatus) ? caseStatus : null,
+    episode_status: String(raw.episode_status || '').trim() || null,
+    episode_start: /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : null,
+    discharged_on: /^\d{4}-\d{2}-\d{2}$/.test(dc) ? dc : null,
+    has_active_episode: raw.has_active_episode === true || raw.has_active_episode === 'true',
+    episode_count: Number.isFinite(count) ? count : 0,
+  };
 }
 
 function envConfig() {
@@ -144,8 +171,13 @@ export async function runHchbDupCheck(input = {}) {
         };
       }
       const confidence = status.confidence || null;
-      const strong = confidence === 'strong' || status.duplicate === true;
+      const strong = confidence === 'strong' || status.duplicate === true || status.former_patient === true;
       const soft = confidence === 'soft' || (!strong && status.possible_match === true);
+      const hchbCase = sanitizeHchbCase(status.hchb_case);
+      const hasCaseFacts = !!(hchbCase.case_status || hchbCase.episode_status);
+      const hasActive = hchbCase.has_active_episode === true
+        || (!hasCaseFacts && status.duplicate === true);
+      const former = !!(status.former_patient || (strong && hchbCase.case_status && !hasActive));
       return {
         ok: true,
         job_id: jobId,
@@ -155,13 +187,14 @@ export async function runHchbDupCheck(input = {}) {
           dob: dob ? normalizeDob(dob) : null,
           mode: hmac_name_dob ? 'name_dob' : 'name',
         },
-        duplicate: strong,
+        duplicate: !!(strong && hasActive),
         possible_match: soft || strong,
+        former_patient: former,
         confidence: strong ? 'strong' : soft ? 'soft' : null,
         match_type: status.match_type || null,
-        allow_override: strong,
-        // No PHI from HCHB — UI should tell staff to verify in HCHB manually.
-        hchb_details_available: false,
+        allow_override: !!(strong && hasActive),
+        hchb_case: hchbCase,
+        hchb_details_available: !!(hchbCase.case_status || hchbCase.episode_status),
       };
     }
   }

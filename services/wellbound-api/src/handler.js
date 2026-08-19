@@ -164,7 +164,7 @@ export async function handler(event) {
     }
   }
 
-  // HCHB logship duplicate check (hashed → on-prem agent → soft/strong flags).
+  // HCHB logship duplicate check (hashed → on-prem agent → flags + episode facts).
   // Any authenticated writer can use it (lead / intake / marketer flows).
   if (rawPath === '/hchb-dup/check' && method === 'POST') {
     try {

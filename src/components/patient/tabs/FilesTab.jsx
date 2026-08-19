@@ -264,7 +264,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     setUploadProgress(`Uploading ${pendingFile.name}…`);
 
     try {
-      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient.id);
+      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient);
 
       const linkedChecklistItem = pendingOpwddChecklistItemId
         ? opwddChecklistItems.find((i) => i._id === pendingOpwddChecklistItemId)

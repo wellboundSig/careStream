@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, createContext, useContext } from 'react';
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
 import ZipSearchPanel from '../staffing/ZipSearchPanel.jsx';
 import { getConflictsByReferral } from '../../api/conflicts.js';
 import { getFilesByPatient } from '../../api/patientFiles.js';
@@ -17,7 +17,6 @@ import {
   needsPostSocClinical,
   clinicalConfirmDestination,
   CLINICAL_CONFIRM_SOC_COMPLETED,
-  CLINICAL_CONFIRM_EMR,
 } from '../../utils/documentationDeferred.js';
 import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { discardReferral } from '../../utils/discardReferral.js';
@@ -28,7 +27,6 @@ import RequestClinicalReviewAction from '../common/RequestClinicalReviewAction.j
 import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
 import { isSocCompletedReferral } from '../../data/stageConfig.js';
-import { postSocClinicalCompleteClearFields } from '../../utils/requestPostSocClinicalReview.js';
 import {
   scheduleVerb,
   rescheduleVerb,
@@ -42,7 +40,7 @@ import {
 } from '../../utils/episodeType.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { PERMISSION_KEYS, canPerformClinicalRnReview } from '../../data/permissionKeys.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import EligibilityWorkspace from './shared/EligibilityWorkspace.jsx';
 import AuthorizationWorkspace from './shared/AuthorizationWorkspace.jsx';
@@ -51,7 +49,7 @@ import { exportToExcel } from '../../utils/reportEngine.js';
 import { useCareStore } from '../../store/careStore.js';
 import { languageName, languageByCode } from '../../data/languages.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
-import { isChecklistComplete } from '../../data/clinicalChecklist.js';
+import { completeClinicalReview, resolveClinicalConfirmDecision } from '../../utils/completeClinicalReview.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
@@ -474,7 +472,9 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   }, [storeUsers, canAssignTo, speakersOfPreferred, appUserId, meUser]);
 
   const [ownerId, setOwnerId] = useState('');
+  const [ownerSearch, setOwnerSearch] = useState('');
   const [onlySpeakers, setOnlySpeakers] = useState(false);
+  const ownerSearchRef = useRef(null);
   const siblingLeads = useMemo(() => findSiblingLeadReferrals(referral), [referral]);
   const [moveSiblings, setMoveSiblings] = useState(true);
   const [selectedSiblingIds, setSelectedSiblingIds] = useState(() => new Set());
@@ -494,6 +494,21 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
     // Keep "me" visible even when the language filter would hide them.
     return allUsers.filter((u) => speakersOfPreferred.has(u.id) || (appUserId && u.id === appUserId));
   }, [allUsers, onlySpeakers, hasPreferredLanguage, speakersOfPreferred, appUserId]);
+
+  const filteredUsers = useMemo(() => {
+    const q = ownerSearch.trim().toLowerCase();
+    if (!q) return visibleUsers;
+    return visibleUsers.filter((u) => {
+      const name = `${u.first_name || ''} ${u.last_name || ''}`.trim().toLowerCase();
+      const email = String(u.email || '').toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [visibleUsers, ownerSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => ownerSearchRef.current?.focus(), 30);
+    return () => clearTimeout(t);
+  }, []);
 
   const langLabel = preferredLang?.name || '';
   const myselfSelected = !!(appUserId && ownerId === appUserId);
@@ -538,6 +553,24 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
             <p style={{ fontSize: 11.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 6 }}>
               Assign Owner *
             </p>
+
+            <input
+              ref={ownerSearchRef}
+              data-testid="owner-search"
+              type="search"
+              value={ownerSearch}
+              onChange={(e) => setOwnerSearch(e.target.value)}
+              placeholder="Search staff by name or email…"
+              autoComplete="off"
+              style={{
+                width: '100%', marginBottom: 8, padding: '9px 12px',
+                borderRadius: 8, border: `1px solid var(--color-border)`,
+                fontSize: 13, fontFamily: 'inherit',
+                color: palette.backgroundDark.hex,
+                background: palette.backgroundLight.hex,
+                outline: 'none', boxSizing: 'border-box',
+              }}
+            />
 
             {appUserId && (
               <button
@@ -585,13 +618,15 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
                 minHeight: 140, maxHeight: 220,
               }}
             >
-              {visibleUsers.length === 0 ? (
+              {filteredUsers.length === 0 ? (
                 <p style={{ padding: 16, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
-                  {onlySpeakers
-                    ? `No assignable users marked as speaking ${langLabel}. Uncheck the filter to see everyone.`
-                    : 'No assignable users found.'}
+                  {ownerSearch.trim()
+                    ? `No staff matching "${ownerSearch.trim()}".`
+                    : onlySpeakers
+                      ? `No assignable users marked as speaking ${langLabel}. Uncheck the filter to see everyone.`
+                      : 'No assignable users found.'}
                 </p>
-              ) : visibleUsers.map((u) => {
+              ) : filteredUsers.map((u) => {
                 const speaks = hasPreferredLanguage && speakersOfPreferred.has(u.id);
                 const selected = ownerId === u.id;
                 const isMe = !!(appUserId && u.id === appUserId);
@@ -2151,6 +2186,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   const [sendingBack, setSendingBack] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState(null);
+  const [confirmError, setConfirmError] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const canRunClinicalConfirm = canPerformClinicalRnReview(canPerm);
 
   useEffect(() => {
     setSendBackNote('');
@@ -2159,14 +2197,18 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     setSendingBack(false);
     setUnlocking(false);
     setUnlockError(null);
+    setConfirmError(null);
+    setConfirming(false);
   }, [selectedReferral?._id]);
 
-  const checklistComplete = isChecklistComplete(checked);
   // Referral stamp (post-Confirm) hard-locks until an authorized unlock —
   // working Accept/Conditional alone still locks for the in-progress review.
   const reviewFinalized = !!selectedReferral?.clinical_review_decision;
   const decisionLocked = reviewFinalized || decision === 'accept' || decision === 'conditional';
-  const canConfirm = !reviewFinalized && checklistComplete && (decision === 'accept' || decision === 'conditional');
+  const confirmDecision = resolveClinicalConfirmDecision(decision, selectedReferral);
+  // Ready to send as soon as Accept/Conditional is chosen. Do not disable
+  // the button — Julia / Adeshia could see it and clicks did nothing.
+  const canConfirm = !!confirmDecision;
   const canUnlockClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
 
   async function handleUnlockClinicalReview() {
@@ -2197,91 +2239,25 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   );
 
   async function handleConfirm() {
-    if (!canConfirm || !selectedReferral) return;
-    const now = new Date().toISOString();
-    const clinicalFields = {
-      clinical_review_decision: decision,
-      clinical_review_by: appUserId || 'unknown',
-      clinical_review_at: now,
-      clinical_review_completed_at: now,
-      clinical_review_completed_by_id: appUserId || 'unknown',
-      in_clinical_review: false,
-      ...postSocClinicalCompleteClearFields(),
-    };
-
-    const destination = clinicalConfirmDestination(selectedReferral);
-
-    // SOC already happened — finish clinical and land on SOC Completed.
-    // Skip EMR Onboarding, staffing, and scheduling.
-    if (destination === CLINICAL_CONFIRM_SOC_COMPLETED) {
-      try {
-        if (selectedReferral.current_stage !== 'SOC Completed') {
-          const result = attemptTransition({
-            referral: selectedReferral,
-            toStage: 'SOC Completed',
-            context: {
-              system: true,
-              actorUserId: appUserId,
-              extraFields: clinicalFields,
-              note: '[Post-SOC clinical completed → SOC Completed]',
-            },
-          });
-          if (result.allowed) {
-            onSelectedReferralLeftModule?.();
-            await applyTransition({
-              referral: selectedReferral,
-              result,
-              context: { actorUserId: appUserId },
-            });
-          } else {
-            await updateReferralOptimistic(selectedReferral._id, {
-              ...clinicalFields,
-              current_stage: 'SOC Completed',
-            });
-            onSelectedReferralLeftModule?.();
-          }
-        } else {
-          await updateReferralOptimistic(selectedReferral._id, clinicalFields);
-          onSelectedReferralLeftModule?.();
-        }
-        await maybeClearDocumentationDeferred(
-          { ...selectedReferral, ...clinicalFields },
-          { actorUserId: appUserId, source: 'clinical_post_soc' },
-        );
-        triggerDataRefresh();
-      } catch {}
+    if (!selectedReferral || confirming) return;
+    if (!confirmDecision) {
+      setConfirmError('Choose Accept or Conditional, then confirm.');
       return;
     }
-
-    // Concurrent mid-pipeline (deferred docs, already past the clinical gate):
-    // stamp only — do not hop to EMR Onboarding.
-    if (destination == null) {
-      try {
-        await updateReferralOptimistic(selectedReferral._id, clinicalFields);
-        await maybeClearDocumentationDeferred(
-          { ...selectedReferral, ...clinicalFields },
-          { actorUserId: appUserId, source: 'clinical_post_soc' },
-        );
-        onSelectedReferralLeftModule?.();
-        triggerDataRefresh();
-      } catch {}
-      return;
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      await completeClinicalReview({
+        referral: selectedReferral,
+        decision: confirmDecision,
+        appUserId,
+        onLeftModule: onSelectedReferralLeftModule,
+      });
+    } catch (err) {
+      setConfirmError(err?.message || 'Confirm failed. Try again.');
+    } finally {
+      setConfirming(false);
     }
-
-    // Clinical RN's confirm is the exit from this module → EMR Onboarding.
-    const result = attemptTransition({
-      referral: selectedReferral,
-      toStage: destination === CLINICAL_CONFIRM_EMR ? 'EMR Onboarding' : destination,
-      context: {
-        note: `[Clinical RN ${decision === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
-        actorUserId: appUserId,
-        extraFields: clinicalFields,
-      },
-    });
-    if (!result.allowed) return;
-    onSelectedReferralLeftModule?.();
-    await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } }).catch(() => {});
-    triggerDataRefresh();
   }
 
   async function handleSendBack() {
@@ -2362,6 +2338,51 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </span>
             )}
           </div>
+
+          {canRunClinicalConfirm && (
+            <div style={{
+              position: 'sticky', top: -16, zIndex: 3, margin: '0 -14px 12px',
+              padding: '12px 14px 10px', background: '#F3F2F6',
+              borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+            }}>
+              <button
+                type="button"
+                data-testid="confirm-patient-btn"
+                onClick={handleConfirm}
+                disabled={confirming}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                  background: canConfirm ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                  color: canConfirm ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  fontSize: 13, fontWeight: 700, cursor: confirming ? 'wait' : 'pointer',
+                  textAlign: 'left', letterSpacing: '-0.01em',
+                }}
+              >
+                {confirming
+                  ? 'Saving…'
+                  : canConfirm
+                    ? (isPostSocClinical ? 'Mark clinical completed' : 'Confirm → EMR Onboarding')
+                    : 'Select Accept or Conditional to confirm'}
+              </button>
+              {confirmError && (
+                <p data-testid="confirm-clinical-error" style={{ fontSize: 11, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '8px 0 0', lineHeight: 1.4 }}>
+                  {confirmError}
+                </p>
+              )}
+              {!canConfirm && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '8px 0 0', lineHeight: 1.4 }}>
+                  Choose Accept or Conditional below, then this button sends the case on.
+                </p>
+              )}
+              {isPostSocClinical && canConfirm && (
+                <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '8px 0 0', lineHeight: 1.4 }}>
+                  {clinicalConfirmDestination(selectedReferral) === CLINICAL_CONFIRM_SOC_COMPLETED
+                    ? 'Leaves Clinical and goes to SOC/ROC Completed. Does not go through EMR, staffing, or scheduling.'
+                    : 'Leaves Clinical. Stays on the current stage. Clears docs hold when F2F is also done.'}
+                </p>
+              )}
+            </div>
+          )}
 
           {selectedReferral.clinical_review_assigned_to_id && !selectedReferral.clinical_review_completed_at && (
             <div
@@ -2482,38 +2503,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
                 onOpenF2F={() => onOpenFiles?.(selectedReferral)}
               />
             </PanelSection>
-          )}
-
-          {canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW) && (
-          <PanelSection title="Clinical Validation">
-            <button
-              data-testid="confirm-patient-btn"
-              onClick={handleConfirm}
-              disabled={!canConfirm}
-              style={{
-                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
-                background: canConfirm ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
-                color: canConfirm ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-                fontSize: 13, fontWeight: 700, cursor: canConfirm ? 'pointer' : 'not-allowed',
-                textAlign: 'left', letterSpacing: '-0.01em', transition: 'filter 0.12s', marginBottom: 6,
-              }}
-              onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-            >
-              {canConfirm
-                ? (isPostSocClinical ? 'Mark clinical completed' : 'Confirm → EMR Onboarding')
-                : !checklistComplete
-                  ? 'Complete checklist to confirm'
-                  : 'Select Accept or Conditional to confirm'}
-            </button>
-            {isPostSocClinical && canConfirm && (
-              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '0 0 6px', lineHeight: 1.4 }}>
-                {clinicalConfirmDestination(selectedReferral) === CLINICAL_CONFIRM_SOC_COMPLETED
-                  ? 'Leaves Clinical and goes to SOC/ROC Completed. Does not go through EMR, staffing, or scheduling.'
-                  : 'Leaves Clinical. Stays on the current stage. Clears docs hold when F2F is also done.'}
-              </p>
-            )}
-          </PanelSection>
           )}
 
           <PanelSection title="Documents">
@@ -2806,7 +2795,7 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   // Onboarding is owned by the scheduling team; reuse the existing staffing
   // permission so current schedulers aren't locked out by a brand-new key.
   const canOnboard = canPerm(PERMISSION_KEYS.SCHEDULING_STAFFING);
-  const canSendBackClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_REVIEW);
+  const canSendBackClinical = canPerformClinicalRnReview(canPerm);
   const canUnlockClinical = canPerm(PERMISSION_KEYS.CLINICAL_RN_UNLOCK);
   const alreadyOnboarded = !!selectedReferral?.emr_onboarded_at;
   const clinicalFinalized = !!selectedReferral?.clinical_review_decision;

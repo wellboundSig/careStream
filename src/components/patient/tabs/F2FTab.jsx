@@ -181,9 +181,7 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
     setUploading(true);
     setUploadError(null);
     try {
-      // The worker returns `{ r2Key, r2Url }` and requires the patientId in the
-      // upload path so the file lands under the correct R2 prefix.
-      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient.id);
+      const { r2Key, r2Url } = await uploadToR2(pendingFile, patient);
       const fields = {
         patient_id: patient.id,
         referral_id: referral?.id || null,
