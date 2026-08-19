@@ -24,6 +24,7 @@ import Settings from './pages/Settings.jsx';
 import CalendarPage from './pages/Calendar.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
+import BatchEligibility from './pages/BatchEligibility.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
 import ConflictCategories from './pages/admin/ConflictCategories.jsx';
 import DeveloperTools from './pages/developer/DeveloperTools.jsx';
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="inbound-submissions/:id" element={<InboundSubmissionDetail />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="tools/batch-eligibility" element={<BatchEligibility />} />
         <Route path="directory/marketers" element={<Marketers />} />
         <Route path="directory/facilities" element={<Facilities />} />
         <Route path="directory/physicians" element={<Physicians />} />

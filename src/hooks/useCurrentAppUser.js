@@ -2,6 +2,21 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/react';
 // LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
+import { updateEntity, useCareStore } from '../store/careStore.js';
+
+const LAST_LOGIN_STAMP_MS = 15 * 60 * 1000;
+
+function stampLastLogin(u) {
+  if (!u?._id) return;
+  const prev = u.last_login_at ? new Date(u.last_login_at).getTime() : 0;
+  if (Number.isFinite(prev) && Date.now() - prev < LAST_LOGIN_STAMP_MS) return;
+  const iso = new Date().toISOString();
+  u.last_login_at = iso;
+  if (useCareStore.getState().users?.[u._id]) {
+    updateEntity('users', u._id, { last_login_at: iso });
+  }
+  airtable.update('Users', u._id, { last_login_at: iso }).catch(() => {});
+}
 
 // Session-level caches
 let _appUserCache = null;
@@ -58,7 +73,12 @@ export function useCurrentAppUser() {
     if (_appUserCache && _appUserCache.clerk_user_id && _appUserCache.clerk_user_id !== user.id) {
       _appUserCache = null;
     }
-    if (_appUserCache) { setAppUser(_appUserCache); setLoading(false); return; }
+    if (_appUserCache) {
+      stampLastLogin(_appUserCache);
+      setAppUser(_appUserCache);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
@@ -75,6 +95,7 @@ export function useCurrentAppUser() {
           airtable.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
           u.clerk_image_url = user.imageUrl;
         }
+        stampLastLogin(u);
         _appUserCache = u;
         setAppUser(u);
         setLoading(false);
@@ -97,6 +118,7 @@ export function useCurrentAppUser() {
             airtable.update('Users', u._id, updates).catch(() => {});
             Object.assign(u, updates);
           }
+          stampLastLogin(u);
           _appUserCache = u;
           setAppUser(u);
           setLoading(false);

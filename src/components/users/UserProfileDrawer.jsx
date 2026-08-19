@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { getReferrals } from '../../api/referrals.js';
+import { useEffect, useMemo } from 'react';
+import { useCareStore } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
+import { referralsForUser } from '../../utils/referralsForUser.js';
 import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
@@ -39,23 +40,21 @@ function timeAgo(dateStr) {
 }
 
 export default function UserProfileDrawer({ user, onClose }) {
-  const { resolveRole, resolveSource, resolvePatient } = useLookups();
-  const [referrals, setReferrals] = useState([]);
-  const [loadingRefs, setLoadingRefs] = useState(true);
+  const { resolveRole, resolvePatient } = useLookups();
+  const storeReferrals = useCareStore((s) => s.referrals);
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const hydrated = useCareStore((s) => s.hydrated);
 
   const isOpen = !!user;
   const roleColor = ROLE_COLORS[user?.role_id] || palette.accentBlue.hex;
   const statusStyle = STATUS_STYLES[user?.status] || STATUS_STYLES.Active;
   const roleName = resolveRole(user?.role_id);
 
-  useEffect(() => {
-    if (!isOpen || !user?.id) return;
-    setLoadingRefs(true);
-    getReferrals({ filterByFormula: `{intake_owner_id} = "${user.id}"` })
-      .then((recs) => setReferrals(recs.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoadingRefs(false));
-  }, [user?.id]);
+  const referrals = useMemo(
+    () => referralsForUser(user, { referrals: storeReferrals, marketers: storeMarketers }),
+    [user, storeReferrals, storeMarketers],
+  );
+  const loadingRefs = !hydrated;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,7 +65,9 @@ export default function UserProfileDrawer({ user, onClose }) {
 
   if (!isOpen) return null;
 
-  const active = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
+  const active = referrals
+    .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC')
+    .sort((a, b) => Date.parse(b.referral_date || b.updated_at || 0) - Date.parse(a.referral_date || a.updated_at || 0));
   const ntuc   = referrals.filter((r) => r.current_stage === 'NTUC');
   const completed = referrals.filter((r) => isSocCompletedReferral(r));
 

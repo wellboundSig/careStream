@@ -92,7 +92,7 @@ export default function Mentions() {
 
   function handleOpen(m) {
     const patient = m.patient || { id: m.note.patient_id, _id: m.note.patient_id };
-    openPatient(patient, m.referral, 'notes');
+    openPatient(patient, m.referral, 'notes', { focusNoteId: m.note.id || m.note._id || null });
   }
 
   return (

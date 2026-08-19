@@ -1,13 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useUser } from '@clerk/react';
-import { getFilesByPatient, createFile, updateFile, deleteFile } from '../../../api/patientFiles.js';
+import { fetchFilesForChart, createFile, updateFile, deleteFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferral } from '../../../api/referrals.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
+import { mergeEntities, removeEntity, updateEntity, useCareStore } from '../../../store/careStore.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { maybeClearDocumentationDeferred } from '../../../utils/documentationDeferred.js';
+import { notifyPostSocF2fUploaded } from '../../../utils/postSocF2fUploadNotify.js';
+import {
+  filesForPatientFromStore,
+  mergeFileLists,
+  normalizeFileRecord,
+} from '../../../utils/patientFilesFromStore.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import LoadingState from '../../common/LoadingState.jsx';
 import FilePreviewModal from '../../common/FilePreviewModal.jsx';
@@ -34,6 +41,7 @@ import {
   parseCalendarDate,
   toCalendarDateString,
   daysUntilCalendarDate,
+  todayCalendarDate,
 } from '../../../utils/dateFormat.js';
 import { useIsMobile } from '../../../hooks/useIsMobile.js';
 
@@ -125,10 +133,13 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
   const { user } = useUser();
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser, resolvePhysician } = useLookups();
-  const { openFileBeside } = usePatientDrawer();
+  const { openFileBeside, sideFile } = usePatientDrawer();
+  const storeFiles = useCareStore((s) => s.files);
+  const storePatients = useCareStore((s) => s.patients);
+  const storeReferrals = useCareStore((s) => s.referrals);
   const isMobile = useIsMobile();
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -170,7 +181,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     if (!window.confirm(`Delete "${file.file_name || 'this file'}"? This cannot be undone.\n\nIf the document was just superseded (e.g. a replaced F2F), use Archive instead — archived files are kept and can be restored.`)) return;
     try {
       await deleteFile(file._id);
-      setFiles((prev) => prev.filter((f) => f._id !== file._id));
+      removeEntity('files', file._id);
     } catch { /* silent */ }
   }
 
@@ -192,7 +203,7 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     };
     try {
       await updateFile(file._id, fields);
-      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...fields } : f)));
+      updateEntity('files', file._id, fields);
     } catch (err) {
       setUploadError(`Could not archive file: ${err.message}`);
     }
@@ -207,20 +218,50 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
     };
     try {
       await updateFile(file._id, fields);
-      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...fields } : f)));
+      updateEntity('files', file._id, fields);
     } catch (err) {
       setUploadError(`Could not restore file: ${err.message}`);
     }
   }
 
+  const storeList = useMemo(
+    () => filesForPatientFromStore(storeFiles, patient, referral, {
+      patients: storePatients,
+      referrals: storeReferrals,
+    }),
+    [storeFiles, patient, referral, storePatients, storeReferrals],
+  );
+
+  // A file open beside this drawer belongs on this chart even if ids don't match.
+  const files = useMemo(
+    () => mergeFileLists(storeList, sideFile ? [sideFile] : []),
+    [storeList, sideFile],
+  );
+
   useEffect(() => {
-    if (!patient?.id) return;
-    setLoading(true);
-    getFilesByPatient(patient.id)
-      .then((records) => setFiles(records.map((r) => ({ _id: r.id, ...r.fields }))))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [patient?.id]);
+    if (!patient?.id && !patient?._id) return;
+    let cancelled = false;
+    const extras = { patients: useCareStore.getState().patients, referrals: useCareStore.getState().referrals };
+    const alreadyHave = filesForPatientFromStore(useCareStore.getState().files, patient, referral, extras).length > 0;
+    if (!alreadyHave) setLoading(true);
+    setLoadError(null);
+    fetchFilesForChart(patient, referral)
+      .then((records) => {
+        const mapped = {};
+        for (const r of records) {
+          const f = normalizeFileRecord(r);
+          if (f?._id) mapped[f._id] = f;
+        }
+        if (Object.keys(mapped).length) mergeEntities('files', mapped);
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message || 'Could not load files');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [patient?.id, patient?._id, referral?.id, referral?._id]);
 
   const activeFiles = useMemo(() => files.filter((f) => !f.archived_at), [files]);
   const archivedFiles = useMemo(
@@ -303,7 +344,18 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         ...(pendingPhysician?.id ? { physician_id: pendingPhysician.id } : {}),
       });
 
-      setFiles((prev) => [{ _id: created.id, ...created.fields, _justUploaded: true }, ...prev]);
+      const uploaded = { _id: created.id, ...created.fields, _justUploaded: true };
+      mergeEntities('files', { [created.id]: uploaded });
+
+      if (pendingCategory === 'F2F' && referral) {
+        notifyPostSocF2fUploaded({
+          referral,
+          patient,
+          actorUserId: appUserId,
+          actorName: appUserName,
+          uploadedOn: todayCalendarDate(),
+        }).catch(() => {});
+      }
 
       // If the upload satisfies an OPWDD checklist item, link the file and
       // flip the item to "received" (status + received_at + satisfying_file_id).
@@ -691,11 +743,17 @@ export default function FilesTab({ patient, referral, readOnly = false }) {
         </div>
       )}
 
-      {loading ? (
+      {loadError && files.length > 0 && (
+        <p style={{ textAlign: 'center', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45), padding: '0 0 10px', margin: 0 }}>
+          Couldn’t refresh files from the server. Showing what’s already on this chart.
+        </p>
+      )}
+
+      {loading && files.length === 0 ? (
         <LoadingState message="Loading files..." size="small" />
       ) : files.length === 0 ? (
         <p style={{ textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), padding: '24px 0', fontStyle: 'italic' }}>
-          No files uploaded yet.
+          {loadError ? `Couldn’t load files. ${loadError}` : 'No files uploaded yet.'}
         </p>
       ) : (
         <>

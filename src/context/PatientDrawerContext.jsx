@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useCallback } from 'react';
+import { mergeEntities } from '../store/careStore.js';
+import { normalizeFileRecord } from '../utils/patientFilesFromStore.js';
 
 const PatientDrawerContext = createContext(null);
 
@@ -9,26 +11,40 @@ export function PatientDrawerProvider({ children }) {
   const [activeTab, setActiveTab] = useState('demographics');
   /** File open beside the patient snapshot (split workspace). */
   const [sideFile, setSideFile] = useState(null);
+  /** Note to scroll to after opening from a mention notification. */
+  const [focusNoteId, setFocusNoteId] = useState(null);
 
-  const open = useCallback((patientObj, referralObj = null, tab = 'demographics') => {
+  const open = useCallback((patientObj, referralObj = null, tab = 'demographics', opts = {}) => {
     setPatient(patientObj);
     setReferral(referralObj);
     setActiveTab(tab);
     setSideFile(null);
+    setFocusNoteId(opts?.focusNoteId || null);
     setIsOpen(true);
   }, []);
 
   const close = useCallback(() => {
     setIsOpen(false);
     setSideFile(null);
+    setFocusNoteId(null);
   }, []);
+
+  const clearFocusNote = useCallback(() => setFocusNoteId(null), []);
 
   const openFileBeside = useCallback((file, patientObj = null, referralObj = null) => {
     if (patientObj) setPatient(patientObj);
     if (referralObj) setReferral(referralObj);
     setSideFile(file || null);
-    // Keep staff on a work tab — Overview/Referral is the natural snapshot.
-    setActiveTab((prev) => (prev === 'files' ? 'overview' : prev));
+    const normalized = normalizeFileRecord(file);
+    if (normalized?._id) {
+      mergeEntities('files', {
+        [normalized._id]: {
+          ...normalized,
+          ...(patientObj?.id && !normalized.patient_id ? { patient_id: patientObj.id } : {}),
+          ...(referralObj?.id && !normalized.referral_id ? { referral_id: referralObj.id } : {}),
+        },
+      });
+    }
     setIsOpen(true);
   }, []);
 
@@ -59,6 +75,8 @@ export function PatientDrawerProvider({ children }) {
         sideFile,
         openFileBeside,
         clearSideFile,
+        focusNoteId,
+        clearFocusNote,
       }}
     >
       {children}

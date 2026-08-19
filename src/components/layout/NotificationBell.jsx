@@ -7,6 +7,7 @@ import {
   markAllNotificationsReadOptimistic,
 } from '../../store/mutations.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
+import { ensurePatientNotes } from '../../utils/ensurePatientNotes.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
@@ -98,12 +99,19 @@ export default function NotificationBell({ variant = 'desktop' }) {
         _id: n.patient_id,
       };
       const referral = referralFor(n.patient_id, n.referral_id);
+      const isMention = n.type === 'mention' || n.entity_type === 'note';
       const tab = n.type === 'clinical_review_assigned'
         ? 'clinical_review'
         : n.type === 'sn_age_group_adult'
           ? 'overview'
-          : 'notes';
-      openPatient(patient, referral, tab);
+          : n.type === 'post_soc_f2f_uploaded'
+            ? 'files'
+            : 'notes';
+      const focusNoteId = isMention && n.entity_id ? n.entity_id : null;
+      if (tab === 'notes') {
+        ensurePatientNotes(patient, { noteId: focusNoteId }).catch(() => {});
+      }
+      openPatient(patient, referral, tab, { focusNoteId });
       return;
     }
     if (n.type === 'task' || n.entity_type === 'task') {
@@ -269,7 +277,9 @@ export default function NotificationBell({ variant = 'desktop' }) {
                       ? 'Clinical'
                       : n.type === 'sn_age_group_adult'
                         ? 'Age group'
-                        : (n.type || 'Alert');
+                        : n.type === 'post_soc_f2f_uploaded'
+                          ? 'F2F'
+                          : (n.type || 'Alert');
                 return (
                   <button
                     type="button"

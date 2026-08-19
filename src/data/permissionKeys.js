@@ -64,6 +64,8 @@ export const PERMISSION_KEYS = {
   CLINICAL_ELIGIBILITY: 'clinical.eligibility',
   /** Optum real-time Auto Check — deny-by-default until enrollment is ready. */
   CLINICAL_ELIGIBILITY_OPTUM_AUTO: 'clinical.eligibility_optum_auto',
+  /** Spreadsheet batch eligibility — deny-by-default. Also needs Optum Auto to hit the API. */
+  CLINICAL_ELIGIBILITY_BATCH: 'clinical.eligibility_batch',
 
   // Authorization
   AUTH_SUBMIT: 'auth.submit',
@@ -221,6 +223,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.CLINICAL_RN_UNLOCK,
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
+  K.CLINICAL_ELIGIBILITY_BATCH,
   K.REFERRAL_DISCARD_ANY,
   K.REFERRAL_CHANGE_MARKETER,
 ]);
@@ -233,6 +236,7 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
 export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.LEADS_CHANGE_INTAKE_OWNER,
   K.CLINICAL_ELIGIBILITY_OPTUM_AUTO,
+  K.CLINICAL_ELIGIBILITY_BATCH,
   K.REFERRAL_DISCARD_ANY,
   K.REFERRAL_MERGE_DUPLICATES,
   K.REFERRAL_CHANGE_MARKETER,
@@ -327,6 +331,7 @@ export const PERMISSION_CATALOG = [
   // ── Eligibility & Authorization ───────────────────────────────────────────
   { key: K.CLINICAL_ELIGIBILITY, label: 'Run eligibility checks',        category: 'Eligibility & Authorization', description: 'Log insurance/eligibility verification results', sort: 30 },
   { key: K.CLINICAL_ELIGIBILITY_OPTUM_AUTO, label: 'Optum Auto Check (beta)', category: 'Eligibility & Authorization', description: 'Run real-time Optum 270/271 eligibility Auto Check. Deny-by-default — grant only while Optum enrollment is being validated.', sort: 30.5 },
+  { key: K.CLINICAL_ELIGIBILITY_BATCH, label: 'Batch eligibility spreadsheet', category: 'Eligibility & Authorization', description: 'Upload a CSV/Excel roster and run Optum (and later Waystar / eSolutions) checks in bulk. Deny-by-default. Optum Auto Check is also required to hit the live API.', sort: 30.6 },
   { key: K.AUTH_SUBMIT, label: 'Submit prior authorizations',            category: 'Eligibility & Authorization', description: 'Create authorization records for managed care', sort: 31 },
   { key: K.AUTH_DECIDE, label: 'Record auth approval or denial',         category: 'Eligibility & Authorization', description: 'Mark authorizations as approved or denied', sort: 32 },
   { key: K.AUTH_REQUEST_SCA, label: 'Request Single Case Agreement',     category: 'Eligibility & Authorization', description: 'Open an SCA tracking record after an SPN denial', sort: 33 },

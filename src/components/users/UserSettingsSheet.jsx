@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getReferrals } from '../../api/referrals.js';
 import { createUserPermission, updateUserPermission } from '../../api/userPermissions.js';
 import { syncUserLanguages } from '../../api/userLanguages.js';
 import { syncCocNurseFacilities } from '../../api/cocNurseFacilities.js';
@@ -19,6 +18,7 @@ import StageBadge from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { isSocCompletedReferral } from '../../data/stageConfig.js';
+import { referralsForUser } from '../../utils/referralsForUser.js';
 
 const STATUSES = ['Active', 'Pending', 'Suspended', 'Revoked'];
 const ALL_PERM_KEYS = Object.values(PERMISSION_KEYS);
@@ -62,10 +62,6 @@ function firstId(v) {
   return v || null;
 }
 
-// Cache assigned-referrals per user so re-opening the sheet renders instantly;
-// a background refetch still refreshes the data.
-const referralsCache = new Map();
-
 /**
  * Single user settings sheet — Linear/Slack-style member settings.
  * Sections keep existing behavior (role/status/permissions/assignees) without
@@ -91,14 +87,14 @@ export default function UserSettingsSheet({
   const storeLanguages = useCareStore((s) => s.languages);
   const storeCocNurseFacs = useCareStore((s) => s.cocNurseFacilities);
   const storeNetFacs = useCareStore((s) => s.networkFacilities);
+  const storeReferrals = useCareStore((s) => s.referrals);
+  const storeMarketers = useCareStore((s) => s.marketers);
+  const hydrated = useCareStore((s) => s.hydrated);
 
   const [section, setSection] = useState('overview');
   const [roleChange, setRoleChange] = useState(null);
   const [savingRole, setSavingRole] = useState(false);
   const [animated, setAnimated] = useState(false);
-
-  const [referrals, setReferrals] = useState(() => referralsCache.get(user?.id) || []);
-  const [loadingRefs, setLoadingRefs] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -107,24 +103,11 @@ export default function UserSettingsSheet({
     return () => cancelAnimationFrame(t);
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const cached = referralsCache.get(user.id);
-    if (cached) {
-      setReferrals(cached);
-    } else {
-      setReferrals([]);
-      setLoadingRefs(true);
-    }
-    getReferrals({ filterByFormula: `{intake_owner_id} = "${user.id}"` })
-      .then((recs) => {
-        const rows = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        referralsCache.set(user.id, rows);
-        setReferrals(rows);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingRefs(false));
-  }, [user?.id]);
+  const referrals = useMemo(
+    () => referralsForUser(user, { referrals: storeReferrals, marketers: storeMarketers }),
+    [user, storeReferrals, storeMarketers],
+  );
+  const loadingRefs = !hydrated;
 
   // Slide out before unmounting so closing feels as smooth as opening.
   const closingRef = useRef(false);
@@ -176,7 +159,9 @@ export default function UserSettingsSheet({
 
   const roleName = resolveRole(user.role_id);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
-  const activeCases = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
+  const activeCases = referrals
+    .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC')
+    .sort((a, b) => Date.parse(b.referral_date || b.updated_at || 0) - Date.parse(a.referral_date || a.updated_at || 0));
   const completed = referrals.filter((r) => isSocCompletedReferral(r));
   const ntuc = referrals.filter((r) => r.current_stage === 'NTUC');
 
@@ -414,7 +399,7 @@ function SectionTitle({ title, hint }) {
 function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, resolvePatient, languageNames, cocFacilityNames = [] }) {
   return (
     <div>
-      <SectionTitle title="Overview" hint="At-a-glance account info. Edit details in the other tabs." />
+      <SectionTitle title="Overview" hint="Cases this person owns as intake, plus their marketer book. Edit details in the other tabs." />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
         {[
           { label: 'Active cases', value: loadingRefs ? '…' : activeCases.length },
@@ -458,7 +443,7 @@ function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, reso
           COC facilities
         </p>
         {cocFacilityNames.length === 0 ? (
-          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>None — assign in COC Facilities</p>
+          <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic' }}>None, assign in COC Facilities</p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {cocFacilityNames.map((n) => (

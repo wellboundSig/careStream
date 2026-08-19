@@ -41,6 +41,7 @@ const NAV_ITEMS = [
       { label: 'Calendar', path: '/calendar', icon: CalendarIcon },
       { label: 'Inbound', path: '/inbound-submissions', icon: MailIcon, permAny: [PERMISSION_KEYS.MODULE_INBOUND, PERMISSION_KEYS.INBOUND_VIEW] },
       { label: 'Reports', path: '/reports', icon: ReportsIcon },
+      { label: 'Batch Eligibility', path: '/tools/batch-eligibility', icon: EligibilityIcon, perm: PERMISSION_KEYS.CLINICAL_ELIGIBILITY_BATCH },
     ],
   },
   {
@@ -737,6 +738,15 @@ function ReportsIcon({ size = 16, color }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <path d="M18 20V10M12 20V4M6 20v-6" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EligibilityIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke={color} strokeWidth="1.6" />
+      <path d="M8 8h8M8 12h8M8 16h5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

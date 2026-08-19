@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { getFilesByPatient, createFile } from '../../../api/patientFiles.js';
+import { fetchFilesForChart, createFile } from '../../../api/patientFiles.js';
 import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
 import { updateReferralOptimistic } from '../../../store/mutations.js';
 import { mergeEntities, useCareStore } from '../../../store/careStore.js';
+import { filesForPatientFromStore, normalizeFileRecord } from '../../../utils/patientFilesFromStore.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
 import { useLookups } from '../../../hooks/useLookups.js';
@@ -26,6 +27,7 @@ import {
   daysUntilCalendarDate,
 } from '../../../utils/dateFormat.js';
 import { maybeClearDocumentationDeferred } from '../../../utils/documentationDeferred.js';
+import { notifyPostSocF2fUploaded } from '../../../utils/postSocF2fUploadNotify.js';
 import DocumentationCompleteAction from '../../common/DocumentationCompleteAction.jsx';
 
 function formatBytes(n) {
@@ -67,7 +69,7 @@ function InfoRow({ label, value, color }) {
 
 export default function F2FTab({ patient, referral, readOnly = false }) {
   const { can } = usePermissions();
-  const { appUserId } = useCurrentAppUser();
+  const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const { openFileBeside, setActiveTab } = usePatientDrawer();
   const storePhysicians = useCareStore((s) => s.physicians);
@@ -108,18 +110,28 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
   }, [referral?._id]);
 
   useEffect(() => {
-    if (!patient?.id) return;
-    setLoadingFiles(true);
-    getFilesByPatient(patient.id)
+    const extras = { patients: useCareStore.getState().patients, referrals: useCareStore.getState().referrals };
+    const fromStore = filesForPatientFromStore(useCareStore.getState().files, patient, referral, extras)
+      .filter((f) => !f.archived_at && (f.category === 'F2F' || f.category === 'MD Orders'));
+    if (fromStore.length) setFiles(fromStore);
+    if (!patient?.id && !patient?._id) return;
+    if (!fromStore.length) setLoadingFiles(true);
+    fetchFilesForChart(patient, referral)
       .then((recs) => {
-        const mapped = recs.map((r) => ({ _id: r.id, ...r.fields }));
-        // Archived files (e.g. an F2F Clinical rejected) don't count as
-        // current documentation — they live in the Files tab Archived section.
-        setFiles(mapped.filter((f) => !f.archived_at && (f.category === 'F2F' || f.category === 'MD Orders')));
+        const mapped = {};
+        const list = [];
+        for (const r of recs) {
+          const f = normalizeFileRecord(r);
+          if (!f?._id) continue;
+          mapped[f._id] = f;
+          if (!f.archived_at && (f.category === 'F2F' || f.category === 'MD Orders')) list.push(f);
+        }
+        if (Object.keys(mapped).length) mergeEntities('files', mapped);
+        if (list.length || !fromStore.length) setFiles(list);
       })
       .catch(() => {})
       .finally(() => setLoadingFiles(false));
-  }, [patient?.id]);
+  }, [patient?.id, patient?._id, referral?.id, referral?._id]);
 
   const days = referral ? daysLeft(referral.f2f_expiration) : null;
   const urgencyColor = days === null ? null
@@ -202,6 +214,16 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
       // check (which reads from storeFiles) sees the new file immediately
       // — otherwise the F2F tab green-check waits for the next data sync.
       mergeEntities('files', { [created.id]: newFile });
+
+      if (uploadCategory === 'F2F' && referral) {
+        notifyPostSocF2fUploaded({
+          referral,
+          patient,
+          actorUserId: appUserId,
+          actorName: appUserName,
+          uploadedOn: todayCalendarDate(),
+        }).catch(() => {});
+      }
 
       if (uploadCategory === 'F2F' && referral && !referral.f2f_date) {
         const today = todayCalendarDate();

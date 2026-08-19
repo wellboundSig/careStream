@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCareStore } from '../../store/careStore.js';
+import { resolveStoreRecord } from '../../utils/patientFilesFromStore.js';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -108,8 +109,8 @@ export default function PatientDrawer() {
   // just-opened record that isn't in the store yet still renders.
   const storeReferrals = useCareStore((s) => s.referrals);
   const storePatients  = useCareStore((s) => s.patients);
-  const referral = (ctxReferral?._id && storeReferrals[ctxReferral._id]) || ctxReferral;
-  const patient  = (ctxPatient?._id  && storePatients[ctxPatient._id])  || ctxPatient;
+  const referral = resolveStoreRecord(storeReferrals, ctxReferral);
+  const patient  = resolveStoreRecord(storePatients, ctxPatient);
 
   const [visible, setVisible] = useState(false);
   const [animated, setAnimated] = useState(false);
@@ -840,9 +841,18 @@ export function canEditDrawerTab(tab, can) {
 
 function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
   const { can } = usePermissions();
+  const { sideFile } = usePatientDrawer();
+  const patientKey = patient?.id || patient?._id || null;
+  const [keptFilesFor, setKeptFilesFor] = useState(null);
+  useEffect(() => {
+    if (tab === 'files' || sideFile) setKeptFilesFor(patientKey);
+  }, [tab, sideFile, patientKey]);
+  const mountFiles = tab === 'files' || !!sideFile || keptFilesFor === patientKey;
+
   const editPermKey = TAB_EDIT_PERMISSIONS[tab];
   const canEdit = canEditDrawerTab(tab, can);
   const props = { patient, referral, readOnly: !canEdit };
+  const filesReadOnly = !canEditDrawerTab('files', can);
 
   return (
     <>
@@ -860,7 +870,7 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
           <span style={{ fontSize: 11.5, fontWeight: 600, color: '#7A5F00' }}>View only</span>
         </div>
       )}
-      {(() => {
+      {tab !== 'files' && (() => {
         switch (tab) {
           case 'overview': return <ReferralInfoTab {...props} />;
           case 'demographics': return <OverviewTab {...props} />;
@@ -870,7 +880,6 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
           case 'eligibility': return <EligibilityTab {...props} />;
           case 'notes': return <NotesTab {...props} />;
           case 'timeline': return <TimelineTab {...props} />;
-          case 'files': return <FilesTab {...props} />;
           case 'tasks': return <TasksTab {...props} autoNewTask={!canEdit ? false : autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;
           case 'clinical_review': return <ClinicalReviewTab {...props} />;
           case 'authorizations': return <AuthorizationsTab {...props} />;
@@ -878,6 +887,11 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
           default: return null;
         }
       })()}
+      {mountFiles && (
+        <div style={{ display: tab === 'files' ? 'contents' : 'none' }}>
+          <FilesTab patient={patient} referral={referral} readOnly={filesReadOnly} />
+        </div>
+      )}
     </>
   );
 }

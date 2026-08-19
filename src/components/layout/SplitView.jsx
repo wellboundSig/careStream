@@ -31,6 +31,7 @@ import ConflictCategories from '../../pages/admin/ConflictCategories.jsx';
 import DeveloperTools from '../../pages/developer/DeveloperTools.jsx';
 import Settings from '../../pages/Settings.jsx';
 import DataTools from '../../pages/DataTools.jsx';
+import BatchEligibility from '../../pages/BatchEligibility.jsx';
 
 function PaneOutlet({ division, roleMode }) {
   return <Outlet context={{ division, roleMode }} />;
@@ -109,6 +110,7 @@ export default function SplitView({ children, division, roleMode, onClose }) {
 
                     <Route path="tasks" element={<Tasks />} />
                     <Route path="reports" element={<Reports />} />
+                    <Route path="tools/batch-eligibility" element={<BatchEligibility />} />
 
                     <Route path="directory/marketers" element={<Marketers />} />
                     <Route path="directory/facilities" element={<Facilities />} />

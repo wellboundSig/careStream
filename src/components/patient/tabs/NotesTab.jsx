@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useUser } from '@clerk/react';
 import { useCareStore } from '../../../store/careStore.js';
 import {
@@ -16,6 +16,9 @@ import { routeNoteToAccountManagerInfo } from '../../../utils/accountManagerInfo
 import LoadingState from '../../common/LoadingState.jsx';
 import MentionComposer from '../../common/MentionComposer.jsx';
 import MentionText from '../../common/MentionText.jsx';
+import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
+import { ensurePatientNotes } from '../../../utils/ensurePatientNotes.js';
+import { collectIdentities, linkMatches } from '../../../utils/patientFilesFromStore.js';
 
 function formatDateTime(dateStr) {
   if (!dateStr) return '';
@@ -36,20 +39,38 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   const { user: clerkUser } = useUser();
   const { resolveUser, resolveUserImage } = useLookups();
   const allNotes = useCareStore((s) => s.notes);
+  const storePatients = useCareStore((s) => s.patients);
   const hydrated = useCareStore((s) => s.hydrated);
+  const { focusNoteId } = usePatientDrawer();
   const [composerEmpty, setComposerEmpty] = useState(true);
   const [error, setError] = useState(null);
+  const [fetchingNotes, setFetchingNotes] = useState(false);
   const composerRef = useRef(null);
+  const listRef = useRef(null);
   const { can } = usePermissions();
 
-  const notes = useMemo(() => {
-    if (!patient?.id) return [];
-    return Object.values(allNotes)
-      .filter((n) => n.patient_id === patient.id)
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-  }, [allNotes, patient?.id]);
+  useEffect(() => {
+    if (!patient?.id && !patient?._id) return;
+    let cancelled = false;
+    setFetchingNotes(true);
+    ensurePatientNotes(patient, { noteId: focusNoteId })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setFetchingNotes(false); });
+    return () => { cancelled = true; };
+  }, [patient?.id, patient?._id, focusNoteId]);
 
-  const loading = !hydrated;
+  const notes = useMemo(() => {
+    const pids = collectIdentities(patient, storePatients);
+    if (pids.size === 0 && !focusNoteId) return [];
+    return Object.values(allNotes)
+      .filter((n) => {
+        if (focusNoteId && (n.id === focusNoteId || n._id === focusNoteId)) return true;
+        return linkMatches(n.patient_id, pids);
+      })
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [allNotes, patient, storePatients, focusNoteId]);
+
+  const loading = !hydrated && notes.length === 0 && fetchingNotes;
 
   function submitNote() {
     if (!can(PERMISSION_KEYS.NOTE_CREATE)) return;
@@ -124,6 +145,14 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   const pinned = notes.filter((n) => n.is_pinned === true || n.is_pinned === 'true');
   const unpinned = notes.filter((n) => !n.is_pinned || n.is_pinned === 'false');
   const sorted = [...pinned, ...unpinned];
+
+  useEffect(() => {
+    if (!focusNoteId || !listRef.current) return;
+    const raw = String(focusNoteId).replace(/"/g, '');
+    const el = listRef.current.querySelector(`[data-note-id="${raw}"], [data-note-rec="${raw}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusNoteId, sorted.length]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -215,7 +244,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
         </div>
       </div>}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 32px' }}>
+      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 32px' }}>
         {loading ? (
           <LoadingState message="Loading notes..." size="small" />
         ) : sorted.length === 0 ? (
@@ -231,6 +260,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
               <NoteCard
                 key={note._id}
                 note={note}
+                focused={!!focusNoteId && (note.id === focusNoteId || note._id === focusNoteId)}
                 onTogglePin={readOnly ? undefined : togglePin}
                 currentUserId={appUserId}
                 resolveUser={resolveUser}
@@ -245,7 +275,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   );
 }
 
-function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserImage, currentClerkImageUrl }) {
+function NoteCard({ note, focused, onTogglePin, currentUserId, resolveUser, resolveUserImage, currentClerkImageUrl }) {
   const isPinned = note.is_pinned === true || note.is_pinned === 'true';
   const isOwn = note.author_id === currentUserId;
   const authorName = resolveUser ? resolveUser(note.author_id) : note.author_id || 'Unknown';
@@ -265,12 +295,21 @@ function NoteCard({ note, onTogglePin, currentUserId, resolveUser, resolveUserIm
 
   return (
     <div
+      data-note-id={note.id || ''}
+      data-note-rec={note._id || ''}
       style={{
         padding: '12px 14px', borderRadius: 10,
-        border: `1px solid ${isPinned ? hexToRgba(palette.highlightYellow.hex, 0.45) : 'var(--color-border)'}`,
-        background: isPinned
-          ? hexToRgba(palette.highlightYellow.hex, 0.06)
-          : palette.backgroundLight.hex,
+        border: `1px solid ${
+          focused
+            ? hexToRgba(palette.accentBlue.hex, 0.55)
+            : isPinned ? hexToRgba(palette.highlightYellow.hex, 0.45) : 'var(--color-border)'
+        }`,
+        background: focused
+          ? hexToRgba(palette.accentBlue.hex, 0.06)
+          : isPinned
+            ? hexToRgba(palette.highlightYellow.hex, 0.06)
+            : palette.backgroundLight.hex,
+        boxShadow: focused ? `0 0 0 2px ${hexToRgba(palette.accentBlue.hex, 0.2)}` : 'none',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
