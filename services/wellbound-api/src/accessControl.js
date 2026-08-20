@@ -43,24 +43,62 @@ export class AccessDeniedError extends Error {
 const callerCache = new Map(); // key -> { at, value }
 const CALLER_TTL_MS = 15_000;
 
-function cacheKey(actorSub, claims) {
-  const email = String(claims?.email || claims?.primary_email_address || '').toLowerCase();
-  return `${actorSub || ''}|${email}`;
+/** Signed JWT email, or a localhost hint when the test Clerk token has no email. */
+export function extractEmail(claims = {}, hintEmail = '') {
+  const fromClaims = [
+    claims.email,
+    claims.primary_email_address,
+    claims.email_address,
+    claims.primaryEmailAddress,
+    Array.isArray(claims.emails) ? claims.emails[0] : null,
+  ];
+  for (const v of fromClaims) {
+    const email = normalizeEmail(v);
+    if (email) return email;
+  }
+  const iss = String(claims.iss || '');
+  if (iss.includes(DEV_CLERK_ISSUER_HINT)) return normalizeEmail(hintEmail);
+  return '';
+}
+
+export function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function parsePermissionKeys(raw) {
+  if (raw == null || raw === '') return [];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === 'object') return [];
+  try {
+    let v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch { /* keep string */ }
+    }
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function cacheKey(actorSub, claims, hintEmail) {
+  return `${actorSub || ''}|${extractEmail(claims, hintEmail)}`;
 }
 
 /**
  * @param {string} actorSub
  * @param {object} [claims] - verified JWT payload (iss, email, …)
+ * @param {{ hintEmail?: string }} [extras] - unsigned email, used only for *.clerk.accounts.dev
  */
-export async function resolveCaller(actorSub, claims = {}) {
+export async function resolveCaller(actorSub, claims = {}, extras = {}) {
   if (!actorSub) return { kind: 'anonymous' };
   if (actorSub.startsWith('internal:')) return { kind: 'internal', actorSub };
 
-  const key = cacheKey(actorSub, claims);
+  const hintEmail = extras.hintEmail || '';
+  const key = cacheKey(actorSub, claims, hintEmail);
   const cached = callerCache.get(key);
   if (cached && Date.now() - cached.at < CALLER_TTL_MS) return cached.value;
 
-  const value = await lookupCaller(actorSub, claims || {});
+  const value = await lookupCaller(actorSub, claims || {}, hintEmail);
   callerCache.set(key, { at: Date.now(), value });
   return value;
 }
@@ -81,7 +119,7 @@ function rowToCaller(row, { pending = false } = {}) {
   };
 }
 
-async function lookupCaller(actorSub, claims) {
+async function lookupCaller(actorSub, claims, hintEmail = '') {
   try {
     const { rows } = await query(
       `SELECT rec_id, id, role_id, status, clerk_user_id, email
@@ -93,8 +131,10 @@ async function lookupCaller(actorSub, claims) {
     let row = rows?.[0];
 
     // Dev Clerk instance vs live Users.clerk_user_id — match staff by email.
+    // Local session JWTs often have no email claim; the SPA sends X-User-Email
+    // for that issuer only (see extractEmail).
     if (!row) {
-      const email = String(claims.email || claims.primary_email_address || '').trim().toLowerCase();
+      const email = extractEmail(claims, hintEmail);
       if (email) {
         const byEmail = await query(
           `SELECT rec_id, id, role_id, status, clerk_user_id, email
@@ -157,10 +197,20 @@ export function assertCanWrite(caller) {
  * reachable via the API without an explicit grant.
  */
 export async function assertHasPermission(caller, permissionKey) {
+  return assertHasAnyPermission(caller, [permissionKey]);
+}
+
+export async function assertHasAnyPermission(caller, permissionKeys) {
+  const keysWanted = (Array.isArray(permissionKeys) ? permissionKeys : [permissionKeys])
+    .map(String)
+    .filter(Boolean);
+  const label = keysWanted[0] || 'unknown';
   if (!caller || caller.kind === 'internal') return;
   assertCanWrite(caller);
   if (!caller.userId) {
-    throw new AccessDeniedError(`Missing permission: ${permissionKey}`);
+    throw new AccessDeniedError(
+      `Could not match your login to a CareStream user (needed ${label})`,
+    );
   }
   try {
     const { rows } = await query(
@@ -170,20 +220,14 @@ export async function assertHasPermission(caller, permissionKey) {
         LIMIT 1`,
       [caller.userId],
     );
-    const raw = rows?.[0]?.permissions;
-    let keys = [];
-    if (typeof raw === 'string') {
-      try { keys = JSON.parse(raw); } catch { keys = []; }
-    } else if (Array.isArray(raw)) {
-      keys = raw;
-    }
-    if (!Array.isArray(keys) || !keys.includes(permissionKey)) {
-      throw new AccessDeniedError(`Missing permission: ${permissionKey}`);
+    const keys = parsePermissionKeys(rows?.[0]?.permissions);
+    if (!keysWanted.some((k) => keys.includes(k))) {
+      throw new AccessDeniedError(`Missing permission: ${label}`);
     }
   } catch (err) {
     if (err instanceof AccessDeniedError) throw err;
     console.error('[accessControl] permission lookup failed:', err.message);
-    throw new AccessDeniedError(`Missing permission: ${permissionKey}`);
+    throw new AccessDeniedError(`Missing permission: ${label}`);
   }
 }
 

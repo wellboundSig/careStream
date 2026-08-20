@@ -151,6 +151,24 @@ function MadLibSentence({ template, slots, setSlots, marketerOpts, ownerOpts, so
 
   // Fixed English per template — slots interpolated in natural order.
   switch (template.id) {
+    case 'referral_speed':
+      return (
+        <p style={sentenceStyle}>
+          Days from referral to HCHB and first visit {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
+        </p>
+      );
+    case 'soc_missing_docs':
+      return (
+        <p style={sentenceStyle}>
+          Completed {bits.episodeType} still missing F2F or MD orders {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
+        </p>
+      );
+    case 'master_patient':
+      return (
+        <p style={sentenceStyle}>
+          Every patient episode {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
+        </p>
+      );
     case 'intake_volume':
       return (
         <p style={sentenceStyle}>

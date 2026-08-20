@@ -22,6 +22,18 @@ import {
   buildReferralSourceReport,
   uniqueLookupRecords,
 } from './referralSourceReport.js';
+import {
+  REFERRAL_SPEED_COLUMNS,
+  SOC_MISSING_DOCS_COLUMNS,
+  MASTER_PATIENT_COLUMNS,
+  buildReferralSpeedRows,
+  summarizeReferralSpeed,
+  buildSocMissingDocsRows,
+  summarizeSocMissingDocs,
+  buildMasterPatientRows,
+  summarizeMasterPatient,
+  indexLinkedByReferral,
+} from './operationalReports.js';
 
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
@@ -145,9 +157,14 @@ export const TABLE_SCHEMAS = {
           { key: '__clinical_by',                  label: 'Clinical Reviewed By',        type: 'virtual', virtual: true },
           { key: 'clinical_review_pushed_at',      label: 'Pushed to Clinical At',       type: 'date',    filterable: true },
           { key: 'in_clinical_review',             label: 'In Clinical Review',          type: 'boolean', filterable: true },
+          { key: '__clinical_assigned',            label: 'Clinical RN Assigned',        type: 'virtual', virtual: true },
+          { key: 'clinical_review_assigned_at',    label: 'Clinical RN Assigned At',     type: 'date',    filterable: true },
           { key: 'returned_from_clinical',         label: 'Returned from Clinical',      type: 'boolean', filterable: true },
           { key: 'returned_from_clinical_at',      label: 'Returned from Clinical At',   type: 'date',    filterable: true },
           { key: 'returned_from_clinical_note',    label: 'Returned from Clinical Note', type: 'text',    filterable: false },
+          { key: 'documentation_deferred',         label: 'Docs Deferred (post-SOC)',    type: 'boolean', filterable: true },
+          { key: 'documentation_due_date',         label: 'Docs Due Date',               type: 'date',    filterable: true },
+          { key: 'documentation_cleared_at',       label: 'Docs Cleared At',             type: 'date',    filterable: true },
         ],
       },
       {
@@ -180,7 +197,12 @@ export const TABLE_SCHEMAS = {
           { key: '__facility_name',  label: 'Facility',         type: 'virtual', virtual: true, filterable: false },
           { key: '__source_name',    label: 'Referral Source',  type: 'virtual', virtual: true, filterable: false },
           { key: '__source_type',    label: 'Source Type',      type: 'virtual', virtual: true, filterable: false },
+          { key: '__source_entity',  label: 'Source Entity',    type: 'virtual', virtual: true, filterable: false },
+          { key: '__source_method',  label: 'Source Default Method', type: 'virtual', virtual: true, filterable: false },
+          { key: '__source_phone',   label: 'Source Phone',     type: 'virtual', virtual: true, filterable: false },
+          { key: '__source_email',   label: 'Source Email',     type: 'virtual', virtual: true, filterable: false },
           { key: 'referral_method',  label: 'Referral Method',  type: 'enum', options: REFERRAL_METHODS, filterable: true },
+          { key: 'referral_source_id', label: 'Source ID (raw)', type: 'text', filterable: true },
           { key: '__physician_name', label: 'Physician',        type: 'virtual', virtual: true, filterable: false },
           { key: '__campaign_name',  label: 'Campaign',         type: 'virtual', virtual: true, filterable: false },
           { key: 'marketer_id',      label: 'Marketer ID (raw)',type: 'text',    filterable: true },
@@ -195,16 +217,52 @@ export const TABLE_SCHEMAS = {
       { key: 'f2f_urgency',    label: 'F2F Urgency', type: 'enum',    options: F2F_URGENCY },
       { key: 'clinical_review_decision', label: 'Clinical Decision', type: 'enum', options: ['accept', 'conditional', 'decline'] },
       { key: 'referral_method', label: 'Referral Method', type: 'enum', options: REFERRAL_METHODS },
+      { key: 'referral_source_id', label: 'Source ID', type: 'text' },
       { key: 'referral_date',  label: 'Referral Date', type: 'date' },
       { key: 'soc_scheduled_date', label: 'SOC Date', type: 'date' },
       { key: 'soc_completed_date', label: 'SOC/ROC Completed', type: 'date' },
       { key: 'clinical_review_completed_at', label: 'Clinical Completed', type: 'date' },
       { key: 'emr_onboarded_at', label: 'EMR Onboarded', type: 'date' },
+      { key: 'emr_initial_onboarded_at', label: 'Initial EMR / HCHB', type: 'date' },
+      { key: 'documentation_deferred', label: 'Docs Deferred', type: 'boolean' },
+      { key: 'documentation_due_date', label: 'Docs Due', type: 'date' },
       { key: 'intake_owner_id', label: 'Intake Owner ID', type: 'text' },
       { key: 'hchb_entered',   label: 'HCHB Entered', type: 'boolean' },
       { key: 'is_pecos_verified', label: 'PECOS Verified', type: 'boolean' },
       { key: 'returned_from_clinical', label: 'Returned from Clinical', type: 'boolean' },
       { key: 'ntuc_reason',    label: 'NTUC Reason', type: 'text' },
+    ],
+  },
+
+  ReferralSources: {
+    label: 'Referral Sources',
+    description: 'Live source directory: type, entity, method, marketer, and contact.',
+    groups: [
+      {
+        label: 'Source',
+        fields: [
+          { key: 'name',           label: 'Name',           type: 'text',    filterable: true },
+          { key: 'type',           label: 'Type',           type: 'enum',    options: SOURCE_TYPES, filterable: true },
+          { key: 'source_entity',  label: 'Entity / Company', type: 'text',  filterable: true },
+          { key: 'method',         label: 'Default Method', type: 'enum',    options: REFERRAL_METHODS, filterable: true },
+          { key: '__marketer_name',label: 'Marketer',       type: 'virtual', virtual: true },
+          { key: 'phone',          label: 'Phone',          type: 'text',    filterable: false },
+          { key: 'email',          label: 'Email',          type: 'text',    filterable: false },
+          { key: 'is_active',      label: 'Active',         type: 'boolean', filterable: true },
+          { key: 'is_system',      label: 'System',         type: 'boolean', filterable: true },
+          { key: 'created_at',     label: 'Created',        type: 'date',    filterable: true },
+          { key: 'updated_at',     label: 'Updated',        type: 'date',    filterable: true },
+          { key: 'id',             label: 'Source ID',      type: 'text',    filterable: true },
+          { key: 'marketer_id',    label: 'Marketer ID (raw)', type: 'text', filterable: true },
+        ],
+      },
+    ],
+    airtableFilters: [
+      { key: 'type',          label: 'Type',           type: 'enum',    options: SOURCE_TYPES },
+      { key: 'method',        label: 'Default Method', type: 'enum',    options: REFERRAL_METHODS },
+      { key: 'source_entity', label: 'Entity',         type: 'text' },
+      { key: 'is_active',     label: 'Active',         type: 'boolean' },
+      { key: 'name',          label: 'Name',           type: 'text' },
     ],
   },
 
@@ -683,8 +741,10 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     || k.startsWith('__flagged')
     || k.startsWith('__resolved')
     || k.startsWith('__intake_owner')
+    || k.startsWith('__lead_created_by')
     || k.startsWith('__hold_owner')
     || k.startsWith('__clinical_by')
+    || k.startsWith('__clinical_assigned')
     || k.startsWith('__f2f_logged_by')
     || k.startsWith('__emr_')
     || k.startsWith('__auth_obtained_by')
@@ -738,6 +798,10 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       const s = sources[row.referral_source_id] || {};
       out.__source_name = s.name || '—';
       out.__source_type = s.type || '—';
+      out.__source_entity = s.source_entity || '—';
+      out.__source_method = s.method || '—';
+      out.__source_phone = s.phone || '—';
+      out.__source_email = s.email || '—';
     }
     if (needsPhysician) out.__physician_name = resolve.physician(physicians[row.physician_id]);
     if (needsCampaign)  out.__campaign_name  = resolve.campaign(campaigns[row.campaign_id]);
@@ -756,7 +820,13 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
         : resolve.user(users[row.intake_owner_id]);
       out.__hold_owner        = resolve.user(users[row.hold_owner_id]);
       out.__lead_created_by   = resolve.user(users[row.lead_created_by_id]);
-      out.__clinical_by       = resolve.user(users[row.clinical_review_completed_by_id || row.clinical_review_by || row.reviewed_by]);
+      out.__clinical_by       = resolve.user(users[firstId(row.clinical_review_completed_by_id) || firstId(row.clinical_review_by) || firstId(row.reviewed_by)]);
+      // Assigned RN while the review is open; after complete, assignment is cleared.
+      out.__clinical_assigned = resolve.user(users[
+        firstId(row.clinical_review_assigned_to_id)
+        || firstId(row.clinical_review_completed_by_id)
+        || firstId(row.clinical_review_by)
+      ]);
       out.__f2f_logged_by     = resolve.user(users[row.f2f_date_logged_by_id]);
       out.__emr_initial_by    = resolve.user(users[row.emr_initial_onboarded_by_id]);
       out.__emr_onboarded_by  = resolve.user(users[row.emr_onboarded_by_id]);
@@ -1685,9 +1755,136 @@ export async function runReferralSourceReport({ dateFrom, dateTo, division, sour
   });
 }
 
+/**
+ * Time from referral to HCHB chart open and first visit (SOC completed).
+ * Date range is referral_date; blank = all time.
+ */
+export async function runReferralSpeed({ dateFrom, dateTo, division, marketerIds, ownerIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds, ownerIds });
+  const cols = [
+    '__patient_name', '__facility_name', '__intake_owner', '__marketer_name', '__source_name',
+    'division', 'episode_type', 'current_stage', 'referral_date', 'created_at',
+    'emr_initial_onboarded_at', 'emr_onboarded_at', 'soc_completed_date',
+  ];
+  const { rows: fetched } = await fetchReportData({
+    tableName: 'Referrals',
+    filters,
+    selectedKeys: cols,
+    sort: [{ field: 'referral_date', direction: 'desc' }],
+  });
+  const rows = buildReferralSpeedRows(fetched);
+  return { rows, columns: REFERRAL_SPEED_COLUMNS, summary: summarizeReferralSpeed(rows) };
+}
+
+/**
+ * SOC/ROC completed but still missing F2F, MD orders, auth, or eligibility.
+ * Date range is soc_completed_date; blank = all completed starts.
+ */
+export async function runSocMissingDocs({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType } = {}) {
+  const filters = [
+    { field: 'soc_completed_date', operator: 'not_empty' },
+    ...buildReferralParamFilters({
+      dateFrom, dateTo, division, marketerIds, ownerIds, dateField: 'soc_completed_date',
+    }),
+  ];
+  const cols = [
+    '__patient_name', '__patient_dob', '__intake_owner', '__clinical_assigned', '__clinical_by',
+    '__marketer_name', '__facility_name',
+    'division', 'episode_type', 'current_stage', 'soc_completed_date',
+    'f2f_date', 'auth_obtained_at', 'eligibility_completed_at',
+    'documentation_due_date',
+  ];
+  const [{ rows: fetched }, cursoryRecs, fileRecs] = await Promise.all([
+    fetchReportData({
+      tableName: 'Referrals',
+      filters,
+      selectedKeys: cols,
+      sort: [{ field: 'soc_completed_date', direction: 'desc' }],
+    }),
+    airtable.fetchAll('CursoryReview').catch(() => []),
+    airtable.fetchAll('Files').catch(() => []),
+  ]);
+
+  let pool = fetched.filter((r) => isSocCompletedReferral(r));
+  if (episodeType === 'SOC' || episodeType === 'ROC') {
+    pool = pool.filter((r) => normalizeEpisodeType(r) === episodeType);
+  }
+
+  const cursoryByRef = indexLinkedByReferral(cursoryRecs.map((r) => ({ _id: r.id, ...r.fields })));
+  const filesByRef = indexLinkedByReferral(
+    fileRecs
+      .map((r) => ({ _id: r.id, ...r.fields }))
+      .filter((f) => String(f.category || '').trim() === 'MD Orders'),
+  );
+  const rows = buildSocMissingDocsRows(pool, { cursoryByRef, filesByRef });
+  return { rows, columns: SOC_MISSING_DOCS_COLUMNS, summary: summarizeSocMissingDocs(rows) };
+}
+
+/**
+ * One row per episode. Patient columns first.
+ */
+export async function runMasterPatient({ dateFrom, dateTo, division, marketerIds, ownerIds } = {}) {
+  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds, ownerIds });
+  const cols = [
+    '__patient_name', '__patient_dob', '__patient_gender', '__patient_address',
+    '__patient_phone', '__patient_medicaid', '__patient_medicare', '__patient_insplan',
+    '__intake_owner', '__clinical_assigned', '__clinical_by', '__lead_created_by', '__marketer_name', '__facility_name',
+    '__source_name', '__source_type', '__source_entity', '__source_method',
+    '__physician_name', '__campaign_name',
+    'id', 'patient_id', 'division', 'episode_type', 'current_stage', 'priority',
+    'services_requested', 'referral_date', 'created_at', 'updated_at',
+    'emr_initial_onboarded_at', 'emr_onboarded_at', 'eligibility_completed_at',
+    'f2f_date', 'clinical_review_completed_at', 'clinical_review_decision',
+    'auth_obtained_at', 'staffing_confirmed_at',
+    'soc_scheduled_date', 'soc_completed_date',
+    'hchb_entered', 'is_pecos_verified', 'is_opra_verified',
+    'documentation_deferred', 'documentation_due_date', 'documentation_cleared_at',
+    'hold_reason', 'ntuc_reason',
+  ];
+  const [{ rows: fetched }, cursoryRecs, fileRecs] = await Promise.all([
+    fetchReportData({
+      tableName: 'Referrals',
+      filters,
+      selectedKeys: cols,
+      sort: [{ field: 'referral_date', direction: 'desc' }],
+    }),
+    airtable.fetchAll('CursoryReview').catch(() => []),
+    airtable.fetchAll('Files').catch(() => []),
+  ]);
+  const cursoryByRef = indexLinkedByReferral(cursoryRecs.map((r) => ({ _id: r.id, ...r.fields })));
+  const filesByRef = indexLinkedByReferral(
+    fileRecs
+      .map((r) => ({ _id: r.id, ...r.fields }))
+      .filter((f) => String(f.category || '').trim() === 'MD Orders'),
+  );
+  const rows = buildMasterPatientRows(fetched, { cursoryByRef, filesByRef });
+  return { rows, columns: MASTER_PATIENT_COLUMNS, summary: summarizeMasterPatient(rows) };
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
+  {
+    id: 'referral_speed',
+    title: 'Referral to HCHB and First Visit',
+    description: 'Days from referral date to HCHB chart open and to SOC completed. Blank dates = all time.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runReferralSpeed(params); },
+  },
+  {
+    id: 'soc_missing_docs',
+    title: 'SOC Done, Missing Docs',
+    description: 'Completed SOCs still missing F2F or MD orders, with aging. Blank dates = all completed starts.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runSocMissingDocs(params); },
+  },
+  {
+    id: 'master_patient',
+    title: 'Master Patient Report',
+    description: 'One row per episode. Patient first, then staff, dates, and gaps. Blank dates = all time.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runMasterPatient(params); },
+  },
   {
     id: 'intake_volume',
     title: 'Intake Volume',

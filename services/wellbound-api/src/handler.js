@@ -23,7 +23,7 @@ import { listRecords, getRecord, createRecords, updateRecords, deleteRecord, met
 import {
   resolveCaller,
   assertCanWrite,
-  assertHasPermission,
+  assertHasAnyPermission,
   filterReadResult,
   filterHydrateResult,
   AccessDeniedError,
@@ -49,7 +49,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Key, X-User-Email',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin, Accept-Encoding',
   };
@@ -121,7 +121,8 @@ export async function handler(event) {
   // Pass full JWT claims so accessControl can resolve pk_test (localhost)
   // sessions by email / fail-open for the test issuer when clerk_user_id
   // doesn't match the live Users row.
-  const caller = await resolveCaller(actorSub, claims || {});
+  const hintEmail = event.headers?.['x-user-email'] || event.headers?.['X-User-Email'] || '';
+  const caller = await resolveCaller(actorSub, claims || {}, { hintEmail });
 
   // Rate limits (skip for internal workers — webhooks / scripts).
   if (caller.kind !== 'internal') {
@@ -144,7 +145,10 @@ export async function handler(event) {
   // Deny-by-default: clinical.eligibility_optum_auto (explicit grant only).
   if (rawPath === '/eligibility/optum-check' && method === 'POST') {
     try {
-      await assertHasPermission(caller, 'clinical.eligibility_optum_auto');
+      await assertHasAnyPermission(caller, [
+        'clinical.eligibility_optum_auto',
+        'clinical.eligibility_batch',
+      ]);
       let body = null;
       try {
         body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
@@ -160,6 +164,9 @@ export async function handler(event) {
     } catch (err) {
       const status = err instanceof AccessDeniedError ? err.status : 500;
       if (status === 500) console.error('[wellbound-api optum]', err);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(optum-eligibility)', status,
+      });
       return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
     }
   }

@@ -7,6 +7,9 @@ import {
   runMethodAttribution,
   runSocCompleted,
   runReferralSourceReport,
+  runReferralSpeed,
+  runSocMissingDocs,
+  runMasterPatient,
   PRESETS,
 } from '../utils/reportEngine.js';
 
@@ -45,9 +48,77 @@ export const EMPTY_SLOTS = {
  */
 export const GUIDED_TEMPLATES = [
   {
+    id: 'referral_speed',
+    title: 'Referral to HCHB and First Visit',
+    description: 'Days from referral date to HCHB chart open and SOC completed.',
+    icon: 'referral_speed',
+    dateField: 'referral_date',
+    slots: ['dateRange', 'division', 'marketers', 'owners'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS }),
+    fields: [
+      { name: 'referral_date', label: 'Referral date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+    ],
+    async run(slots) {
+      return runReferralSpeed({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        marketerIds: slots.marketerIds,
+        ownerIds: slots.ownerIds,
+      });
+    },
+  },
+  {
+    id: 'soc_missing_docs',
+    title: 'SOC Done, Missing Docs',
+    description: 'Completed starts still missing F2F or MD orders.',
+    icon: 'soc_missing_docs',
+    dateField: 'soc_completed_date',
+    slots: ['dateRange', 'division', 'episodeType', 'marketers', 'owners'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS }),
+    fields: [
+      { name: 'soc_completed_date', label: 'Completed date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+      { name: 'episode_type', label: 'SOC / ROC', values: [{ name: 'SOC', label: 'SOC' }, { name: 'ROC', label: 'ROC' }] },
+    ],
+    async run(slots) {
+      return runSocMissingDocs({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        episodeType: slots.episodeType || undefined,
+        marketerIds: slots.marketerIds,
+        ownerIds: slots.ownerIds,
+      });
+    },
+  },
+  {
+    id: 'master_patient',
+    title: 'Master Patient Report',
+    description: 'One row per episode. Patient first, then staff, dates, and gaps.',
+    icon: 'master_patient',
+    dateField: 'referral_date',
+    slots: ['dateRange', 'division', 'marketers', 'owners'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS }),
+    fields: [
+      { name: 'referral_date', label: 'Referral date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+    ],
+    async run(slots) {
+      return runMasterPatient({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        marketerIds: slots.marketerIds,
+        ownerIds: slots.ownerIds,
+      });
+    },
+  },
+  {
     id: 'intake_volume',
     title: 'Intake Volume',
-    description: 'Leads created in a date range — volume, owners, and stage mix.',
+    description: 'Leads created in a date range: volume, owners, and stage mix.',
     icon: 'intake_volume',
     dateField: 'referral_date',
     slots: ['dateRange', 'division', 'owners', 'marketers'],
@@ -195,7 +266,7 @@ export const GUIDED_TEMPLATES = [
   {
     id: 'source_attribution',
     title: 'Source Attribution',
-    description: 'Referral outcomes by lead source — SOC and NTUC rates.',
+    description: 'Referral outcomes by lead source: SOC and NTUC rates.',
     icon: 'source_attribution',
     dateField: 'referral_date',
     slots: ['dateRange', 'division', 'sources'],

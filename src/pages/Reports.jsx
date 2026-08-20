@@ -51,6 +51,9 @@ const Icon = {
 };
 
 const PRESET_ICONS = {
+  referral_speed:        Icon.Clock,
+  soc_missing_docs:      Icon.Warning,
+  master_patient:        Icon.Pills,
   intake_volume:         Icon.Pipeline,
   processing_overview:   Icon.Checkmark,
   referral_sources:      Icon.Link,

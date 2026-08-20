@@ -16,7 +16,14 @@ async function authHeader() {
     const token = typeof window !== 'undefined' && window.Clerk?.session
       ? await window.Clerk.session.getToken()
       : null;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    // Local pk_test JWTs have no email claim; the API uses this only for the
+    // Clerk test issuer to map the session onto Users.email.
+    const email = typeof window !== 'undefined'
+      ? window.Clerk?.user?.primaryEmailAddress?.emailAddress
+      : '';
+    if (email) headers['X-User-Email'] = email;
+    return headers;
   } catch {
     return {};
   }
