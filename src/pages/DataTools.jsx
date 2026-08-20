@@ -26,6 +26,7 @@ import {
 import { verifyPhysicianNpi } from '../api/cms.js';
 import { updatePhysician } from '../api/physicians.js';
 import { normalizePhysicianTitle } from '../utils/physicianName.js';
+import ReferralToSocView from '../components/dataTools/ReferralToSocView.jsx';
 
 const PIPELINE_STAGES = [
   'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
@@ -77,7 +78,7 @@ const COMPARE_METRICS = [
   { key: 'avg_days',      label: 'Avg Days in Pipeline',   fmt: 'd' },
 ];
 
-const TABS = ['Overview','Trends','Sources','Period Comparison','Heatmap','Processing Overview','Data Table'];
+const TABS = ['Overview','Referral to SOC','Trends','Sources','Period Comparison','Heatmap','Processing Overview','Data Table'];
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -1456,8 +1457,8 @@ export default function DataTools() {
 
   return (
     <div style={{
-      padding: '24px 28px',
-      maxWidth: tab === 'Processing Overview' ? 1600 : 1280,
+      padding: tab === 'Referral to SOC' ? '28px 40px 64px' : '24px 28px',
+      maxWidth: tab === 'Referral to SOC' ? 1720 : tab === 'Processing Overview' ? 1600 : 1280,
       margin: '0 auto',
     }}>
 
@@ -1491,6 +1492,14 @@ export default function DataTools() {
       <TabBar active={tab} onChange={setTab} />
 
       {tab === 'Overview'          && <OverviewTab referrals={divisionFiltered} allReferrals={allReferrals} />}
+      {tab === 'Referral to SOC'   && (
+        <ReferralToSocView
+          referrals={divisionFiltered}
+          allReferrals={allReferrals}
+          period={period}
+          division={division}
+        />
+      )}
       {tab === 'Trends'            && <TrendsTab referrals={divisionFiltered} />}
       {tab === 'Sources'           && <SourcesTab referrals={divisionFiltered} resolveMarketer={resolveMarketer} resolveSource={resolveSource} />}
       {tab === 'Period Comparison' && <PeriodComparisonTab allReferrals={allReferrals} />}
