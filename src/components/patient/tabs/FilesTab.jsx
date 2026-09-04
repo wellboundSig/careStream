@@ -50,6 +50,7 @@ const CATEGORY_COLORS = {
   'MD Orders': { bg: hexToRgba(palette.accentOrange.hex, 0.12), text: '#8B4A00' },
   'Auth Letter': { bg: hexToRgba(palette.accentGreen.hex, 0.1), text: '#3A6E00' },
   'Insurance': { bg: hexToRgba(palette.accentBlue.hex, 0.1), text: '#005B84' },
+  'Facesheet': { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.08), text: palette.primaryDeepPlum.hex },
   'Discharge': { bg: hexToRgba(palette.highlightYellow.hex, 0.15), text: '#7A5F00' },
   'ID': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
   'Consent': { bg: hexToRgba(palette.backgroundDark.hex, 0.07), text: hexToRgba(palette.backgroundDark.hex, 0.6) },
@@ -66,7 +67,7 @@ const CATEGORY_COLORS = {
   'OPWDD Notice':     { bg: hexToRgba(palette.primaryDeepPlum.hex, 0.12), text: palette.primaryDeepPlum.hex },
 };
 
-const STANDARD_FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Discharge', 'ID', 'Consent', 'Medications', 'Progress Notes', 'Miscellaneous', 'Other'];
+const STANDARD_FILE_CATEGORIES = ['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Facesheet', 'Discharge', 'ID', 'Consent', 'Medications', 'Progress Notes', 'Miscellaneous', 'Other'];
 const FILE_CATEGORIES = [...STANDARD_FILE_CATEGORIES, ...OPWDD_FILE_CATEGORIES];
 
 function isOpwddCategory(cat) {
@@ -862,7 +863,7 @@ function GroupedFileList({
     {
       id: 'insurance_id',
       label: 'Insurance & ID',
-      match: (file) => ['Insurance', 'ID', 'Consent'].includes(file.category),
+      match: (file) => ['Insurance', 'Facesheet', 'ID', 'Consent'].includes(file.category),
       accent: palette.accentBlue.hex,
     },
     {
@@ -893,7 +894,7 @@ function GroupedFileList({
         const c = file.category;
         if (!c) return true;
         if (isOpwddCategory(c)) return false;
-        return !['F2F', 'MD Orders', 'Insurance', 'ID', 'Consent', 'Auth Letter', 'Discharge', 'Medications', 'Progress Notes'].includes(c);
+        return !['F2F', 'MD Orders', 'Insurance', 'Facesheet', 'ID', 'Consent', 'Auth Letter', 'Discharge', 'Medications', 'Progress Notes'].includes(c);
       },
       accent: hexToRgba(palette.backgroundDark.hex, 0.5),
     },

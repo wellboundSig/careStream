@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   PRESETS, TABLE_SCHEMAS,
-  STAGES, DIVISIONS, F2F_URGENCY,
+  STAGES, DIVISIONS, F2F_URGENCY, FILE_REPORT_CATEGORIES,
   fetchReportData, exportToExcel,
 } from '../utils/reportEngine.js';
 import { usePermissions } from '../hooks/usePermissions.js';
@@ -48,9 +48,11 @@ const Icon = {
   Warning:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   Link:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
   Ticket:    () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>,
+  File:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
 };
 
 const PRESET_ICONS = {
+  files_report:          Icon.File,
   referral_speed:        Icon.Clock,
   soc_missing_docs:      Icon.Warning,
   master_patient:        Icon.Pills,
@@ -186,6 +188,55 @@ function ParamControls({ controls, params, onChange }) {
             <option value="">All Divisions</option>
             {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
           </Select>
+        </td>
+      </tr>
+    );
+  }
+  if (controls.includes('fileCategories')) {
+    const sel = Array.isArray(params.fileCategories) ? params.fileCategories : [];
+    const toggle = (cat) => {
+      const next = sel.includes(cat) ? sel.filter((c) => c !== cat) : [...sel, cat];
+      set('fileCategories', next);
+    };
+    rows.push(
+      <tr key="fileCategories">
+        <td style={{ ...labelCell, verticalAlign: 'top', paddingTop: 10 }}>File Types</td>
+        <td style={valueCell}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+            <button
+              onClick={() => set('fileCategories', [])}
+              style={{
+                padding: '3px 10px', borderRadius: 2, fontSize: 11.5, cursor: 'pointer',
+                fontWeight: sel.length === 0 ? 650 : 500,
+                border: `1px solid ${sel.length === 0 ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                background: sel.length === 0 ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'transparent',
+                color: sel.length === 0 ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+              }}
+            >
+              All Types
+            </button>
+            {FILE_REPORT_CATEGORIES.map((cat) => {
+              const on = sel.includes(cat);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => toggle(cat)}
+                  style={{
+                    padding: '3px 10px', borderRadius: 2, fontSize: 11.5, cursor: 'pointer',
+                    fontWeight: on ? 650 : 500,
+                    border: `1px solid ${on ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                    background: on ? hexToRgba(palette.primaryMagenta.hex, 0.08) : 'transparent',
+                    color: on ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  }}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '6px 0 0' }}>
+            {sel.length === 0 ? 'All file types will be included.' : `${sel.length} type${sel.length === 1 ? '' : 's'} selected.`}
+          </p>
         </td>
       </tr>
     );
@@ -334,8 +385,8 @@ function PresetPanel() {
     setErrMsg('');
     try {
       const { rows, columns, summary, extraSheets } = await preset.run(params);
-      const subtitle = Object.entries(params).filter(([, v]) => v)
-        .map(([k, v]) => `${k}: ${v}`).join(' | ') || `Generated: ${new Date().toLocaleString()}`;
+      const subtitle = Object.entries(params).filter(([, v]) => (Array.isArray(v) ? v.length : v))
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ') || `Generated: ${new Date().toLocaleString()}`;
       await exportToExcel(rows, columns, preset.title, subtitle, summary || null, extraSheets);
       setRowCount(rows.length);
       setStatus('done');

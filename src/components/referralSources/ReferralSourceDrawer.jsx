@@ -4,6 +4,7 @@ import SourceOverviewTab from './tabs/SourceOverviewTab.jsx';
 import SourcePatientsTab from './tabs/SourcePatientsTab.jsx';
 import SourceMetricsTab  from './tabs/SourceMetricsTab.jsx';
 import SourceReportsTab  from './tabs/SourceReportsTab.jsx';
+import DateRangeFilter, { DEFAULT_DATE_RANGE } from '../common/DateRangeFilter.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [
@@ -38,7 +39,8 @@ function initials(name = '') {
 export default function ReferralSourceDrawer({ source, onClose, onEdit }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [animated, setAnimated] = useState(false);
-  const { referrals, marketer, stats, ntucReasons, stageBreakdown, divisionBreakdown, loading } = useReferralSourceData(source);
+  const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE);
+  const { referrals, marketer, stats, ntucReasons, stageBreakdown, divisionBreakdown, loading } = useReferralSourceData(source, dateRange);
 
   useEffect(() => {
     if (source) {
@@ -190,6 +192,11 @@ export default function ReferralSourceDrawer({ source, onClose, onEdit }) {
               </button>
             );
           })}
+        </div>
+
+        {/* Date range (applies to every tab's referral metrics) */}
+        <div style={{ padding: '8px 18px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
 
         {/* Tab content */}

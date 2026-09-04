@@ -16,13 +16,40 @@ import { recordActivity } from '../api/activityLog.js';
 
 /** @typedef {'wound'|'insulin'|'injection'} UrgentCareType */
 
-export const URGENT_CARE_TYPE_OPTIONS = [
-  { value: 'wound', label: 'Wound care' },
-  { value: 'insulin', label: 'Insulin' },
-  { value: 'injection', label: 'Injection' },
-];
+export const URGENT_CARE_TYPE_META = {
+  // Wound is first-aid red (not brand magenta) so the icon reads as a medical
+  // cross, not a "+ add" affordance.
+  wound:     { label: 'Wound care', color: '#C62828', bg: '#FBE9E9' },
+  insulin:   { label: 'Insulin',    color: '#0B7FA6', bg: '#E5F4F8' },
+  injection: { label: 'Injection',  color: '#C05621', bg: '#F8EDE6' },
+};
+
+export const URGENT_CARE_TYPE_OPTIONS = Object.entries(URGENT_CARE_TYPE_META).map(([value, meta]) => ({
+  value,
+  label: meta.label,
+  color: meta.color,
+  bg: meta.bg,
+}));
 
 const KNOWN_TYPES = new Set(URGENT_CARE_TYPE_OPTIONS.map((o) => o.value));
+
+export function urgentCareTypeColor(type) {
+  return URGENT_CARE_TYPE_META[type]?.color || '#C62828';
+}
+
+export function urgentCareTypeBg(type) {
+  return URGENT_CARE_TYPE_META[type]?.bg || '#FBE9E9';
+}
+
+// Urgent care cases are automatically reported at High priority. Never
+// downgrade an existing High/Critical; clearing the urgent flag leaves
+// priority untouched (the bump is an audit-friendly one-way door).
+const PRIORITY_AT_LEAST_HIGH = new Set(['High', 'Critical']);
+
+function urgentPriorityFields(referral) {
+  const current = String(referral?.priority || '').trim();
+  return PRIORITY_AT_LEAST_HIGH.has(current) ? {} : { priority: 'High' };
+}
 const TYPE_ORDER = URGENT_CARE_TYPE_OPTIONS.map((o) => o.value);
 const TYPE_LABELS = Object.fromEntries(
   URGENT_CARE_TYPE_OPTIONS.map((o) => [o.value, o.label]),
@@ -112,6 +139,7 @@ export async function setUrgentCare({ referral, next, actorUserId, note, type })
     if (type !== undefined) {
       updates.urgent_care_type = serializeUrgentCareTypes(type);
     }
+    Object.assign(updates, urgentPriorityFields(referral));
   } else {
     // Leave the audit columns intact so we keep history of who/when last
     // flagged the patient. Clear note + subtype so the next mark starts clean.
@@ -160,6 +188,7 @@ export async function setUrgentCareType({ referral, type, types, actorUserId }) 
     updates.requires_urgent_care = true;
     updates.urgent_care_marked_at = now;
     if (actorUserId) updates.urgent_care_marked_by_id = actorUserId;
+    Object.assign(updates, urgentPriorityFields(referral));
   }
 
   await updateReferralOptimistic(referral._id, updates);

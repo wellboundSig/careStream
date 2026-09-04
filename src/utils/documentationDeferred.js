@@ -7,6 +7,7 @@
 import { updateReferralOptimistic, createNoteOptimistic } from '../store/mutations.js';
 import { recordActivity } from '../api/activityLog.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 
 export const DOCUMENTATION_CLOCK_DAYS = 30;
 
@@ -99,30 +100,28 @@ function isInClinicalReview(referral) {
   return referral?.in_clinical_review === true || referral?.in_clinical_review === 'true';
 }
 
-/** Stages already past the pre-SOC clinical gate — stamp only, do not hop to EMR. */
-const PAST_CLINICAL_GATE = new Set([
-  'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Intake',
-]);
-
 export const CLINICAL_CONFIRM_SOC_COMPLETED = 'SOC Completed';
-export const CLINICAL_CONFIRM_EMR = 'EMR Onboarding';
+// Clinical approval now routes straight to Staffing — EMR onboarding is an
+// Intake checklist milestone, not a pipeline stop.
+export const CLINICAL_CONFIRM_STAFFING = 'Staffing Feasibility';
+/** @deprecated legacy alias — clinical confirm no longer lands on EMR Onboarding. */
+export const CLINICAL_CONFIRM_EMR = CLINICAL_CONFIRM_STAFFING;
+
+/** Already on the scheduling side of the pipeline — stamp only. */
+const ALREADY_PAST_STAFFING = new Set(['Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled']);
 
 /**
  * Where Clinical RN "mark completed" should land.
- *   'SOC Completed'  — SOC already happened; skip EMR / staffing / scheduling
- *   null             — concurrent mid-pipeline (stamp only, stay put)
- *   'EMR Onboarding' — normal pre-SOC clinical confirm
+ *   'SOC Completed'         — visit already happened; completeClinicalReview
+ *                             continues on to Completed
+ *   null                    — already in Staffing / SOC-ROC scheduling
+ *   'Staffing Feasibility'  — hard push (including from Intake)
  */
 export function clinicalConfirmDestination(referral) {
-  if (!referral) return CLINICAL_CONFIRM_EMR;
+  if (!referral) return CLINICAL_CONFIRM_STAFFING;
   if (isSocCompletedReferral(referral)) return CLINICAL_CONFIRM_SOC_COMPLETED;
-  if (
-    PAST_CLINICAL_GATE.has(referral.current_stage)
-    && (isDocumentationDeferred(referral) || needsPostSocClinical(referral))
-  ) {
-    return null;
-  }
-  return CLINICAL_CONFIRM_EMR;
+  if (ALREADY_PAST_STAFFING.has(referral.current_stage)) return null;
+  return CLINICAL_CONFIRM_STAFFING;
 }
 
 /**
@@ -179,7 +178,29 @@ export async function clearDocumentationDeferred(referral, {
   }
 
   const now = new Date().toISOString();
-  await updateReferralOptimistic(referral._id, docsClearFields(now, actorUserId));
+  const clearFields = docsClearFields(now, actorUserId);
+
+  // Post-visit flow: clearing the docs hold when clinical is already done
+  // means every post-visit requirement is satisfied — finish the case.
+  if (referral.current_stage === 'Post Visit Intake' && hasClinicalCompleted(referral)) {
+    const result = attemptTransition({
+      referral,
+      toStage: 'Completed',
+      context: {
+        system: true,
+        actorUserId,
+        extraFields: clearFields,
+        note: '[Post-visit documentation cleared — clinical already complete → Completed]',
+      },
+    });
+    if (result.allowed) {
+      await applyTransition({ referral, result, context: { actorUserId } });
+    } else {
+      await updateReferralOptimistic(referral._id, clearFields);
+    }
+  } else {
+    await updateReferralOptimistic(referral._id, clearFields);
+  }
   recordActivity({
     actorUserId,
     action: 'Post-SOC Documentation Cleared',
@@ -215,7 +236,28 @@ export async function markDocsCompleteAndSendToClinical(referral, {
     ...(send ? clinicalHandoffFields(now, actorUserId) : {}),
   };
 
-  await updateReferralOptimistic(referral._id, fields);
+  // Post-visit flow: the case lives in the 'Post Visit Intake' stage, so the
+  // clinical handoff is a real stage transition (Post Visit Intake → Post
+  // Visit Clinical Review), not just flags. Legacy flag-based cases (stage
+  // still Intake/SOC Completed) keep the flag-only behavior.
+  if (send && referral.current_stage === 'Post Visit Intake') {
+    const result = attemptTransition({
+      referral,
+      toStage: 'Post Visit Clinical Review',
+      context: {
+        system: true,
+        actorUserId,
+        extraFields: fields,
+      },
+    });
+    if (result.allowed) {
+      await applyTransition({ referral, result, context: { actorUserId } });
+    } else {
+      await updateReferralOptimistic(referral._id, fields);
+    }
+  } else {
+    await updateReferralOptimistic(referral._id, fields);
+  }
 
   const detail = send
     ? 'Docs marked complete and sent to Clinical Review'

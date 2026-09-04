@@ -12,6 +12,7 @@ import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { hoursToClinicalLeadPreCheck } from './clinicalLeadPreCheck.js';
 import { normalizeEpisodeType } from './episodeType.js';
 import {
   PROCESSING_OVERVIEW_EXPORT_COLUMNS,
@@ -38,14 +39,16 @@ import {
 // ── Enum constants (mirroring ERD) ────────────────────────────────────────────
 
 export const STAGES = [
-  'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
+  'Clinical Lead Pre-Check', 'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
   'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
   'Conflict', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation',
-  'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Hold', 'NTUC',
+  'Pre-SOC', 'SOC Scheduled', 'SOC Completed',
+  'Post Visit Intake', 'Post Visit Clinical Review', 'Completed',
+  'Hold', 'NTUC',
 ];
 
 export const ACTIVE_STAGES = STAGES.filter(
-  (s) => s !== 'SOC Completed' && s !== 'NTUC',
+  (s) => s !== 'SOC Completed' && s !== 'Completed' && s !== 'NTUC',
 );
 
 export const DIVISIONS    = ['ALF', 'Special Needs'];
@@ -53,6 +56,15 @@ export const SERVICES     = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 export const PRIORITIES   = ['Low', 'Normal', 'High', 'Critical'];
 export const F2F_URGENCY  = ['Green', 'Yellow', 'Orange', 'Red', 'Expired'];
 export const REGIONS      = ['LI', 'Bronx', 'Westchester', 'NYC'];
+
+// File categories offered by the Files report picker. Keep the standard list
+// in sync with FilesTab's upload categories; OPWDD categories come from the
+// shared enum.
+import { OPWDD_FILE_CATEGORIES } from '../data/opwddEnums.js';
+export const FILE_REPORT_CATEGORIES = [
+  ...['F2F', 'MD Orders', 'Auth Letter', 'Insurance', 'Facesheet', 'Discharge', 'ID', 'Consent', 'Medications', 'Progress Notes', 'Miscellaneous', 'Other'],
+  ...OPWDD_FILE_CATEGORIES,
+].filter((c, i, arr) => arr.indexOf(c) === i);
 // Keep in sync with referralSources/sourceConstants.js (directory catalog).
 import { SOURCE_TYPES, REFERRAL_METHODS } from '../components/referralSources/sourceConstants.js';
 export { SOURCE_TYPES, REFERRAL_METHODS };
@@ -151,6 +163,9 @@ export const TABLE_SCHEMAS = {
           { key: 'f2f_urgency',                    label: 'F2F Urgency',                 type: 'enum',    options: F2F_URGENCY, filterable: true },
           { key: 'f2f_date_logged_at',             label: 'F2F Logged At',               type: 'date',    filterable: true },
           { key: '__f2f_logged_by',                label: 'F2F Logged By',               type: 'virtual', virtual: true },
+          { key: 'clinical_lead_precheck_approved_at', label: 'Lead Pre-Check At', type: 'date', filterable: true },
+          { key: '__clinical_precheck_by', label: 'Lead Pre-Check By', type: 'virtual', virtual: true },
+          { key: '__hours_to_precheck', label: 'Hours to Pre-Check Sign-off', type: 'virtual', virtual: true },
           { key: 'clinical_review_decision',       label: 'Clinical Decision',           type: 'enum',    options: ['accept', 'conditional', 'decline'], filterable: true },
           { key: 'clinical_review_at',             label: 'Clinical Review At',          type: 'date',    filterable: true },
           { key: 'clinical_review_completed_at',   label: 'Clinical Completed At',       type: 'date',    filterable: true },
@@ -744,10 +759,12 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     || k.startsWith('__lead_created_by')
     || k.startsWith('__hold_owner')
     || k.startsWith('__clinical_by')
+    || k.startsWith('__clinical_precheck_by')
     || k.startsWith('__clinical_assigned')
     || k.startsWith('__f2f_logged_by')
     || k.startsWith('__emr_')
     || k.startsWith('__auth_obtained_by')
+    || k.startsWith('__uploaded_by')
     || k.startsWith('__actor_name')
   );
 
@@ -805,6 +822,8 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
     }
     if (needsPhysician) out.__physician_name = resolve.physician(physicians[row.physician_id]);
     if (needsCampaign)  out.__campaign_name  = resolve.campaign(campaigns[row.campaign_id]);
+    const hoursPrecheck = hoursToClinicalLeadPreCheck(row);
+    out.__hours_to_precheck = hoursPrecheck == null ? '' : hoursPrecheck;
     if (needsUsers) {
       out.__assigned_name     = resolve.user(users[row.assigned_to_id]);
       out.__flagged_by        = resolve.user(users[row.flagged_by_id]);
@@ -813,6 +832,7 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       // (Older rows may incorrectly have creator/marketer stamped as owner.)
       out.__intake_owner = (
         row.current_stage === 'Lead Entry'
+        || row.current_stage === 'Clinical Lead Pre-Check'
         || row.current_stage === 'Discarded Leads'
         || !row.intake_owner_id
       )
@@ -821,6 +841,7 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       out.__hold_owner        = resolve.user(users[row.hold_owner_id]);
       out.__lead_created_by   = resolve.user(users[row.lead_created_by_id]);
       out.__clinical_by       = resolve.user(users[firstId(row.clinical_review_completed_by_id) || firstId(row.clinical_review_by) || firstId(row.reviewed_by)]);
+      out.__clinical_precheck_by = resolve.user(users[firstId(row.clinical_lead_precheck_approved_by_id)]);
       // Assigned RN while the review is open; after complete, assignment is cleared.
       out.__clinical_assigned = resolve.user(users[
         firstId(row.clinical_review_assigned_to_id)
@@ -831,6 +852,7 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
       out.__emr_initial_by    = resolve.user(users[row.emr_initial_onboarded_by_id]);
       out.__emr_onboarded_by  = resolve.user(users[row.emr_onboarded_by_id]);
       out.__auth_obtained_by  = resolve.user(users[row.auth_obtained_by_id]);
+      out.__uploaded_by       = resolve.user(users[row.uploaded_by_id]);
       out.__actor_name        = resolve.user(users[
         row.changed_by_id || row.actor_id || row.author_id || row.reviewed_by || row.rescheduled_by_id
       ]);
@@ -955,7 +977,7 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division, marke
     if (stage === 'NTUC') g.ntuc++;
     if (isSocCompletedReferral(row)) g.soc++;
     if (stage === 'Hold') g.hold++;
-    if (!['NTUC','SOC Completed','Hold'].includes(stage)) g.active++;
+    if (!['NTUC','SOC Completed','Completed','Hold'].includes(stage)) g.active++;
   }
 
   const columns = [
@@ -1083,7 +1105,7 @@ export async function runIntakeVolume({ dateFrom, dateTo, division, ownerIds, ma
     kpis: [
       { label: 'Referrals in range', value: rows.length },
       { label: 'Intake owners', value: Object.keys(byOwner).length },
-      { label: 'Reached Clinical+', value: rows.filter((r) => !!r.clinical_review_decision || ['Clinical Intake RN Review', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed'].includes(r.current_stage)).length },
+      { label: 'Reached Clinical+', value: rows.filter((r) => !!r.clinical_review_decision || ['Clinical Intake RN Review', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed', 'Post Visit Intake', 'Post Visit Clinical Review', 'Completed'].includes(r.current_stage)).length },
       { label: 'SOC completed', value: rows.filter((r) => isSocCompletedReferral(r)).length },
     ],
     charts: [
@@ -1260,7 +1282,7 @@ export async function runSourceAttribution({ dateFrom, dateTo, division, sourceI
     g.total++;
     if (row.current_stage === 'NTUC') g.ntuc++;
     if (isSocCompletedReferral(row)) g.soc++;
-    if (row.current_stage !== 'NTUC' && row.current_stage !== 'SOC Completed') g.active++;
+    if (!['NTUC', 'SOC Completed', 'Completed'].includes(row.current_stage)) g.active++;
     if (row.__campaign_name && row.__campaign_name !== '—') g.campaigns.add(row.__campaign_name);
     if (row.referral_method) g.methods.add(row.referral_method);
   }
@@ -1311,7 +1333,7 @@ export async function runMethodAttribution({ dateFrom, dateTo, division, sourceI
     g.total++;
     if (row.current_stage === 'NTUC') g.ntuc++;
     if (isSocCompletedReferral(row)) g.soc++;
-    if (row.current_stage !== 'NTUC' && row.current_stage !== 'SOC Completed') g.active++;
+    if (!['NTUC', 'SOC Completed', 'Completed'].includes(row.current_stage)) g.active++;
     if (row.__source_name && row.__source_name !== '—') g.sources.add(row.__source_name);
   }
 
@@ -1861,9 +1883,159 @@ export async function runMasterPatient({ dateFrom, dateTo, division, marketerIds
   return { rows, columns: MASTER_PATIENT_COLUMNS, summary: summarizeMasterPatient(rows) };
 }
 
+// ── Files report ──────────────────────────────────────────────────────────────
+
+function fmtFileSize(n) {
+  const bytes = Number(n);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function dateOnly(v) {
+  const s = String(v || '');
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+}
+
+/**
+ * Files & Uploaders — one row per file in the system (optionally limited to
+ * selected categories and an upload-date window). Patient name leftmost,
+ * upload timestamp + uploader front and center, then the rest of the file
+ * metadata. The workbook's extra sheet breaks down upload counts per
+ * uploader per file type.
+ */
+export async function runFilesReport({ dateFrom, dateTo, fileCategories } = {}) {
+  const selected = Array.isArray(fileCategories) ? fileCategories.filter(Boolean) : [];
+  const filters = selected.length
+    ? [{ field: 'category', operator: 'in', value: selected }]
+    : [];
+
+  const { rows: raw } = await fetchReportData({
+    tableName: 'Files',
+    filters,
+    selectedKeys: ['__patient_name', '__uploaded_by'],
+  });
+
+  // Inclusive upload-date window, applied in JS so a `dateTo` of today still
+  // includes files uploaded today (created_at is a timestamp).
+  const fromMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+  const toMs   = dateTo   ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+
+  const rows = raw
+    .filter((f) => {
+      if (fromMs == null && toMs == null) return true;
+      const t = new Date(f.created_at || 0).getTime();
+      if (Number.isNaN(t)) return false;
+      if (fromMs != null && t < fromMs) return false;
+      if (toMs != null && t > toMs) return false;
+      return true;
+    })
+    .map((f) => ({
+      __patient_name: f.__patient_name || '—',
+      category:       f.category || '(no type)',
+      document_subtype: f.document_subtype || '',
+      file_name:      f.file_name || '',
+      uploaded_at:    f.created_at
+        ? new Date(f.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : '',
+      __uploaded_by:  f.__uploaded_by || '—',
+      f2f_visit_date: dateOnly(f.f2f_visit_date),
+      document_date:  dateOnly(f.document_date),
+      document_valid_through: dateOnly(f.document_valid_through),
+      file_size:      fmtFileSize(f.file_size),
+      referral_id:    f.referral_id || '',
+      _sortMs:        new Date(f.created_at || 0).getTime() || 0,
+    }))
+    .sort((a, b) =>
+      a.__patient_name.localeCompare(b.__patient_name)
+      || a._sortMs - b._sortMs);
+
+  const columns = [
+    { key: '__patient_name',         label: 'Patient' },
+    { key: 'category',               label: 'File Type' },
+    { key: 'document_subtype',       label: 'Subtype' },
+    { key: 'file_name',              label: 'File Name' },
+    { key: 'uploaded_at',            label: 'Uploaded' },
+    { key: '__uploaded_by',          label: 'Uploaded By' },
+    { key: 'f2f_visit_date',         label: 'F2F Visit Date' },
+    { key: 'document_date',          label: 'Document Date' },
+    { key: 'document_valid_through', label: 'Valid Through' },
+    { key: 'file_size',              label: 'Size' },
+    { key: 'referral_id',            label: 'Referral ID' },
+  ];
+
+  // ── Uploader × file-type counts (summary sheet + charts) ─────────────────
+  const typeSet = new Set(rows.map((r) => r.category));
+  const types = (selected.length ? selected.filter((t) => typeSet.has(t)) : [...typeSet]).sort();
+  const byUploader = {};
+  for (const r of rows) {
+    const u = r.__uploaded_by;
+    if (!byUploader[u]) byUploader[u] = { __uploaded_by: u, __total: 0 };
+    byUploader[u][r.category] = (byUploader[u][r.category] || 0) + 1;
+    byUploader[u].__total += 1;
+  }
+  const uploaderRows = Object.values(byUploader).sort((a, b) => b.__total - a.__total);
+  const uploaderSheet = {
+    name: 'Uploads by Uploader',
+    columns: [
+      { key: '__uploaded_by', label: 'Uploader' },
+      ...types.map((t) => ({ key: t, label: t })),
+      { key: '__total', label: 'Total' },
+    ],
+    rows: uploaderRows.map((r) => {
+      const out = { __uploaded_by: r.__uploaded_by, __total: r.__total };
+      for (const t of types) out[t] = r[t] || 0;
+      return out;
+    }),
+  };
+
+  const byType = countRows(rows, 'category');
+  const summary = {
+    kpis: [
+      { label: 'Total files', value: rows.length },
+      { label: 'Patients', value: new Set(rows.map((r) => r.__patient_name)).size },
+      { label: 'Uploaders', value: uploaderRows.length },
+      { label: 'File types', value: types.length },
+    ],
+    charts: [
+      {
+        title: 'Uploads by uploader',
+        type: 'bar',
+        labels: uploaderRows.slice(0, 14).map((r) => r.__uploaded_by),
+        datasets: [{ label: 'Files', data: uploaderRows.slice(0, 14).map((r) => r.__total), backgroundColor: '#C41E6ACC', borderColor: '#C41E6A', borderWidth: 1 }],
+      },
+      {
+        title: 'Uploads by file type',
+        type: 'bar',
+        labels: byType.map((x) => x.label),
+        datasets: [{ label: 'Files', data: byType.map((x) => x.count), backgroundColor: '#2563EBCC', borderColor: '#2563EB', borderWidth: 1 }],
+      },
+    ],
+  };
+
+  return { rows, columns, summary, extraSheets: [uploaderSheet] };
+}
+
+function countRows(rows, key) {
+  const map = {};
+  for (const r of rows) {
+    const v = String(r[key] ?? '(blank)');
+    map[v] = (map[v] || 0) + 1;
+  }
+  return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([label, count]) => ({ label, count }));
+}
+
 // ── Preset definitions ────────────────────────────────────────────────────────
 
 export const PRESETS = [
+  {
+    id: 'files_report',
+    title: 'Files & Uploaders',
+    description: 'Every file in the system — one row per file with patient, type, upload date, and uploader. Pick one, several, or all file types. Excel includes an Uploads-by-Uploader summary sheet (counts per file type per uploader).',
+    paramControls: ['dateRange', 'fileCategories'],
+    async run(params) { return runFilesReport(params); },
+  },
   {
     id: 'referral_speed',
     title: 'Referral to HCHB and First Visit',

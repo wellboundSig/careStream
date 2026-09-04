@@ -20,7 +20,14 @@ import { attemptTransition } from '../transitionEngine.js';
 import { assertReferralInvariants } from '../invariants.js';
 
 const ALL_STAGE_NAMES = Object.keys(StageRules.stages);
-const POST_CLINICAL = new Set(['EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed']);
+const POST_CLINICAL = new Set([
+  'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC', 'SOC Scheduled', 'SOC Completed',
+  // Post-visit clinical approval stamps the decision on the way to Completed.
+  'Post Visit Clinical Review', 'Completed',
+]);
+// Stages that imply the SOC/ROC visit already happened (completeVisit stamps
+// soc_completed_date before any post-visit stage is reachable).
+const POST_VISIT = new Set(['SOC Completed', 'Post Visit Intake', 'Post Visit Clinical Review', 'Completed']);
 
 // Mirror the data the real doors stamp when landing on a stage, so a legal
 // walk keeps the referral's required fields populated.
@@ -28,7 +35,7 @@ function modelFieldsFor(stage) {
   const extra = {};
   if (POST_CLINICAL.has(stage)) extra.clinical_review_decision = 'accept';
   if (stage === 'SOC Scheduled') extra.soc_scheduled_date = '2026-07-01';
-  if (stage === 'SOC Completed') extra.soc_completed_date = '2026-07-02';
+  if (POST_VISIT.has(stage)) extra.soc_completed_date = '2026-07-02';
   return extra;
 }
 

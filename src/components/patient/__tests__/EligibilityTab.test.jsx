@@ -148,45 +148,19 @@ describe('EligibilityTab — verification form', () => {
   });
 });
 
-// D.5 Conflict modal requires at least one reason
-describe('EligibilityTab — conflict modal', () => {
-  it('requires at least one reason before confirming', async () => {
+// D.5 Send to Conflict was removed from insurance cards (2026-09) — conflict
+// routing is a record action that lives in the module toolbar, not on each
+// insurance. The workspace must not render the button or its modal.
+describe('EligibilityTab — conflict routing removed from cards', () => {
+  it('renders no Send to Conflict button or modal on insurance cards', async () => {
     getInsurancesByPatient.mockResolvedValue([
       insRec('i_1', { patient_id: 'p_1', payer_display_name: 'Medicare', insurance_category: 'medicare', order_rank: 'primary' }),
     ]);
     render(<EligibilityTab patient={patient} referral={referral} />);
     const card = await screen.findByTestId('insurance-card');
-    await act(async () => { fireEvent.click(within(card).getByTestId('send-conflict-btn')); });
-    const modal = await screen.findByTestId('conflict-modal');
-    const confirm = within(modal).getByTestId('conflict-confirm');
-    expect(confirm.disabled).toBe(true);
-    await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-reason-coverage_not_active')); });
-    // Still disabled until severity + explanation are provided
-    expect(confirm.disabled).toBe(true);
-    await act(async () => {
-      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'Low' } });
-      fireEvent.change(within(modal).getByPlaceholderText(/what’s blocking progress/i), { target: { value: 'Coverage inactive — needs update.' } });
-    });
-    expect(confirm.disabled).toBe(false);
-  });
-
-  it('creates a conflict and records an audit trail when confirmed', async () => {
-    getInsurancesByPatient.mockResolvedValue([
-      insRec('i_1', { patient_id: 'p_1', payer_display_name: 'Medicare', insurance_category: 'medicare', order_rank: 'primary' }),
-    ]);
-    render(<EligibilityTab patient={patient} referral={referral} />);
-    const card = await screen.findByTestId('insurance-card');
-    await act(async () => { fireEvent.click(within(card).getByTestId('send-conflict-btn')); });
-    const modal = await screen.findByTestId('conflict-modal');
-    await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-reason-coverage_not_active')); });
-    await act(async () => {
-      fireEvent.change(within(modal).getByTestId('conflict-severity'), { target: { value: 'High' } });
-      fireEvent.change(within(modal).getByPlaceholderText(/what’s blocking progress/i), { target: { value: 'Coverage inactive per portal.' } });
-    });
-    await act(async () => { fireEvent.click(within(modal).getByTestId('conflict-confirm')); });
-    expect(createConflict).toHaveBeenCalled();
-    const payload = createConflict.mock.calls[0][0];
-    expect(payload.conflict_reasons).toContain('coverage_not_active');
+    expect(within(card).queryByTestId('send-conflict-btn')).toBeNull();
+    expect(screen.queryByTestId('conflict-modal')).toBeNull();
+    expect(createConflict).not.toHaveBeenCalled();
   });
 });
 

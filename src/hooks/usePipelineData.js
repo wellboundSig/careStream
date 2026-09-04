@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useCareStore } from '../store/careStore.js';
-import { resolveStageEnteredAt, daysBetween, daysInPipeline } from '../utils/referralMetrics.js';
+import { resolveStageEnteredAt, daysBetween, daysInPipeline, clinicalReviewEnteredAt, staffingEnteredAt } from '../utils/referralMetrics.js';
 import { useReferralVisibility } from './useReferralVisibility.js';
 
 /** Unwrap linked-record arrays / trim ids. Kept local — do not import heavy utils here. */
@@ -53,6 +53,8 @@ export function usePipelineData() {
         || null;
       const refHistory = historyByReferral[ref.id] || [];
       const stageEnteredAt = resolveStageEnteredAt(ref, refHistory);
+      const clinicalEnteredAt = clinicalReviewEnteredAt(ref, stageEnteredAt);
+      const staffingAt = staffingEnteredAt(ref, stageEnteredAt);
       const fullName = patient
         ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
         : '';
@@ -65,6 +67,10 @@ export function usePipelineData() {
         _stage_entered_at: stageEnteredAt,
         _days_in_stage:    daysBetween(stageEnteredAt),
         _days_in_pipeline: daysInPipeline(ref),
+        _clinical_entered_at: clinicalEnteredAt,
+        _days_in_clinical: daysBetween(clinicalEnteredAt),
+        _staffing_entered_at: staffingAt,
+        _days_in_staffing: daysBetween(staffingAt),
       };
     });
   }, [referrals, patients, stageHistory, isVisible]);

@@ -1,18 +1,20 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useOutletContext, useLocation } from 'react-router-dom';
+import { useOutletContext, useLocation, Link } from 'react-router-dom';
 import { usePipelineData } from '../../hooks/usePipelineData.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
-import { STAGE_META, isSocCompletedReferral } from '../../data/stageConfig.js';
+import { STAGE_META, isSocCompletedReferral, isPostVisitReferral, isActiveClinicalHandoff } from '../../data/stageConfig.js';
+import { isClinicalLeadPreCheck, isClinicalLeadPreCheckApproved } from '../../utils/clinicalLeadPreCheck.js';
+import { isPendingLogReferral, pendingLogMentionIndex } from '../../utils/pendingLog.js';
 import { canMoveFromTo, needsModal } from '../../utils/stageTransitions.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
 import { flagConflict, inferConflictSourceModuleFromStage } from '../../utils/conflictFlagging.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { PERMISSION_KEYS, canPerformClinicalRnReview } from '../../data/permissionKeys.js';
 import {
-  MODULE_COLUMN_DEFS,
+  moduleColumnDefsForStage,
   SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS,
   useColumnVisibility,
   useColumnFilters,
@@ -29,12 +31,15 @@ import { lockedGridClass } from '../../utils/tableScrollMode.js';
 import FlipScrollBar from '../common/FlipScrollBar.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
-import StageBadge from '../common/StageBadge.jsx';
+import StageBadge, { displayStageName } from '../common/StageBadge.jsx';
 import LoadingState from '../common/LoadingState.jsx';
+import AccessDenied from '../common/AccessDenied.jsx';
+import HoverInfoCard from '../common/HoverInfoCard.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import AuthObtainedIcon from '../common/AuthObtainedIcon.jsx';
 import OwnedByMeIcon from '../common/OwnedByMeIcon.jsx';
+import ClinicalPreCheckApprovedIcon from '../common/ClinicalPreCheckApprovedIcon.jsx';
 import OooBadge from '../common/OooBadge.jsx';
 import ClinicalReviewByline from '../common/ClinicalReviewByline.jsx';
 import { useClinicalReviewInProgress } from '../../hooks/useClinicalReviewInProgress.js';
@@ -50,13 +55,16 @@ import {
   getUrgentCareType,
   getUrgentCareTypes,
   urgentCareTypeLabel,
+  urgentCareTypeBg,
+  urgentCareTypeColor,
   URGENT_CARE_TYPE_OPTIONS,
 } from '../../utils/urgentCare.js';
 import UrgentCareTypePicker from '../common/UrgentCareTypePicker.jsx';
+// Legacy deferred-docs helpers — only the hidden Visit Completed pending-log
+// columns still reference them; nothing in the live modules renders the
+// deprecated post-SOC docs machinery anymore.
 import {
   isDocumentationDeferred,
-  documentationFilterStatus,
-  daysUntilDocumentationDue,
   getDocumentationClearChecklist,
 } from '../../utils/documentationDeferred.js';
 import { normalizeEpisodeType, episodeTypeLabel, episodeTypeLongLabel } from '../../utils/episodeType.js';
@@ -72,7 +80,7 @@ import MobileSocQueue from '../mobile/MobileSocQueue.jsx';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { discardReferral } from '../../utils/discardReferral.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
-import palette, { hexToRgba } from '../../utils/colors.js';
+import palette, { hexToRgba, hexOnWhite } from '../../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
 /** Uniform queue row height — every module table row is this tall. */
@@ -108,12 +116,33 @@ function daysInPipeline(referral) {
   return Number.isFinite(v) ? v : 0;
 }
 
+function daysInReview(referral) {
+  const v = referral?._days_in_clinical;
+  return Number.isFinite(v) ? v : null;
+}
+
+function daysInStaffing(referral) {
+  const v = referral?._days_in_staffing;
+  return Number.isFinite(v) ? v : null;
+}
+
 /** Stage + assigned / in-review handoffs (excludes deferred-only holds). */
 function isActiveClinicalQueueRow(r) {
-  return r.current_stage === 'Clinical Intake RN Review'
-    || r.in_clinical_review === true
-    || r.in_clinical_review === 'true'
-    || (!!r.clinical_review_assigned_to_id && !r.clinical_review_completed_at);
+  return isActiveClinicalHandoff(r) || isClinicalLeadPreCheck(r);
+}
+
+function queueRowWash(referral, { isSelected, hovered }) {
+  if (isSelected) return hexToRgba(palette.primaryMagenta.hex, 0.06);
+  const preCheck = isClinicalLeadPreCheck(referral);
+  const postVisit = isPostVisitReferral(referral);
+  if (hovered) {
+    if (postVisit) return hexToRgba(palette.accentBlue.hex, 0.19);
+    if (preCheck) return hexToRgba(palette.primaryDeepPlum.hex, 0.13);
+    return hexToRgba(palette.primaryDeepPlum.hex, 0.03);
+  }
+  if (postVisit) return hexToRgba(palette.accentBlue.hex, 0.14);
+  if (preCheck) return hexToRgba(palette.primaryDeepPlum.hex, 0.08);
+  return 'transparent';
 }
 
 /** Prefer open assignee; otherwise completed-by stamp. */
@@ -219,6 +248,7 @@ export default function ModulePage({ stage }) {
 
   const isSocCompleted = stage === 'SOC Completed';
   const isClinicalRnModule = stage === 'Clinical Intake RN Review';
+  const isStaffingModule = stage === 'Staffing Feasibility';
   // Clinical queue: default to patients actually in this stage. Deferred-docs /
   // concurrent cases from other stages stay available behind an explicit toggle.
   const [includeDeferredClinical, setIncludeDeferredClinical] = useState(false);
@@ -231,7 +261,7 @@ export default function ModulePage({ stage }) {
       ? savedSocView
       : (canPendingLogDefault ? 'pending_log' : 'standard');
   const isPendingLogView = canPendingLog && socCompletedView === 'pending_log';
-  const columnDefs = isPendingLogView ? SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS : MODULE_COLUMN_DEFS;
+  const columnDefs = isPendingLogView ? SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS : moduleColumnDefsForStage(stage);
 
   const { visibleCols, setVisibleCols, activeColumns } = useColumnVisibility(columnDefs);
 
@@ -292,6 +322,9 @@ export default function ModulePage({ stage }) {
   const authStore = useCareStore((s) => s.authorizations) || {};
   const disenStore = useCareStore((s) => s.disenrollmentAssistanceFlags) || {};
   const storeUsers = useCareStore((s) => s.users) || {};
+  const storeNotes = useCareStore((s) => s.notes) || {};
+  const mentionIndex = useMemo(() => pendingLogMentionIndex(storeNotes), [storeNotes]);
+  const isMobilePendingLog = isMobile && stage === 'Completed';
   const decoratedReferrals = useMemo(() => {
     if (!allReferrals?.length) return allReferrals || [];
     // Pending-ish statuses always qualify. Rows with a request stamp also stay
@@ -360,7 +393,9 @@ export default function ModulePage({ stage }) {
       : meta.consolidatedStages
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
-    let list = decoratedReferrals.filter(predicate);
+    let list = isMobilePendingLog
+      ? decoratedReferrals.filter((r) => isPendingLogReferral(r, mentionIndex))
+      : decoratedReferrals.filter(predicate);
     // Clinical default: stage + active concurrent handoffs (in_clinical_review /
     // assigned). Older deferred-only rows stay behind the Deferred toggle.
     if (isClinicalRnModule && !includeDeferredClinical) {
@@ -388,9 +423,15 @@ export default function ModulePage({ stage }) {
       if (!filterIsActive(val)) continue;
       const selected = selectedFilterValues(val);
 
-      if (key === 'days_in_stage' || key === 'days_in_pipeline') {
+      if (key === 'days_in_stage' || key === 'days_in_pipeline' || key === 'days_in_review') {
         list = list.filter((r) => {
-          const d = key === 'days_in_stage' ? daysInStage(r) : daysInPipeline(r);
+          const d = key === 'days_in_pipeline'
+            ? daysInPipeline(r)
+            : key === 'days_in_review'
+              ? daysInReview(r)
+              : isStaffingModule
+                ? daysInStaffing(r)
+                : daysInStage(r);
           return matchesNumericFilter(d, val);
         });
         continue;
@@ -407,19 +448,8 @@ export default function ModulePage({ stage }) {
         if (key === 'emr_onboarded') {
           return matchesYesNoFilter(!!(r.emr_onboarded_at || r.emr_initial_onboarded_at), val);
         }
-        if (key === 'post_soc_docs') {
-          const status = documentationFilterStatus(r);
-          const open = isDocumentationDeferred(r);
-          return selected.some((raw) => {
-            const v = String(raw).toLowerCase().replace(/\s+/g, '_');
-            if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
-            if (v === 'no' || v === 'n' || v === 'false') return !open;
-            if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
-            if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
-            if (v === 'overdue') return status === 'overdue';
-            return status.includes(v) || (open && v.includes('deferred'));
-          });
-        }
+        if (key === 'soc_completed_date') return matchesYesNoFilter(isSocCompletedReferral(r), val);
+        if (key === 'soc_scheduled_date') return matchesYesNoFilter(!!r.soc_scheduled_date, val);
         if (key === 'waiting_docs') return matchesYesNoFilter(isDocumentationDeferred(r), val);
         if (key === 'triage') {
           const label = triageColumnLabel(r, !!(r?.id && triagePresence[r.id]));
@@ -456,9 +486,15 @@ export default function ModulePage({ stage }) {
     }
 
     return [...list].sort((a, b) => {
-      if (sortField === 'days_in_stage' || sortField === 'days') {
-        const va = daysInStage(a);
-        const vb = daysInStage(b);
+      if (sortField === 'days_in_stage' || sortField === 'days' || sortField === 'days_in_review') {
+        const reviewFirst = isClinicalRnModule && sortField === 'days';
+        const pick = (r) => {
+          if (sortField === 'days_in_review' || reviewFirst) return daysInReview(r) ?? daysInStage(r);
+          if (isStaffingModule) return daysInStaffing(r) ?? -1;
+          return daysInStage(r);
+        };
+        const va = pick(a);
+        const vb = pick(b);
         return sortDir === 'desc' ? vb - va : va - vb;
       }
       if (sortField === 'days_in_pipeline') {
@@ -471,9 +507,9 @@ export default function ModulePage({ stage }) {
         const vb = new Date(b._stage_entered_at || b.soc_completed_date || 0).getTime();
         return sortDir === 'desc' ? vb - va : va - vb;
       }
-      if (sortField === 'soc_completed_date') {
-        const va = parseCalendarDate(a.soc_completed_date)?.getTime() ?? 0;
-        const vb = parseCalendarDate(b.soc_completed_date)?.getTime() ?? 0;
+      if (sortField === 'soc_completed_date' || sortField === 'soc_scheduled_date') {
+        const va = parseCalendarDate(a[sortField])?.getTime() ?? 0;
+        const vb = parseCalendarDate(b[sortField])?.getTime() ?? 0;
         return sortDir === 'desc' ? vb - va : va - vb;
       }
       if (sortField === 'name') {
@@ -487,7 +523,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, triagePresence, isClinicalRnModule, includeDeferredClinical]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, triagePresence, isClinicalRnModule, includeDeferredClinical, isMobilePendingLog, mentionIndex]);
 
   // Counts for the Clinical queue-scope toggle (division-scoped, ignores search/col filters).
   const clinicalQueueCounts = useMemo(() => {
@@ -550,6 +586,8 @@ export default function ModulePage({ stage }) {
             URGENT_CARE_TYPE_OPTIONS.forEach((o) => vals.add(o.label));
             break;
           case 'emr_onboarded': vals.add('yes'); vals.add('no'); break;
+          case 'soc_completed_date': vals.add('yes'); vals.add('no'); break;
+          case 'soc_scheduled_date': vals.add('yes'); vals.add('no'); break;
           case 'post_soc_docs':
             vals.add('yes'); vals.add('no');
             vals.add('waiting_docs'); vals.add('waiting_clinical'); vals.add('overdue');
@@ -579,7 +617,12 @@ export default function ModulePage({ stage }) {
           case 'episode_type': vals.add(episodeTypeLongLabel(r)); break;
           case 'waiting_docs': vals.add('yes'); vals.add('no'); break;
           case 'days_in_stage': {
-            const d = daysInStage(r);
+            const d = isStaffingModule ? daysInStaffing(r) : daysInStage(r);
+            if (Number.isFinite(d)) vals.add(String(d));
+            break;
+          }
+          case 'days_in_review': {
+            const d = daysInReview(r);
             if (Number.isFinite(d)) vals.add(String(d));
             break;
           }
@@ -751,6 +794,11 @@ export default function ModulePage({ stage }) {
 
   function clearAll() { setSearch(''); clearFilters(); }
 
+  // Clinical Review is restricted to clinical staff — no view, no edit —
+  // including direct URL access to the module page.
+  if (isClinicalRnModule && !canPerformClinicalRnReview(canPerm)) {
+    return <AccessDenied message="Clinical Review is restricted to clinical staff." />;
+  }
   if (loading) return <LoadingState message={`Loading ${stage}...`} />;
 
   // ── Render cell for a given column key ────────────────────────────────────
@@ -759,6 +807,7 @@ export default function ModulePage({ stage }) {
     const totalDays  = daysInPipeline(referral);
     const isSN = referral.division === 'Special Needs';
     const urgent = isUrgentCare(referral);
+    const urgentTypes = getUrgentCareTypes(referral);
     const { isSelected = false, hovered = false } = rowMeta;
     const td = (extra = {}) => ({
       padding: '0 14px',
@@ -805,6 +854,14 @@ export default function ModulePage({ stage }) {
           </td>
         );
       }
+      case 'soc_scheduled_date': {
+        const raw = referral.soc_scheduled_date || null;
+        return (
+          <td key="soc_scheduled_date" style={td({ maxWidth: 130, fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.75) })}>
+            {raw ? (fmtCalendarDate(raw) || String(raw).slice(0, 10)) : '—'}
+          </td>
+        );
+      }
       case 'waiting_docs': {
         const waiting = isDocumentationDeferred(referral);
         const docsCleared = !waiting && !!referral.documentation_cleared_at;
@@ -826,7 +883,7 @@ export default function ModulePage({ stage }) {
                 <span style={{
                   fontSize: 10.5, fontWeight: 750, color: palette.accentOrange.hex,
                   padding: '2px 7px', borderRadius: 5,
-                  background: hexToRgba(palette.accentOrange.hex, 0.12),
+                  background: hexOnWhite(palette.accentOrange.hex, 0.12),
                   border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`,
                 }}>
                   Yes
@@ -850,7 +907,7 @@ export default function ModulePage({ stage }) {
                 <span style={{
                   fontSize: 10.5, fontWeight: 750, color: palette.accentGreen.hex,
                   padding: '2px 7px', borderRadius: 5,
-                  background: hexToRgba(palette.accentGreen.hex, 0.12),
+                  background: hexOnWhite(palette.accentGreen.hex, 0.12),
                   border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.3)}`,
                 }}>
                   Complete
@@ -927,7 +984,7 @@ export default function ModulePage({ stage }) {
       case 'urgent':
         return (
           <td key="urgent" style={td({ padding: '0 10px', textAlign: 'center', width: 40, maxWidth: 40 })}>
-            {urgent ? <UrgentCareIcon size={14} title="Urgent care required" /> : <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.2), fontSize: 11 }}>—</span>}
+            {urgent ? <UrgentCareIcon size={14} types={urgentTypes} title="Urgent care required" /> : <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.2), fontSize: 11 }}>—</span>}
           </td>
         );
       case 'urgent_care_type': {
@@ -939,41 +996,6 @@ export default function ModulePage({ stage }) {
             td={td}
             onError={(err) => showToast(`Urgent type update failed: ${err.message}`, 'error')}
           />
-        );
-      }
-      case 'post_soc_docs': {
-        const status = documentationFilterStatus(referral);
-        if (status === 'none' || status === 'cleared') {
-          return (
-            <td key="post_soc_docs" style={td({ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) })}>—</td>
-          );
-        }
-        const daysLeft = daysUntilDocumentationDue(referral);
-        const label = status === 'overdue'
-          ? 'Overdue'
-          : status === 'waiting_docs'
-            ? 'Need F2F'
-            : 'Send to clinical';
-        const color = status === 'overdue'
-          ? palette.primaryMagenta.hex
-          : palette.accentOrange.hex;
-        const title = [
-          'Deferred documentation after SOC',
-          referral.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : null,
-          daysLeft != null ? (daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`) : null,
-        ].filter(Boolean).join(' · ');
-        return (
-          <td key="post_soc_docs" style={td({ maxWidth: 120 })} title={title}>
-            <span style={{
-              fontSize: 10.5, fontWeight: 750, letterSpacing: '0.02em',
-              color, padding: '2px 7px', borderRadius: 20,
-              background: hexToRgba(color, 0.12),
-              border: `1px solid ${hexToRgba(color, 0.3)}`,
-              whiteSpace: 'nowrap',
-            }}>
-              {label}{daysLeft != null ? ` · ${daysLeft < 0 ? `${Math.abs(daysLeft)}d` : `${daysLeft}d`}` : ''}
-            </span>
-          </td>
         );
       }
       case 'patient': {
@@ -991,11 +1013,15 @@ export default function ModulePage({ stage }) {
           }
         }
         // Stack tint over opaque page bg so sticky cells never show scrolling columns underneath.
-        const patientBg = isSelected
-          ? `linear-gradient(${hexToRgba(palette.primaryMagenta.hex, 0.06)}, ${hexToRgba(palette.primaryMagenta.hex, 0.06)}), linear-gradient(${palette.backgroundLight.hex}, ${palette.backgroundLight.hex})`
-          : hovered
-            ? `linear-gradient(${hexToRgba(palette.primaryDeepPlum.hex, 0.03)}, ${hexToRgba(palette.primaryDeepPlum.hex, 0.03)}), linear-gradient(${palette.backgroundLight.hex}, ${palette.backgroundLight.hex})`
-            : palette.backgroundLight.hex;
+        // Post-visit rows keep their blue tint in the frozen column too.
+        const rowIsPostVisit = isPostVisitReferral(referral);
+        const rowIsPreCheck = isClinicalLeadPreCheck(referral);
+        const preCheckApproved = isClinicalLeadPreCheckApproved(referral);
+        const stackTint = (tint) => `linear-gradient(${tint}, ${tint}), linear-gradient(${palette.backgroundLight.hex}, ${palette.backgroundLight.hex})`;
+        const patientWash = queueRowWash(referral, { isSelected, hovered });
+        const patientBg = isSelected || rowIsPostVisit || rowIsPreCheck || hovered
+          ? stackTint(patientWash === 'transparent' ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : patientWash)
+          : palette.backgroundLight.hex;
         return (
           <td
             key="patient"
@@ -1012,25 +1038,14 @@ export default function ModulePage({ stage }) {
             })}
           >
             <span
-              title={[name, isMine ? 'You own this case' : null, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
+              title={[name, isMine ? 'You own this case' : null, preCheckApproved ? 'Clinical pre-check approved' : null, hasFile ? 'File uploaded' : null, authObtainedTitle].filter(Boolean).join(' · ')}
               style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden' }}
             >
               {isMine && <OwnedByMeIcon size={11} />}
-              {urgent && <UrgentCareIcon size={12} title="Urgent care required" />}
-              {isDocumentationDeferred(referral) && (
-                <span
-                  title="Deferred docs: F2F + clinical still needed"
-                  style={{
-                    flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
-                    color: palette.accentOrange.hex,
-                    background: hexToRgba(palette.accentOrange.hex, 0.12),
-                    border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.35)}`,
-                    borderRadius: 4, padding: '1px 4px',
-                  }}
-                >
-                  DOCS
-                </span>
-              )}
+              {preCheckApproved && <ClinicalPreCheckApprovedIcon size={11} />}
+              {urgent && <UrgentCareIcon size={12} types={urgentTypes} title="Urgent care required" />}
+              {/* Deferred-docs DOCS chip removed from the updated UI — the
+                  post-visit flow replaces it (backend fields kept for old UI). */}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
               {isSocCompleted && referral.current_stage && referral.current_stage !== 'SOC Completed' && (
                 <span
@@ -1038,7 +1053,7 @@ export default function ModulePage({ stage }) {
                   style={{
                     flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
                     color: palette.accentBlue.hex,
-                    background: hexToRgba(palette.accentBlue.hex, 0.12),
+                    background: hexOnWhite(palette.accentBlue.hex, 0.12),
                     border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.35)}`,
                     borderRadius: 4, padding: '1px 4px', whiteSpace: 'nowrap',
                   }}
@@ -1047,18 +1062,43 @@ export default function ModulePage({ stage }) {
                 </span>
               )}
               {!isSocCompleted && isSocCompletedReferral(referral) && (
-                <span
-                  title={`${episodeTypeLabel(referral)} completed ${referral.soc_completed_date || ''}`}
-                  style={{
-                    flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
-                    color: palette.accentGreen.hex,
-                    background: hexToRgba(palette.accentGreen.hex, 0.12),
-                    border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
-                    borderRadius: 4, padding: '1px 4px',
-                  }}
+                <HoverInfoCard
+                  title={`${episodeTypeLabel(referral)} completed`}
+                  detail={fmtCalendarDate(referral.soc_completed_date) || '—'}
+                  accent={palette.accentGreen.hex}
                 >
-                  {episodeTypeLabel(referral)}
-                </span>
+                  <span
+                    style={{
+                      flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
+                      fontSize: 9, fontWeight: 800, letterSpacing: '0.04em',
+                      color: palette.accentGreen.hex,
+                      background: hexOnWhite(palette.accentGreen.hex, 0.12),
+                      border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.35)}`,
+                      borderRadius: 4, padding: '1px 4px',
+                    }}
+                  >
+                    {episodeTypeLabel(referral)}
+                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
+                      <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                </HoverInfoCard>
+              )}
+              {!isSocCompletedReferral(referral) && referral.soc_scheduled_date && (
+                <HoverInfoCard
+                  title={`${episodeTypeLabel(referral)} scheduled for`}
+                  detail={fmtCalendarDate(referral.soc_scheduled_date) || '—'}
+                  accent={palette.accentBlue.hex}
+                >
+                  <span style={{ display: 'inline-flex', flexShrink: 0, color: palette.accentBlue.hex }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <rect x="3" y="5" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="2" />
+                      <path d="M3 9.5h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="12" cy="15" r="1.6" fill="currentColor" />
+                    </svg>
+                  </span>
+                </HoverInfoCard>
               )}
               {authObtainedAt && (
                 <span title={authObtainedTitle} style={{ display: 'inline-flex', flexShrink: 0 }}>
@@ -1091,7 +1131,7 @@ export default function ModulePage({ stage }) {
             <span style={{
               display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 20,
               fontSize: 11, fontWeight: 650, letterSpacing: '0.02em',
-              background: isWBII ? hexToRgba(palette.accentBlue.hex, 0.14) : hexToRgba(palette.accentGreen.hex, 0.14),
+              background: isWBII ? hexOnWhite(palette.accentBlue.hex, 0.14) : hexOnWhite(palette.accentGreen.hex, 0.14),
               color: isWBII ? palette.accentBlue.hex : palette.accentGreen.hex,
             }}>
               {label}
@@ -1124,9 +1164,9 @@ export default function ModulePage({ stage }) {
         return (
           <td key="stage" style={td({ maxWidth: 200 })}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <StageBadge stage={referral.current_stage} size="small" />
+              <StageBadge stage={referral.current_stage} referral={referral} size="small" />
               {isOnTrackRow && <img src="/feasibility-badge.png" alt="On Track" title="On Track" style={{ width: 16, height: 16 }} />}
-              {referral.current_stage === 'Conflict' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: hexToRgba(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>!</span>}
+              {referral.current_stage === 'Conflict' && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: hexOnWhite(palette.accentOrange.hex, 0.15), color: palette.accentOrange.hex }}>!</span>}
             </div>
           </td>
         );
@@ -1136,12 +1176,12 @@ export default function ModulePage({ stage }) {
           <td key="triage" style={td({ maxWidth: 100 })}>
             {isSN ? (
               triageStatus[referral.id] ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex, background: hexToRgba(palette.accentGreen.hex, 0.1), padding: '2px 8px', borderRadius: 20 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex, background: hexOnWhite(palette.accentGreen.hex, 0.1), padding: '2px 8px', borderRadius: 20 }}>
                   <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={palette.accentGreen.hex} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   Done
                 </span>
               ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.accentOrange.hex, 0.9), background: hexToRgba(palette.accentOrange.hex, 0.1), padding: '2px 8px', borderRadius: 20 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.accentOrange.hex, 0.9), background: hexOnWhite(palette.accentOrange.hex, 0.1), padding: '2px 8px', borderRadius: 20 }}>
                   <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3.5" stroke={palette.accentOrange.hex} strokeWidth="1.5" /></svg>
                   Needed
                 </span>
@@ -1152,20 +1192,76 @@ export default function ModulePage({ stage }) {
           </td>
         );
       case 'days_in_stage': {
-        const stageName = referral.current_stage || 'stage';
+        if (isStaffingModule) {
+          const staffingDays = daysInStaffing(referral);
+          const color = staffingDays == null ? hexToRgba(palette.backgroundDark.hex, 0.28)
+            : staffingDays > 14 ? palette.primaryMagenta.hex
+            : staffingDays > 7 ? palette.accentOrange.hex
+            : hexToRgba(palette.backgroundDark.hex, 0.7);
+          return (
+            <td key="days_in_stage" style={td({ maxWidth: 220 })}>
+              <span
+                title={staffingDays == null
+                  ? 'Clock starts when the case is hard-pushed to Staffing (On Track)'
+                  : `${staffingDays} day${staffingDays === 1 ? '' : 's'} in Staffing — since On Track`}
+                style={{ fontSize: 12, color, fontWeight: staffingDays > 7 ? 650 : 500 }}
+              >
+                {staffingDays == null ? (
+                  <span>—</span>
+                ) : (
+                  <>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{staffingDays}</span>
+                    <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 400, marginLeft: 4 }}>
+                      day{staffingDays === 1 ? '' : 's'} in Staffing
+                    </span>
+                  </>
+                )}
+              </span>
+            </td>
+          );
+        }
+        const stageName = displayStageName(referral) || referral.current_stage || 'stage';
         const color = days > 14 ? palette.primaryMagenta.hex
           : days > 7 ? palette.accentOrange.hex
           : hexToRgba(palette.backgroundDark.hex, 0.7);
         return (
           <td key="days_in_stage" style={td({ maxWidth: 220 })}>
             <span
-              title={`${days} day${days === 1 ? '' : 's'} in ${stageName} stage — resets on every stage change`}
+              title={`${days} day${days === 1 ? '' : 's'} in ${referral.current_stage || 'stage'} — pipeline stage clock`}
               style={{ fontSize: 12, color, fontWeight: days > 7 ? 650 : 500 }}
             >
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{days}</span>
               <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 400, marginLeft: 4 }}>
                 day{days === 1 ? '' : 's'} in {stageName}
               </span>
+            </span>
+          </td>
+        );
+      }
+      case 'days_in_review': {
+        const reviewDays = daysInReview(referral);
+        const color = reviewDays == null ? hexToRgba(palette.backgroundDark.hex, 0.28)
+          : reviewDays > 14 ? palette.primaryMagenta.hex
+          : reviewDays > 7 ? palette.accentOrange.hex
+          : hexToRgba(palette.backgroundDark.hex, 0.7);
+        return (
+          <td key="days_in_review" style={td({ maxWidth: 180 })}>
+            <span
+              title={reviewDays == null
+                ? 'No push or assign stamp for clinical review'
+                : `${reviewDays} day${reviewDays === 1 ? '' : 's'} in Clinical Review`}
+              style={{ fontSize: 12, color, fontWeight: reviewDays > 7 ? 650 : 500 }}
+            >
+              {reviewDays == null ? (
+                <span>-</span>
+              ) : (
+                <>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>{reviewDays}</span>
+                  <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.45), fontWeight: 400, marginLeft: 4 }}>
+                    day{reviewDays === 1 ? '' : 's'} in review
+                  </span>
+                </>
+              )}
             </span>
           </td>
         );
@@ -1261,8 +1357,8 @@ export default function ModulePage({ stage }) {
                 fontSize: 11,
                 fontWeight: 650,
                 background: yes
-                  ? hexToRgba(palette.accentGreen.hex, 0.12)
-                  : hexToRgba(palette.backgroundDark.hex, 0.06),
+                  ? hexOnWhite(palette.accentGreen.hex, 0.12)
+                  : hexOnWhite(palette.backgroundDark.hex, 0.06),
                 color: yes
                   ? palette.accentGreen.hex
                   : hexToRgba(palette.backgroundDark.hex, 0.4),
@@ -1345,14 +1441,15 @@ export default function ModulePage({ stage }) {
           />
         ) : (
           <MobileSocQueue
-            meta={meta}
+            meta={isMobilePendingLog ? { ...meta, displayName: 'Pending Log' } : meta}
             stageColor={stageColor}
             referrals={stageReferrals}
             search={search}
             setSearch={setSearch}
-            isPendingLogView={false}
+            isPendingLogView={isMobilePendingLog}
             canPendingLog={false}
             isSocCompleted={false}
+            reportMode={isMobilePendingLog}
             onOpenPatient={handleRowOpen}
             onOpenFiles={(r) => handleRowOpenTab(r, 'files')}
             onOpenNotes={(r) => handleRowOpenTab(r, 'notes')}
@@ -1420,8 +1517,8 @@ export default function ModulePage({ stage }) {
       {discardTarget && (
         <DiscardReferralModal
           referral={discardTarget}
-          title="Discard Referral"
-          confirmLabel="Discard"
+          title={discardTarget.current_stage === 'Lead Entry' ? 'Discard Lead' : 'Discard Referral'}
+          confirmLabel={discardTarget.current_stage === 'Lead Entry' ? 'Discard Lead' : 'Discard Referral'}
           onCancel={() => setDiscardTarget(null)}
           onConfirm={async (reason, explanation) => {
             const result = await discardReferral({
@@ -1496,104 +1593,204 @@ export default function ModulePage({ stage }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 3 }}>
                 <h1 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundDark.hex }}>{meta.displayName || stage}</h1>
-                <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 10, background: hexToRgba(stageColor, 0.12), color: stageColor }}>
+                {/* Count is information, not a notification — plain text, same ink as the title */}
+                <span style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundDark.hex, display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+                  <span aria-hidden style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontWeight: 400 }}>·</span>
                   {stageReferrals.length}
                 </span>
+                {/* Scope before content — make it explicit when this queue only shows one division */}
+                {(() => {
+                  const onlyALF = hasDivision('ALF') && !hasDivision('Special Needs');
+                  const onlySPN = hasDivision('Special Needs') && !hasDivision('ALF');
+                  const scoped = division !== 'All' ? division : (onlyALF ? 'ALF' : onlySPN ? 'Special Needs' : null);
+                  if (!scoped) return null;
+                  return (
+                    <span
+                      data-testid="module-division-scope"
+                      title={`Showing ${scoped === 'Special Needs' ? 'Special Needs' : 'ALF'} referrals only`}
+                      style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.5), background: hexToRgba(palette.backgroundDark.hex, 0.06), border: `1px solid var(--color-border)`, borderRadius: 4, padding: '1px 6px' }}
+                    >
+                      {scoped === 'Special Needs' ? 'SPN' : 'ALF'} only
+                    </span>
+                  );
+                })()}
                 {meta.isGlobal && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), background: hexToRgba(palette.backgroundDark.hex, 0.06), borderRadius: 4, padding: '1px 6px' }}>Global</span>}
                 {meta.isTerminal && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.accentGreen.hex, 0.8), background: hexToRgba(palette.accentGreen.hex, 0.1), borderRadius: 4, padding: '1px 6px' }}>Terminal</span>}
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
             </div>
-            <StageActions stage={stage} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              {/* Record actions — appear once a referral is selected; they act on
+                  the selected row. Live here in the title row (which has spare
+                  width) so the toolbar below always stays a single line. */}
+              {(() => {
+                if (!selectedReferral) return null;
+                const discardVisible = canDiscardAny && stage !== 'Discarded Leads' && selectedReferral.current_stage !== 'Discarded Leads';
+                // Conflict workflow applies after Intake — leads are not active referrals yet.
+                const conflictVisible = !['Conflict', 'Discarded Leads', 'SOC Completed', 'Completed', 'NTUC', 'Lead Entry'].includes(stage);
+                if (!discardVisible && !conflictVisible) return null;
+                const canConflict = conflictVisible && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
+                return (
+                  <>
+                    {discardVisible && (
+                      <button
+                        type="button"
+                        data-testid="discard-any-toolbar"
+                        onClick={() => setDiscardTarget(selectedReferral)}
+                        title={`Discard ${selectedReferral.patientName || 'this'}'s ${stage === 'Lead Entry' ? 'lead' : 'referral'}`}
+                        style={{
+                          height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
+                          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer', flexShrink: 0,
+                          background: hexToRgba(palette.accentOrange.hex, 0.14),
+                          color: palette.accentOrange.hex,
+                        }}
+                      >
+                        {stage === 'Lead Entry' ? 'Discard Lead' : 'Discard Referral'}
+                      </button>
+                    )}
+                    {conflictVisible && (
+                      <button
+                        type="button"
+                        onClick={canConflict ? () => initiateTransition(selectedReferral, 'Conflict') : undefined}
+                        disabled={!canConflict}
+                        title={canConflict
+                          ? `Send ${selectedReferral.patientName || 'this referral'} to the Conflict module`
+                          : 'This referral cannot move to Conflict from its current stage'}
+                        style={{
+                          height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
+                          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: canConflict ? 'pointer' : 'default', flexShrink: 0,
+                          background: canConflict ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
+                          color: canConflict ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                          transition: 'all 0.12s',
+                        }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                          <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                        </svg>
+                        Send to Conflict
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+              {stage === 'Pre-SOC' && canPerm(PERMISSION_KEYS.MODULE_SCHEDULING) && (
+                <Link
+                  to="/tools/hchb-visit-check"
+                  data-testid="hchb-visit-check-open"
+                  title="Check scheduled SOC/ROC visits against HCHB logshipping"
+                  style={{
+                    height: 34, padding: '0 14px', borderRadius: 8, flexShrink: 0,
+                    border: `1px solid var(--color-border)`,
+                    background: 'none',
+                    fontSize: 12.5, fontWeight: 650,
+                    color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                    textDecoration: 'none',
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  HCHB visit check
+                </Link>
+              )}
+              {stage === 'Lead Entry' && canPermAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) && (
+                <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDraftsPanel((v) => !v)}
+                    title="Open saved lead drafts"
+                    style={{
+                      height: 34, padding: '0 14px', borderRadius: 8, flexShrink: 0,
+                      border: `1px solid ${showDraftsPanel ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                      background: showDraftsPanel ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none',
+                      fontSize: 12.5, fontWeight: 650,
+                      color: showDraftsPanel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+                      cursor: 'pointer', transition: 'all 0.12s',
+                      display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit',
+                    }}
+                  >
+                    Drafts
+                    {draftCount > 0 && (
+                      <span style={{
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                        background: hexToRgba(palette.backgroundDark.hex, 0.08),
+                        color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                        fontSize: 10, fontWeight: 700, display: 'inline-flex',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {draftCount > 99 ? '99+' : draftCount}
+                      </span>
+                    )}
+                  </button>
+                  <ReferralDraftsPanel
+                    open={showDraftsPanel}
+                    onClose={() => setShowDraftsPanel(false)}
+                    onOpenDraft={(rec) => {
+                      setShowDraftsPanel(false);
+                      let formData = rec?.fields?.form_data;
+                      if (typeof formData === 'string') {
+                        try { formData = JSON.parse(formData); } catch { formData = null; }
+                      }
+                      setActiveDraft({
+                        ...rec,
+                        fields: { ...(rec.fields || {}), form_data: formData && typeof formData === 'object' ? formData : {} },
+                      });
+                      setShowNewReferral(true);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDraft(null);
+                      setShowNewReferral(true);
+                    }}
+                    title="Enter a new lead"
+                    style={{
+                      height: 34, padding: '0 16px', borderRadius: 8, border: 'none', flexShrink: 0,
+                      background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+                      fontSize: 12.5, fontWeight: 650, cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    + New Lead
+                  </button>
+                </div>
+              )}
+              <StageActions stage={stage} />
+            </div>
           </div>
 
-          {/* Toolbar */}
+          {/* Toolbar — single line; record actions live in the title row above */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 7, padding: '0 10px', height: 32, flex: 1, maxWidth: 260, position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: hexToRgba(palette.backgroundDark.hex, 0.04), border: `1px solid var(--color-border)`, borderRadius: 7, padding: '0 10px', height: 32, flex: 1, minWidth: 180, maxWidth: 380, position: 'relative' }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                 <circle cx="11" cy="11" r="8" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" />
                 <path d="m21 21-4.35-4.35" stroke={hexToRgba(palette.backgroundDark.hex, 0.35)} strokeWidth="1.8" strokeLinecap="round" />
               </svg>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patients..." style={{ background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: palette.backgroundDark.hex, width: '100%' }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by patient name…" style={{ background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: palette.backgroundDark.hex, width: '100%' }} />
               {search && (
                 <button type="button" onClick={() => setSearch('')} style={{ background: hexToRgba(palette.backgroundDark.hex, 0.08), border: 'none', borderRadius: 4, width: 16, height: 16, cursor: 'pointer', color: hexToRgba(palette.backgroundDark.hex, 0.5), fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>×</button>
               )}
             </div>
 
-            <SortBtn label="Days" field="days" current={sortField} dir={sortDir} onSort={toggleSort} />
-            <SortBtn label="F2F" field="f2f" current={sortField} dir={sortDir} onSort={toggleSort} />
-            <SortBtn label="Name" field="name" current={sortField} dir={sortDir} onSort={toggleSort} />
+            {/* Sort group — labeled so these read as sorts, not filters or actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), marginRight: 2 }}>Sort</span>
+              <SortBtn label="Days" field="days" current={sortField} dir={sortDir} onSort={toggleSort} />
+              <SortBtn label="F2F" field="f2f" current={sortField} dir={sortDir} onSort={toggleSort} />
+              <SortBtn label="Name" field="name" current={sortField} dir={sortDir} onSort={toggleSort} />
+            </div>
 
             <div style={{ flex: 1 }} />
 
-            {stage === 'Lead Entry' && canPermAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) && (
-              <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowDraftsPanel((v) => !v)}
-                  title="Open saved lead drafts"
-                  style={{
-                    height: 32, padding: '0 12px', borderRadius: 7, flexShrink: 0,
-                    border: `1px solid ${showDraftsPanel ? palette.accentBlue.hex : 'var(--color-border)'}`,
-                    background: showDraftsPanel ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
-                    fontSize: 12, fontWeight: 600,
-                    color: showDraftsPanel ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
-                    cursor: 'pointer', transition: 'all 0.12s',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  Drafts
-                  {draftCount > 0 && (
-                    <span style={{
-                      minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                      background: palette.accentBlue.hex, color: palette.backgroundLight.hex,
-                      fontSize: 10, fontWeight: 700, display: 'inline-flex',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {draftCount > 99 ? '99+' : draftCount}
-                    </span>
-                  )}
-                </button>
-                <ReferralDraftsPanel
-                  open={showDraftsPanel}
-                  onClose={() => setShowDraftsPanel(false)}
-                  onOpenDraft={(rec) => {
-                    setShowDraftsPanel(false);
-                    let formData = rec?.fields?.form_data;
-                    if (typeof formData === 'string') {
-                      try { formData = JSON.parse(formData); } catch { formData = null; }
-                    }
-                    setActiveDraft({
-                      ...rec,
-                      fields: { ...(rec.fields || {}), form_data: formData && typeof formData === 'object' ? formData : {} },
-                    });
-                    setShowNewReferral(true);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveDraft(null);
-                    setShowNewReferral(true);
-                  }}
-                  title="Enter a new lead"
-                  style={{
-                    height: 32, padding: '0 14px', borderRadius: 7, border: 'none', flexShrink: 0,
-                    background: palette.accentGreen.hex, color: palette.backgroundLight.hex,
-                    fontSize: 12, fontWeight: 650, cursor: 'pointer', transition: 'all 0.12s',
-                  }}
-                >
-                  + New Lead
-                </button>
-              </div>
-            )}
-
+            {/* Queue review — separated from the view controls that follow */}
             <DuplicateChecker
               selectedReferral={selectedReferral}
               allReferrals={allReferrals}
               onSelectReferral={handleRowSelect}
               onOpenReferral={handleRowOpen}
             />
+            <div aria-hidden style={{ width: 1, height: 20, background: 'var(--color-border)', flexShrink: 0, margin: '0 2px' }} />
 
             {isClinicalRnModule && clinicalQueueCounts && (
               <button
@@ -1606,10 +1803,10 @@ export default function ModulePage({ stage }) {
                   : `Active clinical + assigned handoffs. Click to also include ${clinicalQueueCounts.deferred} deferred-only case${clinicalQueueCounts.deferred === 1 ? '' : 's'}.`}
                 style={{
                   height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
-                  border: `1px solid ${includeDeferredClinical ? palette.accentBlue.hex : 'var(--color-border)'}`,
-                  background: includeDeferredClinical ? hexToRgba(palette.accentBlue.hex, 0.08) : 'none',
+                  border: `1px solid ${includeDeferredClinical ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                  background: includeDeferredClinical ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none',
                   fontSize: 12, fontWeight: 600,
-                  color: includeDeferredClinical ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  color: includeDeferredClinical ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
                   cursor: 'pointer', transition: 'all 0.12s',
                 }}
               >
@@ -1620,10 +1817,10 @@ export default function ModulePage({ stage }) {
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10, fontWeight: 700,
                     background: includeDeferredClinical
-                      ? hexToRgba(palette.accentBlue.hex, 0.15)
+                      ? hexToRgba(palette.primaryMagenta.hex, 0.12)
                       : hexToRgba(palette.backgroundDark.hex, 0.08),
                     color: includeDeferredClinical
-                      ? palette.accentBlue.hex
+                      ? palette.primaryMagenta.hex
                       : hexToRgba(palette.backgroundDark.hex, 0.55),
                   }}>
                     {clinicalQueueCounts.deferred}
@@ -1639,25 +1836,25 @@ export default function ModulePage({ stage }) {
               style={{
                 height: 32, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7,
                 border: 'none', background: 'transparent', fontSize: 12, fontWeight: showFilters || hasActiveFilters ? 700 : 600,
-                color: showFilters || hasActiveFilters ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                color: showFilters || hasActiveFilters ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
                 cursor: 'pointer', flexShrink: 0,
               }}
             >
               <FilterIcon /> Filters
-              {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: '50%', background: palette.accentBlue.hex, flexShrink: 0 }} />}
+              {hasActiveFilters && <span style={{ width: 6, height: 6, borderRadius: '50%', background: palette.primaryMagenta.hex, flexShrink: 0 }} />}
             </button>
 
             {/* Pin / unpin patient column */}
             <button
               type="button"
               onClick={() => setFreezePatient(!pinPatientCol)}
-              title={pinPatientCol ? 'Unpin patient name (scrolls with columns)' : 'Pin patient name while scrolling columns'}
+              title={pinPatientCol ? 'Unfreeze the patient name column (scrolls with the table)' : 'Freeze the patient name column while scrolling the table'}
               aria-pressed={pinPatientCol}
               style={{
                 height: 32, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderRadius: 7, flexShrink: 0,
                 border: 'none', background: 'transparent',
                 fontSize: 12, fontWeight: pinPatientCol ? 700 : 600,
-                color: pinPatientCol ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+                color: pinPatientCol ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
                 cursor: 'pointer',
               }}
             >
@@ -1668,7 +1865,7 @@ export default function ModulePage({ stage }) {
                   <path d="M12 17v5M9 3h6l1 7h2a2 2 0 0 1 0 4H6a2 2 0 0 1 0-4h2L9 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
                 )}
               </svg>
-              {pinPatientCol ? 'Pinned' : 'Pin patient'}
+              {pinPatientCol ? 'Column frozen' : 'Freeze column'}
             </button>
 
             {/* SOC Completed — Pending Log alternate view */}
@@ -1703,7 +1900,7 @@ export default function ModulePage({ stage }) {
                 </button>
                 {showColPicker && (
                   <ColumnPicker
-                    columnDefs={MODULE_COLUMN_DEFS}
+                    columnDefs={columnDefs}
                     visibleCols={visibleCols}
                     onChange={setVisibleCols}
                     onClose={() => setShowColPicker(false)}
@@ -1714,67 +1911,6 @@ export default function ModulePage({ stage }) {
               </div>
             )}
 
-            {/* Discard from any stage — permission-gated */}
-            {canDiscardAny && stage !== 'Discarded Leads' && (() => {
-              const canSend = !!selectedReferral && selectedReferral.current_stage !== 'Discarded Leads';
-              return (
-                <button
-                  type="button"
-                  data-testid="discard-any-toolbar"
-                  onClick={canSend ? () => setDiscardTarget(selectedReferral) : undefined}
-                  disabled={!canSend}
-                  title={canSend
-                    ? `Discard ${selectedReferral.patientName || 'patient'}`
-                    : 'Select a patient to discard'}
-                  style={{
-                    height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
-                    borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
-                    cursor: canSend ? 'pointer' : 'default', flexShrink: 0,
-                    background: canSend ? hexToRgba(palette.accentOrange.hex, 0.14) : hexToRgba(palette.backgroundDark.hex, 0.06),
-                    color: canSend ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-                  }}
-                >
-                  Discard
-                </button>
-              );
-            })()}
-
-            {/* Send to Conflict */}
-            {stage !== 'Conflict' && stage !== 'Discarded Leads' && stage !== 'SOC Completed' && stage !== 'NTUC' && (() => {
-              const isLeadsModule = stage === 'Lead Entry';
-              const canTransition = selectedReferral && canMoveFromTo(selectedReferral.current_stage, 'Conflict');
-              const canSend = canTransition && !isLeadsModule;
-              const conflictTitle = isLeadsModule
-                ? 'Conflict workflow applies after Intake — leads are not active referrals yet'
-                : !selectedReferral
-                  ? 'Select a patient to send to Conflict'
-                  : !canTransition
-                    ? 'This patient cannot move to Conflict from their current stage'
-                    : `Send ${selectedReferral?.patientName || 'patient'} to Conflict`;
-              return (
-                <button
-                  type="button"
-                  onClick={canSend ? () => initiateTransition(selectedReferral, 'Conflict') : undefined}
-                  disabled={!canSend}
-                  title={conflictTitle}
-                  style={{
-                    height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
-                    borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600, cursor: canSend ? 'pointer' : 'default', flexShrink: 0,
-                    background: canSend ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-                    color: canSend ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                  Conflict
-                </button>
-              );
-            })()}
-
             {/* Clear all */}
             <button
               onClick={clearAll}
@@ -1782,6 +1918,7 @@ export default function ModulePage({ stage }) {
             >
               Clear all
             </button>
+
           </div>
         </div>
 
@@ -1790,7 +1927,69 @@ export default function ModulePage({ stage }) {
           {/* Queue — horizontal scroll with sticky L/R controls for non-trackpad users */}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {stageReferrals.length === 0 ? (
-              <EmptyState title={`No patients in ${meta.displayName || stage}`} subtitle={hasAnyFilter ? 'Try clearing filters or search.' : 'Patients will appear here when they reach this stage.'} />
+              hasAnyFilter ? (
+                /* Empty because of filters — very different from a truly empty queue */
+                <EmptyState
+                  title="No referrals match your current filters"
+                  subtitle="Referrals in this queue may be hidden by your search or column filters."
+                  action={(
+                    <button
+                      type="button"
+                      onClick={clearAll}
+                      style={{ height: 34, padding: '0 16px', borderRadius: 8, border: `1px solid var(--color-border)`, background: 'none', fontSize: 12.5, fontWeight: 650, color: palette.primaryMagenta.hex, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                />
+              ) : stage === 'Lead Entry' ? (
+                <EmptyState
+                  title="No leads in this queue"
+                  subtitle="New referrals will appear here after submission and clinical pre-check."
+                  action={canPermAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) ? (
+                    /* Mirrors the header pair: one filled primary, one quiet bordered
+                       secondary — same height and type so the cluster reads as one row */
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveDraft(null); setShowNewReferral(true); }}
+                        style={{ height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex, fontSize: 12.5, fontWeight: 650, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >
+                        + New Lead
+                      </button>
+                      {draftCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowDraftsPanel(true)}
+                          style={{
+                            height: 34, padding: '0 14px', borderRadius: 8,
+                            border: `1px solid var(--color-border)`, background: 'none',
+                            fontSize: 12.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                            cursor: 'pointer', fontFamily: 'inherit',
+                            display: 'flex', alignItems: 'center', gap: 6,
+                          }}
+                        >
+                          View drafts
+                          <span style={{
+                            minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                            background: hexToRgba(palette.backgroundDark.hex, 0.08),
+                            color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                            fontSize: 10, fontWeight: 700, display: 'inline-flex',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {draftCount > 99 ? '99+' : draftCount}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  ) : undefined}
+                />
+              ) : (
+                <EmptyState
+                  title={`No referrals in ${meta.displayName || stage}`}
+                  subtitle="Referrals will appear here when they reach this stage."
+                />
+              )
             ) : (
               <QueueScrollFrame
                 freezePatientCol={freezePatientCol}
@@ -2120,15 +2319,20 @@ function QueueScrollFrame({ children, freezePatientCol = false, lockedGrid = fal
 
 function QueueRow({ referral, activeColumns, renderCell, isSelected, onClick, onDoubleClick, onContextMenu, flexibleHeight = false }) {
   const [hovered, setHovered] = useState(false);
+  const postVisit = isPostVisitReferral(referral);
+  const preCheck = isClinicalLeadPreCheck(referral);
+  const background = queueRowWash(referral, { isSelected, hovered });
   return (
     <tr
       data-queue-row={referral._id}
+      data-post-visit={postVisit ? 'true' : undefined}
+      data-lead-precheck={preCheck ? 'true' : undefined}
       onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
         height: flexibleHeight ? 'auto' : QUEUE_ROW_HEIGHT,
         minHeight: QUEUE_ROW_HEIGHT,
-        background: isSelected ? hexToRgba(palette.primaryMagenta.hex, 0.06) : hovered ? hexToRgba(palette.primaryDeepPlum.hex, 0.03) : 'transparent',
+        background,
         cursor: 'pointer', transition: 'background 0.1s',
       }}
     >
@@ -2173,12 +2377,15 @@ function UrgentTypeCell({ referral, appUserId, td, onError }) {
             borderRadius: 6,
             border: 'none',
             textAlign: 'left',
-            background: types.length ? '#F8E8EF' : '#EEECEF',
-            color: types.length ? palette.backgroundDark.hex : '#8A8494',
+            background: types.length ? urgentCareTypeBg(types[0]) : '#EEECEF',
+            color: types.length ? urgentCareTypeColor(types[0]) : '#8A8494',
             cursor: 'pointer',
           }}
         >
-          {label || 'Type'}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {types.length > 0 && <UrgentCareIcon size={12} types={types} />}
+            {label || 'Type'}
+          </span>
         </button>
         {open && (
           <div style={{
@@ -2277,7 +2484,7 @@ function RowContextMenu({ x, y, referral, onOpen, onOpenTriage, onChangeOwner, c
       <div ref={ref} style={{ position: 'fixed', top: y, left: x, zIndex: 9991, background: palette.backgroundLight.hex, border: `1px solid var(--color-border)`, borderRadius: 10, overflow: 'hidden', minWidth: 220, boxShadow: `0 8px 28px ${hexToRgba(palette.backgroundDark.hex, 0.13)}` }}>
         <div style={{ padding: '8px 14px 6px', borderBottom: `1px solid var(--color-border)` }}>
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            {urgent && <UrgentCareIcon size={11} />} {referral.patientName || referral.patient_id}
+            {urgent && <UrgentCareIcon size={11} types={getUrgentCareTypes(referral)} />} {referral.patientName || referral.patient_id}
           </p>
         </div>
         <div style={{ padding: '4px 0' }}>

@@ -44,6 +44,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   const { focusNoteId } = usePatientDrawer();
   const [composerEmpty, setComposerEmpty] = useState(true);
   const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [fetchingNotes, setFetchingNotes] = useState(false);
   const composerRef = useRef(null);
   const listRef = useRef(null);
@@ -73,7 +74,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
   const loading = !hydrated && notes.length === 0 && fetchingNotes;
 
   function submitNote() {
-    if (!can(PERMISSION_KEYS.NOTE_CREATE)) return;
+    if (!can(PERMISSION_KEYS.NOTE_CREATE) || saving) return;
     const content = composerRef.current?.getValue?.()?.trim() || '';
     if (!content) return;
     setError(null);
@@ -102,38 +103,40 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
       ...(referral?.id ? { referral_id: referral.id } : {}),
     };
 
-    createNoteOptimistic(fields).catch((err) => {
-      setError(`Failed to save note: ${err.message}`);
-    });
-
-    const mentioned = extractUserMentionIds(content);
-    if (mentioned.length) {
-      const patientLabel = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-      createMentionNotifications({
-        mentionedUserIds: mentioned,
-        actorUserId: appUserId,
-        noteId,
-        patientId: patient.id,
-        referralId: referral?.id || null,
-        noteContent: content,
-        actorName: appUserName,
-        patientLabel,
-      });
-    }
-
-    if (can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER)) {
-      routeNoteToAccountManagerInfo({
-        content,
-        referral,
-        patientId: patient.id,
-        actorName: appUserName,
-      }).catch((err) => {
-        console.warn('[accountManagerInfo] failed to append:', err?.message || err);
-      });
-    }
-
-    composerRef.current?.clear?.();
-    setComposerEmpty(true);
+    setSaving(true);
+    createNoteOptimistic(fields)
+      .then(() => {
+        composerRef.current?.clear?.();
+        setComposerEmpty(true);
+        const mentioned = extractUserMentionIds(content);
+        if (mentioned.length) {
+          const patientLabel = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+          createMentionNotifications({
+            mentionedUserIds: mentioned,
+            actorUserId: appUserId,
+            noteId,
+            patientId: patient.id,
+            referralId: referral?.id || null,
+            noteContent: content,
+            actorName: appUserName,
+            patientLabel,
+          });
+        }
+        if (can(PERMISSION_KEYS.NOTE_MENTION_ACCOUNT_MANAGER)) {
+          routeNoteToAccountManagerInfo({
+            content,
+            referral,
+            patientId: patient.id,
+            actorName: appUserName,
+          }).catch((err) => {
+            console.warn('[accountManagerInfo] failed to append:', err?.message || err);
+          });
+        }
+      })
+      .catch((err) => {
+        setError(`Failed to save note: ${err.message}`);
+      })
+      .finally(() => setSaving(false));
   }
 
   function togglePin(note) {
@@ -227,19 +230,19 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
           </span>
           <button
             onClick={submitNote}
-            disabled={composerEmpty}
+            disabled={composerEmpty || saving}
             style={{
               padding: '7px 18px', borderRadius: 7,
-              background: !composerEmpty
+              background: !composerEmpty && !saving
                 ? palette.primaryMagenta.hex
                 : hexToRgba(palette.primaryMagenta.hex, 0.3),
               border: 'none', fontSize: 12.5, fontWeight: 650,
               color: palette.backgroundLight.hex,
-              cursor: !composerEmpty ? 'pointer' : 'not-allowed',
+              cursor: !composerEmpty && !saving ? 'pointer' : 'not-allowed',
               transition: 'background 0.15s',
             }}
           >
-            Add Note
+            {saving ? 'Saving…' : 'Add Note'}
           </button>
         </div>
       </div>}

@@ -20,7 +20,7 @@ const NAV_ITEMS = [
     items: [
       { label: 'Dashboard', path: '/', icon: DashboardIcon, exact: true },
       { label: 'Tasks', path: '/tasks', icon: TasksIcon },
-      { label: 'Pipeline', path: '/pipeline', icon: PipelineIcon },
+      { label: 'Pipeline Overview', path: '/pipeline', icon: PipelineIcon, perm: PERMISSION_KEYS.PAGE_PIPELINE },
       { label: 'Patients', path: '/patients', icon: PatientsIcon },
     ],
   },
@@ -42,18 +42,23 @@ const NAV_ITEMS = [
       { label: 'Inbound', path: '/inbound-submissions', icon: MailIcon, permAny: [PERMISSION_KEYS.MODULE_INBOUND, PERMISSION_KEYS.INBOUND_VIEW] },
       { label: 'Reports', path: '/reports', icon: ReportsIcon },
       { label: 'Batch Eligibility', path: '/tools/batch-eligibility', icon: EligibilityIcon, perm: PERMISSION_KEYS.CLINICAL_ELIGIBILITY_BATCH },
+      { label: 'HCHB Visit Check', path: '/tools/hchb-visit-check', icon: VisitCheckIcon, perm: PERMISSION_KEYS.MODULE_SCHEDULING },
     ],
   },
   {
     section: 'SYSTEM',
     items: [
       { label: 'Team', path: '/team', icon: UsersIcon },
-      { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, requiresAdmin: true },
-      { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, requiresAdmin: true },
+      // Each admin page shows only with its own key — a user with just
+      // admin.data_tools (e.g. marketers) must not see the other admin links.
+      { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, perm: PERMISSION_KEYS.ADMIN_USER_MANAGEMENT },
+      { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, perm: PERMISSION_KEYS.ADMIN_PERMISSIONS },
       { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: ConflictsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
-      { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, requiresAdmin: true },
-      { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, requiresAdmin: true },
-      { label: 'Developer Tools', path: '/developer/tools', icon: DeveloperToolsIcon, permAny: [PERMISSION_KEYS.DEVELOPER_TOOLS, PERMISSION_KEYS.ADMIN_DATA_TOOLS], allowSupportStaff: true },
+      { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, perm: PERMISSION_KEYS.ADMIN_DEPARTMENTS },
+      { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, perm: PERMISSION_KEYS.ADMIN_DATA_TOOLS },
+      // Developer Tools requires its own key — admin.data_tools alone is NOT
+      // enough (marketers get Data Tools without raw database access).
+      { label: 'Developer Tools', path: '/developer/tools', icon: DeveloperToolsIcon, perm: PERMISSION_KEYS.DEVELOPER_TOOLS },
       { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
     ],
   },
@@ -196,7 +201,11 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
         {/* First group (Dashboard + Pipeline) renders before Modules */}
         {NAV_ITEMS.slice(0, 1).map((group, gi) => (
           <div key={`top-${gi}`} style={{ marginBottom: 4 }}>
-            {group.items.filter((item) => !item.requiresAdmin || isAdmin).map((item) => {
+            {group.items.filter((item) =>
+              (!item.requiresAdmin || isAdmin)
+              && (!item.perm || can(item.perm))
+              && (!item.permAny || item.permAny.some((p) => can(p))),
+            ).map((item) => {
               const isActive = item.exact
                 ? location.pathname === item.path
                 : location.pathname.startsWith(item.path) && item.path !== '/';
@@ -264,7 +273,7 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
             (item) =>
               (!item.requiresAdmin || isAdmin) &&
               (!item.dir || canViewDirectory(can, item.dir)) &&
-              (!item.perm || can(item.perm)) &&
+              (!item.perm || can(item.perm) || (item.allowSupportStaff && isSupportStaff)) &&
               (!item.permAny || item.permAny.some((p) => can(p)) || (item.allowSupportStaff && isSupportStaff)),
           );
           if (visibleItems.length === 0) return null;
@@ -401,25 +410,32 @@ export default function Sidebar({ division, onDivisionChange, roleMode, onRoleMo
 }
 
 // ── Role Mode Module Nav ──────────────────────────────────────────────────────
+// Values may be a single key or an array (ANY key grants the link). Conflict /
+// NTUC / Discarded also accept `module.conflict` so marketers and account
+// managers can reach those queues without clinical/admin/intake module access.
 const STAGE_TO_MODULE_PERM = {
+  'Clinical Lead Pre-Check': [PERMISSION_KEYS.MODULE_INTAKE, PERMISSION_KEYS.MODULE_CLINICAL],
   'Lead Entry': PERMISSION_KEYS.MODULE_INTAKE,
-  'Discarded Leads': PERMISSION_KEYS.MODULE_INTAKE,
+  'Discarded Leads': [PERMISSION_KEYS.MODULE_INTAKE, PERMISSION_KEYS.MODULE_CONFLICT],
   'OPWDD Enrollment': PERMISSION_KEYS.MODULE_INTAKE,
   'Intake': PERMISSION_KEYS.MODULE_INTAKE,
   'Eligibility Verification': PERMISSION_KEYS.MODULE_INTAKE,
   'Disenrollment Required': PERMISSION_KEYS.MODULE_INTAKE,
   'F2F/MD Orders Pending': PERMISSION_KEYS.MODULE_INTAKE,
   'Clinical Intake RN Review': PERMISSION_KEYS.MODULE_CLINICAL,
-  'Conflict': PERMISSION_KEYS.MODULE_CLINICAL,
+  'Conflict': [PERMISSION_KEYS.MODULE_CLINICAL, PERMISSION_KEYS.MODULE_CONFLICT],
   'Authorization Pending': PERMISSION_KEYS.MODULE_AUTHORIZATION,
-  'EMR Onboarding': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'EMR Onboarding': PERMISSION_KEYS.MODULE_INTAKE,
   'Staffing Feasibility': PERMISSION_KEYS.MODULE_SCHEDULING,
   'Pre-SOC': PERMISSION_KEYS.MODULE_SCHEDULING,
   'SOC Scheduled': PERMISSION_KEYS.MODULE_SCHEDULING,
   'SOC Completed': PERMISSION_KEYS.MODULE_SCHEDULING,
+  'Post Visit Intake': PERMISSION_KEYS.MODULE_INTAKE,
+  'Post Visit Clinical Review': PERMISSION_KEYS.MODULE_CLINICAL,
+  'Completed': PERMISSION_KEYS.MODULE_SCHEDULING,
   'Admin Confirmation': PERMISSION_KEYS.MODULE_ADMIN,
   'Hold': PERMISSION_KEYS.MODULE_ADMIN,
-  'NTUC': PERMISSION_KEYS.MODULE_ADMIN,
+  'NTUC': [PERMISSION_KEYS.MODULE_ADMIN, PERMISSION_KEYS.MODULE_CONFLICT],
 };
 
 function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }) {
@@ -517,7 +533,10 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
         if (!slug) return null;
         if (STAGE_META[stage]?.hiddenFromNav) return null;
         const requiredPerm = STAGE_TO_MODULE_PERM[stage];
-        if (requiredPerm && !canPerm(requiredPerm)) return null;
+        if (requiredPerm) {
+          const keys = Array.isArray(requiredPerm) ? requiredPerm : [requiredPerm];
+          if (!keys.some((k) => canPerm(k))) return null;
+        }
         const path = `/modules/${slug}`;
         const isActive = location.pathname === path;
         return (
@@ -536,7 +555,6 @@ function RoleModeModules({ roleMode, onRoleModeChange, location, onContextMenu }
             }}
             title={stage}
           >
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: isActive ? palette.primaryMagenta.hex : hexToRgba(NAV_TEXT, 0.35), display: 'inline-block', flexShrink: 0 }} />
             {STAGE_META[stage]?.displayName || stage}
           </NavLink>
         );
@@ -747,6 +765,15 @@ function EligibilityIcon({ size = 16, color }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <rect x="4" y="3" width="16" height="18" rx="2" stroke={color} strokeWidth="1.6" />
       <path d="M8 8h8M8 12h8M8 16h5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function VisitCheckIcon({ size = 16, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M9 11l3 3L22 4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="4" width="14" height="16" rx="2" stroke={color} strokeWidth="1.6" />
     </svg>
   );
 }

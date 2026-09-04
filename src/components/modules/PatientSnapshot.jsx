@@ -76,10 +76,13 @@ export function computeSnapshotFlags(patient, referral, triageData /*, _legacyIn
   const f2f = !!r.f2f_date;
   const f2fDate = r.f2f_date || null;
   const insurance = hasInsuranceDetails(p);
-  const initialEmr = !!r.emr_initial_onboarded_at;
-  const initialEmrDate = r.emr_initial_onboarded_at || null;
+  const completeEmr = !!r.emr_onboarded_at;
+  const completeEmrDate = r.emr_onboarded_at || null;
+  // Complete EMR implies initial — you can't have the full chart without it.
+  const initialEmr = !!r.emr_initial_onboarded_at || completeEmr;
+  const initialEmrDate = r.emr_initial_onboarded_at || r.emr_onboarded_at || null;
 
-  return { demographics, triage, f2f, f2fDate, insurance, initialEmr, initialEmrDate };
+  return { demographics, triage, f2f, f2fDate, insurance, initialEmr, initialEmrDate, completeEmr, completeEmrDate };
 }
 
 function StatusCheck({ complete }) {
@@ -157,12 +160,17 @@ function FlagIcon({ name, color }) {
   return null;
 }
 
+// EMR onboarding is a function of Intake for both divisions: ALF starts with
+// Initial EMR (the HCHB chart must exist before anything else — SOC/ROC
+// scheduling runs concurrently on it); both ALF and SPN finish with
+// Complete EMR as the last item.
 const FLAGS_META = [
+  { key: 'initialEmr',   label: 'Initial EMR',       tab: 'emr', alfOnly: true, icon: 'monitor' },
   { key: 'demographics', label: 'Demographics',      tab: 'demographics', icon: 'person' },
   { key: 'triage',       label: 'Triage',            tab: 'triage',       icon: 'clipboard' },
   { key: 'f2f',          label: 'F2F Received',      tab: 'f2f',          icon: 'doc' },
   { key: 'insurance',    label: 'Insurance Details', tab: 'demographics', icon: 'card' },
-  { key: 'initialEmr',   label: 'Initial EMR',       tab: null, alfOnly: true, icon: 'monitor' },
+  { key: 'completeEmr',  label: 'Complete EMR',      tab: 'emr',          icon: 'monitor' },
 ];
 
 export default function PatientSnapshot({ patient, referral, triageData, insuranceChecks, onOpenTab }) {
@@ -174,10 +182,12 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
   const [busy, setBusy] = useState(false);
   const [pickType, setPickType] = useState(false);
   const [draftTypes, setDraftTypes] = useState([]);
+  const [editTypes, setEditTypes] = useState(false);
 
   useEffect(() => {
     setPickType(false);
     setDraftTypes([]);
+    setEditTypes(false);
   }, [referral?._id]);
 
   // We intentionally do NOT gate the toggle on a permission check at the UI
@@ -232,36 +242,61 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
         style={{
           marginBottom: 4,
           borderRadius: 8,
-          background: urgent ? '#F8E8EF' : 'transparent',
           opacity: busy ? 0.6 : 1,
         }}
       >
         {urgent ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 8px' }}>
+          /* Flagged — one quiet corporate row: colored icon, dark label,
+             muted type list. Editing tucked behind the chevron. */
+          <div style={{ borderRadius: 8, border: '1px solid var(--color-border)', background: '#fff' }}>
             <button
               type="button"
-              onClick={clearUrgent}
+              onClick={() => setEditTypes((v) => !v)}
               disabled={busy || !referral?._id}
-              title="Clear urgent care"
+              title={editTypes ? 'Close urgent care editor' : 'Edit urgent care types'}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                border: 'none', background: 'transparent', padding: 0,
-                textAlign: 'left', cursor: busy ? 'wait' : 'pointer',
-                color: palette.primaryMagenta.hex, fontFamily: 'inherit',
-                fontWeight: 700, fontSize: 12.5,
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                padding: '8px', border: 'none', background: 'transparent', borderRadius: 8,
+                textAlign: 'left', cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
               }}
             >
-              <UrgentCareIcon size={15} />
-              <span>
+              <UrgentCareIcon size={15} types={urgentTypes} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#3A3545', flexShrink: 0 }}>
                 Urgent care
-                {urgentTypes.length ? ` · ${urgentCareTypeLabel(urgentTypes)}` : ''}
               </span>
+              <span style={{
+                fontSize: 12, fontWeight: 500, color: '#8A8494', flex: 1,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {urgentCareTypeLabel(urgentTypes)}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden style={{ flexShrink: 0, transform: editTypes ? 'rotate(90deg)' : 'none', transition: 'transform 0.12s' }}>
+                <path d="m9 6 6 6-6 6" stroke="#8A8494" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
-            <UrgentCareTypePicker
-              types={urgentTypes}
-              disabled={busy || !referral?._id}
-              onChange={changeTypes}
-            />
+            {editTypes && (
+              <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <UrgentCareTypePicker
+                  types={urgentTypes}
+                  disabled={busy || !referral?._id}
+                  onChange={changeTypes}
+                />
+                <button
+                  type="button"
+                  onClick={clearUrgent}
+                  disabled={busy || !referral?._id}
+                  style={{
+                    alignSelf: 'flex-start',
+                    border: 'none', background: 'transparent', padding: '4px 8px',
+                    fontSize: 11.5, fontWeight: 600, color: '#8A8494',
+                    cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Remove urgent care flag
+                </button>
+              </div>
+            )}
           </div>
         ) : pickType ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 4px' }}>
@@ -371,6 +406,9 @@ export default function PatientSnapshot({ patient, referral, triageData, insuran
         }
         if (key === 'initialEmr' && flags.initialEmrDate) {
           secondary = fmtCalendarDate(flags.initialEmrDate, null);
+        }
+        if (key === 'completeEmr' && flags.completeEmrDate) {
+          secondary = fmtCalendarDate(flags.completeEmrDate, null);
         }
         const iconColor = complete ? '#2F6B2A' : '#6B6575';
         return (

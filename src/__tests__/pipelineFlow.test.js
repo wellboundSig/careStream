@@ -125,10 +125,11 @@ describe('StageRules.json — structural integrity', () => {
     }
   });
 
-  it('Discarded Leads is terminal but allows canMoveTo Lead Entry (restore handled by panel directly)', () => {
+  it('Discarded Leads is terminal but allows canMoveTo Lead Entry and Clinical Lead Pre-Check (restore handled by panel directly)', () => {
     const rule = StageRules.stages['Discarded Leads'];
     expect(rule.terminal).toBe(true);
     expect(rule.canMoveTo).toContain('Lead Entry');
+    expect(rule.canMoveTo).toContain('Clinical Lead Pre-Check');
   });
 
   it('non-terminal stages have at least one transition', () => {
@@ -159,16 +160,18 @@ describe('canMoveFromTo', () => {
   it('allows standard happy-path transitions (post-2026-05-20 workflow)', () => {
     // Lead Entry → Intake (with owner)
     expect(canMoveFromTo('Lead Entry', 'Intake')).toBe(true);
+    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Lead Entry')).toBe(true);
+    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Intake')).toBe(true);
     // Intake → Eligibility Verification (after Clinical RN concurrent push + Insurance Details)
     expect(canMoveFromTo('Intake', 'Eligibility Verification')).toBe(true);
     // F2F is a sub-state of Intake — Intake can flip to F2F and back
     expect(canMoveFromTo('F2F/MD Orders Pending', 'Intake')).toBe(true);
-    // Clinical RN routes to EMR Onboarding now (LIFO target; Decline removed, Auth is Eligibility-side)
+    // Clinical RN routes to Staffing now (EMR onboarding is handled inside Intake)
     expect(canMoveFromTo('Clinical Intake RN Review', 'EMR Onboarding')).toBe(true);
-    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(false);
-    // Eligibility → EMR Onboarding (LIFO trigger with Clinical RN completion)
+    expect(canMoveFromTo('Clinical Intake RN Review', 'Staffing Feasibility')).toBe(true);
+    // Eligibility → Staffing (LIFO trigger with Clinical RN completion)
     expect(canMoveFromTo('Eligibility Verification', 'EMR Onboarding')).toBe(true);
-    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(false);
+    expect(canMoveFromTo('Eligibility Verification', 'Staffing Feasibility')).toBe(true);
     // Eligibility can send back to Intake with a required note
     expect(canMoveFromTo('Eligibility Verification', 'Intake')).toBe(true);
     // Auth Pending and Disenrollment Required return to Eligibility (their parent)
@@ -813,15 +816,18 @@ describe('STAGE_META and STAGE_SLUGS consistency', () => {
   });
 
   it('terminal stages have isTerminal=true in STAGE_META', () => {
-    expect(STAGE_META['SOC Completed'].isTerminal).toBe(true);
+    expect(STAGE_META['Completed'].isTerminal).toBe(true);
     expect(STAGE_META['NTUC'].isTerminal).toBe(true);
     expect(STAGE_META['Discarded Leads'].isTerminal).toBe(true);
   });
 
   it('non-terminal stages have isTerminal=false in STAGE_META', () => {
-    const nonTerminal = ['Lead Entry', 'Intake', 'Eligibility Verification', 'F2F/MD Orders Pending',
+    const nonTerminal = ['Clinical Lead Pre-Check', 'Lead Entry', 'Intake', 'Eligibility Verification', 'F2F/MD Orders Pending',
       'Clinical Intake RN Review', 'Authorization Pending', 'Staffing Feasibility',
-      'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'OPWDD Enrollment'];
+      'Admin Confirmation', 'Pre-SOC', 'SOC Scheduled', 'OPWDD Enrollment',
+      // Post-visit flow: SOC Completed became transitional "Visit Completed";
+      // the post-visit documentation stages are active work queues.
+      'SOC Completed', 'Post Visit Intake', 'Post Visit Clinical Review'];
     for (const s of nonTerminal) {
       expect(STAGE_META[s].isTerminal, `${s} should not be terminal`).toBe(false);
     }
@@ -829,9 +835,11 @@ describe('STAGE_META and STAGE_SLUGS consistency', () => {
 
   it('displayName overrides exist where expected', () => {
     expect(STAGE_META['Lead Entry'].displayName).toBe('Leads');
-    expect(STAGE_META['SOC Completed'].displayName).toBe('Completed');
+    expect(STAGE_META['Clinical Lead Pre-Check'].displayName).toBe('Lead Pre-Check');
+    expect(STAGE_META['SOC Completed'].displayName).toBe('Visit Completed');
     expect(STAGE_META['OPWDD Enrollment'].displayName).toBe('OPWDD');
     expect(STAGE_META['Discarded Leads'].displayName).toBe('Discarded');
+    expect(STAGE_META['Clinical Intake RN Review'].displayName).toBe('Clinical Review');
   });
 });
 
@@ -982,7 +990,7 @@ describe('Every stage is reachable from at least one other stage', () => {
   const allStageNames = Object.keys(StageRules.stages);
 
   it('each stage appears in at least one canMoveTo (or is an entry stage)', () => {
-    const entryStages = new Set(['Lead Entry', 'OPWDD Enrollment']);
+    const entryStages = new Set(['Clinical Lead Pre-Check', 'Lead Entry', 'OPWDD Enrollment']);
     for (const target of allStageNames) {
       if (entryStages.has(target)) continue;
       const reachableFrom = allStageNames.filter(source =>

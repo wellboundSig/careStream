@@ -32,6 +32,31 @@ export const LOCKED_READ_ALLOWLIST = new Set([
   'Entities',
 ]);
 
+/**
+ * Support-portal tables (support.wellboundcarestream.com / field-support).
+ *
+ * The support desk is a SEPARATE product from CareStream and is meant for EVERY
+ * Wellbound staff member — including people who have no CareStream role (rol_016
+ * "Unassigned") or whose Users row hasn't synced yet. None of these tables hold
+ * CareStream PHI, so they are exempt from the "locked user → empty read / no
+ * write" lockdown that protects the clinical tables.
+ *
+ * Effect: locked-but-NOT-revoked users get normal read+write on these tables.
+ * Revoked users stay fully blocked. CareStream PHI tables are untouched.
+ */
+export const SUPPORT_TABLES = new Set([
+  'Teams',
+  'Categories',
+  'Tickets',
+  'TicketParticipants',
+  'TicketAssignments',
+  'Posts',
+  'Attachments',
+  'EmailLog',
+  'NetworkFacilities',
+  'Clinicians',
+]);
+
 export class AccessDeniedError extends Error {
   constructor(message = 'Access denied') {
     super(message);
@@ -184,9 +209,12 @@ async function lookupCaller(actorSub, claims, hintEmail = '') {
   }
 }
 
-export function assertCanWrite(caller) {
+export function assertCanWrite(caller, tableName = null) {
   if (!caller || caller.kind === 'internal') return;
   if (caller.revoked) throw new AccessDeniedError('Account revoked');
+  // Support-desk tables are open to any authenticated (non-revoked) user, even
+  // if they have no CareStream role — the support portal serves all staff.
+  if (tableName && SUPPORT_TABLES.has(tableName)) return;
   if (caller.locked) throw new AccessDeniedError('Account pending setup — contact your manager');
 }
 
@@ -234,6 +262,9 @@ export async function assertHasAnyPermission(caller, permissionKeys) {
 export function filterReadResult(caller, tableName, result) {
   if (!caller || caller.kind === 'internal' || !caller.locked) return result;
   if (caller.revoked) throw new AccessDeniedError('Account revoked');
+  // Support-desk tables (non-PHI) are readable by all authenticated users so the
+  // support portal works for staff with no CareStream role.
+  if (SUPPORT_TABLES.has(tableName)) return result;
   if (LOCKED_READ_ALLOWLIST.has(tableName)) {
     if (tableName === 'Users' && caller.userId && result?.records) {
       return {

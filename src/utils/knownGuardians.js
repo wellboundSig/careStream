@@ -424,7 +424,7 @@ export function findSiblingLeadReferrals(referral, store = getStore()) {
     if (!phones.length) return [];
     return Object.values(store.referrals || {}).filter((r) => {
       if (r._id === referral._id || r.id === referral.id) return false;
-      if (r.current_stage !== 'Lead Entry') return false;
+      if (r.current_stage !== 'Lead Entry' && r.current_stage !== 'Clinical Lead Pre-Check') return false;
       const p = Object.values(store.patients || {}).find((x) => x.id === r.patient_id);
       if (!p) return false;
       const theirs = [digits(p.primary_contact_phone), digits(p.emergency_contact_phone)];
@@ -441,7 +441,7 @@ export function findSiblingLeadReferrals(referral, store = getStore()) {
 
   return Object.values(store.referrals || {}).filter((r) => {
     if (r._id === referral._id || r.id === referral.id) return false;
-    if (r.current_stage !== 'Lead Entry') return false;
+    if (r.current_stage !== 'Lead Entry' && r.current_stage !== 'Clinical Lead Pre-Check') return false;
     return patientIdsWithShared.has(r.patient_id);
   });
 }

@@ -29,7 +29,7 @@ import { normalizePhysicianTitle } from '../utils/physicianName.js';
 import ReferralToSocView from '../components/dataTools/ReferralToSocView.jsx';
 
 const PIPELINE_STAGES = [
-  'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
+  'Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
   'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
@@ -38,6 +38,7 @@ const TERMINAL = new Set(['SOC Completed','NTUC']);
 const ALL_SERVICES = ['SN','PT','OT','ST','HHA','ABA'];
 
 const STAGE_COLOR = {
+  'Clinical Lead Pre-Check': palette.primaryDeepPlum.hex,
   'Lead Entry': palette.accentBlue.hex,
   'Intake': hexToRgba(palette.accentBlue.hex, 0.7),
   'Eligibility Verification': palette.accentOrange.hex,
@@ -62,6 +63,7 @@ const PERIOD_PRESETS = [
   { label: '90d', days: 90 },
   { label: '1y',  days: 365 },
   { label: 'All', days: null },
+  { label: 'Custom', days: 'custom' },
 ];
 
 const COMPARE_METRICS = [
@@ -443,9 +445,14 @@ function CalendarHeatmap({ referrals, weeks = 20 }) {
 
 // ── Period selector ───────────────────────────────────────────────────────────
 
-function PeriodSelector({ value, onChange }) {
+function PeriodSelector({ value, onChange, customRange, onCustomRangeChange }) {
+  const dateInputStyle = {
+    fontSize: 12, padding: '4px 7px', borderRadius: 6,
+    border: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
+    background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
+  };
   return (
-    <div style={{ display: 'flex', gap: 3 }}>
+    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
       {PERIOD_PRESETS.map((p) => (
         <button key={p.label} onClick={() => onChange(p.days)}
           style={{
@@ -457,6 +464,17 @@ function PeriodSelector({ value, onChange }) {
           {p.label}
         </button>
       ))}
+      {value === 'custom' && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+          <input type="date" value={customRange?.from || ''} max={customRange?.to || undefined}
+            onChange={(e) => onCustomRangeChange({ ...customRange, from: e.target.value })}
+            style={dateInputStyle} aria-label="From date" />
+          <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>to</span>
+          <input type="date" value={customRange?.to || ''} min={customRange?.from || undefined}
+            onChange={(e) => onCustomRangeChange({ ...customRange, to: e.target.value })}
+            style={dateInputStyle} aria-label="To date" />
+        </span>
+      )}
     </div>
   );
 }
@@ -1417,14 +1435,22 @@ export default function DataTools() {
   const [tab,      setTab]      = useState('Overview');
   const [period,   setPeriod]   = useState(30);
   const [division, setDivision] = useState('All');
+  const [customRange, setCustomRange] = useState({ from: '', to: '' });
 
   const { can } = usePermissions();
   const isAdmin = can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
 
   // Always compute — hooks cannot come after early returns
   const periodFiltered   = useMemo(
-    () => (!loading && isAdmin) ? filterByPeriod(allReferrals, period)       : [],
-    [allReferrals, period, loading, isAdmin],
+    () => {
+      if (loading || !isAdmin) return [];
+      if (period === 'custom') {
+        if (!customRange.from && !customRange.to) return allReferrals;
+        return filterByDateRange(allReferrals, customRange.from, customRange.to);
+      }
+      return filterByPeriod(allReferrals, period);
+    },
+    [allReferrals, period, customRange, loading, isAdmin],
   );
   const divisionFiltered = useMemo(
     () => (!loading && isAdmin) ? filterByDivision(periodFiltered, division)  : [],
@@ -1485,7 +1511,7 @@ export default function DataTools() {
               </button>
             ))}
           </div>
-          <PeriodSelector value={period} onChange={setPeriod} />
+          <PeriodSelector value={period} onChange={setPeriod} customRange={customRange} onCustomRangeChange={setCustomRange} />
         </div>
       </div>
 
@@ -1495,8 +1521,10 @@ export default function DataTools() {
       {tab === 'Referral to SOC'   && (
         <ReferralToSocView
           referrals={divisionFiltered}
-          allReferrals={allReferrals}
-          period={period}
+          // Custom range: hand the view pre-filtered rows and disable its own
+          // day-window so the explicit From/To bounds are respected.
+          allReferrals={period === 'custom' ? periodFiltered : allReferrals}
+          period={period === 'custom' ? null : period}
           division={division}
         />
       )}

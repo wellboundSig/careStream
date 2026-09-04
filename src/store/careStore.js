@@ -29,6 +29,7 @@ export const useCareStore = create((set, get) => ({
   clinicalReviews: {},         // ClinicalReview rows — one per referral (Clinical Intake RN checklist)
   opwddCases: {},              // OPWDDEligibilityCases — one per active OPWDD referral
   opwddChecklistItems: {},     // OPWDDCaseChecklistItems — per-requirement rows
+  opwddEntities: {},           // HomehealthOpwddEntities — OPWDD packet submission partners lookup
 
   // ── Lookup / reference tables ────────────────────────────────────────────
   marketers: {},
@@ -141,7 +142,7 @@ const SYNC_KEYS = [
   'patients', 'referrals', 'notes', 'tasks', 'stageHistory', 'files',
   'insuranceChecks', 'conflicts', 'conflictCategories', 'authorizations', 'disenrollmentAssistanceFlags', 'episodes',
   'triageAdult', 'triagePediatric', 'cursoryReviews', 'clinicalReviews',
-  'opwddCases', 'opwddChecklistItems',
+  'opwddCases', 'opwddChecklistItems', 'opwddEntities',
   'entities',
   'marketers', 'users', 'referralSources',
   'roles', 'facilities', 'physicians', 'campaigns', 'marketerFacilities',

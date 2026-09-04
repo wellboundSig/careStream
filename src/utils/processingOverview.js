@@ -22,6 +22,9 @@ const PAST_AUTH_GATE = new Set([
   'Pre-SOC',
   'SOC Scheduled',
   'SOC Completed',
+  'Post Visit Intake',
+  'Post Visit Clinical Review',
+  'Completed',
 ]);
 
 const EXCLUDED_STAGES = new Set(['NTUC', 'Discarded Leads']);
@@ -216,7 +219,7 @@ export function buildProcessingOverviewRows(referrals, {
         facility: resolveName(resolveFacility, r.facility_id),
         marketer: resolveName(resolveMarketer, r.marketer_id),
         intakeOwner: (
-          r.current_stage === 'Lead Entry' || !linkId(r.intake_owner_id)
+          r.current_stage === 'Lead Entry' || r.current_stage === 'Clinical Lead Pre-Check' || !linkId(r.intake_owner_id)
             ? ''
             : resolveName(resolveUser, r.intake_owner_id)
         ),

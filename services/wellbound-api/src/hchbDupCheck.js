@@ -10,58 +10,10 @@
  *   HCHB_DUP_CARESTREAM_TOKEN
  */
 
-import { createHmac } from 'node:crypto';
+import { hashName, hashNameDob, normalizeDob, normalizeName } from './hchbHash.js';
 
 const POLL_MS = 1200;
 const POLL_MAX = 18; // stay under typical 30s Lambda timeout (~22s)
-
-function normalizeName(value) {
-  if (!value) return '';
-  return String(value)
-    .toUpperCase()
-    .trim()
-    .replace(/[^A-Z0-9 ]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeDob(value) {
-  if (!value) return '';
-  const s = String(value).trim();
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  const m2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m2) {
-    const mm = String(m2[1]).padStart(2, '0');
-    const dd = String(m2[2]).padStart(2, '0');
-    return `${m2[3]}-${mm}-${dd}`;
-  }
-  const digits = s.replace(/\D+/g, '');
-  if (digits.length >= 8) {
-    const d = digits.slice(0, 8);
-    return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
-  }
-  return '';
-}
-
-function hmacHex(pepper, material) {
-  return createHmac('sha256', pepper).update(material, 'utf8').digest('hex');
-}
-
-function hashName(pepper, last, first) {
-  const l = normalizeName(last);
-  const f = normalizeName(first);
-  if (!l || !f) return '';
-  return hmacHex(pepper, `NAME|${l}|${f}`);
-}
-
-function hashNameDob(pepper, last, first, dob) {
-  const l = normalizeName(last);
-  const f = normalizeName(first);
-  const d = normalizeDob(dob);
-  if (!l || !f || !d) return '';
-  return hmacHex(pepper, `NAMEDOB|${l}|${f}|${d}`);
-}
 
 function sanitizeHchbCase(raw) {
   if (!raw || typeof raw !== 'object') {

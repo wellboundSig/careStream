@@ -52,6 +52,49 @@ export async function runOptumEligibilityCheck(body) {
   return data;
 }
 
+/**
+ * Smart eligibility check — POST /eligibility/check routes the inquiry to the
+ * right clearinghouse (Optum / Availity / Waystar) for the payer and walks a
+ * fallback chain until a conclusive answer. Returns { ok, route, conclusive,
+ * result, attempts }. Falls back to the Optum-only route (and wraps its
+ * response in the same shape) when the Lambda hasn't been redeployed with the
+ * smart router yet (404).
+ *
+ * @param {object} body - { patient, insurance, payerId?, clearinghouse?, providerNpi?, providerName?, serviceTypeCodes? }
+ */
+export async function runSmartEligibilityCheck(body) {
+  if (!API_URL) throw new Error('VITE_API_URL is not configured');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeader()),
+  };
+  const res = await fetch(`${API_URL}/eligibility/check`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body || {}),
+  });
+  if (res.status === 404) {
+    // Smart router not deployed yet — run Optum directly, same envelope.
+    const single = await runOptumEligibilityCheck({
+      ...body,
+      tradingPartnerServiceId: body?.payerId || body?.tradingPartnerServiceId,
+    });
+    return {
+      ok: !!single?.ok,
+      route: null,
+      conclusive: !!single?.ok,
+      result: single,
+      attempts: [{ clearinghouse: 'optum', ...single }],
+    };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data && (data.attempts || data.result)) return data;
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `Eligibility check failed (${res.status})`);
+  }
+  return data;
+}
+
 export function guessPayerIdFromInsurance(insurance = {}) {
   const explicit = String(
     insurance.trading_partner_service_id

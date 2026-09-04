@@ -13,6 +13,7 @@ function matchStr(text, q) {
 }
 
 const STAGE_ROUTES = {
+  'Clinical Lead Pre-Check':   '/modules/clinical-rn',
   'Lead Entry':                '/modules/lead-entry',
   'Intake':                    '/modules/intake',
   'Eligibility Verification':  '/modules/eligibility',
@@ -25,7 +26,8 @@ const STAGE_ROUTES = {
   'Staffing Feasibility':      '/modules/staffing',
   'Admin Confirmation':        '/modules/admin-confirmation',
   'Pre-SOC/ROC':               '/modules/pre-soc',
-  'SOC/ROC Done':              '/modules/soc-completed',
+  'Visit Completed':           '/modules/completed',
+  'Completed':                 '/modules/completed',
   'Hold':                      '/modules/hold',
   'NTUC':                      '/modules/ntuc',
 };

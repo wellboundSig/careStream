@@ -1,0 +1,279 @@
+HCHB DUPLICATE AGENT — PC043 RUNBOOK
+====================================
+
+This is the closet Windows PC that talks to HCHB logship (SQL Server)
+and answers CareStream duplicate checks.
+
+  Machine:   PC043
+  RMM:       https://idtechsolutions.rmmservice.com/
+  Folder:    C:\Users\User\Desktop\hchb-dup-agent
+  Service:   WellboundHchbDupAgent
+  Needs:     office LAN → LOGSHIP, and internet → AWS
+
+
+================================================
+HOW IT WORKS (read this once)
+================================================
+
+CareStream never talks to HCHB SQL directly. PC043 is the only machine
+that can see LOGSHIP.
+
+  1. Staff types a name (and usually DOB) in New Referral or Duplicates.
+  2. CareStream API hashes that name/DOB with a shared pepper. Only the
+     hash leaves the cloud — never the name, SSN, MRN, or DOB.
+  3. AWS holds the job in a queue.
+  4. The agent on PC043 polls AWS outbound (this PC has no inbound ports).
+  5. It looks the hash up in an in-memory index built from HCHB
+     (active + discharged patients). The index refreshes every 5 minutes.
+  6. It posts back only: match yes/no, confidence, and latest-episode
+     status/dates (active / discharged / start / DC date).
+  7. CareStream shows a banner. If PC043 is off or the service is stopped,
+     the check times out (~22 seconds) and staff see an error.
+
+The same agent also answers SOC/ROC visit checks from CareStream
+(Work → HCHB Visit Check). Those jobs look up V_AGENTVISITTIMEREPORT
+(skilled visits, not HHA/HA). CareStream sends hashed name/DOB + SOC or ROC
++ scheduled date. The agent returns only: matched, visit date, visit type
+code, and ±1 day offset. Names never leave this PC.
+
+If the service is not running, HCHB duplicate checks AND visit checks in
+CareStream fail.
+
+
+================================================
+PART A — RMM INTO PC043
+================================================
+
+1. Open RMM in a browser:
+     https://idtechsolutions.rmmservice.com/
+
+2. Sign in with your ID Tech / office RMM account.
+
+3. Search for the device name:
+     PC043
+
+4. Open a remote session on that machine
+   (Remote Control / Interactive / Connect — whatever the console calls it).
+
+5. If Windows asks you to log in, use the same local user as before:
+     User
+   (The agent lives under C:\Users\User\Desktop\hchb-dup-agent.)
+
+6. Confirm you can see the desktop, then open PowerShell.
+   Start menu → type PowerShell → Enter.
+
+You are now on the machine. Everything below is typed there.
+
+
+================================================
+PART B — IS THE AGENT ALREADY RUNNING?
+================================================
+
+In PowerShell:
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\nssm.exe status WellboundHchbDupAgent
+
+Want:  SERVICE_RUNNING
+
+If you see that, skip to PART D (prove it works). You do not need to
+start it again.
+
+If the folder is missing, the agent was never copied here — stop and
+copy tools\hchb-dup-agent from the Mac (keep any existing .env).
+
+
+================================================
+PART C — START THE SERVER
+================================================
+
+Use one of these. Prefer the Windows service (survives reboot).
+
+
+Option 1 — Start the existing Windows service (normal day)
+----------------------------------------------------------
+Already installed as WellboundHchbDupAgent (auto-start).
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\nssm.exe start WellboundHchbDupAgent
+  Start-Sleep -Seconds 3
+  .\nssm.exe status WellboundHchbDupAgent
+
+Want: SERVICE_RUNNING
+
+If start fails, try:
+
+  .\nssm.exe restart WellboundHchbDupAgent
+
+
+Option 2 — Run it in a visible window (troubleshooting)
+-------------------------------------------------------
+Use this if the service will not stay up, or you want to watch logs live.
+Stop the service first so two copies do not fight:
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\nssm.exe stop WellboundHchbDupAgent
+  .\.venv\Scripts\Activate.ps1
+  python run_agent.py run
+
+Leave that window OPEN. Healthy startup looks like:
+
+  DB ping: LOGSHIP... / HCHB_WELLBOUND as ...
+  bridge mode: http
+  building patient index, active + discharged ...
+  patient index: patients=... active=...
+
+Then it sits quietly, claiming jobs. Close the window = agent dies.
+When you are done debugging, start the service again (Option 1) and
+close the window.
+
+
+Option 3 — First-time install of the Windows service
+----------------------------------------------------
+Only if nssm status says the service does not exist.
+
+Need nssm.exe in C:\Users\User\Desktop\hchb-dup-agent (same folder as
+run_agent.py). Then open PowerShell as Administrator:
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\scripts\install-windows-service.ps1
+
+That registers WellboundHchbDupAgent as AUTO START and starts it.
+
+
+================================================
+PART D — PROVE IT WORKS (do this every time you start it)
+================================================
+
+Still in PowerShell, from the agent folder:
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\.venv\Scripts\Activate.ps1
+  python run_agent.py ping
+
+SUCCESS: one line with the SQL server name and HCHB_WELLBOUND.
+FAILURE: paste the error. Usually means no LAN to LOGSHIP, bad .env,
+or ODBC Driver 18 is missing.
+
+Then a known patient (local check, stays on this PC):
+
+  python run_agent.py check --last ANSBRO --first LORETTA
+
+You should see a Python dict with duplicate / former_patient /
+case_status / discharged_on.
+
+Then prove the CareStream path:
+  CareStream → New Referral (or Duplicates → HCHB check)
+  Type a name you know is in HCHB.
+  Banner should appear in a few seconds.
+
+If ping works but CareStream times out, the service is not in "run"
+mode (not claiming AWS jobs). Start/restart the service, or use
+Option 2 and watch for "job ... claimed".
+
+
+================================================
+PART E — STOP / REBOOT / MOVE THE PC
+================================================
+
+Before planned shutdown
+-----------------------
+  cd C:\Users\User\Desktop\hchb-dup-agent
+  .\nssm.exe stop WellboundHchbDupAgent
+  Then: Start → Power → Shut down
+  Do not yank the plug while Windows is on.
+
+After it is back on
+-------------------
+1. RMM into PC043 again (Part A).
+2. Log into Windows (same user).
+3. Confirm network: browser works, and you are on the office LAN.
+4. Service is AUTO START — often it is already up. Check:
+
+     cd C:\Users\User\Desktop\hchb-dup-agent
+     .\nssm.exe status WellboundHchbDupAgent
+
+5. If not SERVICE_RUNNING → Part C Option 1.
+6. Then Part D (ping + one check).
+
+
+================================================
+EVERYDAY COMMANDS (copy/paste)
+================================================
+
+  cd C:\Users\User\Desktop\hchb-dup-agent
+
+  .\nssm.exe status WellboundHchbDupAgent
+  .\nssm.exe start WellboundHchbDupAgent
+  .\nssm.exe stop WellboundHchbDupAgent
+  .\nssm.exe restart WellboundHchbDupAgent
+
+  .\.venv\Scripts\Activate.ps1
+  python run_agent.py ping
+  python run_agent.py check --last LAST --first FIRST
+  python run_agent.py check --last LAST --first FIRST --dob YYYY-MM-DD
+  python run_agent.py visit-check --last LAST --first FIRST --dob YYYY-MM-DD --kind SOC --date YYYY-MM-DD
+  python run_agent.py inspect --last LAST --first FIRST
+  python run_agent.py rebuild-index
+  python run_agent.py run
+
+Logs (service mode):
+  C:\Users\User\Desktop\hchb-dup-agent\logs\agent.out.log
+  C:\Users\User\Desktop\hchb-dup-agent\logs\agent.err.log
+
+
+================================================
+WHAT YOU DO NOT REDO
+================================================
+
+Do not reinstall Python / ODBC / venv unless the disk was wiped.
+Do not redeploy the AWS bridge from this PC.
+Do not recreate .env — leave the existing file on PC043.
+Do not rebuild the index unless ping works but matches look wrong:
+
+  python run_agent.py rebuild-index
+
+
+================================================
+IF SOMETHING IS WRONG
+================================================
+
+CareStream says "Timed out waiting for on-prem HCHB agent"
+  PC043 is off, not on the office LAN, or the service is stopped.
+  RMM in → Part B → Part C → Part D.
+
+ping fails
+  Not on office network, LOGSHIP down, or .env / ODBC problem.
+  Confirm you can browse the internet AND that this PC is on the
+  ACUnion LAN (LOGSHIP.ACUnion.local).
+
+ping works, check looks wrong
+  Index is stale or episode columns changed:
+
+    python run_agent.py rebuild-index
+    .\nssm.exe restart WellboundHchbDupAgent
+
+Service starts then dies
+  Read logs\agent.err.log. Common: missing .env values, Python venv
+  broken, or HCHB_DUP_BRIDGE_URL / token empty.
+  Fall back to Option 2 so you can see the traceback in the window.
+
+PowerShell says scripts are disabled
+  Run this once in that session:
+
+    Set-ExecutionPolicy -Scope Process Bypass
+
+  Then activate the venv again.
+
+
+================================================
+PIECES OF THE SYSTEM (for context)
+================================================
+
+  PC043 agent     tools/hchb-dup-agent     this folder, 24/7 on Windows
+  AWS bridge      tools/hchb-dup-bridge    queue + claim/result API
+  CareStream API  wellbound-api            hashes names, waits for result
+  CareStream UI   HchbDupWarning           banner on New Referral / Duplicates
+
+PC043 is the only piece you start by RMM. The AWS bridge and CareStream
+API stay up in the cloud; they just wait for this PC to claim jobs.

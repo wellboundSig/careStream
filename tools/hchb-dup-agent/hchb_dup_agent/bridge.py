@@ -23,10 +23,12 @@ log = logging.getLogger('hchb-dup')
 @dataclass
 class Job:
     job_id: str
+    kind: str = 'dup'
     hmac_medicaid: str = ''
     hmac_mrn: str = ''
     hmac_name: str = ''
     hmac_name_dob: str = ''
+    candidates: list | None = None
     receipt_handle: str | None = None  # SQS only
 
 
@@ -59,10 +61,12 @@ class HttpBridge:
             return None
         return Job(
             job_id=str(data['job_id']),
+            kind=str(data.get('kind') or 'dup').lower(),
             hmac_medicaid=str(data.get('hmac_medicaid') or ''),
             hmac_mrn=str(data.get('hmac_mrn') or ''),
             hmac_name=str(data.get('hmac_name') or ''),
             hmac_name_dob=str(data.get('hmac_name_dob') or ''),
+            candidates=list(data.get('candidates') or []),
         )
 
     def report(
@@ -77,6 +81,7 @@ class HttpBridge:
         allow_override: bool | None = None,
         former_patient: bool | None = None,
         hchb_case: dict[str, Any] | None = None,
+        matches: list | None = None,
     ) -> None:
         body: dict[str, Any] = {
             'job_id': job_id,
@@ -87,6 +92,7 @@ class HttpBridge:
             'match_type': match_type,
             'allow_override': bool(allow_override) if error is None else False,
             'hchb_case': sanitize_hchb_case(hchb_case) if (error is None and hchb_case) else {},
+            'matches': matches or [],
             'error': error,
         }
         r = self.session.post(f'{self.base}/agent/result', json=body, timeout=30)
@@ -115,10 +121,12 @@ class SqsBridge:
         body = json.loads(m['Body'])
         return Job(
             job_id=str(body['job_id']),
+            kind=str(body.get('kind') or 'dup').lower(),
             hmac_medicaid=str(body.get('hmac_medicaid') or ''),
             hmac_mrn=str(body.get('hmac_mrn') or ''),
             hmac_name=str(body.get('hmac_name') or ''),
             hmac_name_dob=str(body.get('hmac_name_dob') or ''),
+            candidates=list(body.get('candidates') or []),
             receipt_handle=m['ReceiptHandle'],
         )
 
@@ -135,6 +143,7 @@ class SqsBridge:
         allow_override: bool | None = None,
         former_patient: bool | None = None,
         hchb_case: dict[str, Any] | None = None,
+        matches: list | None = None,
     ) -> None:
         payload = {
             'job_id': job_id,
@@ -145,6 +154,7 @@ class SqsBridge:
             'match_type': match_type,
             'allow_override': bool(allow_override) if error is None else False,
             'hchb_case': sanitize_hchb_case(hchb_case) if (error is None and hchb_case) else {},
+            'matches': matches or [],
             'error': error,
         }
         if self.results_url:

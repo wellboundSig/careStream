@@ -3,10 +3,11 @@ import StageRules from '../../data/StageRules.json';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STAGE_ORDER = [
-  'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
+  'Clinical Lead Pre-Check', 'Lead Entry', 'Intake', 'Eligibility Verification', 'Disenrollment Required',
   'F2F/MD Orders Pending', 'Clinical Intake RN Review', 'Authorization Pending',
   'Conflict', 'EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation', 'Pre-SOC',
-  'SOC Scheduled', 'SOC Completed', 'Hold', 'NTUC',
+  'SOC Scheduled', 'SOC Completed', 'Post Visit Intake', 'Post Visit Clinical Review',
+  'Completed', 'Hold', 'NTUC',
 ];
 
 function getValidDestinations(fromStage) {

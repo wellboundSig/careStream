@@ -9,7 +9,11 @@ import { completeClinicalReview, resolveClinicalConfirmDecision } from '../../..
 import ClinicalChecklistUI from '../../clinical/ClinicalChecklistUI.jsx';
 import { unlockClinicalReview } from '../../../utils/clinicalReviewUnlock.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-import DocumentationCompleteAction from '../../common/DocumentationCompleteAction.jsx';
+import { isSocCompletedReferral } from '../../../data/stageConfig.js';
+import {
+  isClinicalLeadPreCheck,
+  markClinicalLeadViable,
+} from '../../../utils/clinicalLeadPreCheck.js';
 
 const DECISION_LABELS = {
   accept: 'Accepted',
@@ -33,6 +37,8 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { updateReferralLocal, setActiveTab } = usePatientDrawer();
+  const [viableSaving, setViableSaving] = useState(false);
+  const [viableError, setViableError] = useState(null);
 
   const decision = referral?.clinical_review_decision;
   const reviewedBy = referral?.clinical_review_by;
@@ -125,14 +131,69 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     }
   }
 
+  async function handleMarkViable() {
+    if (!referral || !canConfirmReview || viableSaving || readOnly) return;
+    setViableSaving(true);
+    setViableError(null);
+    try {
+      await markClinicalLeadViable({
+        referral,
+        appUserId,
+        onLeftModule: () => updateReferralLocal?.({ current_stage: 'Lead Entry' }),
+      });
+    } catch (err) {
+      setViableError(err.message || 'Could not mark viable.');
+    } finally {
+      setViableSaving(false);
+    }
+  }
+
+  if (isClinicalLeadPreCheck(referral)) {
+    return (
+      <div style={{ padding: '20px 20px 40px' }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: palette.primaryDeepPlum.hex, marginBottom: 6 }}>
+          Lead pre-check
+        </p>
+        <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, marginBottom: 16 }}>
+          Glance the chart. This is not the full clinical review.
+        </p>
+        {canConfirmReview && !readOnly && (
+          <button
+            type="button"
+            data-testid="mark-viable-btn"
+            onClick={handleMarkViable}
+            disabled={viableSaving}
+            style={{
+              width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
+              background: palette.accentGreen.hex,
+              color: palette.backgroundLight.hex,
+              fontSize: 14, fontWeight: 700, cursor: viableSaving ? 'wait' : 'pointer',
+              textAlign: 'left', marginBottom: 12,
+            }}
+          >
+            {viableSaving ? 'Saving…' : 'Mark Viable'}
+          </button>
+        )}
+        {viableError && (
+          <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 600, marginBottom: 12 }}>{viableError}</p>
+        )}
+        <button
+          type="button"
+          onClick={() => setActiveTab?.('files')}
+          style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+            background: 'none', border: `1px dashed ${hexToRgba(palette.backgroundDark.hex, 0.2)}`,
+            fontSize: 12.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.55),
+          }}
+        >
+          Open files
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '20px 20px 40px' }}>
-      <DocumentationCompleteAction
-        referral={referral}
-        source="clinical_review_tab"
-        onOpenF2F={() => setActiveTab?.('f2f')}
-      />
-
       {canConfirmReview && stillInClinical && !readOnly && (
         <div style={{ marginBottom: 20 }}>
           <button
@@ -148,7 +209,11 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
               textAlign: 'left',
             }}
           >
-            {confirming ? 'Saving…' : confirmDecision ? 'Confirm → EMR Onboarding' : 'Select Accept or Conditional to confirm'}
+            {confirming
+              ? 'Saving…'
+              : confirmDecision
+                ? (isSocCompletedReferral(referral) ? 'Approve → Completed' : 'Confirm → Staffing')
+                : 'Select Accept or Conditional to confirm'}
           </button>
           {confirmError && (
             <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '8px 0 0' }}>{confirmError}</p>
@@ -184,7 +249,7 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
       {isAwaitingReview && (
         <div data-testid="clinical-review-pending" style={{ padding: '14px 16px', borderRadius: 10, background: hexToRgba(palette.accentOrange.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.18)}`, marginBottom: 20 }}>
           <p style={{ fontSize: 13, fontWeight: 650, color: palette.accentOrange.hex, marginBottom: 2 }}>Awaiting Clinical Review</p>
-          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>This patient is currently in Clinical Intake RN Review.</p>
+          <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>This patient is currently in Clinical Review.</p>
           {startedByName && (
             <p style={{ fontSize: 12.5, color: palette.backgroundDark.hex, marginTop: 8 }}>
               Started by <strong style={{ fontWeight: 650 }}>{startedByName}</strong>

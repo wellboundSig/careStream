@@ -20,6 +20,7 @@ const WRITE_CONTRACTS = {
   Patients: ['insurance_plans', 'insurance_plan_details', 'insurance_plan'],
   PatientGuardians: ['id', 'patient_id', 'guardian_id', 'relationship', 'is_primary', 'is_emergency', 'source', 'created_at', 'updated_at'],
   Referrals: ['account_manager_info'],
+  Tasks: ['reminder_preset', 'reminder_at', 'reminder_sent_at', 'scheduled_date', 'due_date'],
 };
 
 describe('write contract vs registry', () => {

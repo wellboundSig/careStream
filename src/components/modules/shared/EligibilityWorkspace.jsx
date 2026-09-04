@@ -15,10 +15,8 @@ import { useCurrentAppUser }   from '../../../hooks/useCurrentAppUser.js';
 import { useLookups }          from '../../../hooks/useLookups.js';
 import { usePermissions }      from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS }     from '../../../data/permissionKeys.js';
-import { useConflictCategoryOptions } from '../../../hooks/useConflictCategories.js';
 import { triggerDataRefresh }  from '../../../hooks/useRefreshTrigger.js';
 import { createEligibilityVerification } from '../../../api/eligibilityVerifications.js';
-import { createConflict }      from '../../../api/conflicts.js';
 import { createAuthorization } from '../../../api/authorizations.js';
 import { recordActivity }      from '../../../api/activityLog.js';
 import { createDisenrollmentFlag } from '../../../api/disenrollmentFlags.js';
@@ -39,7 +37,6 @@ import {
   VERIFICATION_STATUS_OPTIONS,
   VERIFICATION_SOURCE,
   VERIFICATION_SOURCE_OPTIONS,
-  CONFLICT_SOURCE_MODULE,
   DISENROLLMENT_FLAG_TYPE,
   DISENROLLMENT_FLAG_STATUS,
   AUDIT_ACTION,
@@ -53,8 +50,6 @@ import {
   shouldRequireHumanReview,
 } from '../../../data/policies/eligibilityPolicies.js';
 import { suggestNar } from '../../../data/policies/authorizationPolicies.js';
-import { buildConflictRecord } from '../../../data/policies/conflictBuilder.js';
-import { generateConflictId, CONFLICT_SEVERITY, CONFLICT_SEVERITY_OPTIONS } from '../../../utils/conflictFlagging.js';
 import { attemptTransition, applyTransition } from '../../../engine/transitionEngine.js';
 import { shouldSuggestOPWDDRouting } from '../../../data/policies/routingPolicies.js';
 import { useEligibilityData } from './useEligibilityData.js';
@@ -117,7 +112,6 @@ export default function EligibilityWorkspace({
     recheckRequestedAt: referral?.eligibility_recheck_requested_at,
   });
 
-  const [conflictModal,  setConflictModal]  = useState(null);
   const [disenrollModal, setDisenrollModal] = useState(null);
   const [editingInsuranceId, setEditingInsuranceId] = useState(null);
   const [sendBackModal,  setSendBackModal]  = useState(null);
@@ -222,8 +216,22 @@ export default function EligibilityWorkspace({
   return (
     <div data-testid="eligibility-workspace" data-variant={variant} style={{ padding: variant === 'panel' ? '14px 12px' : '18px 20px 40px' }}>
 
-      {/* ALF badge — terse */}
-      {isALF && <InlineTag t={t} color="#005B84" label="ALF: bill primary only" />}
+      {/* ALF badge — terse, neutral scope chip (matches module header tags) */}
+      {isALF && (
+        <span style={{
+          display: 'inline-block',
+          fontSize: t.fontMuted - 1,
+          fontWeight: 700,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          color: hexToRgba(palette.backgroundDark.hex, 0.6),
+          border: '1px solid var(--color-border)',
+          background: hexToRgba(palette.backgroundDark.hex, 0.03),
+          padding: '3px 8px',
+          borderRadius: 5,
+          marginBottom: t.sectionGap - 6,
+        }}>ALF: bill primary only</span>
+      )}
 
       {/* Warnings */}
       {warnings.length > 0 && (
@@ -238,8 +246,8 @@ export default function EligibilityWorkspace({
 
       {/* NAR suggestion */}
       {narSuggestion.suggestNar && (
-        <p data-testid="nar-suggestion" style={{ fontSize: t.fontMuted, color: '#15803d', lineHeight: 1.4, marginBottom: t.sectionGap - 6 }}>
-          Suggest NAR: straight Medicare + Medicaid only. Confirm in Authorization.
+        <p data-testid="nar-suggestion" style={{ fontSize: t.fontMuted, color: hexToRgba(palette.backgroundDark.hex, 0.65), lineHeight: 1.4, marginBottom: t.sectionGap - 6 }}>
+          Suggest NAR: straight Medicare and/or Medicaid only. Confirm in Authorization.
         </p>
       )}
 
@@ -268,12 +276,6 @@ export default function EligibilityWorkspace({
             onEdit={() => setEditingInsuranceId(ins._id)}
             onCancel={() => setEditingInsuranceId(null)}
             onSaved={() => { setEditingInsuranceId(null); triggerDataRefresh(); }}
-            onSendToConflict={() => setConflictModal({
-              insurance: ins,
-              selectedReasons: [],
-              details: '',
-              denialStatus: VERIFICATION_STATUS.DENIED_NOT_FOUND,
-            })}
             appUserId={appUserId}
             appUserName={appUserName}
             patientRecordId={patient._id}
@@ -296,16 +298,16 @@ export default function EligibilityWorkspace({
           {/* Inline supportive-workflow status pills */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {hasApprovedAuth && (
-              <InlineTag t={t} color={palette.accentGreen.hex} label="✓ Authorization recorded" />
+              <InlineTag t={t} color="#15803d" label="✓ Authorization recorded" />
             )}
             {!hasApprovedAuth && hasOpenAuth && (
-              <InlineTag t={t} color={palette.accentOrange.hex} label="Authorization in flight" />
+              <InlineTag t={t} color="#B45309" label="Authorization in flight" />
             )}
             {openDisenrollFlags.length > 0 && (
-              <InlineTag t={t} color={palette.highlightYellow.hex} label="Disenrollment assist open" />
+              <InlineTag t={t} color="#B45309" label="Disenrollment assist open" />
             )}
             {clinicalReviewDone && (
-              <InlineTag t={t} color={palette.accentGreen.hex} label="✓ Clinical RN cleared" />
+              <InlineTag t={t} color="#15803d" label="✓ Clinical RN cleared" />
             )}
           </div>
 
@@ -319,17 +321,17 @@ export default function EligibilityWorkspace({
                 style={{
                   borderRadius: 8,
                   padding: '11px 12px',
-                  background: hexToRgba(palette.accentGreen.hex, 0.1),
-                  border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.28)}`,
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
                 }}
               >
                 <p style={{
-                  fontSize: t.fontMuted + 0.5, fontWeight: 700, color: palette.accentGreen.hex,
+                  fontSize: t.fontMuted + 0.5, fontWeight: 700, color: '#15803d',
                   marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   <span aria-hidden="true" style={{
                     width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                    background: palette.accentGreen.hex, color: '#fff',
+                    background: '#15803d', color: '#fff',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11,
                   }}>✓</span>
                   Eligibility completed
@@ -373,24 +375,27 @@ export default function EligibilityWorkspace({
                       // even if a follow-on LIFO / re-check transition is skipped.
                       await updateReferralOptimistic(referral._id, fields);
 
-                      // LIFO → EMR when clinical is done, OR when Intake
+                      // LIFO → Staffing when clinical is done, OR when Intake
                       // fast-tracked without clinical (docs deferred post-SOC).
+                      // EMR onboarding is now an Intake checklist item, not a
+                      // pipeline stop.
                       const deferredDocs = referral?.documentation_deferred === true
                         || referral?.documentation_deferred === 'true';
                       const alreadyAtOrPastEmr = [
                         'EMR Onboarding', 'Staffing Feasibility', 'Pre-SOC',
                         'SOC Scheduled', 'SOC Completed',
+                        'Post Visit Intake', 'Post Visit Clinical Review', 'Completed',
                       ].includes(referral?.current_stage);
                       if (!alreadyAtOrPastEmr && (clinicalReviewDone || deferredDocs)) {
                         const result = attemptTransition({
                           referral: { ...referral, ...fields },
-                          toStage: 'EMR Onboarding',
+                          toStage: 'Staffing Feasibility',
                           context: {
                             system: true,
                             actorUserId: appUserId,
                             note: clinicalReviewDone
-                              ? '[Eligibility complete — clinical already done → EMR Onboarding]'
-                              : '[Eligibility complete — deferred clinical/F2F post-SOC → EMR Onboarding]',
+                              ? '[Eligibility complete — clinical already done → Staffing Feasibility]'
+                              : '[Eligibility complete — deferred clinical/F2F post-SOC → Staffing Feasibility]',
                             extraFields: fields,
                           },
                         });
@@ -523,9 +528,9 @@ export default function EligibilityWorkspace({
                 }}
                 testId="action-opwdd-route" />
             )}
-            {/* "Send to Conflict" intentionally NOT rendered here — the
-                module toolbar at the top already exposes a Conflict button,
-                so duplicating it in the panel was redundant. */}
+            {/* "Send to Conflict" intentionally NOT rendered anywhere in this
+                workspace (2026-09) — conflict routing is a record action that
+                lives in the module toolbar, not per-insurance. */}
           </div>
         </div>
       )}
@@ -559,65 +564,6 @@ export default function EligibilityWorkspace({
             {legacyChecks[0]?.result_summary || 'Legacy check on record.'}
           </p>
         </div>
-      )}
-
-      {conflictModal && (
-        <ConflictModal
-          t={t}
-          state={conflictModal}
-          onChange={setConflictModal}
-          onCancel={() => setConflictModal(null)}
-          onConfirm={async ({ reasons, details, denialStatus, severity }) => {
-            const patientRecordId = patient._id;
-            const { record, audit } = buildConflictRecord({
-              patientId: patientRecordId,          // link field — Airtable rec id
-              referralId: referral?.id,
-              sourceModule: CONFLICT_SOURCE_MODULE.ELIGIBILITY,
-              reasons,
-              createdByUserId: verifierRecordId,   // link field — Airtable rec id
-              details,
-            });
-            try {
-              await createConflict({
-                ...record,
-                id: generateConflictId(),
-                type: reasons?.[0] || 'other',
-                severity: severity || CONFLICT_SEVERITY.HIGH,
-                description: details || '',
-                status: 'Unaddressed',
-                flagged_by_id: appUserId || 'unknown',
-                // Live schema: these are text fields on Conflicts
-                patient_id: patient?.id,
-                created_by_id: appUserId || 'unknown',
-                conflict_reasons: reasons?.join(', ') || '',
-              });
-              await recordActivity({ ...audit, actorUserId: appUserId, patientId: patient.id });
-              if (conflictModal.insurance?._id) {
-                await createEligibilityVerification({
-                  // TEXT column queried by business id — store business id.
-                  patient_id: patient.id,
-                  patient_insurance_id: conflictModal.insurance._id,
-                  verification_status: denialStatus || VERIFICATION_STATUS.DENIED_NOT_FOUND,
-                  verified_by_user_id: verifierRecordId || undefined,
-                  verification_date_time: new Date().toISOString(),
-                });
-              }
-              await recordActivity({
-                actorUserId: appUserId,
-                action: AUDIT_ACTION.ELIGIBILITY_SENT_TO_CONFLICT,
-                patientId: patient.id,
-                referralId: referral?.id,
-                detail: `Eligibility to Conflict: ${reasons.join(', ')}`,
-                metadata: { reasons, severity: severity || null, details: details || null },
-              });
-              setConflictModal(null);
-              onInitiateTransition?.(referral, 'Conflict');
-              triggerDataRefresh();
-            } catch (err) {
-              console.error('Conflict save failed', err);
-            }
-          }}
-        />
       )}
 
       {sendBackModal && (
@@ -704,18 +650,19 @@ export default function EligibilityWorkspace({
   );
 }
 
-// ── InlineTag ──────────────────────────────────────────────────────────────
+// ── InlineTag — quiet tinted status chip (colored text on faint tint, no
+//    solid saturated fills; status information, not a button) ───────────────
 function InlineTag({ t, label, color }) {
   return (
     <span style={{
       display: 'inline-block',
       fontSize: t.fontMuted,
-      color: '#fff',
-      background: color,
+      color,
+      background: hexToRgba(color, 0.1),
       padding: '3px 9px',
       borderRadius: 4,
       marginBottom: t.sectionGap - 6,
-      fontWeight: 600,
+      fontWeight: 650,
     }}>{label}</span>
   );
 }
@@ -723,14 +670,15 @@ function InlineTag({ t, label, color }) {
 // Matches the module-page ActionBtn styling in StagePanel.jsx so routing
 // buttons look identical across module panels + drawer.
 function WsBtn({ variant = 'default', label, onClick, disabled, testId }) {
+  // Semantic system: green is reserved for the single forward action;
+  // supportive actions are quiet neutrals; amber tint = attention workflows;
+  // orange = destructive. No competing greens/blues.
   const styles = {
-    forward: { bg: palette.accentGreen.hex,      color: palette.backgroundLight.hex,    pad: '11px 14px', size: 13.5, weight: 700 },
-    // Soft solid green pill (no harsh white-with-border) — supportive action,
-    // visually subordinate to the solid-green primary "forward" button.
-    success: { bg: '#E7F8EE',                    color: '#157347',                       pad: '8px 12px',  size: 12.5, weight: 650 },
-    warning: { bg: palette.highlightYellow.hex,  color: palette.backgroundDark.hex,     pad: '8px 12px',  size: 12.5, weight: 650 },
-    danger:  { bg: palette.accentOrange.hex,     color: palette.backgroundLight.hex,    pad: '8px 12px',  size: 12.5, weight: 650 },
-    default: { bg: '#F0F0F0',                    color: '#555',                         pad: '7px 12px',  size: 12,   weight: 600 },
+    forward: { bg: palette.accentGreen.hex,     color: palette.backgroundLight.hex, pad: '11px 14px', size: 13.5, weight: 700 },
+    success: { bg: palette.backgroundLight.hex, color: hexToRgba(palette.backgroundDark.hex, 0.75), border: '1px solid var(--color-border)', pad: '8px 12px', size: 12.5, weight: 650 },
+    warning: { bg: '#FEF3C7',                   color: '#92400E',                   pad: '8px 12px',  size: 12.5, weight: 650 },
+    danger:  { bg: palette.accentOrange.hex,    color: palette.backgroundLight.hex, pad: '8px 12px',  size: 12.5, weight: 650 },
+    default: { bg: '#F0F0F0',                   color: '#555',                      pad: '7px 12px',  size: 12,   weight: 600 },
   };
   const s = styles[variant] || styles.default;
   return (
@@ -764,7 +712,7 @@ function WsBtn({ variant = 'default', label, onClick, disabled, testId }) {
 // ── InsuranceCard with verify form ─────────────────────────────────────────
 function InsuranceCard({
   t, patient, insurance, verification, isEditing, readOnly, canAutoCheck = false, resolveUser,
-  onEdit, onCancel, onSaved, onSendToConflict,
+  onEdit, onCancel, onSaved,
   appUserId, appUserName, patientRecordId, patientBusinessId, verifierRecordId, referralId, referral,
 }) {
   const suggestion = normalizeInsuranceCategory({ rawLabel: insurance.payer_display_name });
@@ -915,7 +863,7 @@ function InsuranceCard({
           {!readOnly && (
             <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
               <button onClick={openWithDefaultSources} data-testid="verify-btn"
-                style={smallActionBtn(t, { color: palette.accentGreen.hex, filled: !verification })}>
+                style={smallActionBtn(t, { color: palette.primaryMagenta.hex, filled: !verification })}>
                 {verification ? 'Update Check' : 'Log Check'}
               </button>
               {canAutoCheck && (
@@ -923,15 +871,11 @@ function InsuranceCard({
                   type="button"
                   onClick={() => setAutoOpen((v) => !v)}
                   data-testid="auto-check-btn"
-                  style={smallActionBtn(t, { color: palette.accentBlue.hex, filled: autoOpen })}
+                  style={smallActionBtn(t, { color: hexToRgba(palette.backgroundDark.hex, 0.65), filled: autoOpen })}
                 >
                   {autoOpen ? 'Hide Auto Check' : 'Auto Check'}
                 </button>
               )}
-              <button onClick={onSendToConflict} data-testid="send-conflict-btn"
-                style={smallActionBtn(t, { color: palette.primaryMagenta.hex })}>
-                Send to Conflict
-              </button>
             </div>
           )}
           {canAutoCheck && autoOpen && !readOnly && (
@@ -1007,7 +951,7 @@ function InsuranceCard({
                 type="button"
                 onClick={() => setAutoOpen((v) => !v)}
                 data-testid="auto-check-btn-edit"
-                style={smallActionBtn(t, { color: palette.accentBlue.hex, filled: autoOpen })}
+                style={smallActionBtn(t, { color: hexToRgba(palette.backgroundDark.hex, 0.65), filled: autoOpen })}
               >
                 {autoOpen ? 'Hide Auto Check' : 'Auto Check'}
               </button>
@@ -1024,71 +968,6 @@ function InsuranceCard({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Conflict modal ─────────────────────────────────────────────────────────
-function ConflictModal({ t, state, onChange, onCancel, onConfirm }) {
-  const conflictCategoryOptions = useConflictCategoryOptions();
-  const { selectedReasons, details, denialStatus, insurance } = state;
-  const insuranceId = insurance?._id || null;
-  function toggle(r) {
-    onChange({ ...state, selectedReasons: selectedReasons.includes(r) ? selectedReasons.filter((x) => x !== r) : [...selectedReasons, r] });
-  }
-  const [severity, setSeverity] = useState('');
-  const disabled = selectedReasons.length === 0 || !severity || !details?.trim();
-  return (
-    <div role="dialog" data-testid="conflict-modal" style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
-    }}>
-      <div style={{ width: 460, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto', borderRadius: 8, background: palette.backgroundLight.hex, padding: 20, border: '1px solid var(--color-border)' }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>Send to Conflict</h3>
-        <p style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>
-          Select at least one reason, choose severity, and add an explanation.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
-          {conflictCategoryOptions.map((r) => (
-            <label key={r.value} style={{ fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={selectedReasons.includes(r.value)} onChange={() => toggle(r.value)} data-testid={`conflict-reason-${r.value}`} />
-              {r.label}
-            </label>
-          ))}
-        </div>
-        {insuranceId && (
-          <Field t={t} label="Insurance Status to Record">
-            <select value={denialStatus || ''} onChange={(e) => onChange({ ...state, denialStatus: e.target.value })} style={inputStyle(t)} data-testid="denial-status">
-              <option value={VERIFICATION_STATUS.DENIED_NOT_FOUND}>Denied / Not Found</option>
-              <option value={VERIFICATION_STATUS.CONFIRMED_INACTIVE}>Confirmed Inactive</option>
-              <option value={VERIFICATION_STATUS.UNABLE_TO_VERIFY}>Unable to Verify</option>
-            </select>
-          </Field>
-        )}
-        <Field t={t} label="Details (optional)">
-          <textarea value={details} onChange={(e) => onChange({ ...state, details: e.target.value })} rows={3} style={{ ...inputStyle(t), resize: 'vertical' }} placeholder="Required: what’s blocking progress and what the next person should do." />
-        </Field>
-
-        <Field t={t} label="Severity *">
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={inputStyle(t)} data-testid="conflict-severity">
-            <option value="" disabled>Select severity…</option>
-            {CONFLICT_SEVERITY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </Field>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button onClick={onCancel} style={secondaryBtn(t)}>Cancel</button>
-          <button
-            data-testid="conflict-confirm"
-            onClick={() => onConfirm({ reasons: selectedReasons, details, denialStatus, severity })}
-            disabled={disabled}
-            style={primaryBtn(t, { disabled, color: palette.primaryMagenta.hex })}
-          >
-            Send to Conflict
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation, NavLink } from 'react-router-dom';
+import { useLocation, NavLink } from 'react-router-dom';
+import KeepAliveOutlet from './KeepAliveOutlet.jsx';
 import { UserButton } from '@clerk/react';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
@@ -11,7 +12,7 @@ import NewReferralForm from '../forms/NewReferralForm.jsx';
 import HydrationScreen from '../common/HydrationScreen.jsx';
 import WaitingRoom from '../common/WaitingRoom.jsx';
 import RealtimeToasts from '../common/RealtimeToasts.jsx';
-import { SLUG_TO_STAGE } from '../../data/stageConfig.js';
+import { SLUG_TO_STAGE, STAGE_META } from '../../data/stageConfig.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { useTheme } from '../../utils/ThemeContext.jsx';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
@@ -28,6 +29,7 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { useTaskReminderWatch } from '../../hooks/useTaskReminderWatch.js';
 
 const UNASSIGNED_ROLE_ID = 'rol_016';
 const NAV_TEXT = '#F7F7FA';
@@ -35,7 +37,7 @@ const NAV_TEXT = '#F7F7FA';
 function getBreadcrumbs(pathname) {
   const map = {
     '/': ['Dashboard'],
-    '/pipeline': ['Pipeline'],
+    '/pipeline': ['Pipeline Overview'],
     '/patients': ['Patients'],
     '/tasks': ['Tasks'],
     '/calendar': ['Calendar'],
@@ -50,11 +52,15 @@ function getBreadcrumbs(pathname) {
     '/admin/users': ['System', 'User Management'],
     '/admin/settings': ['System', 'Settings'],
     '/admin/data-tools': ['System', 'Data Tools'],
+    '/tools/batch-eligibility': ['Work', 'Batch Eligibility'],
+    '/tools/hchb-visit-check': ['Work', 'HCHB Visit Check'],
   };
   if (pathname.startsWith('/modules/')) {
     const slug = pathname.replace('/modules/', '');
     const stage = SLUG_TO_STAGE[slug];
-    return stage ? ['Modules', stage] : ['Modules'];
+    // Breadcrumb matches the sidebar and page heading (Leads), not the
+    // internal stage key (Lead Entry) — one concept, one name.
+    return stage ? ['Modules', STAGE_META[stage]?.displayName || stage] : ['Modules'];
   }
   return map[pathname] || [pathname.replace('/', '').replace(/-/g, ' ')];
 }
@@ -96,6 +102,7 @@ export default function AppShell() {
   const isMobile = useIsMobile();
   const hydrated = useCareStore((s) => s.hydrated);
   const { appUser, appUserId, appUserName } = useCurrentAppUser();
+  useTaskReminderWatch();
   const { canAny, hasDivision } = usePermissions();
   const { resolveRole } = useLookups();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
@@ -244,6 +251,9 @@ export default function AppShell() {
         <main style={{
           flex: 1,
           minWidth: 0,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
           overflowY: 'auto',
           overflowX: 'hidden',
           overscrollBehaviorX: 'none',
@@ -251,7 +261,7 @@ export default function AppShell() {
           WebkitOverflowScrolling: 'touch',
           paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
         }}>
-          <Outlet context={{ division: mobileDivision, roleMode }} />
+          <KeepAliveOutlet context={{ division: mobileDivision, roleMode }} />
         </main>
 
         {/* Bottom nav — primary mobile jobs */}
@@ -333,7 +343,7 @@ export default function AppShell() {
           )}
 
           {canScheduling && (
-            <MobileNavItem to="/modules/soc-completed" label="COMPLETED">
+            <MobileNavItem to="/modules/completed" label="PENDING">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
@@ -390,8 +400,8 @@ export default function AppShell() {
           </button>
         </header>
 
-        <main style={{ flex: 1, overflow: 'auto', background: palette.backgroundLight.hex }}>
-          <Outlet context={{ division: 'All', roleMode }} />
+        <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto', background: palette.backgroundLight.hex }}>
+          <KeepAliveOutlet context={{ division: 'All', roleMode }} />
         </main>
 
         <PatientDrawer />
@@ -428,17 +438,20 @@ export default function AppShell() {
 
         {splitEnabled ? (
           <SplitView division={division} roleMode={roleMode} onClose={toggleSplit}>
-            <Outlet context={{ division, roleMode }} />
+            <KeepAliveOutlet context={{ division, roleMode }} />
           </SplitView>
         ) : (
           <main
             style={{
               flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
               overflow: 'auto',
               background: palette.backgroundLight.hex,
             }}
           >
-            <Outlet context={{ division, roleMode }} />
+            <KeepAliveOutlet context={{ division, roleMode }} />
           </main>
         )}
       </div>

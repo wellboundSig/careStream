@@ -32,13 +32,15 @@ import {
   triageColumnLabel,
 } from '../../utils/triageColumn.js';
 
-const TERMINAL = new Set(['NTUC', 'SOC Completed']);
+const TERMINAL = new Set(['NTUC', 'SOC Completed', 'Completed']);
 const STAGE_BAR_COLOR = {
-  'Lead Entry': palette.accentBlue.hex, 'Intake': hexToRgba(palette.accentBlue.hex, 0.66), 'Staffing Feasibility': hexToRgba(palette.accentBlue.hex, 0.33),
+  'Clinical Lead Pre-Check': palette.primaryDeepPlum.hex, 'Lead Entry': palette.accentBlue.hex, 'Intake': hexToRgba(palette.accentBlue.hex, 0.66), 'Staffing Feasibility': hexToRgba(palette.accentBlue.hex, 0.33),
   'Eligibility Verification': palette.accentOrange.hex, 'Disenrollment Required': hexToRgba(palette.accentOrange.hex, 0.66), 'F2F/MD Orders Pending': hexToRgba(palette.accentOrange.hex, 0.33),
   'Clinical Intake RN Review': palette.primaryMagenta.hex, 'Conflict': hexToRgba(palette.primaryMagenta.hex, 0.66), 'Authorization Pending': hexToRgba(palette.primaryMagenta.hex, 0.33),
   'Admin Confirmation': palette.primaryDeepPlum.hex, 'Pre-SOC': hexToRgba(palette.accentGreen.hex, 0.33), 'SOC Scheduled': hexToRgba(palette.accentGreen.hex, 0.66),
-  'SOC Completed': palette.accentGreen.hex, 'Hold': palette.highlightYellow.hex, 'NTUC': hexToRgba(palette.backgroundDark.hex, 0.33),
+  'SOC Completed': palette.accentGreen.hex, 'Post Visit Intake': hexToRgba(palette.accentBlue.hex, 0.5),
+  'Post Visit Clinical Review': hexToRgba(palette.primaryMagenta.hex, 0.5), 'Completed': palette.accentGreen.hex,
+  'Hold': palette.highlightYellow.hex, 'NTUC': hexToRgba(palette.backgroundDark.hex, 0.33),
 };
 const STATUS_DOT = { Active: palette.accentGreen.hex, Pending: palette.highlightYellow.hex, Suspended: palette.accentOrange.hex, Revoked: hexToRgba(palette.backgroundDark.hex, 0.3) };
 
@@ -232,7 +234,7 @@ export default function DepartmentDashboard({ department, scope }) {
       case 'source': return <td key="source" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>;
       case 'source_entity': return <td key="source_entity" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSourceEntity(ref.referral_source_id) || '—'}</td>;
       case 'marketer': return <td key="marketer" style={{ padding: '11px 14px', fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>{ref?.marketer_id ? resolveMarketer(ref.marketer_id) : '—'}</td>;
-      case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>;
+      case 'stage': return <td key="stage" style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>;
       case 'licence': {
         const label = resolveEntity(ref.entity_id);
         if (!ref.entity_id || !label || label === '—') {

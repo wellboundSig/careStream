@@ -1,1317 +1,835 @@
 /**
- * OpwddWorkspace — OPWDD enrollment workspace for both the widened module
- * panel (variant="drawer", 440px) and the patient drawer tab.
+ * OpwddWorkspace — revamped OPWDD flow (2026-08-26).
  *
- * Layout goals:
- *   1. Orient the user with a horizontal phase stepper at the top — always
- *      shows what step they're on and what's ahead.
- *   2. Progressive disclosure: every major section collapses to a dense
- *      one-line summary when it's not the active phase, and expands when
- *      it IS the active phase. Users can toggle manually.
- *   3. Grouped checklist: the 15 requirement rows cluster into 4 meaningful
- *      sub-sections (Core Docs, Identity & Insurance, Evaluations, Notice)
- *      each with its own satisfied/total count.
- *   4. Audit + activity log write on every state change, matching
- *      EligibilityWorkspace conventions.
+ * Two phases, five steps per patient in the OPWDD module:
+ *
+ *   PHASE 1 (all steps run side by side, concurrently)
+ *     Step 1 — Packet Assembly (mark assembled)
+ *     Step 2 — Psychological & Psycho-Social visit scheduling (mark scheduled + date)
+ *     Step 3 — Mark visits completed, one at a time
+ *
+ *   PHASE 2
+ *     Step 4 — Submit to a health home: log the date submitted and who it was
+ *              submitted to (searchable dropdown from the
+ *              HomehealthOpwddEntities lookup table). Shows Submitted + Pending.
+ *     Step 5 — Upon receipt of the letter from the parent: upload the file,
+ *              mark the case completed, and send the referral back to Intake.
+ *
+ * Step state derives from case timestamps (packet_assembled_at,
+ * *_scheduled_for, *_visit_completed_at, submission_sent_at,
+ * parent_letter_received_at) — the legacy status vocabulary stays valid for
+ * old-UI users and reporting.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCurrentAppUser }  from '../../../hooks/useCurrentAppUser.js';
 import { useLookups }         from '../../../hooks/useLookups.js';
 import { usePermissions }     from '../../../hooks/usePermissions.js';
-import { useCareStore }       from '../../../store/careStore.js';
 import { PERMISSION_KEYS }    from '../../../data/permissionKeys.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
-import {
-  fmtCalendarDate,
-  fmtCalendarDateShort,
-  fmtDateTime,
-  daysUntilCalendarDate,
-} from '../../../utils/dateFormat.js';
-import { oooOptionSuffix } from '../../../utils/outOfOffice.js';
+import { fmtCalendarDate, fmtDateTime } from '../../../utils/dateFormat.js';
+import { uploadToR2, openSignedFile } from '../../../utils/r2Upload.js';
+import { createFile } from '../../../api/patientFiles.js';
+import { mergeEntities } from '../../../store/careStore.js';
 
 import {
   OPWDD_CASE_STATUS,
-  OPWDD_CASE_STATUS_OPTIONS,
-  OPWDD_SUB_STATUS,
-  OPWDD_SUB_STATUS_OPTIONS,
   OPWDD_CLOSED_REASON_OPTIONS,
-  OPWDD_EVAL_STATUS,
-  OPWDD_EVAL_STATUS_OPTIONS,
-  OPWDD_EVAL_VALIDITY_YEARS,
-  OPWDD_SUBMISSION_METHOD,
-  OPWDD_SUBMISSION_METHOD_OPTIONS,
-  OPWDD_ELIGIBILITY_DETERMINATION,
-  OPWDD_ELIGIBILITY_DETERMINATION_OPTIONS,
-  OPWDD_NOTICE_METHOD,
-  OPWDD_NOTICE_METHOD_OPTIONS,
-  OPWDD_INTERESTED_SERVICE_OPTIONS,
-  OPWDD_CHECKLIST_BY_KEY,
-  OPWDD_CHECKLIST_GROUPS,
-  OPWDD_CHECKLIST_STATUS,
-  OPWDD_CHECKLIST_STATUS_OPTIONS,
+  OPWDD_VISIT_TYPES,
+  OPWDD_PACKET_DOCS,
   OPWDD_SATISFIED_STATUSES,
-  OPWDD_REQUIREMENT_KEY,
-  OPWDD_PHASES,
-  OPWDD_AUDIT_ACTION,
-  getOpwddPhaseForStatus,
+  OPWDD_REQUIREMENT_TO_CATEGORY,
+  getOpwddFlowState,
 } from '../../../data/opwddEnums.js';
 
 import { useOpwddData } from './useOpwddData.js';
 import { updateOpwddCase } from '../../../api/opwddCases.js';
-import { updateChecklistItem } from '../../../api/opwddChecklistItems.js';
-import { recordActivity } from '../../../api/activityLog.js';
+import { getAllOpwddEntities } from '../../../api/opwddEntities.js';
 import {
   openCaseForReferral,
-  markChecklistItemReceived,
-  markChecklistItemAccepted,
-  recordPacketSubmitted,
-  recordNoticeReceived,
-  recordCode95Received,
-  convertCaseToIntake,
+  markPacketAssembled,
+  setPacketDocChecked,
+  scheduleOpwddVisit,
+  markOpwddVisitCompleted,
+  submitToHealthhome,
+  completeCaseWithParentLetter,
   closeCase,
 } from '../../../store/opwddOrchestration.js';
 
-import {
-  tokens, inputStyle, primaryBtn, secondaryBtn, cardStyle,
-} from './workspaceStyles.js';
+import { tokens, inputStyle, primaryBtn, secondaryBtn, cardStyle } from './workspaceStyles.js';
 
-// ── Status pill colors ──────────────────────────────────────────────────────
-const CASE_STATUS_PILL = {
-  [OPWDD_CASE_STATUS.NOT_STARTED]:            { bg: '#EEE',    fg: '#666',    label: 'Not Started' },
-  [OPWDD_CASE_STATUS.OUTREACH_IN_PROGRESS]:   { bg: '#E0F2FE', fg: '#0369A1', label: 'Outreach' },
-  [OPWDD_CASE_STATUS.AWAITING_INITIAL_DOCS]:  { bg: '#FEF3C7', fg: '#92400E', label: 'Awaiting Docs' },
-  [OPWDD_CASE_STATUS.EVALUATIONS_PENDING]:    { bg: '#FEF3C7', fg: '#92400E', label: 'Evals Pending' },
-  [OPWDD_CASE_STATUS.PACKET_READY]:           { bg: '#DBEAFE', fg: '#1D4ED8', label: 'Packet Ready' },
-  [OPWDD_CASE_STATUS.SUBMITTED_TO_CCO]:       { bg: '#E0E7FF', fg: '#3730A3', label: 'Submitted' },
-  [OPWDD_CASE_STATUS.ELIGIBILITY_DETERMINED]: { bg: '#DCFCE7', fg: '#15803d', label: 'Determined' },
-  [OPWDD_CASE_STATUS.MONITORING_CODE_95]:     { bg: '#FFEDD5', fg: '#9A3412', label: 'Monitoring C95' },
-  [OPWDD_CASE_STATUS.CODE_95_RECEIVED]:       { bg: '#DCFCE7', fg: '#15803d', label: 'Code 95 ✓' },
-  [OPWDD_CASE_STATUS.CONVERTED_TO_INTAKE]:    { bg: '#E5E5E5', fg: '#666',    label: 'Handed Off' },
-  [OPWDD_CASE_STATUS.CLOSED]:                 { bg: '#E5E5E5', fg: '#666',    label: 'Closed' },
-  [OPWDD_CASE_STATUS.CANCELLED]:              { bg: '#FEE2E2', fg: '#B91C1C', label: 'Cancelled' },
-};
-
-const CHECKLIST_STATUS_PILL = {
-  [OPWDD_CHECKLIST_STATUS.MISSING]:      { bg: '#EEE',    fg: '#666',    label: 'Missing' },
-  [OPWDD_CHECKLIST_STATUS.REQUESTED]:    { bg: '#E0F2FE', fg: '#0369A1', label: 'Requested' },
-  [OPWDD_CHECKLIST_STATUS.RECEIVED]:     { bg: '#FEF3C7', fg: '#92400E', label: 'Received' },
-  [OPWDD_CHECKLIST_STATUS.UNDER_REVIEW]: { bg: '#DBEAFE', fg: '#1D4ED8', label: 'Review' },
-  [OPWDD_CHECKLIST_STATUS.ACCEPTED]:     { bg: '#DCFCE7', fg: '#15803d', label: 'Accepted' },
-  [OPWDD_CHECKLIST_STATUS.REJECTED]:     { bg: '#FEE2E2', fg: '#B91C1C', label: 'Rejected' },
-  [OPWDD_CHECKLIST_STATUS.EXPIRED]:      { bg: '#FFEDD5', fg: '#9A3412', label: 'Expired' },
-  [OPWDD_CHECKLIST_STATUS.WAIVED]:       { bg: '#E5E5E5', fg: '#666',    label: 'Waived' },
-};
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 const fmtDate = fmtCalendarDate;
-const fmtShort = fmtCalendarDateShort;
-const daysSince = (iso) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : 0;
-const daysUntil = (iso) => daysUntilCalendarDate(iso) ?? 0;
 
-function parseArrayField(v) {
-  if (!v) return [];
-  if (Array.isArray(v)) return v;
-  if (typeof v === 'string') return v.split(',').map((s) => s.trim()).filter(Boolean);
-  return [];
+// ── Small building blocks ────────────────────────────────────────────────────
+
+function Pill({ bg, fg, children }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      background: bg, color: fg, fontSize: 10.5, fontWeight: 750,
+      padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+    }}>
+      {children}
+    </span>
+  );
 }
 
-function getInterestedServices(opwddCase) {
-  return parseArrayField(opwddCase?.interested_services);
+const DonePill    = ({ children = 'Done' })    => <Pill bg="#DCFCE7" fg="#15803d">✓ {children}</Pill>;
+const PendingPill = ({ children = 'Pending' }) => <Pill bg="#FEF3C7" fg="#92400E">{children}</Pill>;
+const IdlePill    = ({ children = 'Not started' }) => <Pill bg="#EEE" fg="#666">{children}</Pill>;
+
+function StepCard({ t, number, title, statusPill, children, muted = false }) {
+  return (
+    <div style={{ ...cardStyle(t), opacity: muted ? 0.55 : 1 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        padding: `${t.cardPadY}px ${t.cardPadX}px`,
+        borderBottom: children ? '1px solid var(--color-border)' : 'none',
+      }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{
+            width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+            background: hexToRgba(palette.backgroundDark.hex, 0.07),
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 800, color: hexToRgba(palette.backgroundDark.hex, 0.6),
+          }}>
+            {number}
+          </span>
+          <span style={{ fontSize: t.fontBase, fontWeight: 700, color: palette.backgroundDark.hex }}>{title}</span>
+        </span>
+        {statusPill}
+      </div>
+      {children && <div style={{ padding: `${t.cardPadY}px ${t.cardPadX}px` }}>{children}</div>}
+    </div>
+  );
 }
 
-function computeChecklistProgress(items) {
-  const required = items.filter((i) => i.is_required);
-  const satisfied = items.filter((i) => OPWDD_SATISFIED_STATUSES.includes(i.status));
-
-  const identityItems = items.filter((i) => {
-    const tmpl = OPWDD_CHECKLIST_BY_KEY[i.requirement_key];
-    return tmpl?.identityGroup;
-  });
-  const identitySatisfied = identityItems.some((i) => OPWDD_SATISFIED_STATUSES.includes(i.status));
-
-  return {
-    required: required.length,
-    satisfied: satisfied.length,
-    total: items.length,
-    identityItems,
-    identitySatisfied,
-    percent: items.length > 0 ? Math.round((satisfied.length / items.length) * 100) : 0,
-  };
+function PhaseHeading({ t, children }) {
+  return (
+    <p style={{
+      fontSize: t.fontLabel, fontWeight: 800, letterSpacing: '0.08em',
+      textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.45),
+      margin: `${t.sectionGap}px 0 ${Math.max(6, t.gap - 2)}px`,
+    }}>
+      {children}
+    </p>
+  );
 }
 
-function computeGroupProgress(items, group) {
-  const rows = items.filter((i) => group.requirementKeys.includes(i.requirement_key));
-  const satisfied = rows.filter((i) => OPWDD_SATISFIED_STATUSES.includes(i.status));
-  return { rows, satisfied: satisfied.length, total: rows.length };
+function MetaLine({ t, children }) {
+  return (
+    <p style={{ margin: '4px 0 0', fontSize: t.fontMuted, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.4 }}>
+      {children}
+    </p>
+  );
 }
 
-// ── Main component ──────────────────────────────────────────────────────────
+// ── Searchable entity dropdown (HomehealthOpwddEntities) ────────────────────
+
+function EntityPicker({ t, entities, value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return entities;
+    return entities.filter((e) => (
+      (e.name || '').toLowerCase().includes(q)
+      || (e.category || '').toLowerCase().includes(q)
+      || (Array.isArray(e.counties) ? e.counties.join(' ') : String(e.counties || '')).toLowerCase().includes(q)
+    ));
+  }, [entities, query]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          ...inputStyle(t),
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.4),
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {value ? value.name : 'Select submission partner…'}
+        </span>
+        <span style={{ fontSize: 9, opacity: 0.5, flexShrink: 0 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 60,
+          background: palette.backgroundLight.hex,
+          border: '1px solid var(--color-border)', borderRadius: 8,
+          boxShadow: `0 8px 24px ${hexToRgba(palette.backgroundDark.hex, 0.14)}`,
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: 300,
+        }}>
+          <div style={{ padding: '8px 8px 6px', flexShrink: 0 }}>
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, type, or county…"
+              style={{ ...inputStyle(t), padding: '6px 8px' }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, padding: '0 0 6px' }}>
+            {shown.length === 0 ? (
+              <p style={{ padding: '10px 12px', margin: 0, fontSize: t.fontMuted, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                No matching entities
+              </p>
+            ) : shown.map((e) => (
+              <button
+                key={e.id || e._id}
+                type="button"
+                onClick={() => { onChange(e); setOpen(false); setQuery(''); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '7px 12px', border: 'none', cursor: 'pointer',
+                  background: value && (value.id === e.id) ? hexToRgba(palette.accentBlue.hex, 0.07) : 'transparent',
+                }}
+              >
+                <span style={{ display: 'block', fontSize: t.fontBase, fontWeight: 650, color: palette.backgroundDark.hex }}>
+                  {e.name}
+                </span>
+                <span style={{ display: 'block', fontSize: t.fontMuted - 1, color: hexToRgba(palette.backgroundDark.hex, 0.5), marginTop: 1 }}>
+                  {[e.category, Array.isArray(e.counties) && e.counties.length ? e.counties.join(', ') : null]
+                    .filter(Boolean).join(' · ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Packet document row (Step 1) — upload (multi-file) + check ──────────────
+
+function PacketDocRow({ t, doc, index, files, checked, canCheck, canUpload, uploading, disabled, onToggle, onUpload }) {
+  const inputRef = useRef(null);
+  return (
+    <div style={{ padding: '8px 0', borderBottom: index < OPWDD_PACKET_DOCS.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={!canCheck || disabled}
+          onChange={(e) => onToggle(e.target.checked)}
+          title={checked ? 'Uncheck document' : 'Check document as complete'}
+          style={{
+            accentColor: palette.accentGreen.hex, width: 14, height: 14,
+            marginTop: 2, flexShrink: 0,
+            cursor: canCheck && !disabled ? 'pointer' : 'not-allowed',
+          }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{
+            fontSize: t.fontMuted + 0.5, fontWeight: 700,
+            color: checked ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.75),
+          }}>
+            {doc.label}
+            {!doc.required && (
+              <span style={{ fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}> · if applicable</span>
+            )}
+          </span>
+          {doc.hint && (
+            <span style={{ display: 'block', fontSize: t.fontMuted - 1, color: hexToRgba(palette.backgroundDark.hex, 0.45), marginTop: 1 }}>
+              {doc.hint}
+            </span>
+          )}
+          {files.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+              {files.map((f) => (
+                <button
+                  key={f._id}
+                  type="button"
+                  title={`Open ${f.file_name}`}
+                  onClick={() => openSignedFile(f).catch(() => {})}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    maxWidth: 190, padding: '2px 8px', borderRadius: 20,
+                    border: '1px solid var(--color-border)', cursor: 'pointer',
+                    background: hexToRgba(palette.accentBlue.hex, 0.06),
+                    fontSize: t.fontMuted - 1, fontWeight: 600, color: palette.accentBlue.hex,
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.file_name || f.id}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {canUpload && !disabled && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => { onUpload(e.target.files); e.target.value = ''; }}
+            />
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+              style={{
+                flexShrink: 0, padding: '3px 9px', borderRadius: 5,
+                border: '1px solid var(--color-border)',
+                background: palette.backgroundLight.hex,
+                fontSize: t.fontMuted - 1, fontWeight: 700,
+                color: uploading ? hexToRgba(palette.backgroundDark.hex, 0.35) : palette.accentBlue.hex,
+                cursor: uploading ? 'wait' : 'pointer',
+              }}
+            >
+              {uploading ? 'Uploading…' : files.length ? '+ Add' : 'Upload'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main workspace ───────────────────────────────────────────────────────────
+
 export default function OpwddWorkspace({
   patient,
   referral,
   readOnly = false,
   variant = 'drawer',
-  onInitiateTransition,
+  onInitiateTransition, // eslint-disable-line no-unused-vars -- kept for StagePanel prop compatibility
   onOpenFiles,
 }) {
   const t = tokens(variant);
-  const { appUser, appUserId } = useCurrentAppUser();
+  const { appUserId } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const { can } = usePermissions();
-  const users = useCareStore((s) => s.users);
 
-  const canView      = can(PERMISSION_KEYS.OPWDD_CASE_VIEW);
-  const canEdit      = !readOnly && can(PERMISSION_KEYS.OPWDD_CASE_EDIT);
-  const canAssign    = !readOnly && can(PERMISSION_KEYS.OPWDD_CASE_ASSIGN);
-  const canEditList  = !readOnly && can(PERMISSION_KEYS.OPWDD_CHECKLIST_EDIT);
-  const canSubmit    = !readOnly && can(PERMISSION_KEYS.OPWDD_SUBMIT_PACKET);
-  const canRecNotice = !readOnly && can(PERMISSION_KEYS.OPWDD_RECORD_NOTICE);
-  const canMarkC95   = !readOnly && can(PERMISSION_KEYS.OPWDD_MARK_CODE95_RECEIVED);
-  const canConvert   = !readOnly && can(PERMISSION_KEYS.OPWDD_CONVERT_TO_INTAKE);
-  const canClose     = !readOnly && can(PERMISSION_KEYS.OPWDD_CLOSE_CASE);
-  const canCreate    = !readOnly && can(PERMISSION_KEYS.OPWDD_CASE_CREATE);
+  const canEdit     = !readOnly && can(PERMISSION_KEYS.OPWDD_CASE_EDIT);
+  const canCreate   = !readOnly && can(PERMISSION_KEYS.OPWDD_CASE_CREATE);
+  const canSubmit   = !readOnly && can(PERMISSION_KEYS.OPWDD_SUBMIT_PACKET);
+  const canConvert  = !readOnly && can(PERMISSION_KEYS.OPWDD_CONVERT_TO_INTAKE);
+  const canClose    = !readOnly && can(PERMISSION_KEYS.OPWDD_CLOSE_CASE);
+  const canEditList = !readOnly && can(PERMISSION_KEYS.OPWDD_CHECKLIST_EDIT);
+  const canUpload   = !readOnly && can(PERMISSION_KEYS.OPWDD_FILE_UPLOAD);
 
-  const { loading, activeCase, checklistItems, reload } = useOpwddData({
+  const { loading, error, activeCase, checklistItems, opwddFiles, reload } = useOpwddData({
     patientId: patient?.id,
     referralId: referral?.id,
   });
 
-  const [submissionModal, setSubmissionModal] = useState(null);
-  const [noticeModal,     setNoticeModal]     = useState(null);
-  const [closeModal,      setCloseModal]      = useState(null);
-  const [convertModal,    setConvertModal]    = useState(null);
-  const [itemReviewModal, setItemReviewModal] = useState(null);
-  const [opening, setOpening] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
-  // Collapsible section state — keyed by section id. By default each
-  // section opens when it matches the current workflow phase.
-  const [expanded, setExpanded] = useState({});
-
-  const phase = useMemo(() => getOpwddPhaseForStatus(activeCase?.status), [activeCase?.status]);
-  const progress = useMemo(() => computeChecklistProgress(checklistItems), [checklistItems]);
-
-  // All derived-value memos MUST be declared at the top level of the
-  // component BEFORE any conditional return, to satisfy the Rules of Hooks
-  // (early returns below would otherwise cause hook-count mismatches).
-  // Each memo is written to be safe when activeCase is null.
-  const interested = useMemo(() => getInterestedServices(activeCase), [activeCase]);
-  const abaOnlyDetected = activeCase
-    ? activeCase.aba_only_referral === true || activeCase.aba_only_referral === 'true'
-    : false;
-
-  const outreachSummary = useMemo(() => {
-    if (!activeCase) return '';
-    const parts = [];
-    if (activeCase.pcg_willing_to_apply) parts.push('willing ✓');
-    if (activeCase.pcg_interested_in_wellbound_services) parts.push('interested ✓');
-    if (interested.length > 0) parts.push(`${interested.length} svc${interested.length === 1 ? '' : 's'}`);
-    if (abaOnlyDetected) parts.push('ABA-only ⚠');
-    if (parts.length === 0) parts.push('Not started');
-    return parts.join(' · ');
-  }, [activeCase, interested, abaOnlyDetected]);
-
-  const evalSummary = useMemo(() => {
-    if (!activeCase) return '';
-    const psyStatus = activeCase.psychological_eval_status || 'needed';
-    const socStatus = activeCase.psychosocial_status || 'needed';
-    return `Psych: ${psyStatus} · Psychosocial: ${socStatus}`;
-  }, [activeCase]);
-
-  const submissionSummary = useMemo(() => {
-    if (!activeCase) return '';
-    return activeCase.submission_sent_at
-      ? `Submitted ${fmtShort(activeCase.submission_sent_at)}${activeCase.submission_method ? ` via ${activeCase.submission_method}` : ''}`
-      : 'Not yet submitted';
-  }, [activeCase]);
-
-  const noticeSummary = useMemo(() => {
-    if (!activeCase) return '';
-    if (activeCase.code_95_received_at) return `Code 95 ✓ ${fmtShort(activeCase.code_95_received_at)}`;
-    if (activeCase.notice_received_at) {
-      const windowEnd = activeCase.expected_code_95_window_end;
-      if (windowEnd) {
-        const d = daysUntil(windowEnd);
-        return `Monitoring · ${d >= 0 ? `${d}d left` : `${Math.abs(d)}d overdue`}`;
-      }
-      return `Notice received ${fmtShort(activeCase.notice_received_at)}`;
-    }
-    return 'Awaiting notice';
-  }, [activeCase]);
-
-  // Default-expand the section matching the current phase on initial load /
-  // when the phase changes. Users can still manually toggle.
+  // Entities lookup for the submission dropdown (dynamic — straight from DB).
+  const [entities, setEntities] = useState([]);
   useEffect(() => {
-    if (!activeCase) return;
-    setExpanded((prev) => ({ ...prev, [phase.id]: true }));
-  }, [activeCase?.id, phase.id]);
+    let cancelled = false;
+    getAllOpwddEntities()
+      .then((recs) => {
+        if (cancelled) return;
+        const mapped = recs
+          .map((r) => ({ _id: r.id, ...r.fields }))
+          .filter((e) => e.is_active !== false);
+        setEntities(mapped);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
-  if (!canView) {
-    return (
-      <div style={{ padding: 16 }}>
-        <p style={{ fontSize: t.fontBase, color: '#888' }}>You do not have permission to view OPWDD cases.</p>
-      </div>
-    );
+  // Local step inputs
+  const [psychDate, setPsychDate] = useState('');
+  const [psychosocialDate, setPsychosocialDate] = useState('');
+  const [submitEntity, setSubmitEntity] = useState(null);
+  const [submitDate, setSubmitDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [uploadingLetter, setUploadingLetter] = useState(false);
+  const letterInputRef = useRef(null);
+  const [closeReason, setCloseReason] = useState('');
+  const [showClose, setShowClose] = useState(false);
+
+  const flow = getOpwddFlowState(activeCase);
+
+  // ── Packet Assembly (Step 1) derived state ─────────────────────────────────
+  const itemByKey = useMemo(
+    () => Object.fromEntries((checklistItems || []).map((i) => [i.requirement_key, i])),
+    [checklistItems],
+  );
+  const filesByDocKey = useMemo(() => {
+    const map = {};
+    if (!activeCase) return map;
+    for (const f of opwddFiles || []) {
+      if (f.opwdd_case_id !== activeCase.id || !f.document_subtype) continue;
+      (map[f.document_subtype] ||= []).push(f);
+    }
+    return map;
+  }, [opwddFiles, activeCase]);
+
+  const isDocChecked = (doc) => {
+    const item = itemByKey[doc.key];
+    return !!item && OPWDD_SATISFIED_STATUSES.includes(item.status);
+  };
+  const checkedDocCount = OPWDD_PACKET_DOCS.filter(isDocChecked).length;
+  const requiredDocsDone = OPWDD_PACKET_DOCS.filter((d) => d.required).every(isDocChecked);
+
+  const [uploadingDocKey, setUploadingDocKey] = useState(null);
+
+  async function handleUploadDocFiles(doc, fileList) {
+    const docFiles = Array.from(fileList || []);
+    if (!docFiles.length || !activeCase) return;
+    setUploadingDocKey(doc.key);
+    setActionError(null);
+    try {
+      const merged = {};
+      for (const file of docFiles) {
+        const { r2Key, r2Url } = await uploadToR2(file, patient);
+        const created = await createFile({
+          id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          patient_id: patient.id,
+          uploaded_by_id: appUserId || 'unknown',
+          file_name: file.name,
+          file_size: file.size,
+          r2_key: r2Key,
+          r2_url: r2Url,
+          category: OPWDD_REQUIREMENT_TO_CATEGORY[doc.key] || 'OPWDD',
+          document_subtype: doc.key,
+          created_at: new Date().toISOString(),
+          ...(referral?.id ? { referral_id: referral.id } : {}),
+          opwdd_case_id: activeCase.id,
+        });
+        merged[created.id] = { _id: created.id, ...created.fields };
+      }
+      mergeEntities('files', merged);
+      triggerDataRefresh();
+      reload();
+    } catch (err) {
+      setActionError(err?.message || `Upload failed for ${doc.label}`);
+    } finally {
+      setUploadingDocKey(null);
+    }
   }
 
-  if (!patient || !referral) {
-    return (
-      <div style={{ padding: 16 }}>
-        <p style={{ fontSize: t.fontBase, color: '#888' }}>Select a referral to view its OPWDD case.</p>
-      </div>
-    );
+  async function run(fn) {
+    if (busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await fn();
+      reload();
+    } catch (err) {
+      setActionError(err?.message || 'Action failed');
+    } finally {
+      setBusy(false);
+    }
   }
 
-  // No case yet — offer to open one.
+  async function handleUploadLetter(file) {
+    if (!file || !activeCase) return;
+    setUploadingLetter(true);
+    setActionError(null);
+    try {
+      const { r2Key, r2Url } = await uploadToR2(file, patient);
+      const fileId = `file_${Date.now()}`;
+      const created = await createFile({
+        id: fileId,
+        patient_id: patient.id,
+        uploaded_by_id: appUserId || 'unknown',
+        file_name: file.name,
+        file_size: file.size,
+        r2_key: r2Key,
+        r2_url: r2Url,
+        category: 'OPWDD Notice',
+        created_at: new Date().toISOString(),
+        ...(referral?.id ? { referral_id: referral.id } : {}),
+        opwdd_case_id: activeCase.id,
+      });
+      mergeEntities('files', { [created.id]: { _id: created.id, ...created.fields } });
+      // Stamp immediately so the uploaded letter survives a reload before the
+      // user clicks "Mark completed".
+      await updateOpwddCase(activeCase._id, { parent_letter_file_id: fileId });
+      triggerDataRefresh();
+      reload();
+    } catch (err) {
+      setActionError(err?.message || 'Letter upload failed');
+    } finally {
+      setUploadingLetter(false);
+      if (letterInputRef.current) letterInputRef.current.value = '';
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading && !activeCase) {
+    return <p style={{ fontSize: t.fontBase, color: hexToRgba(palette.backgroundDark.hex, 0.5), padding: 8 }}>Loading OPWDD case…</p>;
+  }
+  if (error) {
+    return <p style={{ fontSize: t.fontBase, color: palette.primaryMagenta.hex, padding: 8 }}>Failed to load: {error}</p>;
+  }
+
   if (!activeCase) {
     return (
-      <div data-testid="opwdd-workspace" data-variant={variant} style={{ padding: variant === 'panel' ? '14px 12px' : '18px 18px 36px' }}>
-        <div style={{ ...cardStyle(t), padding: `${t.cardPadY + 2}px ${t.cardPadX}px` }}>
-          <p style={{ fontSize: t.fontBase + 1, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 6 }}>
-            No OPWDD case open for this referral.
-          </p>
-          <p style={{ fontSize: t.fontMuted, color: '#666', lineHeight: 1.5, marginBottom: 10 }}>
-            Open a case to begin PCG outreach, seed the 15-item document checklist, and start tracking toward Code 95.
-          </p>
-          {loading && <p style={{ fontSize: t.fontMuted, color: '#888' }}>Loading…</p>}
-          {!loading && canCreate && (
-            <button
-              data-testid="opwdd-open-case"
-              disabled={opening}
-              onClick={async () => {
-                setOpening(true);
-                try {
-                  await openCaseForReferral({
-                    referral,
-                    patientId: patient.id,
-                    actorUserId: appUserId,
-                    assignedSpecialistId: appUserId,
-                  });
-                  reload();
-                  triggerDataRefresh();
-                } catch (err) {
-                  console.error('Open OPWDD case failed', err);
-                } finally {
-                  setOpening(false);
-                }
-              }}
-              style={primaryBtn(t, { disabled: opening, color: palette.primaryDeepPlum.hex })}
-            >
-              {opening ? 'Opening…' : 'Open OPWDD Case'}
-            </button>
-          )}
-        </div>
+      <div style={{ padding: 4 }}>
+        <p style={{ fontSize: t.fontBase, color: hexToRgba(palette.backgroundDark.hex, 0.6), margin: '0 0 10px' }}>
+          No open OPWDD case for this referral.
+        </p>
+        {canCreate && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => run(() => openCaseForReferral({ referral, patientId: patient?.id, actorUserId: appUserId }))}
+            style={primaryBtn(t, { disabled: busy })}
+          >
+            {busy ? 'Opening…' : 'Open OPWDD case'}
+          </button>
+        )}
+        {actionError && <MetaLine t={t}>{actionError}</MetaLine>}
       </div>
     );
   }
 
-  const pill = CASE_STATUS_PILL[activeCase.status] || CASE_STATUS_PILL[OPWDD_CASE_STATUS.NOT_STARTED];
-  const specialistName = activeCase.assigned_enrollment_specialist_id
-    ? resolveUser(activeCase.assigned_enrollment_specialist_id)
-    : null;
-
-  // --- Inline field saver (used by every inline edit control) ---
-  async function patchCase(partial, audit) {
-    if (!canEdit) return;
-    try {
-      await updateOpwddCase(activeCase._id, partial);
-      if (audit) {
-        await recordActivity({
-          actorUserId: appUserId,
-          patientId:  patient.id,
-          referralId: referral.id,
-          action:     audit.action,
-          detail:     audit.detail,
-          metadata:   { caseId: activeCase.id, ...(audit.metadata || {}) },
-        }).catch(() => {});
-      }
-      reload();
-      triggerDataRefresh();
-    } catch (err) {
-      console.error('OPWDD case update failed', err);
-    }
-  }
-
-  const toggle = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  const caseDone = flow.completed || activeCase.status === OPWDD_CASE_STATUS.CLOSED || activeCase.status === OPWDD_CASE_STATUS.CANCELLED;
+  const submittedBy = activeCase.submission_sent_by_id ? resolveUser(activeCase.submission_sent_by_id) : null;
+  const letterUploaded = !!activeCase.parent_letter_file_id;
 
   return (
-    <div data-testid="opwdd-workspace" data-variant={variant} style={{ padding: variant === 'panel' ? '14px 12px' : '16px 18px 40px' }}>
-
-      {/* ── Compact header ─────────────────────────────────────────── */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-          <p style={{ fontSize: t.fontBase + 2, fontWeight: 700, color: palette.backgroundDark.hex, letterSpacing: '-0.01em' }}>
-            {activeCase.id}
-          </p>
-          <span style={{
-            fontSize: t.fontMuted, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
-            background: pill.bg, color: pill.fg, flexShrink: 0,
-          }}>{pill.label}</span>
-        </div>
-        <p style={{ fontSize: t.fontMuted, color: '#888', marginTop: 2 }}>
-          {activeCase.opened_at ? `Day ${daysSince(activeCase.opened_at) + 1} · opened ${fmtShort(activeCase.opened_at)}` : 'Newly opened'}
-          {specialistName && ` · ${specialistName}`}
-        </p>
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+        <span style={{ fontSize: t.fontMuted, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
+          Case {activeCase.id} · opened {fmtDate(activeCase.opened_at) || '—'}
+        </span>
+        {caseDone
+          ? <DonePill>{flow.completed ? 'Completed' : 'Closed'}</DonePill>
+          : flow.submitted
+            ? <PendingPill>Pending letter</PendingPill>
+            : flow.phase1Complete
+              ? <Pill bg="#DBEAFE" fg="#1D4ED8">Ready to submit</Pill>
+              : <Pill bg="#E0F2FE" fg="#0369A1">Phase 1</Pill>}
       </div>
 
-      {/* ── Phase stepper ────────────────────────────────────────── */}
-      <PhaseStepper t={t} currentPhase={phase} checklistSatisfied={progress.satisfied} checklistTotal={progress.total} />
-
-      {/* ── ABA-only hard stop ────────────────────────────────────── */}
-      {abaOnlyDetected && (
-        <div data-testid="opwdd-aba-warning" style={{
-          marginTop: 10, padding: `${t.cardPadY - 2}px ${t.cardPadX}px`,
-          borderRadius: t.radius, border: '1px solid #FEE2E2', background: '#FEF2F2',
-        }}>
-          <p style={{ fontSize: t.fontBase, fontWeight: 700, color: '#B91C1C', marginBottom: 2 }}>
-            ABA-only referral
-          </p>
-          <p style={{ fontSize: t.fontMuted, color: '#7F1D1D', lineHeight: 1.4 }}>
-            ABA-only referrals do not proceed through OPWDD enrollment. Consider closing with reason "ABA-only".
-          </p>
-        </div>
+      {actionError && (
+        <p style={{ margin: '6px 0', fontSize: t.fontMuted, color: palette.primaryMagenta.hex }}>{actionError}</p>
       )}
 
-      {/* ── Status + blocker + assignee (always-visible compact row) ── */}
-      {canEdit && (
-        <div style={{ ...cardStyle(t), padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, marginTop: 10, marginBottom: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <SelectField t={t} label="Status" value={activeCase.status}
-              options={OPWDD_CASE_STATUS_OPTIONS}
-              onChange={(v) => patchCase({ status: v })}
-              testId="opwdd-status-select" />
-            <SelectField t={t} label="Blocker" value={activeCase.sub_status || activeCase.latest_blocker || OPWDD_SUB_STATUS.NONE}
-              options={OPWDD_SUB_STATUS_OPTIONS}
-              onChange={(v) => patchCase({ sub_status: v, latest_blocker: v })}
-              testId="opwdd-substatus-select" />
-          </div>
-          {canAssign && Object.keys(users || {}).length > 0 && (
-            <div style={{ marginTop: 6 }}>
-              <p style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#777', marginBottom: 2 }}>Assigned Specialist</p>
-              <select
-                value={activeCase.assigned_enrollment_specialist_id || ''}
-                onChange={(e) => patchCase({ assigned_enrollment_specialist_id: e.target.value })}
-                style={inputStyle(t)} data-testid="opwdd-assignee-select"
-              >
-                <option value="">Unassigned</option>
-                {Object.values(users).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {([u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || u.id) + oooOptionSuffix(u)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── PHASE 1 ── */}
+      <PhaseHeading t={t}>Phase 1 · concurrent steps</PhaseHeading>
 
-      {/* ── PCG Outreach (collapsible) ───────────────────────────── */}
-      <CollapsibleSection
+      {/* Step 1 — Packet Assembly: 9 documents, each with upload(s) + check */}
+      <StepCard
         t={t}
-        id="outreach"
-        title="PCG Outreach"
-        summary={outreachSummary}
-        isActive={phase.id === 'outreach'}
-        expanded={expanded.outreach}
-        onToggle={() => toggle('outreach')}
+        number={1}
+        title="Packet Assembly"
+        statusPill={flow.packetAssembled
+          ? <DonePill>Assembled</DonePill>
+          : checkedDocCount > 0
+            ? <PendingPill>{checkedDocCount}/{OPWDD_PACKET_DOCS.length} checked</PendingPill>
+            : <IdlePill />}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-          <InlineField t={t} label="Contact Name" value={activeCase.pcg_contact_name}
-            onSave={(v) => patchCase({ pcg_contact_name: v }, { action: OPWDD_AUDIT_ACTION.OUTREACH_COMPLETED, detail: 'PCG contact name updated.' })}
-            readOnly={!canEdit} />
-          <InlineField t={t} label="Relationship" value={activeCase.pcg_relationship_to_patient}
-            placeholder="parent / guardian / caregiver"
-            onSave={(v) => patchCase({ pcg_relationship_to_patient: v })} readOnly={!canEdit} />
-          <InlineField t={t} label="Phone" value={activeCase.pcg_contact_phone} type="tel"
-            onSave={(v) => patchCase({ pcg_contact_phone: v })} readOnly={!canEdit} />
-          <InlineField t={t} label="Email" value={activeCase.pcg_contact_email} type="email"
-            onSave={(v) => patchCase({ pcg_contact_email: v })} readOnly={!canEdit} />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 10 }}>
-          <CheckRow t={t} label="Willing to apply for OPWDD"
-            checked={activeCase.pcg_willing_to_apply}
-            readOnly={!canEdit}
-            onChange={(v) => patchCase({ pcg_willing_to_apply: v }, {
-              action: OPWDD_AUDIT_ACTION.PCG_INTEREST_CONFIRMED,
-              detail: `PCG willing to apply = ${v ? 'yes' : 'no'}.`,
-            })} />
-          <CheckRow t={t} label="Interested in Wellbound Special Needs services"
-            checked={activeCase.pcg_interested_in_wellbound_services}
-            readOnly={!canEdit}
-            onChange={(v) => patchCase({ pcg_interested_in_wellbound_services: v }, {
-              action: OPWDD_AUDIT_ACTION.PCG_INTEREST_CONFIRMED,
-              detail: `PCG interested = ${v ? 'yes' : 'no'}.`,
-            })} />
-          <CheckRow t={t} label="ABA-only referral (hard stop)"
-            checked={abaOnlyDetected}
-            readOnly={!canEdit}
-            onChange={(v) => patchCase({ aba_only_referral: v })} />
-        </div>
-
-        <div>
-          <p style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#777', marginBottom: 4 }}>Interested Services</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {OPWDD_INTERESTED_SERVICE_OPTIONS.map((svc) => {
-              const active = interested.includes(svc.value);
-              return (
-                <button
-                  key={svc.value} disabled={!canEdit}
-                  onClick={() => {
-                    const next = active ? interested.filter((s) => s !== svc.value) : [...interested, svc.value];
-                    patchCase({ interested_services: next }, {
-                      action: OPWDD_AUDIT_ACTION.SERVICE_INTEREST_UPDATED,
-                      detail: `Interested services: ${next.join(', ') || 'none'}.`,
-                      metadata: { services: next },
-                    });
-                  }}
-                  style={{
-                    padding: '3px 9px', borderRadius: 5, fontSize: t.fontMuted, fontWeight: 600,
-                    border: `1px solid ${active ? palette.accentGreen.hex : 'var(--color-border)'}`,
-                    background: active ? palette.accentGreen.hex : palette.backgroundLight.hex,
-                    color: active ? palette.backgroundLight.hex : palette.backgroundDark.hex,
-                    cursor: canEdit ? 'pointer' : 'not-allowed', opacity: canEdit ? 1 : 0.7,
-                  }}
-                  data-testid={`opwdd-service-${svc.value}`}
-                >
-                  {svc.value}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </CollapsibleSection>
-
-      {/* ── Evaluations (collapsible) ──────────────────────────────── */}
-      <CollapsibleSection
-        t={t}
-        id="evals"
-        title="Evaluations · Article 16"
-        summary={evalSummary}
-        isActive={phase.id === 'evals'}
-        expanded={expanded.evals}
-        onToggle={() => toggle('evals')}
-      >
-        <InlineField t={t} label="Article 16 Clinic" value={activeCase.article16_clinic_name}
-          placeholder="Clinic name" onSave={(v) => patchCase({ article16_clinic_name: v })} readOnly={!canEdit} />
-
-        <EvaluationRow t={t} label="Psychological · <3y"
-          fieldPrefix="psychological_eval"
-          statusValue={activeCase.psychological_eval_status}
-          scheduledFor={activeCase.psychological_eval_scheduled_for}
-          receivedAt={activeCase.psychological_eval_received_at}
-          validThrough={activeCase.psychological_eval_valid_through}
-          validityYears={OPWDD_EVAL_VALIDITY_YEARS.psychological}
-          readOnly={!canEdit}
-          onChangeStatus={(v) => patchCase({ psychological_eval_status: v })}
-          onReceived={(iso) => patchCase({
-            psychological_eval_status: OPWDD_EVAL_STATUS.RECEIVED,
-            psychological_eval_received_at: iso,
-            psychological_eval_valid_through: addYears(iso, OPWDD_EVAL_VALIDITY_YEARS.psychological),
-          }, { action: OPWDD_AUDIT_ACTION.EVAL_RECEIVED, detail: 'Psychological evaluation received.' })}
-          onScheduled={(iso) => patchCase({
-            psychological_eval_status: OPWDD_EVAL_STATUS.SCHEDULED,
-            psychological_eval_scheduled_for: iso,
-          }, { action: OPWDD_AUDIT_ACTION.EVAL_SCHEDULED, detail: 'Psychological evaluation scheduled.' })}
-        />
-
-        <EvaluationRow t={t} label="Psychosocial · <1y"
-          fieldPrefix="psychosocial"
-          statusValue={activeCase.psychosocial_status}
-          scheduledFor={activeCase.psychosocial_scheduled_for}
-          receivedAt={activeCase.psychosocial_received_at}
-          validThrough={activeCase.psychosocial_valid_through}
-          validityYears={OPWDD_EVAL_VALIDITY_YEARS.psychosocial}
-          readOnly={!canEdit}
-          onChangeStatus={(v) => patchCase({ psychosocial_status: v })}
-          onReceived={(iso) => patchCase({
-            psychosocial_status: OPWDD_EVAL_STATUS.RECEIVED,
-            psychosocial_received_at: iso,
-            psychosocial_valid_through: addYears(iso, OPWDD_EVAL_VALIDITY_YEARS.psychosocial),
-          }, { action: OPWDD_AUDIT_ACTION.EVAL_RECEIVED, detail: 'Psychosocial evaluation received.' })}
-          onScheduled={(iso) => patchCase({
-            psychosocial_status: OPWDD_EVAL_STATUS.SCHEDULED,
-            psychosocial_scheduled_for: iso,
-          }, { action: OPWDD_AUDIT_ACTION.EVAL_SCHEDULED, detail: 'Psychosocial evaluation scheduled.' })}
-        />
-      </CollapsibleSection>
-
-      {/* ── Document Checklist (grouped, collapsible) ─────────────── */}
-      <CollapsibleSection
-        t={t}
-        id="checklist"
-        title="Document Checklist"
-        summary={`${progress.satisfied}/${progress.total} satisfied · ${progress.percent}%`}
-        isActive={phase.id === 'docs' || phase.id === 'evals'}
-        expanded={expanded.checklist}
-        onToggle={() => toggle('checklist')}
-      >
-        {checklistItems.length === 0 && (
-          <p style={{ fontSize: t.fontMuted, color: '#888' }}>No checklist items — the case may have been opened before the checklist was seeded.</p>
+        {flow.packetAssembled && (
+          <MetaLine t={t}>
+            Assembled {fmtDateTime(activeCase.packet_assembled_at)}
+            {activeCase.packet_assembled_by_id ? ` by ${resolveUser(activeCase.packet_assembled_by_id)}` : ''}
+          </MetaLine>
         )}
-        {OPWDD_CHECKLIST_GROUPS.map((group) => {
-          const { rows, satisfied, total } = computeGroupProgress(checklistItems, group);
-          if (total === 0) return null;
-          const groupId = `group_${group.id}`;
-          const isExpanded = expanded[groupId] !== undefined ? expanded[groupId] : (satisfied < total);
+        <div style={{ marginTop: flow.packetAssembled ? 6 : 0 }}>
+          {OPWDD_PACKET_DOCS.map((doc, index) => (
+            <PacketDocRow
+              key={doc.key}
+              t={t}
+              doc={doc}
+              index={index}
+              files={filesByDocKey[doc.key] || []}
+              checked={isDocChecked(doc)}
+              canCheck={canEditList}
+              canUpload={canUpload}
+              uploading={uploadingDocKey === doc.key}
+              disabled={busy || caseDone}
+              onToggle={(checked) => run(() => setPacketDocChecked({
+                opwddCase: activeCase, doc, item: itemByKey[doc.key], checked, actorUserId: appUserId,
+              }))}
+              onUpload={(fileList) => handleUploadDocFiles(doc, fileList)}
+            />
+          ))}
+        </div>
+        {!flow.packetAssembled && (
+          canEdit && !caseDone ? (
+            <button
+              type="button"
+              disabled={busy || !requiredDocsDone}
+              title={requiredDocsDone ? undefined : 'Check all required documents first (specialist letter only if applicable)'}
+              onClick={() => run(() => markPacketAssembled({ opwddCase: activeCase, actorUserId: appUserId }))}
+              style={{ ...primaryBtn(t, { disabled: busy || !requiredDocsDone }), width: '100%', marginTop: 10 }}
+            >
+              Mark packet assembled
+            </button>
+          ) : (
+            <MetaLine t={t}>Packet not yet assembled.</MetaLine>
+          )
+        )}
+      </StepCard>
+
+      {/* Step 2 — Visit scheduling */}
+      <StepCard
+        t={t}
+        number={2}
+        title="Visit Scheduling"
+        statusPill={flow.psychScheduled && flow.psychosocialScheduled
+          ? <DonePill>Both scheduled</DonePill>
+          : flow.psychScheduled || flow.psychosocialScheduled
+            ? <PendingPill>1 of 2</PendingPill>
+            : <IdlePill />}
+      >
+        {OPWDD_VISIT_TYPES.map((visit) => {
+          const scheduledAt = activeCase[visit.scheduledField];
+          const isPsych = visit.value === 'psychological';
+          const dateVal = isPsych ? psychDate : psychosocialDate;
+          const setDateVal = isPsych ? setPsychDate : setPsychosocialDate;
           return (
-            <div key={group.id} style={{ marginBottom: 6 }}>
-              <button
-                onClick={() => toggle(groupId)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: `${t.inputPadY - 1}px ${t.inputPadX}px`, background: hexToRgba(palette.backgroundDark.hex, 0.03),
-                  border: `1px solid var(--color-border)`, borderRadius: 6,
-                  fontSize: t.fontMuted, fontWeight: 650, color: palette.backgroundDark.hex, cursor: 'pointer',
-                }}
-              >
-                <span>{isExpanded ? '▾' : '▸'} {group.label}</span>
-                <span style={{ color: satisfied === total ? '#15803d' : '#666' }}>
-                  {satisfied}/{total}
-                </span>
-              </button>
-              {isExpanded && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4, marginLeft: 4 }}>
-                  {rows.map((item) => (
-                    <ChecklistRow
-                      key={item._id}
-                      t={t}
-                      item={item}
-                      readOnly={!canEditList}
-                      onOpenReview={() => setItemReviewModal(item)}
-                      onOpenFiles={onOpenFiles ? () => onOpenFiles(patient) : null}
-                      resolveUser={resolveUser}
-                    />
-                  ))}
+            <div key={visit.value} style={{ marginBottom: t.gap }}>
+              <p style={{ margin: '0 0 4px', fontSize: t.fontMuted, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+                {visit.label}
+              </p>
+              {scheduledAt ? (
+                <MetaLine t={t}>Scheduled for {fmtDate(scheduledAt)}</MetaLine>
+              ) : canEdit && !caseDone ? (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    type="date"
+                    value={dateVal}
+                    onChange={(e) => setDateVal(e.target.value)}
+                    style={{ ...inputStyle(t), flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !dateVal}
+                    onClick={() => run(() => scheduleOpwddVisit({
+                      opwddCase: activeCase, actorUserId: appUserId,
+                      visitType: visit.value, scheduledFor: dateVal,
+                    }))}
+                    style={{ ...secondaryBtn(t), flex: 'none', padding: `${t.btnPadY}px 12px`, fontWeight: 700, opacity: !dateVal ? 0.5 : 1, cursor: !dateVal ? 'not-allowed' : 'pointer' }}
+                  >
+                    Mark scheduled
+                  </button>
                 </div>
+              ) : (
+                <MetaLine t={t}>Not scheduled yet.</MetaLine>
               )}
             </div>
           );
         })}
-        {progress.identityItems.length > 0 && !progress.identitySatisfied && (
-          <p style={{ fontSize: t.fontMuted, color: '#92400E', marginTop: 6, lineHeight: 1.4 }}>
-            Identity requirement: at least one of Birth Certificate, Passport, or State ID must be accepted.
-          </p>
-        )}
-      </CollapsibleSection>
+      </StepCard>
 
-      {/* ── Submission (collapsible) ──────────────────────────────── */}
-      <CollapsibleSection
+      {/* Step 3 — Visits completed */}
+      <StepCard
         t={t}
-        id="submit"
-        title="Submission to CCO"
-        summary={submissionSummary}
-        isActive={phase.id === 'submit'}
-        expanded={expanded.submit}
-        onToggle={() => toggle('submit')}
+        number={3}
+        title="Visits Completed"
+        statusPill={flow.visitsCompleted
+          ? <DonePill>Both completed</DonePill>
+          : flow.psychCompleted || flow.psychosocialCompleted
+            ? <PendingPill>1 of 2</PendingPill>
+            : <IdlePill />}
       >
-        <InlineField t={t} label="CCO Name" value={activeCase.cco_name_snapshot}
-          placeholder="Care Design NY / Advance Care Alliance NY"
-          onSave={(v) => patchCase({ cco_name_snapshot: v })} readOnly={!canEdit} />
+        {OPWDD_VISIT_TYPES.map((visit) => {
+          const completedAt = activeCase[visit.completedField];
+          const scheduledAt = activeCase[visit.scheduledField];
+          return (
+            <div key={visit.value} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: t.fontMuted, fontWeight: 700, color: hexToRgba(palette.backgroundDark.hex, 0.65) }}>
+                {visit.label}
+              </span>
+              {completedAt ? (
+                <DonePill>{fmtDate(completedAt)}</DonePill>
+              ) : canEdit && !caseDone ? (
+                <button
+                  type="button"
+                  disabled={busy || !scheduledAt}
+                  title={scheduledAt ? undefined : 'Schedule the visit first (Step 2)'}
+                  onClick={() => run(() => markOpwddVisitCompleted({
+                    opwddCase: activeCase, actorUserId: appUserId, visitType: visit.value,
+                  }))}
+                  style={{ ...secondaryBtn(t), flex: 'none', padding: `${Math.max(4, t.btnPadY - 2)}px 10px`, fontSize: t.fontMuted, fontWeight: 700, opacity: !scheduledAt ? 0.45 : 1, cursor: !scheduledAt ? 'not-allowed' : 'pointer' }}
+                >
+                  Mark completed
+                </button>
+              ) : (
+                <IdlePill>Not completed</IdlePill>
+              )}
+            </div>
+          );
+        })}
+      </StepCard>
 
-        {activeCase.submission_sent_at ? (
-          <div style={{ fontSize: t.fontMuted, color: '#555', lineHeight: 1.5, marginTop: 6 }}>
-            <p>Submitted {fmtDateTime(activeCase.submission_sent_at)}
-              {activeCase.submission_sent_by_id && ` by ${resolveUser(activeCase.submission_sent_by_id)}`}
-              {activeCase.submission_method && ` via ${activeCase.submission_method}`}.
-            </p>
-            {activeCase.submission_confirmation_number && <p>Confirmation: {activeCase.submission_confirmation_number}</p>}
+      {/* ── PHASE 2 ── */}
+      <PhaseHeading t={t}>Phase 2</PhaseHeading>
+
+      {/* Step 4 — Submit to health home */}
+      <StepCard
+        t={t}
+        number={4}
+        title="Submit to Health Home"
+        muted={!flow.phase1Complete && !flow.submitted}
+        statusPill={flow.submitted
+          ? (
+            <span style={{ display: 'inline-flex', gap: 4 }}>
+              <DonePill>Submitted</DonePill>
+              {!flow.letterReceived && !caseDone && <PendingPill>Pending</PendingPill>}
+            </span>
+          )
+          : <IdlePill>Not submitted</IdlePill>}
+      >
+        {flow.submitted ? (
+          <MetaLine t={t}>
+            Submitted {fmtDate(activeCase.submission_sent_at)}
+            {activeCase.submitted_to_entity_name ? ` to ${activeCase.submitted_to_entity_name}` : ''}
+            {submittedBy && submittedBy !== '—' ? ` by ${submittedBy}` : ''}
+            {!flow.letterReceived && !caseDone ? ' — awaiting determination letter.' : ''}
+          </MetaLine>
+        ) : !flow.phase1Complete ? (
+          <MetaLine t={t}>Complete Phase 1 (packet assembled + both visits completed) to submit.</MetaLine>
+        ) : canSubmit && !caseDone ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <EntityPicker t={t} entities={entities} value={submitEntity} onChange={setSubmitEntity} disabled={busy} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="date"
+                value={submitDate}
+                onChange={(e) => setSubmitDate(e.target.value)}
+                style={{ ...inputStyle(t), flex: 1 }}
+              />
+              <button
+                type="button"
+                disabled={busy || !submitEntity || !submitDate}
+                onClick={() => run(() => submitToHealthhome({
+                  opwddCase: activeCase, actorUserId: appUserId,
+                  entity: submitEntity, submittedOn: submitDate,
+                }))}
+                style={{ ...primaryBtn(t, { disabled: busy || !submitEntity || !submitDate }), flex: 'none', padding: `${t.btnPadY}px 14px` }}
+              >
+                Mark submitted
+              </button>
+            </div>
           </div>
         ) : (
-          <p style={{ fontSize: t.fontMuted, color: '#888', marginTop: 6 }}>Packet not yet submitted.</p>
+          <MetaLine t={t}>Awaiting submission.</MetaLine>
         )}
+      </StepCard>
 
-        {canSubmit && !activeCase.submission_sent_at && (
-          <button
-            data-testid="opwdd-submit-btn"
-            onClick={() => setSubmissionModal({
-              method: OPWDD_SUBMISSION_METHOD.EMAIL,
-              ccoName: activeCase.cco_name_snapshot || '',
-              confirmationNumber: '',
-            })}
-            style={{ ...primaryBtn(t, { color: palette.primaryDeepPlum.hex }), marginTop: 8 }}
-          >
-            Record Packet Submission
-          </button>
-        )}
-      </CollapsibleSection>
-
-      {/* ── Notice + Code 95 (collapsible) ────────────────────────── */}
-      <CollapsibleSection
+      {/* Step 5 — Parent letter + completion */}
+      <StepCard
         t={t}
-        id="monitor"
-        title="Notice & Code 95 Monitoring"
-        summary={noticeSummary}
-        isActive={phase.id === 'monitor' || phase.id === 'code95'}
-        expanded={expanded.monitor}
-        onToggle={() => toggle('monitor')}
+        number={5}
+        title="Letter received & Completion"
+        muted={!flow.submitted && !caseDone}
+        statusPill={flow.completed
+          ? <DonePill>Sent to Intake</DonePill>
+          : letterUploaded
+            ? <Pill bg="#DBEAFE" fg="#1D4ED8">Letter uploaded</Pill>
+            : <IdlePill>Awaiting letter</IdlePill>}
       >
-        <div style={{ fontSize: t.fontMuted, color: '#555', lineHeight: 1.55 }}>
-          {activeCase.notice_received_at ? (
-            <>
-              <p><b>Notice received:</b> {fmtDate(activeCase.notice_received_at)} via {activeCase.notice_received_method || 'unknown'}.</p>
-              <p><b>Determination:</b> {activeCase.eligibility_determination || 'pending'}.</p>
-              {activeCase.expected_code_95_window_start && (
-                <div style={{ marginTop: 6 }}>
-                  <Code95Window
-                    t={t}
-                    windowStart={activeCase.expected_code_95_window_start}
-                    windowEnd={activeCase.expected_code_95_window_end}
-                    received={activeCase.code_95_received_at}
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            <p style={{ color: '#888' }}>Awaiting notice letter from OPWDD.</p>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          {canRecNotice && !activeCase.notice_received_at && activeCase.submission_sent_at && (
-            <button
-              data-testid="opwdd-record-notice"
-              onClick={() => setNoticeModal({
-                noticeDate: new Date().toISOString().slice(0, 10),
-                method: OPWDD_NOTICE_METHOD.MAIL,
-                determination: OPWDD_ELIGIBILITY_DETERMINATION.ELIGIBLE,
-              })}
-              style={primaryBtn(t, { color: palette.accentGreen.hex })}
-            >
-              Record Notice Received
-            </button>
-          )}
-          {canMarkC95 && activeCase.notice_received_at && !activeCase.code_95_received_at && (
-            <button
-              data-testid="opwdd-mark-code95"
-              onClick={async () => {
-                try {
-                  await recordCode95Received({ opwddCase: activeCase, referral, actorUserId: appUserId });
-                  reload(); triggerDataRefresh();
-                } catch (err) { console.error('Code 95 mark failed', err); }
-              }}
-              style={primaryBtn(t, { color: palette.accentGreen.hex })}
-            >
-              Mark Code 95 Received
-            </button>
-          )}
-        </div>
-      </CollapsibleSection>
-
-      {/* ── Latest Blocker Note (small always-open card) ──────────── */}
-      <div style={{ ...cardStyle(t), padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, marginTop: 10 }}>
-        <p style={{ fontSize: t.fontLabel, fontWeight: 700, color: '#777', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>
-          Latest Blocker Note
-        </p>
-        <textarea
-          value={activeCase.latest_blocker_note || ''}
-          disabled={!canEdit}
-          onChange={(e) => patchCase({ latest_blocker_note: e.target.value })}
-          rows={2}
-          placeholder="Short note surfaced in reports and dashboards."
-          style={{ ...inputStyle(t), resize: 'vertical' }}
-          data-testid="opwdd-blocker-note"
-        />
-      </div>
-
-      {/* ── Next steps / close footer ─────────────────────────────── */}
-      {(canConvert || canClose) && (
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {canConvert && activeCase.code_95_received_at && activeCase.status !== OPWDD_CASE_STATUS.CONVERTED_TO_INTAKE && (
-            <button
-              data-testid="opwdd-convert-intake"
-              onClick={() => setConvertModal({ handoffNote: '' })}
-              style={primaryBtn(t, { color: palette.accentGreen.hex })}
-            >
-              Convert to Intake →
-            </button>
-          )}
-          {canClose && activeCase.status !== OPWDD_CASE_STATUS.CLOSED && activeCase.status !== OPWDD_CASE_STATUS.CONVERTED_TO_INTAKE && (
-            <button
-              data-testid="opwdd-close-case"
-              onClick={() => setCloseModal({ reason: 'pcg_declined', note: '' })}
-              style={secondaryBtn(t)}
-            >
-              Close Case…
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Modals ────────────────────────────────────────────── */}
-      {submissionModal && (
-        <Modal title="Record Packet Submission" onClose={() => setSubmissionModal(null)}>
-          <Field t={t} label="CCO Name">
-            <input type="text" value={submissionModal.ccoName}
-              onChange={(e) => setSubmissionModal({ ...submissionModal, ccoName: e.target.value })}
-              style={inputStyle(t)} placeholder="Care Design NY / Advance Care Alliance NY" />
-          </Field>
-          <Field t={t} label="Method">
-            <select value={submissionModal.method}
-              onChange={(e) => setSubmissionModal({ ...submissionModal, method: e.target.value })} style={inputStyle(t)}>
-              {OPWDD_SUBMISSION_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field t={t} label="Confirmation # (optional)">
-            <input type="text" value={submissionModal.confirmationNumber}
-              onChange={(e) => setSubmissionModal({ ...submissionModal, confirmationNumber: e.target.value })}
-              style={inputStyle(t)} />
-          </Field>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button onClick={() => setSubmissionModal(null)} style={secondaryBtn(t)}>Cancel</button>
-            <button
-              data-testid="opwdd-submit-confirm"
-              onClick={async () => {
-                try {
-                  await recordPacketSubmitted({
-                    opwddCase: activeCase, actorUserId: appUserId,
-                    method: submissionModal.method,
-                    confirmationNumber: submissionModal.confirmationNumber || null,
-                    ccoName: submissionModal.ccoName || null,
-                  });
-                  setSubmissionModal(null);
-                  reload(); triggerDataRefresh();
-                } catch (err) { console.error('Submission record failed', err); }
-              }}
-              style={primaryBtn(t, { color: palette.primaryDeepPlum.hex })}
-            >
-              Record Submission
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {noticeModal && (
-        <Modal title="Record Notice Received" onClose={() => setNoticeModal(null)}>
-          <Field t={t} label="Notice Date">
-            <input type="date" value={noticeModal.noticeDate}
-              onChange={(e) => setNoticeModal({ ...noticeModal, noticeDate: e.target.value })} style={inputStyle(t)} />
-          </Field>
-          <Field t={t} label="Method">
-            <select value={noticeModal.method} onChange={(e) => setNoticeModal({ ...noticeModal, method: e.target.value })} style={inputStyle(t)}>
-              {OPWDD_NOTICE_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field t={t} label="Determination">
-            <select value={noticeModal.determination} onChange={(e) => setNoticeModal({ ...noticeModal, determination: e.target.value })} style={inputStyle(t)}>
-              {OPWDD_ELIGIBILITY_DETERMINATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button onClick={() => setNoticeModal(null)} style={secondaryBtn(t)}>Cancel</button>
-            <button
-              data-testid="opwdd-notice-confirm"
-              onClick={async () => {
-                try {
-                  await recordNoticeReceived({
-                    opwddCase: activeCase, actorUserId: appUserId,
-                    noticeDate: noticeModal.noticeDate,
-                    method: noticeModal.method,
-                    determination: noticeModal.determination,
-                  });
-                  setNoticeModal(null);
-                  reload(); triggerDataRefresh();
-                } catch (err) { console.error('Notice record failed', err); }
-              }}
-              style={primaryBtn(t, { color: palette.accentGreen.hex })}
-            >
-              Save & Start Monitoring
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {convertModal && (
-        <Modal title="Convert to Intake" onClose={() => setConvertModal(null)}>
-          <p style={{ fontSize: t.fontMuted, color: '#555', marginBottom: 10 }}>
-            Code 95 received on {fmtDate(activeCase.code_95_received_at)}. This will close the OPWDD case and push the referral into the standard CHHA intake flow.
-          </p>
-          <Field t={t} label="Handoff Note (optional)">
-            <textarea value={convertModal.handoffNote} rows={3} style={{ ...inputStyle(t), resize: 'vertical' }}
-              onChange={(e) => setConvertModal({ ...convertModal, handoffNote: e.target.value })}
-              placeholder="Anything intake should know about this family going in." />
-          </Field>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button onClick={() => setConvertModal(null)} style={secondaryBtn(t)}>Cancel</button>
-            <button
-              data-testid="opwdd-convert-confirm"
-              onClick={async () => {
-                try {
-                  await convertCaseToIntake({ opwddCase: activeCase, referral, actorUserId: appUserId, handoffNote: convertModal.handoffNote || null });
-                  setConvertModal(null);
-                  reload(); triggerDataRefresh();
-                  onInitiateTransition?.(referral, 'Intake');
-                } catch (err) { console.error('Convert failed', err); }
-              }}
-              style={primaryBtn(t, { color: palette.accentGreen.hex })}
-            >
-              Convert & Hand Off
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {closeModal && (
-        <Modal title="Close OPWDD Case" onClose={() => setCloseModal(null)}>
-          <Field t={t} label="Reason">
-            <select value={closeModal.reason} onChange={(e) => setCloseModal({ ...closeModal, reason: e.target.value })} style={inputStyle(t)}>
-              {OPWDD_CLOSED_REASON_OPTIONS.filter((o) => o.value !== 'converted_to_intake').map((o) =>
-                <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field t={t} label="Note">
-            <textarea value={closeModal.note} rows={3} style={{ ...inputStyle(t), resize: 'vertical' }}
-              onChange={(e) => setCloseModal({ ...closeModal, note: e.target.value })}
-              placeholder="Why is this case being closed?" />
-          </Field>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button onClick={() => setCloseModal(null)} style={secondaryBtn(t)}>Cancel</button>
-            <button
-              data-testid="opwdd-close-confirm"
-              onClick={async () => {
-                try {
-                  await closeCase({ opwddCase: activeCase, actorUserId: appUserId, reason: closeModal.reason, note: closeModal.note });
-                  setCloseModal(null);
-                  reload(); triggerDataRefresh();
-                } catch (err) { console.error('Close failed', err); }
-              }}
-              style={primaryBtn(t, { color: palette.primaryMagenta.hex })}
-            >
-              Close Case
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {itemReviewModal && (
-        <ChecklistItemReviewModal
-          t={t}
-          item={itemReviewModal}
-          appUserId={appUserId}
-          onClose={() => setItemReviewModal(null)}
-          onUpdated={() => { setItemReviewModal(null); reload(); triggerDataRefresh(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Phase stepper ───────────────────────────────────────────────────────────
-function PhaseStepper({ t, currentPhase, checklistSatisfied, checklistTotal }) {
-  const current = currentPhase?.order ?? 0;
-  return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: `repeat(${OPWDD_PHASES.length}, 1fr)`, gap: 2,
-      padding: `${t.inputPadY}px ${t.inputPadX - 2}px`,
-      background: hexToRgba(palette.primaryDeepPlum.hex, 0.04),
-      borderRadius: t.radius,
-      border: `1px solid ${hexToRgba(palette.primaryDeepPlum.hex, 0.12)}`,
-    }}>
-      {OPWDD_PHASES.map((p) => {
-        const isCurrent = p.order === current;
-        const isDone = p.order < current;
-        const isFuture = p.order > current;
-        const showCount = p.id === 'docs' && checklistTotal > 0;
-        return (
-          <div
-            key={p.id}
-            title={p.label}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '4px 2px', borderRadius: 4,
-              background: isCurrent ? palette.primaryDeepPlum.hex : 'transparent',
-              color: isCurrent ? palette.backgroundLight.hex
-                : isDone ? palette.accentGreen.hex
-                : isFuture ? hexToRgba(palette.backgroundDark.hex, 0.3)
-                : hexToRgba(palette.backgroundDark.hex, 0.5),
-              fontSize: t.fontMuted - 0.5, fontWeight: isCurrent ? 700 : 600,
-              lineHeight: 1.2,
-            }}
-          >
-            <span style={{ fontSize: t.fontMuted - 1.5, opacity: 0.65 }}>
-              {isDone ? '✓' : p.order + 1}
-            </span>
-            <span style={{ whiteSpace: 'nowrap' }}>{p.shortLabel}</span>
-            {showCount && <span style={{ fontSize: t.fontMuted - 2, opacity: 0.8 }}>{checklistSatisfied}/{checklistTotal}</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Collapsible section ─────────────────────────────────────────────────────
-function CollapsibleSection({ t, id, title, summary, expanded, onToggle, isActive, children }) {
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <button
-        onClick={onToggle}
-        style={{
-          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: `${t.cardPadY - 2}px ${t.cardPadX}px`,
-          background: isActive
-            ? hexToRgba(palette.primaryDeepPlum.hex, 0.06)
-            : palette.backgroundLight.hex,
-          border: `1px solid ${isActive ? hexToRgba(palette.primaryDeepPlum.hex, 0.25) : 'var(--color-border)'}`,
-          borderRadius: t.radius,
-          borderBottomLeftRadius:  expanded ? 0 : t.radius,
-          borderBottomRightRadius: expanded ? 0 : t.radius,
-          borderBottom: expanded ? 'none' : undefined,
-          cursor: 'pointer', textAlign: 'left', gap: 8,
-        }}
-        data-testid={`opwdd-section-${id}`}
-      >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <p style={{ fontSize: t.fontBase, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: expanded ? 0 : 1 }}>
-            {isActive && <span style={{ color: palette.primaryDeepPlum.hex, marginRight: 4 }}>●</span>}
-            {title}
-          </p>
-          {!expanded && summary && (
-            <p style={{ fontSize: t.fontMuted, color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {summary}
-            </p>
-          )}
-        </div>
-        <span style={{ fontSize: t.fontBase, color: '#999', flexShrink: 0 }}>{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && (
-        <div style={{
-          padding: `${t.cardPadY}px ${t.cardPadX}px`,
-          border: `1px solid ${isActive ? hexToRgba(palette.primaryDeepPlum.hex, 0.25) : 'var(--color-border)'}`,
-          borderTop: 'none',
-          borderBottomLeftRadius: t.radius, borderBottomRightRadius: t.radius,
-          background: palette.backgroundLight.hex,
-        }}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Code 95 monitoring window indicator ─────────────────────────────────────
-function Code95Window({ t, windowStart, windowEnd, received }) {
-  if (received) {
-    return (
-      <p style={{ fontSize: t.fontMuted, color: '#15803d', fontWeight: 650 }}>
-        Code 95 received {fmtDate(received)} ✓
-      </p>
-    );
-  }
-  const daysLeft = daysUntil(windowEnd);
-  const overdue = daysLeft < 0;
-  return (
-    <div>
-      <p style={{ fontSize: t.fontMuted, color: '#555', marginBottom: 3 }}>
-        Expected window: {fmtDate(windowStart)} → {fmtDate(windowEnd)}
-      </p>
-      <div style={{
-        display: 'inline-block', padding: '3px 10px', borderRadius: 20,
-        fontSize: t.fontMuted, fontWeight: 700,
-        background: overdue ? '#FEE2E2' : '#FFEDD5',
-        color: overdue ? '#B91C1C' : '#9A3412',
-      }}>
-        {overdue ? `${Math.abs(daysLeft)} days overdue` : `${daysLeft} days left`}
-      </div>
-    </div>
-  );
-}
-
-// ── Sub-components ──────────────────────────────────────────────────────────
-
-function Field({ t, label, children }) {
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <p style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#555', marginBottom: 3 }}>{label}</p>
-      {children}
-    </div>
-  );
-}
-
-function SelectField({ t, label, value, options, onChange, testId }) {
-  return (
-    <div>
-      <p style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#777', marginBottom: 2 }}>{label}</p>
-      <select
-        value={value || ''}
-        onChange={(e) => onChange?.(e.target.value)}
-        style={inputStyle(t)}
-        data-testid={testId}
-      >
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function InlineField({ t, label, value, onSave, readOnly, placeholder, type = 'text' }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value || '');
-
-  useEffect(() => { if (!editing) setDraft(value || ''); }, [value, editing]);
-
-  return (
-    <div>
-      <p style={{ fontSize: t.fontLabel, fontWeight: 600, color: '#777', marginBottom: 2 }}>{label}</p>
-      {editing ? (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input type={type} value={draft} onChange={(e) => setDraft(e.target.value)}
-            style={{ ...inputStyle(t), flex: 1 }} placeholder={placeholder || ''} />
-          <button
-            onClick={() => { onSave?.(draft.trim() || null); setEditing(false); }}
-            style={{ padding: `${t.inputPadY}px ${t.inputPadX}px`, border: 'none', borderRadius: 6, background: palette.accentGreen.hex, color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer' }}
-          >Save</button>
-        </div>
-      ) : (
-        <button
-          onClick={() => !readOnly && setEditing(true)}
-          disabled={readOnly}
-          style={{ ...inputStyle(t), textAlign: 'left', cursor: readOnly ? 'default' : 'text', minHeight: t.inputPadY * 2 + 16 }}
-        >
-          {value || <span style={{ color: '#AAA' }}>{placeholder || '—'}</span>}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function CheckRow({ t, label, checked, onChange, readOnly }) {
-  return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: t.fontBase, color: palette.backgroundDark.hex, cursor: readOnly ? 'default' : 'pointer' }}>
-      <input type="checkbox" checked={!!checked} disabled={readOnly}
-        onChange={(e) => onChange?.(e.target.checked)}
-        style={{ accentColor: palette.accentGreen.hex, width: 14, height: 14, flexShrink: 0 }} />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-function EvaluationRow({ t, label, statusValue, scheduledFor, receivedAt, validThrough, validityYears, onReceived, onScheduled, onChangeStatus, readOnly }) {
-  const statusPill = statusValue === OPWDD_EVAL_STATUS.ACCEPTED || statusValue === OPWDD_EVAL_STATUS.RECEIVED
-    ? { bg: '#DCFCE7', fg: '#15803d' }
-    : statusValue === OPWDD_EVAL_STATUS.EXPIRED
-    ? { bg: '#FEE2E2', fg: '#B91C1C' }
-    : { bg: '#FEF3C7', fg: '#92400E' };
-
-  const expiryState = useMemo(() => {
-    if (!validThrough) return null;
-    return new Date(validThrough).getTime() < Date.now() ? 'expired' : 'current';
-  }, [validThrough]);
-
-  return (
-    <div style={{ ...cardStyle(t), padding: `${t.cardPadY - 2}px ${t.cardPadX}px`, marginTop: 6, marginBottom: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <p style={{ fontSize: t.fontBase, fontWeight: 650, color: palette.backgroundDark.hex }}>{label}</p>
-        <span style={{ fontSize: t.fontMuted, fontWeight: 650, padding: '2px 8px', borderRadius: 20, background: statusPill.bg, color: statusPill.fg }}>
-          {statusValue || 'needed'}
-        </span>
-      </div>
-      <div style={{ fontSize: t.fontMuted, color: '#666', marginTop: 3 }}>
-        {scheduledFor && <>Scheduled {fmtDate(scheduledFor)}. </>}
-        {receivedAt && <>Received {fmtDate(receivedAt)}. </>}
-        {validThrough && (
-          <span style={{ color: expiryState === 'expired' ? '#B91C1C' : '#15803d' }}>
-            Valid through {fmtDate(validThrough)}{expiryState === 'expired' ? ' (EXPIRED)' : ''}
-          </span>
-        )}
-        {!scheduledFor && !receivedAt && <>Not yet scheduled.</>}
-      </div>
-
-      {!readOnly && (
-        <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={statusValue || OPWDD_EVAL_STATUS.NEEDED}
-            onChange={(e) => onChangeStatus(e.target.value)}
-            style={{ ...inputStyle(t), width: 'auto', flex: '0 1 auto' }}
-          >
-            {OPWDD_EVAL_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <DatePickButton t={t} label="Schedule" onPick={(iso) => onScheduled(iso)} />
-          <DatePickButton t={t} label="Received" onPick={(iso) => onReceived(iso)} color={palette.accentGreen.hex} />
-          {validityYears > 0 && (
-            <span style={{ fontSize: t.fontMuted - 0.5, color: '#999' }}>valid {validityYears}y</span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DatePickButton({ t, label, onPick, color }) {
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState(new Date().toISOString().slice(0, 10));
-  if (open) {
-    return (
-      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-        <input type="date" value={val} onChange={(e) => setVal(e.target.value)} style={{ ...inputStyle(t), width: 'auto' }} />
-        <button
-          onClick={() => { onPick?.(new Date(val).toISOString()); setOpen(false); }}
-          style={{ padding: `${t.inputPadY}px ${t.inputPadX}px`, border: 'none', borderRadius: 6, background: color || palette.primaryDeepPlum.hex, color: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer' }}
-        >Save</button>
-        <button onClick={() => setOpen(false)} style={{ padding: `${t.inputPadY}px ${t.inputPadX}px`, background: 'none', border: `1px solid var(--color-border)`, borderRadius: 6, fontSize: t.fontMuted, cursor: 'pointer' }}>×</button>
-      </span>
-    );
-  }
-  return (
-    <button
-      onClick={() => setOpen(true)}
-      style={{ padding: `${t.inputPadY}px ${t.inputPadX}px`, border: `1px solid var(--color-border)`, borderRadius: 6, background: palette.backgroundLight.hex, fontSize: t.fontMuted, fontWeight: 650, cursor: 'pointer', color: color || palette.backgroundDark.hex }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function ChecklistRow({ t, item, readOnly, onOpenReview, onOpenFiles, resolveUser }) {
-  const pill = CHECKLIST_STATUS_PILL[item.status] || CHECKLIST_STATUS_PILL[OPWDD_CHECKLIST_STATUS.MISSING];
-  const expired = useMemo(
-    () => !!(item.expires_at && new Date(item.expires_at).getTime() < Date.now()),
-    [item.expires_at],
-  );
-
-  return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: `${t.cardPadY - 4}px ${t.cardPadX - 2}px`,
-        border: `1px solid var(--color-border)`, borderRadius: 6,
-        background: palette.backgroundLight.hex,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: t.fontBase - 0.5, fontWeight: 600, color: palette.backgroundDark.hex, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.requirement_label || item.requirement_key}
-          {item.is_required && <span style={{ color: palette.primaryMagenta.hex, marginLeft: 3 }}>*</span>}
-        </p>
-        {(item.received_at || item.expires_at) && (
-          <p style={{ fontSize: t.fontMuted - 1, color: '#888', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {item.received_at && `Rcvd ${fmtShort(item.received_at)}`}
-            {item.received_by_id && ` · ${resolveUser(item.received_by_id)}`}
-            {item.expires_at && (
-              <span style={{ color: expired ? '#B91C1C' : '#15803d', marginLeft: 3 }}>
-                · {expired ? 'EXPIRED ' : 'til '}{fmtShort(item.expires_at)}
-              </span>
+        {flow.completed ? (
+          <MetaLine t={t}>
+            Letter received {fmtDate(activeCase.parent_letter_received_at)} — case completed and referral sent back to Intake.
+          </MetaLine>
+        ) : !flow.submitted ? (
+          <MetaLine t={t}>Submit the packet (Step 4) first. When the determination letter arrives from the parent, upload it here.</MetaLine>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {letterUploaded ? (
+              <MetaLine t={t}>
+                Letter on file ({activeCase.parent_letter_file_id}).
+                {onOpenFiles && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenFiles(patient)}
+                    style={{ border: 'none', background: 'none', padding: 0, marginLeft: 6, cursor: 'pointer', fontSize: t.fontMuted, fontWeight: 700, color: palette.accentBlue.hex }}
+                  >
+                    View files
+                  </button>
+                )}
+              </MetaLine>
+            ) : (
+              <MetaLine t={t}>Upload the letter received from the parent.</MetaLine>
             )}
-          </p>
+            {canEdit && (
+              <input
+                ref={letterInputRef}
+                type="file"
+                disabled={uploadingLetter || busy}
+                onChange={(e) => handleUploadLetter(e.target.files?.[0])}
+                style={{ fontSize: t.fontMuted }}
+              />
+            )}
+            {uploadingLetter && <MetaLine t={t}>Uploading letter…</MetaLine>}
+            {canConvert && (
+              <button
+                type="button"
+                disabled={busy || uploadingLetter || !letterUploaded}
+                title={letterUploaded ? undefined : 'Upload the parent letter first'}
+                onClick={() => run(() => completeCaseWithParentLetter({
+                  opwddCase: activeCase, referral, actorUserId: appUserId,
+                  letterFileId: activeCase.parent_letter_file_id,
+                }))}
+                style={primaryBtn(t, { disabled: busy || uploadingLetter || !letterUploaded })}
+              >
+                {busy ? 'Completing…' : 'Mark case completed · send back to Intake'}
+              </button>
+            )}
+          </div>
         )}
-      </div>
-      <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '1px 6px', borderRadius: 12, background: expired ? '#FEE2E2' : pill.bg, color: expired ? '#B91C1C' : pill.fg, flexShrink: 0 }}>
-        {expired ? 'Expired' : pill.label}
-      </span>
-      {!readOnly && (
-        <>
-          <button onClick={onOpenReview}
-            title="Update status"
-            style={{ padding: `${t.inputPadY - 2}px ${t.inputPadX - 2}px`, border: `1px solid var(--color-border)`, borderRadius: 5, background: palette.backgroundLight.hex, fontSize: t.fontMuted - 0.5, fontWeight: 650, cursor: 'pointer', flexShrink: 0 }}
-          >
-            Edit
-          </button>
-          {onOpenFiles && (
-            <button onClick={onOpenFiles}
-              title="Open Files tab to upload or link"
-              style={{ padding: `${t.inputPadY - 2}px ${t.inputPadX - 2}px`, border: `1px solid var(--color-border)`, borderRadius: 5, background: palette.backgroundLight.hex, fontSize: t.fontMuted - 0.5, fontWeight: 650, cursor: 'pointer', color: palette.accentBlue.hex, flexShrink: 0 }}
+      </StepCard>
+
+      {/* Close-case escape hatch */}
+      {canClose && !caseDone && (
+        <div style={{ marginTop: t.sectionGap }}>
+          {!showClose ? (
+            <button
+              type="button"
+              onClick={() => setShowClose(true)}
+              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: t.fontMuted, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}
             >
-              Files
+              Close case without completing…
             </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value={closeReason} onChange={(e) => setCloseReason(e.target.value)} style={{ ...inputStyle(t), flex: 1 }}>
+                <option value="">Close reason…</option>
+                {OPWDD_CLOSED_REASON_OPTIONS.filter((o) => o.value !== 'converted_to_intake').map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={busy || !closeReason}
+                onClick={() => run(async () => {
+                  await closeCase({ opwddCase: activeCase, actorUserId: appUserId, reason: closeReason });
+                  setShowClose(false);
+                })}
+                style={{ ...secondaryBtn(t), flex: 'none', padding: `${t.btnPadY}px 12px`, fontWeight: 700, color: palette.primaryMagenta.hex, opacity: !closeReason ? 0.5 : 1 }}
+              >
+                Close case
+              </button>
+            </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
-}
-
-function ChecklistItemReviewModal({ t, item, appUserId, onClose, onUpdated }) {
-  const [status, setStatus] = useState(item.status || OPWDD_CHECKLIST_STATUS.MISSING);
-  const [isRequired, setIsRequired] = useState(!!item.is_required);
-  const [notes, setNotes] = useState(item.notes || '');
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    setSaving(true);
-    try {
-      const now = new Date().toISOString();
-      const patch = { status, is_required: isRequired, notes };
-      if (status === OPWDD_CHECKLIST_STATUS.REQUESTED && !item.requested_at) {
-        patch.requested_at = now;
-        patch.requested_by_id = appUserId;
-      }
-      if (status === OPWDD_CHECKLIST_STATUS.RECEIVED && !item.received_at) {
-        await markChecklistItemReceived({ item, receivedByUserId: appUserId, actorUserId: appUserId });
-      } else if (status === OPWDD_CHECKLIST_STATUS.ACCEPTED) {
-        await markChecklistItemAccepted({ item, reviewedByUserId: appUserId, actorUserId: appUserId });
-      } else {
-        if (status === OPWDD_CHECKLIST_STATUS.REJECTED) {
-          patch.reviewed_at = now;
-          patch.reviewed_by_id = appUserId;
-          await recordActivity({
-            actorUserId: appUserId,
-            action: OPWDD_AUDIT_ACTION.CHECKLIST_ITEM_REJECTED,
-            patientId: item.patient_id, referralId: item.referral_id,
-            detail: `Rejected: ${item.requirement_label || item.requirement_key}.`,
-            metadata: { caseId: item.opwdd_case_id, requirementKey: item.requirement_key, notes },
-          }).catch(() => {});
-        }
-        if (status === OPWDD_CHECKLIST_STATUS.REQUESTED && !item.requested_at) {
-          await recordActivity({
-            actorUserId: appUserId,
-            action: OPWDD_AUDIT_ACTION.CHECKLIST_ITEM_REQUESTED,
-            patientId: item.patient_id, referralId: item.referral_id,
-            detail: `Requested: ${item.requirement_label || item.requirement_key}.`,
-            metadata: { caseId: item.opwdd_case_id, requirementKey: item.requirement_key },
-          }).catch(() => {});
-        }
-        await updateChecklistItem(item._id, patch);
-      }
-      onUpdated();
-    } catch (err) {
-      console.error('Checklist item update failed', err);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title={item.requirement_label || item.requirement_key} onClose={onClose}>
-      <Field t={t} label="Status">
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={inputStyle(t)}>
-          {OPWDD_CHECKLIST_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </Field>
-      <Field t={t} label="Required?">
-        <label style={{ fontSize: t.fontBase, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-          <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)} />
-          <span>Required for this case</span>
-        </label>
-      </Field>
-      <Field t={t} label="Notes">
-        <textarea value={notes} rows={3} onChange={(e) => setNotes(e.target.value)} style={{ ...inputStyle(t), resize: 'vertical' }} />
-      </Field>
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button onClick={onClose} style={secondaryBtn(t)} disabled={saving}>Cancel</button>
-        <button onClick={save} disabled={saving} style={primaryBtn(t, { disabled: saving, color: palette.primaryDeepPlum.hex })} data-testid="opwdd-checklist-save">
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function Modal({ title, children, onClose }) {
-  return (
-    <div role="dialog" onClick={(e) => e.target === e.currentTarget && onClose?.()} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
-    }}>
-      <div style={{ width: 460, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto', borderRadius: 8, background: palette.backgroundLight.hex, padding: 20, border: '1px solid var(--color-border)' }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 14 }}>{title}</h3>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function addYears(iso, years) {
-  const d = new Date(iso);
-  d.setFullYear(d.getFullYear() + years);
-  return d.toISOString();
 }

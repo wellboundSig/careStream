@@ -17,7 +17,7 @@ describe('SubNav', () => {
   it('renders pinned page labels', () => {
     render(<SubNav pinnedPages={['/', '/pipeline', '/tasks']} onReorder={vi.fn()} />);
     expect(screen.getByText('Dashboard')).toBeTruthy();
-    expect(screen.getByText('Pipeline')).toBeTruthy();
+    expect(screen.getByText('Pipeline Overview')).toBeTruthy();
     expect(screen.getByText('Tasks')).toBeTruthy();
   });
 
@@ -56,8 +56,9 @@ describe('ALL_PINNABLE', () => {
     expect(leadEntry.label).toBe('Leads');
   });
 
-  it('includes "SOC/ROC Done" label for soc-completed path', () => {
-    const completed = ALL_PINNABLE.find((p) => p.path === '/modules/soc-completed');
-    expect(completed.label).toBe('SOC/ROC Done');
+  it('has no Visit Completed pin (module removed); Completed is pinnable', () => {
+    expect(ALL_PINNABLE.find((p) => p.path === '/modules/soc-completed')).toBeFalsy();
+    const completed = ALL_PINNABLE.find((p) => p.path === '/modules/completed');
+    expect(completed.label).toBe('Completed');
   });
 });

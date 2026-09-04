@@ -160,7 +160,7 @@ export default function UserSettingsSheet({
   const roleName = resolveRole(user.role_id);
   const statusStyle = STATUS_COLORS[user.status] || STATUS_COLORS.Active;
   const activeCases = referrals
-    .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC')
+    .filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage))
     .sort((a, b) => Date.parse(b.referral_date || b.updated_at || 0) - Date.parse(a.referral_date || a.updated_at || 0));
   const completed = referrals.filter((r) => isSocCompletedReferral(r));
   const ntuc = referrals.filter((r) => r.current_stage === 'NTUC');
@@ -481,7 +481,7 @@ function OverviewSection({ user, loadingRefs, activeCases, completed, ntuc, reso
                   </p>
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                     {r.division && <DivisionBadge division={r.division} />}
-                    {r.current_stage && <StageBadge stage={r.current_stage} />}
+                    {r.current_stage && <StageBadge stage={r.current_stage} referral={r} />}
                   </div>
                 </div>
               </div>

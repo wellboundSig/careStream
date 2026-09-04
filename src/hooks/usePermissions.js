@@ -29,7 +29,7 @@ function allKeysExceptDenyByDefault() {
  * Migration safety: if no UserPermissions record exists, ALL permissions
  * are granted and assignment is unrestricted — EXCEPT keys listed in
  * DENY_BY_DEFAULT_PERMISSIONS (e.g. leads.change_intake_owner,
- * referral.change_marketer), which
+ * referral.change_marketer, referral.change_facility), which
  * require an explicit grant on the user's permissions row.
  */
 export function usePermissions() {

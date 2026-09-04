@@ -28,8 +28,6 @@ import {
 } from '../../../utils/dateFormat.js';
 import { maybeClearDocumentationDeferred } from '../../../utils/documentationDeferred.js';
 import { notifyPostSocF2fUploaded } from '../../../utils/postSocF2fUploadNotify.js';
-import DocumentationCompleteAction from '../../common/DocumentationCompleteAction.jsx';
-
 function formatBytes(n) {
   if (!n && n !== 0) return '';
   if (n < 1024) return `${n} B`;
@@ -261,12 +259,6 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
 
   return (
     <div style={{ padding: '20px 20px 40px' }}>
-      <DocumentationCompleteAction
-        referral={referral}
-        source="f2f_tab"
-        onOpenClinical={() => setActiveTab?.('clinical_review')}
-      />
-
       {/* F2F Status */}
       <Section title="F2F Status">
         {days !== null ? (
@@ -594,9 +586,8 @@ export default function F2FTab({ patient, referral, readOnly = false }) {
             </span>
           </label>
         ))}
-
-        <HospitalizationReview referral={referral} patient={patient} readOnly={readOnly} />
       </Section>
+      <HospitalizationReview referral={referral} patient={patient} readOnly={readOnly} />
 
       {preview && (
         <FilePreviewModal

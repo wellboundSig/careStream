@@ -13,8 +13,8 @@ describe('DRAWER_TABS definition', () => {
     expect(DRAWER_TABS[1].label).toBe('Demographics');
   });
 
-  it('contains 13 tabs total (including F2F, Physician, and Clinical Review)', () => {
-    expect(DRAWER_TABS.length).toBe(13);
+  it('contains 14 tabs total (including F2F, Physician, EMR Onboarding, and Clinical Review)', () => {
+    expect(DRAWER_TABS.length).toBe(14);
   });
 
   it('has all expected tab IDs', () => {
@@ -32,6 +32,7 @@ describe('DRAWER_TABS definition', () => {
     expect(ids).toContain('clinical_review');
     expect(ids).toContain('authorizations');
     expect(ids).toContain('conflicts');
+    expect(ids).toContain('emr');
   });
 
   it('tab order: Referral, Demographics, Triage, F2F, then the rest', () => {

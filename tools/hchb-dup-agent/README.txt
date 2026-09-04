@@ -1,9 +1,12 @@
 Wellbound HCHB duplicate agent (Windows on-prem)
 ================================================
 
-Runs 24/7 on the closet PC. Speaks to LOGSHIP over the LAN. Speaks to AWS
+Runs 24/7 on PC043 (closet PC). Speaks to LOGSHIP over the LAN. Speaks to AWS
 outbound only. Returns match flags plus latest-episode status/dates —
 never names, SSN, MRN, or DOB.
+
+Day-to-day (RMM → start → prove it works):
+  Open  PC043_RUNBOOK.txt  in this folder.
 
 Quick start (closet PC)
 -----------------------
@@ -26,7 +29,13 @@ Commands
 --------
   python run_agent.py ping
   python run_agent.py check --ssn ... --mrn ... --last ... --first ... --dob ...
+  python run_agent.py visit-check --last SMITH --first JANE --dob 1980-01-15 --kind SOC --date YYYY-MM-DD
   python run_agent.py hash  --ssn ...          (prints digests only)
   python run_agent.py run                     (24/7 loop)
+
+Same bridge also answers CareStream SOC/ROC visit checks (hashed scheduled
+visits → V_AGENTVISITTIMEREPORT, ±1 day, SOC/ROC type must match).
+Copy a new agent build to PC043 and restart the service after pulling this
+code; redeploy the AWS bridge so visit_check jobs are accepted.
 
 See ../NEXT_STEPS.txt for the full path to CareStream realtime checks.

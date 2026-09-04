@@ -1,8 +1,18 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import PipelineCard from './PipelineCard.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
+import { STAGE_META } from '../../data/stageConfig.js';
+import { useProgressiveReveal } from '../../hooks/useProgressiveReveal.js';
+
+/** Visible cards per column before the inner scrollbar takes over. */
+const VISIBLE_CARDS = 3;
+const CARD_SLOT = 88;
+const CARD_GAP = 5;
+const LIST_PAD_Y = 12;
+const LIST_HEIGHT = VISIBLE_CARDS * CARD_SLOT + (VISIBLE_CARDS - 1) * CARD_GAP + LIST_PAD_Y;
 
 const STAGE_ACCENT = {
+  'Clinical Lead Pre-Check':   palette.primaryDeepPlum.hex,
   'Lead Entry':                palette.accentBlue.hex,
   'Intake':                    palette.accentBlue.hex,
   'Eligibility Verification':  palette.accentOrange.hex,
@@ -16,12 +26,16 @@ const STAGE_ACCENT = {
   'Pre-SOC':                   palette.accentGreen.hex,
   'SOC Scheduled':             palette.accentGreen.hex,
   'SOC Completed':             palette.accentGreen.hex,
+  'Post Visit Intake':         palette.accentBlue.hex,
+  'Post Visit Clinical Review': palette.primaryMagenta.hex,
+  'Completed':                 palette.accentGreen.hex,
   'Hold':                      palette.highlightYellow.hex,
   'NTUC':                      hexToRgba(palette.backgroundDark.hex, 0.35),
 };
 
 // Contextual empty-state messages per stage
 const EMPTY_HINTS = {
+  'Clinical Lead Pre-Check':   'Awaiting clinical glance',
   'Lead Entry':                'New referrals land here',
   'Intake':                    'Drag from Lead Entry',
   'Eligibility Verification':  'Awaiting eligibility check',
@@ -34,7 +48,10 @@ const EMPTY_HINTS = {
   'Admin Confirmation':        'Nothing to confirm',
   'Pre-SOC':                   'Awaiting pre-SOC prep',
   'SOC Scheduled':             'No SOCs scheduled',
-  'SOC Completed':             'No completed SOCs',
+  'SOC Completed':             'No completed visits',
+  'Post Visit Intake':         'No post-visit paperwork',
+  'Post Visit Clinical Review': 'No post-visit reviews',
+  'Completed':                 'No completed cases',
   'Hold':                      'No referrals on hold',
   'NTUC':                      'No closed referrals',
 };
@@ -43,7 +60,7 @@ export default function PipelineStage({
   stage,
   cards,
   canAcceptDrop,
-  isBeingDragged,
+  draggingId,
   activeDragFromStage,
   onDragStart,
   onDragEnd,
@@ -53,9 +70,14 @@ export default function PipelineStage({
   onAddReferral,
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const listRef = useRef(null);
+  const reveal = useProgressiveReveal(cards, {
+    resetKey: stage,
+    rootRef: listRef,
+  });
 
   const isStatus   = stage === 'Hold' || stage === 'NTUC';
-  const isTerminal = stage === 'SOC Completed' || stage === 'NTUC';
+  const isTerminal = stage === 'Completed' || stage === 'NTUC';
   const accentColor = STAGE_ACCENT[stage] || palette.accentBlue.hex;
 
   const dropAllowed = isDragOver && canAcceptDrop;
@@ -100,6 +122,8 @@ export default function PipelineStage({
         boxShadow:      dropAllowed ? `0 0 0 2px ${hexToRgba(palette.primaryMagenta.hex, 0.25)}` : 'none',
         overflow:       'hidden',
         minHeight:      0,
+        contentVisibility: 'auto',
+        containIntrinsicSize: `auto ${LIST_HEIGHT + 40}px`,
       }}
     >
       <StageHeader
@@ -113,26 +137,35 @@ export default function PipelineStage({
       />
 
       <div
+        ref={listRef}
         style={{
-          flex:          1,
-          overflowY:     'auto',
-          padding:       '6px 8px',
-          display:       'flex',
-          flexDirection: 'column',
-          gap:           5,
-          minHeight:     60,
+          flex:                 '0 0 auto',
+          height:               LIST_HEIGHT,
+          overflowY:            'auto',
+          overflowX:            'hidden',
+          overscrollBehavior:   'contain',
+          scrollbarWidth:       'thin',
+          scrollbarColor:       `${hexToRgba(palette.backgroundDark.hex, 0.28)} transparent`,
+          padding:              '6px 8px',
+          display:              'flex',
+          flexDirection:        'column',
+          gap:                  CARD_GAP,
+          minHeight:            0,
         }}
       >
-        {cards.map((ref) => (
+        {reveal.visible.map((ref) => (
           <PipelineCard
             key={ref._id}
             referral={ref}
-            isDragging={isBeingDragged?.(ref._id)}
+            isDragging={draggingId === ref._id}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onContextMenu={onContextMenu}
           />
         ))}
+        {reveal.hasMore && (
+          <div ref={reveal.sentinelRef} aria-hidden="true" style={{ height: 1, flexShrink: 0 }} />
+        )}
 
         {cards.length === 0 && (
           <div
@@ -235,7 +268,7 @@ function StageHeader({ stage, count, isStatus, isTerminal, accentColor, dropAllo
           </span>
         )}
         <span
-          title={stage}
+          title={STAGE_META[stage]?.displayName || stage}
           style={{
             fontSize:      11.5,
             fontWeight:    650,
@@ -247,7 +280,7 @@ function StageHeader({ stage, count, isStatus, isTerminal, accentColor, dropAllo
             textOverflow:  'ellipsis',
           }}
         >
-          {stage}
+          {STAGE_META[stage]?.displayName || stage}
         </span>
       </div>
 

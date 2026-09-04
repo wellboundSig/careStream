@@ -31,6 +31,7 @@ import {
 
 /** Farther ahead = higher index. Hold/Conflict mid-pipeline. Terminals unmergeable. */
 export const PIPELINE_STAGE_RANK = [
+  'Clinical Lead Pre-Check',
   'Lead Entry',
   'Intake',
   'Eligibility Verification',
@@ -47,6 +48,9 @@ export const PIPELINE_STAGE_RANK = [
   'Pre-SOC',
   'SOC Scheduled',
   'SOC Completed',
+  'Post Visit Intake',
+  'Post Visit Clinical Review',
+  'Completed',
 ];
 
 const UNMERGEABLE = new Set(['Discarded Leads', 'NTUC']);

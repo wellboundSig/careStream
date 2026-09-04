@@ -101,6 +101,13 @@ describe('usePermissions — feature permissions (existing behavior)', () => {
     expect(result.current.can('referral.change_marketer')).toBe(false);
   });
 
+  it('denies referral.change_facility by default even with no permissions row', () => {
+    mockAppUserId = 'usr_1';
+    mockUserPermissions = {};
+    const { result } = renderHook(() => usePermissions());
+    expect(result.current.can('referral.change_facility')).toBe(false);
+  });
+
   it('grants clinical.rn_review when no permissions row exists (nurses must confirm)', () => {
     mockAppUserId = 'usr_1';
     mockUserPermissions = {};

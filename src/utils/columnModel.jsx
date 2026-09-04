@@ -36,25 +36,47 @@ export const MODULE_COLUMN_DEFS = [
   { key: 'marketer',  label: 'Marketer',   defaultOn: true, filterable: true },
   { key: 'stage',     label: 'Stage',      defaultOn: true, filterable: true, tooltip: 'Current pipeline stage' },
   { key: 'triage',    label: 'Triage',     defaultOn: true, filterable: true, tooltip: 'Special Needs triage. Filter: Done · Needed · N/A' },
-  { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in current stage — resets on every stage change. Filter accepts a number; matches stages with at least that many days.' },
+  { key: 'days_in_stage',    label: 'Days in Stage',    defaultOn: true, filterable: true, sortField: 'days_in_stage',    tooltip: 'Days in the pipeline stage on the Stage badge. Resets when that stage changes. On Clinical, this is not days sitting in review.' },
+  { key: 'days_in_review',   label: 'Days in Review',   defaultOn: false, filterable: true, sortField: 'days_in_review',   tooltip: 'Days in the Clinical Review queue. Starts when the case is pushed or assigned here. Can differ from the pipeline stage clock.' },
   { key: 'days_in_pipeline', label: 'Days in Pipeline', defaultOn: true, filterable: true, sortField: 'days_in_pipeline', tooltip: 'Days since the referral was created — never resets. Filter accepts a number.' },
   { key: 'f2f',       label: 'F2F',        defaultOn: true, filterable: false, tooltip: 'F2F authorization countdown' },
   { key: 'owner',     label: 'Owner',      defaultOn: true, filterable: true },
   { key: 'insurance', label: 'Insurance',  defaultOn: true, filterable: true },
   { key: 'facility',  label: 'Facility',   defaultOn: true, filterable: true },
   { key: 'emr_onboarded', label: 'EMR Onboarded', defaultOn: true, filterable: true, tooltip: 'Yes if initial or full EMR onboarding has been completed. Filter accepts yes / no.' },
+  { key: 'soc_completed_date', label: 'SOC/ROC Completed', defaultOn: true, filterable: true, sortField: 'soc_completed_date', tooltip: 'Date the SOC or ROC visit was completed. Filter accepts yes / no.' },
+  { key: 'soc_scheduled_date', label: 'SOC/ROC Scheduled', defaultOn: true, filterable: true, sortField: 'soc_scheduled_date', tooltip: 'Date the SOC or ROC visit is scheduled for. Filter accepts yes / no.' },
   { key: 'activity',  label: 'Last Activity', defaultOn: true, filterable: false },
   // Urgent care lives at the END so it doesn't crowd the patient label
   // (the row's name already carries the small red cross when flagged).
   { key: 'urgent',    label: 'Urgent',     defaultOn: true, filterable: true, tooltip: 'Patient flagged as requiring urgent care. Filter accepts yes / no.' },
-  {
-    key: 'post_soc_docs',
-    label: 'Post-SOC/ROC Docs',
-    defaultOn: true,
-    filterable: true,
-    tooltip: 'Deferred post-SOC paperwork. Filter: waiting_docs · waiting_clinical · overdue · yes (any open) · no',
-  },
+  // 'post_soc_docs' (deferred-docs status) was removed: visits and paperwork
+  // run side by side as the status quo — SOC/ROC Completed/Scheduled columns
+  // carry the post-visit signal now.
 ];
+
+/** Clinical queue shows Days in Review so both clocks are visible. */
+export function moduleColumnDefsForStage(stageName) {
+  if (stageName === 'Staffing Feasibility') {
+    return MODULE_COLUMN_DEFS
+      .filter((c) => c.key !== 'days_in_review')
+      .map((c) => (
+        c.key === 'days_in_stage'
+          ? {
+            ...c,
+            label: 'Days in Staffing',
+            tooltip: 'Days since the hard push to Staffing (On Track / green check). Concurrent radar cases that are still in Intake or Clinical do not start this clock.',
+          }
+          : c
+      ));
+  }
+  if (stageName !== 'Clinical Intake RN Review') {
+    return MODULE_COLUMN_DEFS.filter((c) => c.key !== 'days_in_review');
+  }
+  return MODULE_COLUMN_DEFS.map((c) => (
+    c.key === 'days_in_review' ? { ...c, defaultOn: true } : c
+  ));
+}
 
 /**
  * SOC Completed — Pending Log alternate queue.
@@ -76,7 +98,7 @@ export const SOC_COMPLETED_PENDING_LOG_COLUMN_DEFS = [
   { key: 'pcp', label: 'PCP', defaultOn: true, filterable: true, tooltip: 'Triage PCP when present; otherwise the referral physician' },
   { key: 'marketer', label: 'Marketer', defaultOn: true, filterable: true },
   { key: 'account_manager_info', label: 'Account manager info', defaultOn: true, filterable: false, tooltip: 'Notes from nurses via @Account manager info (multiple entries). May also show a clinical send-back note.' },
-  { key: 'clinical_rn', label: 'Clinical Intake RN', defaultOn: true, filterable: true },
+  { key: 'clinical_rn', label: 'Clinical Review RN', defaultOn: true, filterable: true },
 ];
 
 // ── Hooks ───────────────────────────────────────────────────────────────────

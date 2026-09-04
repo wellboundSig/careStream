@@ -897,7 +897,7 @@ describe('FLOW 17: Send to Conflict from every active non-terminal stage', () =>
   // from any stage except 'Completed' or 'Leads.'" Lead Entry is now also
   // excluded — leads aren't yet active referrals, so conflict isn't an option
   // until after promotion to Intake.
-  const excluded = new Set(['Conflict', 'OPWDD Enrollment', 'Lead Entry']);
+  const excluded = new Set(['Conflict', 'OPWDD Enrollment', 'Lead Entry', 'Clinical Lead Pre-Check']);
   const activeNonTerminal = Object.entries(StageRules.stages)
     .filter(([name, rule]) => !rule.terminal && !excluded.has(name))
     .map(([name]) => name);
@@ -912,6 +912,10 @@ describe('FLOW 17: Send to Conflict from every active non-terminal stage', () =>
     expect(canMoveFromTo('Lead Entry', 'Conflict')).toBe(false);
   });
 
+  it('Clinical Lead Pre-Check cannot send to Conflict (still a lead)', () => {
+    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Conflict')).toBe(false);
+  });
+
   it('OPWDD Enrollment cannot send to Conflict (restricted transitions)', () => {
     expect(canMoveFromTo('OPWDD Enrollment', 'Conflict')).toBe(false);
   });
@@ -921,7 +925,9 @@ describe('FLOW 17: Send to Conflict from every active non-terminal stage', () =>
   });
 
   it('terminal stages cannot send to Conflict', () => {
-    expect(canMoveFromTo('SOC Completed', 'Conflict')).toBe(false);
+    // SOC Completed became transitional "Visit Completed"; the terminal stage
+    // in the post-visit flow is 'Completed'.
+    expect(canMoveFromTo('Completed', 'Conflict')).toBe(false);
     expect(canMoveFromTo('NTUC', 'Conflict')).toBe(false);
   });
 });

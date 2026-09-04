@@ -2,7 +2,7 @@
  * Quiet episode marker — SOC (start) yellow · ROC (continue) blue.
  * No borders. Tiny by default.
  */
-import palette, { hexToRgba } from '../../utils/colors.js';
+import palette, { hexToRgba, hexOnWhite } from '../../utils/colors.js';
 import { normalizeEpisodeType } from '../../utils/episodeType.js';
 
 /** Planted flag — beginning of care. */
@@ -32,13 +32,13 @@ function RocIcon({ size = 10 }) {
 
 const STYLES = {
   SOC: {
-    bg: hexToRgba(palette.highlightYellow.hex, 0.22),
+    bg: hexOnWhite(palette.highlightYellow.hex, 0.22),
     text: '#8A6A00',
     Icon: SocIcon,
     title: 'Start of Care',
   },
   ROC: {
-    bg: hexToRgba(palette.accentBlue.hex, 0.12),
+    bg: hexOnWhite(palette.accentBlue.hex, 0.12),
     text: palette.accentBlue.hex,
     Icon: RocIcon,
     title: 'Resumption of Care',

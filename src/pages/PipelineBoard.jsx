@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { usePageOutlet } from '../context/pageOutletContext.jsx';
 import { usePipelineData } from '../hooks/usePipelineData.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
@@ -11,16 +11,11 @@ import { STAGE_META } from '../data/stageConfig.js';
 
 import PipelineStage from '../components/pipeline/PipelineStage.jsx';
 
-/** Prefer STAGE_META.matchReferral so concurrent stages (e.g. SOC Completed) stay visible. */
-function cardsForStage(stage, referrals) {
-  const match = STAGE_META[stage]?.matchReferral;
-  if (typeof match === 'function') return referrals.filter(match);
-  return referrals.filter((r) => r.current_stage === stage);
-}
 import ContextMenu from '../components/pipeline/ContextMenu.jsx';
 import TransitionModal from '../components/pipeline/TransitionModal.jsx';
 import NewReferralForm from '../components/forms/NewReferralForm.jsx';
 import LoadingState from '../components/common/LoadingState.jsx';
+import AccessDenied from '../components/common/AccessDenied.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
@@ -56,7 +51,13 @@ const ROW_GROUPS = [
   {
     label: 'Admission',
     color: palette.accentGreen.hex,
+    displayNames: { 'SOC Completed': 'Visit Completed' },
     stages: ['Pre-SOC', 'SOC Scheduled', 'SOC Completed'],
+  },
+  {
+    label: 'Post-Visit Documentation',
+    color: palette.accentBlue.hex,
+    stages: ['Post Visit Intake', 'Post Visit Clinical Review', 'Completed'],
   },
 ];
 
@@ -72,12 +73,36 @@ const STATUS_GROUP = {
   stages: ['Hold', 'NTUC'],
 };
 
+const BOARD_STAGES = [
+  ...ROW_GROUPS.flatMap((g) => g.stages),
+  ...SPECIAL_GROUP.stages,
+  ...STATUS_GROUP.stages,
+];
+
+function bucketCardsByStage(referrals) {
+  const buckets = {};
+  for (const stage of BOARD_STAGES) buckets[stage] = [];
+  for (const r of referrals) {
+    for (const stage of BOARD_STAGES) {
+      const match = STAGE_META[stage]?.matchReferral;
+      if (typeof match === 'function') {
+        if (match(r)) buckets[stage].push(r);
+      } else if (r.current_stage === stage) {
+        buckets[stage].push(r);
+      }
+    }
+  }
+  return buckets;
+}
+
 export default function PipelineBoard() {
-  const { division } = useOutletContext();
+  const { division } = usePageOutlet();
   const { data: enriched, loading } = usePipelineData();
   const { appUser, appUserId } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
   const { can, hasDivision } = usePermissions();
+  // Pipeline is deny-by-default — only explicitly granted users (page.pipeline).
+  const canViewPipeline = can(PERMISSION_KEYS.PAGE_PIPELINE);
 
   const [draggingId, setDraggingId] = useState(null);
   const [draggingFrom, setDraggingFrom] = useState(null);
@@ -99,6 +124,8 @@ export default function PipelineBoard() {
     if (division !== 'All') list = list.filter((r) => r.division === division);
     return list;
   }, [enriched, division, hasDivision]);
+
+  const cardsByStage = useMemo(() => bucketCardsByStage(filtered), [filtered]);
 
   function showToast(message, type = 'success') {
     setToast({ message, type });
@@ -201,9 +228,12 @@ export default function PipelineBoard() {
   }
 
   const totalActive = filtered.filter(
-    (r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed',
+    (r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed' && r.current_stage !== 'Completed',
   ).length;
 
+  if (!canViewPipeline) {
+    return <AccessDenied message="You do not have permission to view the Pipeline board." />;
+  }
   if (loading) return <LoadingState message="Loading pipeline..." />;
 
   return (
@@ -266,7 +296,7 @@ export default function PipelineBoard() {
                 cursor:       'pointer',
               }}
             >
-              + New Referral
+              + New Lead
             </button>
           )}
         </div>
@@ -328,16 +358,16 @@ export default function PipelineBoard() {
                   display:             'grid',
                   gridTemplateColumns: `repeat(${stages.length}, 1fr)`,
                   gap:                 14,
-                  minHeight:           200,
+                  alignItems:          'start',
                 }}
               >
                 {stages.map((stage) => (
                   <PipelineStage
                     key={stage}
                     stage={stage}
-                    cards={cardsForStage(stage, filtered)}
+                    cards={cardsByStage[stage] || []}
                     canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
-                    isBeingDragged={(id) => id === draggingId}
+                    draggingId={draggingId}
                     activeDragFromStage={draggingFrom}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
@@ -354,9 +384,9 @@ export default function PipelineBoard() {
           {/* Special Programs section */}
           <section>
             <RowGroupLabel label={SPECIAL_GROUP.label} color={SPECIAL_GROUP.color} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, minHeight: 80 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, alignItems: 'start' }}>
               {SPECIAL_GROUP.stages.map((stage) => (
-                <PipelineStage key={stage} stage={stage} cards={cardsForStage(stage, filtered)} canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false} isBeingDragged={(id) => id === draggingId} activeDragFromStage={draggingFrom} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onContextMenu={handleContextMenu} onDrop={handleDrop} onInitiateTransition={initiateTransition} />
+                <PipelineStage key={stage} stage={stage} cards={cardsByStage[stage] || []} canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false} draggingId={draggingId} activeDragFromStage={draggingFrom} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onContextMenu={handleContextMenu} onDrop={handleDrop} onInitiateTransition={initiateTransition} />
               ))}
             </div>
           </section>
@@ -364,14 +394,14 @@ export default function PipelineBoard() {
           {/* Status section */}
           <section>
             <RowGroupLabel label={STATUS_GROUP.label} color={STATUS_GROUP.color} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, minHeight: 100 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, alignItems: 'start' }}>
               {STATUS_GROUP.stages.map((stage) => (
                 <PipelineStage
                   key={stage}
                   stage={stage}
-                  cards={cardsForStage(stage, filtered)}
+                  cards={cardsByStage[stage] || []}
                   canAcceptDrop={draggingId ? canMoveFromTo(draggingFrom, stage) : false}
-                  isBeingDragged={(id) => id === draggingId}
+                  draggingId={draggingId}
                   activeDragFromStage={draggingFrom}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}

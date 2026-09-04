@@ -282,9 +282,11 @@ describe('Inline field validation', () => {
     expect(missing).toContain('pcp_npi_number');
   });
 
-  it('cco_name must be one of the three CCOs', () => {
-    const ok = isTriageComplete(makeAdultTriage({ cco_name: 'Care Design NY' }), 'adult');
-    expect(ok.missing).not.toContain('cco_name');
+  it('cco_name accepts a CCO, Health Home, or Not Applicable', () => {
+    for (const name of ['Care Design NY', 'Health Home', 'Not Applicable']) {
+      const ok = isTriageComplete(makeAdultTriage({ cco_name: name }), 'adult');
+      expect(ok.missing).not.toContain('cco_name');
+    }
     const bad = isTriageComplete(makeAdultTriage({ cco_name: 'Some Other CCO' }), 'adult');
     expect(bad.missing).toContain('cco_name');
   });

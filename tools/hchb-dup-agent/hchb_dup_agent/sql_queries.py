@@ -247,3 +247,39 @@ WHERE e.epi_mrnum IS NOT NULL
 LOAD_PATIENTS_SQL = LOAD_ACTIVE_PATIENTS_SQL
 LOAD_MRNS_SQL = LOAD_ACTIVE_MRNS_SQL
 LIVE_CHECK_SQL = build_find_match_sql()
+
+# SOC/ROC visit matching — V_AGENTVISITTIMEREPORT (logship).
+# Client is the patient. HHA/HA visits are excluded (SOC/ROC are skilled).
+VISIT_LOOKBACK_DAYS = 120
+VISIT_FORWARD_DAYS = 7
+
+
+def build_load_visits_sql(lookback_days: int = VISIT_LOOKBACK_DAYS, forward_days: int = VISIT_FORWARD_DAYS) -> str:
+    lookback = max(1, int(lookback_days))
+    forward = max(0, int(forward_days))
+    return f"""
+SELECT
+  t.[Client Name] AS client_name,
+  t.[Visit Type] AS visit_type,
+  CONVERT(varchar(10), t.[Visit Date], 23) AS visit_date,
+  t.[Discipline] AS discipline,
+  t.[Visit Number] AS visit_number
+FROM V_AGENTVISITTIMEREPORT t WITH (NOLOCK)
+WHERE t.[Visit Date] IS NOT NULL
+  AND t.[Visit Date] >= DATEADD(day, -{lookback}, CAST(GETDATE() AS date))
+  AND t.[Visit Date] <= DATEADD(day, {forward}, CAST(GETDATE() AS date))
+  AND UPPER(LTRIM(RTRIM(ISNULL(t.[Discipline], '')))) NOT IN ('HHA', 'HA')
+"""
+
+
+def build_load_visit_identity_sql() -> str:
+    """Last / first / DOB for hashing visit rows. First-token matching is in Python."""
+    return """
+SELECT
+  c.pa_lastname,
+  c.pa_firstname,
+  CONVERT(varchar(10), c.pa_dob, 23) AS pa_dob
+FROM dbo.CLIENTS_ALL AS c WITH (NOLOCK)
+WHERE c.pa_lastname IS NOT NULL
+  AND c.pa_firstname IS NOT NULL
+"""

@@ -70,8 +70,13 @@ vi.mock('../../hooks/useLookups.js', () => ({
   }),
 }));
 
+let mockStore = { tasks: {}, patients: {} };
 vi.mock('../../store/careStore.js', () => ({
-  useCareStore: (sel) => sel({ tasks: {} }),
+  useCareStore: (sel) => sel(mockStore),
+}));
+
+vi.mock('../../store/mutations.js', () => ({
+  updateTaskOptimistic: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('../../context/PatientDrawerContext.jsx', () => ({
@@ -156,6 +161,7 @@ describe('Dashboard — caseload queue', () => {
     vi.clearAllMocks();
     mockCanToggle = false;
     mockPrefs = { dashboardMode: 'caseload', pinnedPages: [] };
+    mockStore = { tasks: {}, patients: {} };
   });
 
   it('only shows referrals where intake_owner_id matches signed-in user', () => {
@@ -190,6 +196,31 @@ describe('Dashboard — caseload queue', () => {
     render(<Dashboard />);
     fireEvent.change(screen.getByPlaceholderText('Search my cases...'), { target: { value: 'nonexistent' } });
     expect(screen.queryByText('Alice')).toBeFalsy();
+  });
+
+  it('lists open tasks assigned to the signed-in user', () => {
+    mockStore = {
+      patients: { p1: { _id: 'p1', id: 'pat_1', first_name: 'Alice', last_name: 'A' } },
+      tasks: {
+        t1: {
+          _id: 't1', id: 'task_001', title: 'Call the facility',
+          assigned_to_id: 'usr_1', status: 'Pending', priority: 'High',
+          due_date: '2026-08-31', type: 'Follow-Up', patient_id: 'pat_1',
+        },
+        t2: {
+          _id: 't2', id: 'task_002', title: 'Someone else',
+          assigned_to_id: 'usr_other', status: 'Pending',
+        },
+        t3: {
+          _id: 't3', id: 'task_003', title: 'Already done',
+          assigned_to_id: 'usr_1', status: 'Completed',
+        },
+      },
+    };
+    render(<Dashboard />);
+    expect(screen.getByText('Call the facility')).toBeTruthy();
+    expect(screen.queryByText('Someone else')).toBeFalsy();
+    expect(screen.queryByText('Already done')).toBeFalsy();
   });
 });
 

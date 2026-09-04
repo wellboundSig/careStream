@@ -39,6 +39,7 @@ const TABLES = [
   { key: 'clinicalReviews',  table: 'ClinicalReview' },
   { key: 'opwddCases',          table: 'OPWDDEligibilityCases' },
   { key: 'opwddChecklistItems', table: 'OPWDDCaseChecklistItems' },
+  { key: 'opwddEntities',       table: 'HomehealthOpwddEntities' },
 
   // Lookup / reference tables (small, static-ish)
   { key: 'entities',           table: 'Entities' },

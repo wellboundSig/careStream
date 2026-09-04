@@ -27,7 +27,7 @@ import { createAuthorization, updateAuthorization, deleteAuthorization } from '.
 import { recordActivity } from '../../../api/activityLog.js';
 import { createNoteOptimistic, createTaskOptimistic, updateReferralOptimistic } from '../../../store/mutations.js';
 import { flagConflict } from '../../../utils/conflictFlagging.js';
-import { isMedicareNoAuthRequired } from '../../../data/policies/authorizationPolicies.js';
+import { isNoAuthRequired, noAuthRequiredCopy } from '../../../data/policies/authorizationPolicies.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { fmtCalendarDate, todayCalendarDate } from '../../../utils/dateFormat.js';
 import {
@@ -454,7 +454,7 @@ function InsuranceAuthCard({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
-  const medicareNoAuth = isMedicareNoAuthRequired(insurance);
+  const noAuthRequired = isNoAuthRequired(insurance);
 
   const initial = useMemo(() => ({
     coverage_status: defaultCoverageStatus(response),
@@ -579,8 +579,8 @@ function InsuranceAuthCard({
   }
 
   async function handleSave() {
-    if (medicareNoAuth || isMedicareNoAuthRequired(form.payer_type)) {
-      setError('Straight Medicare does not require authorization. Responses cannot be recorded for this payer.');
+    if (noAuthRequired || isNoAuthRequired(form.payer_type)) {
+      setError('This payer does not require authorization. Responses cannot be recorded for it.');
       return;
     }
     const v = validate();
@@ -768,7 +768,7 @@ function InsuranceAuthCard({
               {[insurance.insurance_category, insurance.order_rank, insurance.member_id && `Member ${insurance.member_id}`].filter(Boolean).join(' · ')}
             </p>
           </div>
-          {medicareNoAuth ? (
+          {noAuthRequired ? (
             <span style={{ fontSize: t.fontMuted - 0.5, fontWeight: 650, padding: '2px 8px', borderRadius: 4, background: '#DBEAFE', color: '#1D4ED8', flexShrink: 0 }}>
               No auth required
             </span>
@@ -787,12 +787,12 @@ function InsuranceAuthCard({
       {/* Collapsed summary */}
       {!editing && (
         <div style={{ padding: `8px ${t.cardPadX}px ${t.cardPadY}px`, fontSize: t.fontMuted }}>
-          {medicareNoAuth && (
+          {noAuthRequired && (
             <p style={{ color: '#555', marginBottom: 8, lineHeight: 1.4 }}>
-              Straight Medicare does not need prior auth. Medicare Advantage still may.
+              {noAuthRequiredCopy(insurance)}
             </p>
           )}
-          {!medicareNoAuth && (loggedRequest || recordedResponse) && (
+          {!noAuthRequired && (loggedRequest || recordedResponse) && (
             <MetaRows t={t} rows={[...requestMeta, ...responseMeta]} />
           )}
           {storedLines.length > 0 && (
@@ -834,7 +834,7 @@ function InsuranceAuthCard({
             <p style={{ color: palette.primaryMagenta.hex, marginTop: 6, fontSize: t.fontMuted - 0.5 }}>{error}</p>
           )}
           <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {!readOnly && !medicareNoAuth && !recordedResponse && (
+            {!readOnly && !noAuthRequired && !recordedResponse && (
               <button
                 type="button"
                 onClick={startRequest}
@@ -849,7 +849,7 @@ function InsuranceAuthCard({
                 {loggedRequest ? 'Update request' : 'Log a request'}
               </button>
             )}
-            {!readOnly && !medicareNoAuth && (
+            {!readOnly && !noAuthRequired && (
               <button
                 type="button"
                 onClick={startResponse}

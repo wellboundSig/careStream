@@ -74,7 +74,7 @@ describe('referral → HCHB / first visit report', () => {
 
     const summary = summarizeReferralSpeed(rows);
     expect(summary.kpis[0].value).toBe(3);
-    expect(summary.kpis[1].value).toBe(2);
+    expect(summary.kpis.find((k) => k.label === 'HCHB entered').value).toBe(2);
   });
 });
 

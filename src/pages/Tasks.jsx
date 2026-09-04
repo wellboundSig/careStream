@@ -5,14 +5,13 @@ import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
 import TaskComposer from '../components/tasks/TaskComposer.jsx';
+import { sortTasksBySchedule, taskSortAnchor } from '../utils/taskSort.js';
 import { SkeletonRect } from '../components/common/Skeleton.jsx';
 import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import AccessDenied from '../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
 
-const URGENCY_ORDER   = { overdue: 0, today: 1, week: 2, future: 3, none: 4 };
-const PRIORITY_ORDER  = { Urgent: 0, High: 1, Normal: 2, Low: 3 };
 const TASK_TYPES      = ['Insurance Barrier', 'Missing Document', 'Auth Needed', 'Disenrollment', 'Escalation', 'Follow-Up', 'Staffing', 'Scheduling', 'Other'];
 
 const SECTIONS = [
@@ -101,20 +100,12 @@ export default function Tasks() {
       const q = search.toLowerCase();
       list = list.filter((t) => (t.title || '').toLowerCase().includes(q) || (t.patient_id || '').toLowerCase().includes(q));
     }
-    return [...list].sort((a, b) => {
-      const ua = URGENCY_ORDER[taskUrgencyLevel(a.due_date)] ?? 4;
-      const ub = URGENCY_ORDER[taskUrgencyLevel(b.due_date)] ?? 4;
-      if (ua !== ub) return ua - ub;
-      const pa = PRIORITY_ORDER[a.priority] ?? 2;
-      const pb = PRIORITY_ORDER[b.priority] ?? 2;
-      if (pa !== pb) return pa - pb;
-      return (a.title || '').localeCompare(b.title || '');
-    });
+    return sortTasksBySchedule(list);
   }, [allTasks, mode, statusFilter, typeFilter, blockingOnly, search, appUserId]);
 
   const bySection = useMemo(() =>
     SECTIONS.reduce((acc, s) => {
-      acc[s.id] = filtered.filter((t) => taskUrgencyLevel(t.due_date) === s.id);
+      acc[s.id] = filtered.filter((t) => taskUrgencyLevel(taskSortAnchor(t)) === s.id);
       return acc;
     }, {}),
   [filtered]);

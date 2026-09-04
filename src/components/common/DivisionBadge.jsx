@@ -1,14 +1,14 @@
-import palette, { hexToRgba } from '../../utils/colors.js';
+import palette, { hexToRgba, hexOnWhite } from '../../utils/colors.js';
 
 const DIVISIONS = {
   ALF: {
     label: 'ALF',
-    bg: hexToRgba(palette.highlightYellow.hex, 0.28),
+    bg: hexOnWhite(palette.highlightYellow.hex, 0.28),
     text: palette.highlightYellow.hex,
   },
   'Special Needs': {
     label: 'SPN',
-    bg: hexToRgba(palette.primaryMagenta.hex, 0.28),
+    bg: hexOnWhite(palette.primaryMagenta.hex, 0.28),
     text: palette.primaryMagenta.hex,
   },
 };

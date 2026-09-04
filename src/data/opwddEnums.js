@@ -498,8 +498,73 @@ export const OPWDD_REQUIREMENT_TO_CATEGORY = Object.freeze({
   [OPWDD_REQUIREMENT_KEY.ELIGIBILITY_NOTICE_LETTER]:         OPWDD_FILE_CATEGORY.OPWDD_NOTICE,
 });
 
+// ── Revamped 2-phase / 5-step flow (2026-08-26) ──────────────────────────────
+// Phase 1 (all concurrent): packet assembly · visit scheduling · visit
+// completion. Phase 2: submit to health home · parent letter + completion.
+// The step state is derived from case timestamps, not from `status`, so the
+// legacy status vocabulary stays valid for old-UI users and reporting.
+export const OPWDD_VISIT_TYPE = Object.freeze({
+  PSYCHOLOGICAL: 'psychological',
+  PSYCHOSOCIAL:  'psychosocial',
+});
+
+export const OPWDD_VISIT_TYPES = [
+  { value: OPWDD_VISIT_TYPE.PSYCHOLOGICAL, label: 'Psychological Visit',  scheduledField: 'psychological_eval_scheduled_for', completedField: 'psychological_visit_completed_at', statusField: 'psychological_eval_status' },
+  { value: OPWDD_VISIT_TYPE.PSYCHOSOCIAL,  label: 'Psycho-Social Visit',  scheduledField: 'psychosocial_scheduled_for',       completedField: 'psychosocial_visit_completed_at',  statusField: 'psychosocial_status' },
+];
+
+// ── Packet Assembly — the exact 9 packet documents (Step 1) ─────────────────
+// Each document row has an upload (multiple files allowed) and a check.
+// `key` reuses the legacy requirement vocabulary so checklist rows on cases
+// seeded before the revamp still match. `required` drives the
+// "Mark packet assembled" gate — the specialist letter only applies when the
+// child is under the care of a specialist.
+export const OPWDD_PACKET_DOCS = Object.freeze([
+  { key: OPWDD_REQUIREMENT_KEY.PREVIOUS_PSYCHOLOGICAL_EVALUATION, label: 'Psychological Evaluation',              required: true,  sortOrder: 10 },
+  { key: OPWDD_REQUIREMENT_KEY.SOCIAL_HISTORY_REPORT,             label: 'Social History Report',                 required: true,  sortOrder: 20 },
+  { key: OPWDD_REQUIREMENT_KEY.IEP_LATEST,                        label: 'IEP',                                   required: true,  sortOrder: 30 },
+  { key: OPWDD_REQUIREMENT_KEY.EARLY_INTERVENTION_DOCUMENTS,      label: 'EI (Early Intervention)',               required: true,  sortOrder: 40 },
+  { key: OPWDD_REQUIREMENT_KEY.SPECIALIST_LETTER,                 label: 'Specialist Letter (e.g., neurologist)', required: false, sortOrder: 50, hint: 'Only if the child is under the care of a specialist' },
+  { key: OPWDD_REQUIREMENT_KEY.MEDICAL_FORM,                      label: 'Medical Form',                          required: true,  sortOrder: 60 },
+  { key: OPWDD_REQUIREMENT_KEY.INSURANCE_CARD,                    label: 'Insurance Card',                        required: true,  sortOrder: 70 },
+  { key: OPWDD_REQUIREMENT_KEY.SOCIAL_SECURITY_CARD,              label: 'Social Security Card',                  required: true,  sortOrder: 80 },
+  { key: OPWDD_REQUIREMENT_KEY.BIRTH_CERTIFICATE,                 label: 'Birth Certificate, Passport or State ID', required: true, sortOrder: 90 },
+]);
+
+/** Derived step state for the revamped workspace. */
+export function getOpwddFlowState(opwddCase) {
+  const c = opwddCase || {};
+  const packetAssembled = !!c.packet_assembled_at;
+  const psychScheduled = !!c.psychological_eval_scheduled_for;
+  const psychosocialScheduled = !!c.psychosocial_scheduled_for;
+  const psychCompleted = !!c.psychological_visit_completed_at;
+  const psychosocialCompleted = !!c.psychosocial_visit_completed_at;
+  const visitsCompleted = psychCompleted && psychosocialCompleted;
+  const phase1Complete = packetAssembled && visitsCompleted;
+  const submitted = !!c.submission_sent_at;
+  const letterReceived = !!c.parent_letter_received_at;
+  const completed = c.status === OPWDD_CASE_STATUS.CONVERTED_TO_INTAKE || !!c.converted_to_intake_at;
+  return {
+    packetAssembled,
+    psychScheduled,
+    psychosocialScheduled,
+    psychCompleted,
+    psychosocialCompleted,
+    visitsCompleted,
+    phase1Complete,
+    submitted,
+    letterReceived,
+    completed,
+  };
+}
+
 // ── Activity log action names (extend ActivityLog.action multilineText) ──────
 export const OPWDD_AUDIT_ACTION = Object.freeze({
+  PACKET_ASSEMBLED:          'opwdd_packet_assembled',
+  VISIT_SCHEDULED:           'opwdd_visit_scheduled',
+  VISIT_COMPLETED:           'opwdd_visit_completed',
+  SUBMITTED_TO_HEALTHHOME:   'opwdd_submitted_to_healthhome',
+  PARENT_LETTER_RECEIVED:    'opwdd_parent_letter_received',
   CASE_OPENED:               'opwdd_case_opened',
   OUTREACH_COMPLETED:        'opwdd_outreach_completed',
   PCG_INTEREST_CONFIRMED:    'opwdd_pcg_interest_confirmed',

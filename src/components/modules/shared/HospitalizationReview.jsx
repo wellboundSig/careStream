@@ -118,7 +118,10 @@ export default function HospitalizationReview({ referral, patient, readOnly = fa
   }
 
   return (
-    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #E6E4EB' }}>
+    <div style={{ marginTop: 10, padding: '10px 10px 8px', borderRadius: 10, background: '#F7F6F9' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#6B6578', margin: '0 0 8px', letterSpacing: '0.02em' }}>
+        Hospitalization <span style={{ fontWeight: 600, color: '#8A8494' }}>(optional)</span>
+      </p>
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: readOnly ? 'default' : 'pointer' }}>
         <input
           type="checkbox"

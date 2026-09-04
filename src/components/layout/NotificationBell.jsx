@@ -106,7 +106,9 @@ export default function NotificationBell({ variant = 'desktop' }) {
           ? 'overview'
           : n.type === 'post_soc_f2f_uploaded'
             ? 'files'
-            : 'notes';
+            : (n.type === 'task' || n.type === 'task_reminder' || n.entity_type === 'task')
+              ? 'tasks'
+              : 'notes';
       const focusNoteId = isMention && n.entity_id ? n.entity_id : null;
       if (tab === 'notes') {
         ensurePatientNotes(patient, { noteId: focusNoteId }).catch(() => {});
@@ -279,7 +281,9 @@ export default function NotificationBell({ variant = 'desktop' }) {
                         ? 'Age group'
                         : n.type === 'post_soc_f2f_uploaded'
                           ? 'F2F'
-                          : (n.type || 'Alert');
+                          : (n.type === 'task' || n.type === 'task_reminder')
+                            ? 'Reminder'
+                            : (n.type || 'Alert');
                 return (
                   <button
                     type="button"

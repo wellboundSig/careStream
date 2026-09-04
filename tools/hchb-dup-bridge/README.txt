@@ -23,6 +23,10 @@ Test create job (hashes only — 64-char hex):
 
   curl -s "$API/jobs/<job_id>" -H "Authorization: Bearer $CARESTREAM_TOKEN"
 
+Visit-check jobs (same tokens) use kind=visit_check and a candidates array
+of hmac_name / hmac_name_dob + visit_kind (SOC|ROC) + scheduled_date.
+Results are match flags + visit date/type — never names.
+
 Agent endpoints (closet PC uses these automatically):
   POST /agent/claim
   POST /agent/result

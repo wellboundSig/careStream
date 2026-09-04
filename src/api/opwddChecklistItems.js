@@ -8,7 +8,7 @@
 
 // LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from './airtable.js';
-import { OPWDD_CHECKLIST_TEMPLATE, OPWDD_CHECKLIST_STATUS } from '../data/opwddEnums.js';
+import { OPWDD_PACKET_DOCS, OPWDD_CHECKLIST_STATUS } from '../data/opwddEnums.js';
 
 const TABLE = 'OPWDDCaseChecklistItems';
 
@@ -40,18 +40,19 @@ export const updateChecklistItem = (recordId, fields) =>
   airtable.update(TABLE, recordId, stripEmpty({ ...fields, updated_at: new Date().toISOString() }));
 
 /**
- * Seeds the full 15-item checklist for a freshly-opened case.
+ * Seeds the 9 packet-assembly document rows for a freshly-opened case
+ * (see OPWDD_PACKET_DOCS — the revamped Step 1 checklist).
  * Idempotent-ish: callers should guard against double-seeding by checking
  * for existing items first (see `src/store/opwddOrchestration.js`).
  *
- * Returns the array of created Airtable records.
+ * Returns the array of created records.
  */
 export async function seedChecklistForCase({ caseId, patientId, referralId }) {
   if (!caseId) throw new Error('seedChecklistForCase: caseId is required');
   const nowIso = new Date().toISOString();
 
   const created = [];
-  for (const tmpl of OPWDD_CHECKLIST_TEMPLATE) {
+  for (const tmpl of OPWDD_PACKET_DOCS) {
     const fields = {
       id: `opwddck_${caseId}_${tmpl.key}`,
       opwdd_case_id: caseId,
@@ -59,7 +60,7 @@ export async function seedChecklistForCase({ caseId, patientId, referralId }) {
       referral_id:   referralId || undefined,
       requirement_key:   tmpl.key,
       requirement_label: tmpl.label,
-      is_required:  !!tmpl.defaultRequired,
+      is_required:  !!tmpl.required,
       status:       OPWDD_CHECKLIST_STATUS.MISSING,
       sort_order:   tmpl.sortOrder,
       is_current:   false,

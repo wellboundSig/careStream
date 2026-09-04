@@ -3,6 +3,8 @@ import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { daysUntilCalendarDate, fmtCalendarDate } from '../../utils/dateFormat.js';
+import { reminderPresetLabel } from '../../utils/taskReminders.js';
+import { taskUrgencyLevel } from '../../utils/taskSort.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 /* ─── Type → hue mapping ───────────────────────────────────────── */
@@ -34,16 +36,7 @@ const STATUS_STYLES = {
   'Cancelled':   { bg: hexToRgba(palette.backgroundDark.hex, 0.07),  text: hexToRgba(palette.backgroundDark.hex, 0.4) },
 };
 
-export function taskUrgencyLevel(dueDate) {
-  if (!dueDate) return 'none';
-  // Calendar-safe: YYYY-MM-DD via UTC midnight would look a day early in US TZ.
-  const diff = daysUntilCalendarDate(dueDate);
-  if (diff == null) return 'none';
-  if (diff < 0)  return 'overdue';
-  if (diff === 0) return 'today';
-  if (diff <= 7)  return 'week';
-  return 'future';
-}
+export { taskUrgencyLevel } from '../../utils/taskSort.js';
 
 const URGENCY_COLOR = {
   overdue: palette.primaryMagenta.hex,
@@ -69,7 +62,7 @@ export default function TaskCard({ task, resolveUser, resolvePatient, resolvePat
   const { can } = usePermissions();
   const [expanded, setExpanded] = useState(false);
 
-  const urgency      = taskUrgencyLevel(task.due_date);
+  const urgency      = taskUrgencyLevel(task.due_date || task.scheduled_date);
   const isBlocking   = task.blocks_stage_progression === true || task.blocks_stage_progression === 'true';
   const isDone       = task.status === 'Completed' || task.status === 'Cancelled';
   const isOverdue    = urgency === 'overdue';
@@ -177,6 +170,24 @@ export default function TaskCard({ task, resolveUser, resolvePatient, resolvePat
                   </svg>
                 )}
                 {dueLabel}
+              </span>
+            )}
+
+            {task.scheduled_date && (
+              <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>
+                Scheduled {fmtCalendarDate(task.scheduled_date)
+                  || String(task.scheduled_date).slice(0, 10)}
+              </span>
+            )}
+
+            {task.reminder_preset && !isDone && (
+              <span style={{
+                fontSize: 10.5, fontWeight: 650,
+                color: palette.accentBlue.hex,
+                background: hexToRgba(palette.accentBlue.hex, 0.1),
+                borderRadius: 4, padding: '1px 6px',
+              }}>
+                Reminder · {reminderPresetLabel(task.reminder_preset)}
               </span>
             )}
 

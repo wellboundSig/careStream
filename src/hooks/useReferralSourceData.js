@@ -4,17 +4,18 @@ import { useCareStore } from '../store/careStore.js';
 // LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
 
 // Hydrate all referrals from this source AND enrich each one with the
 // associated patient's name + insurance + the most recent stage transition.
 // We deliberately mirror useMarketerData / useFacilityData so the drawer
 // has a consistent shape across the directory pages.
-export function useReferralSourceData(source) {
-  const [referrals, setReferrals] = useState([]);
+export function useReferralSourceData(source, dateRange = null) {
+  const [allReferrals, setAllReferrals] = useState([]);
   const [loading, setLoading]     = useState(false);
 
   useEffect(() => {
-    if (!source?.id) { setReferrals([]); return; }
+    if (!source?.id) { setAllReferrals([]); return; }
     setLoading(true);
 
     getReferrals({ filterByFormula: `{referral_source_id} = "${source.id}"` })
@@ -36,14 +37,14 @@ export function useReferralSourceData(source) {
           });
         }
 
-        setReferrals(rawRefs.map((r) => ({
+        setAllReferrals(rawRefs.map((r) => ({
           ...r,
           patientName:    patientMap[r.patient_id]?.name || null,
           insurance_plan: r.insurance_plan || patientMap[r.patient_id]?.insurance_plan || null,
           patient_county: patientMap[r.patient_id]?.county || null,
         })));
       })
-      .catch(() => setReferrals([]))
+      .catch(() => setAllReferrals([]))
       .finally(() => setLoading(false));
   }, [source?.id]);
 
@@ -53,9 +54,11 @@ export function useReferralSourceData(source) {
     ? Object.values(storeMarketers).find((m) => m.id === source.marketer_id) || null
     : null;
 
+  const referrals = filterByDateRange(allReferrals, dateRange, 'referral_date');
+
   const admitted = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const ntuc     = referrals.filter((r) => r.current_stage === 'NTUC').length;
-  const active   = referrals.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC').length;
+  const active   = referrals.filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage)).length;
 
   const stats = {
     total:    referrals.length,

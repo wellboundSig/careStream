@@ -25,6 +25,7 @@ import CalendarPage from './pages/Calendar.jsx';
 import Reports from './pages/Reports.jsx';
 import DataTools from './pages/DataTools.jsx';
 import BatchEligibility from './pages/BatchEligibility.jsx';
+import HchbVisitCheck from './pages/HchbVisitCheck.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
 import ConflictCategories from './pages/admin/ConflictCategories.jsx';
 import DeveloperTools from './pages/developer/DeveloperTools.jsx';
@@ -78,12 +79,18 @@ export default function App() {
         <Route path="modules/clinical-rn"         element={<ModulePage stage="Clinical Intake RN Review" />} />
         <Route path="modules/authorization"       element={<ModulePage stage="Authorization Pending" />} />
         <Route path="modules/conflict"            element={<ModulePage stage="Conflict" />} />
-        <Route path="modules/emr-onboarding"      element={<ModulePage stage="EMR Onboarding" />} />
+        {/* EMR Onboarding is consolidated into Intake — keep old links working */}
+        <Route path="modules/emr-onboarding"      element={<Navigate to="/modules/intake" replace />} />
         <Route path="modules/staffing"            element={<ModulePage stage="Staffing Feasibility" />} />
         <Route path="modules/admin-confirmation"  element={<ModulePage stage="Admin Confirmation" />} />
         <Route path="modules/pre-soc"             element={<ModulePage stage="Pre-SOC" />} />
         <Route path="modules/soc-scheduled"       element={<Navigate to="/modules/pre-soc" replace />} />
-        <Route path="modules/soc-completed"       element={<ModulePage stage="SOC Completed" />} />
+        {/* Visit Completed module removed — done cases live in Completed,
+            open-paperwork cases inside Intake */}
+        <Route path="modules/soc-completed"       element={<Navigate to="/modules/completed" replace />} />
+        <Route path="modules/post-visit-intake"   element={<Navigate to="/modules/intake" replace />} />
+        <Route path="modules/post-visit-clinical" element={<Navigate to="/modules/clinical-rn" replace />} />
+        <Route path="modules/completed"           element={<ModulePage stage="Completed" />} />
         <Route path="modules/hold"                element={<ModulePage stage="Hold" />} />
         <Route path="modules/ntuc"                element={<ModulePage stage="NTUC" />} />
 
@@ -95,6 +102,7 @@ export default function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="reports" element={<Reports />} />
         <Route path="tools/batch-eligibility" element={<BatchEligibility />} />
+        <Route path="tools/hchb-visit-check" element={<HchbVisitCheck />} />
         <Route path="directory/marketers" element={<Marketers />} />
         <Route path="directory/facilities" element={<Facilities />} />
         <Route path="directory/physicians" element={<Physicians />} />

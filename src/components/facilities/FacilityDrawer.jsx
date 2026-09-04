@@ -4,6 +4,7 @@ import { TypeBadge, RegionBadge } from '../../pages/directory/Facilities.jsx';
 import FacilityOverviewTab from './tabs/FacilityOverviewTab.jsx';
 import FacilityPatientsTab from './tabs/FacilityPatientsTab.jsx';
 import FacilityMarketersTab from './tabs/FacilityMarketersTab.jsx';
+import DateRangeFilter, { DEFAULT_DATE_RANGE } from '../common/DateRangeFilter.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [
@@ -15,10 +16,11 @@ const TABS = [
 export default function FacilityDrawer({ facility, onClose }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [animated, setAnimated] = useState(false);
+  const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE);
   const {
     referrals, marketerLinks, marketerDetails, cocNurses,
     stats, liaisonMarketer, loading, isNetwork,
-  } = useFacilityData(facility);
+  } = useFacilityData(facility, dateRange);
   const network = isNetwork ?? isNetworkFacility(facility);
 
   useEffect(() => {
@@ -120,6 +122,11 @@ export default function FacilityDrawer({ facility, onClose }) {
               </button>
             );
           })}
+        </div>
+
+        {/* Date range (applies to referral stats + patients list) */}
+        <div style={{ padding: '8px 18px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
 
         {/* Tab content */}

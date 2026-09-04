@@ -230,6 +230,8 @@ const CCO_NAMES = [
   'Advance Care Alliance (ACA/NY)',
   'Care Design NY',
   'Tri-County Care',
+  'Health Home',
+  'Not Applicable',
 ];
 
 // Adult triage's existing `services_needed` multi-select needs HHA added per

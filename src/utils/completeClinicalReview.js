@@ -12,7 +12,7 @@ import {
   maybeClearDocumentationDeferred,
   clinicalConfirmDestination,
   CLINICAL_CONFIRM_SOC_COMPLETED,
-  CLINICAL_CONFIRM_EMR,
+  CLINICAL_CONFIRM_STAFFING,
 } from './documentationDeferred.js';
 
 export function resolveClinicalConfirmDecision(workingDecision, referral) {
@@ -44,25 +44,33 @@ export async function completeClinicalReview({
   const destination = clinicalConfirmDestination(referral);
 
   if (destination === CLINICAL_CONFIRM_SOC_COMPLETED) {
-    if (referral.current_stage !== 'SOC Completed') {
+    // Post-visit clinical approval. Clinical sign-off is the final gate:
+    // the visit already happened, so approving finishes the case. (The old
+    // docs-still-open detour to 'Post Visit Intake' is deprecated — visits
+    // and paperwork run side by side as the status quo.)
+    const updated = { ...referral, ...clinicalFields };
+    const finalStage = 'Completed';
+    let landedStage = referral.current_stage;
+    if (referral.current_stage !== finalStage) {
       const result = attemptTransition({
         referral,
-        toStage: 'SOC Completed',
+        toStage: finalStage,
         context: {
           system: true,
           actorUserId: appUserId,
           extraFields: clinicalFields,
-          note: '[Post-SOC clinical completed → SOC Completed]',
+          note: '[Post-visit clinical completed → Completed]',
         },
       });
       if (result.allowed) {
         onLeftModule?.();
         await applyTransition({ referral, result, context: { actorUserId: appUserId } });
+        landedStage = finalStage;
       } else {
-        await updateReferralOptimistic(referral._id, {
-          ...clinicalFields,
-          current_stage: 'SOC Completed',
-        });
+        // Transition not legal from the current stage (e.g. legacy post-SOC
+        // clinical while the case sits elsewhere) — record the clinical fields
+        // only; the stage stays where it is.
+        await updateReferralOptimistic(referral._id, clinicalFields);
         onLeftModule?.();
       }
     } else {
@@ -70,11 +78,11 @@ export async function completeClinicalReview({
       onLeftModule?.();
     }
     await maybeClearDocumentationDeferred(
-      { ...referral, ...clinicalFields },
+      { ...updated, current_stage: landedStage },
       { actorUserId: appUserId, source: 'clinical_post_soc' },
     );
     triggerDataRefresh();
-    return { ok: true, destination };
+    return { ok: true, destination: landedStage };
   }
 
   if (destination == null) {
@@ -88,19 +96,19 @@ export async function completeClinicalReview({
     return { ok: true, destination: null };
   }
 
-  const toStage = destination === CLINICAL_CONFIRM_EMR ? 'EMR Onboarding' : destination;
+  const toStage = destination === CLINICAL_CONFIRM_STAFFING ? CLINICAL_CONFIRM_STAFFING : destination;
   const result = attemptTransition({
     referral,
     toStage,
     context: {
       system: true,
-      note: `[Clinical RN ${normalized === 'conditional' ? 'conditionally accepted' : 'accepted'} → EMR Onboarding]`,
+      note: `[Clinical RN ${normalized === 'conditional' ? 'conditionally accepted' : 'accepted'} → ${toStage}]`,
       actorUserId: appUserId,
       extraFields: clinicalFields,
     },
   });
   if (!result.allowed) {
-    throw new Error(result.reason || 'Cannot move this referral to EMR Onboarding.');
+    throw new Error(result.reason || `Cannot move this referral to ${toStage}.`);
   }
   onLeftModule?.();
   await applyTransition({ referral, result, context: { actorUserId: appUserId } });

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 
 // ── Unit tests for column model (no React rendering) ────────────────────────
 
-import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters } from '../../../utils/columnModel.jsx';
+import { MODULE_COLUMN_DEFS, moduleColumnDefsForStage, useColumnVisibility, useColumnFilters } from '../../../utils/columnModel.jsx';
 
 describe('MODULE_COLUMN_DEFS', () => {
   it('includes a "source" column', () => {
@@ -46,6 +46,23 @@ describe('MODULE_COLUMN_DEFS', () => {
 
   it('does not include a "priority" column', () => {
     expect(MODULE_COLUMN_DEFS.find((c) => c.key === 'priority')).toBeFalsy();
+  });
+
+  it('shows Days in Review only on the Clinical module', () => {
+    expect(moduleColumnDefsForStage('Lead Entry').find((c) => c.key === 'days_in_review')).toBeFalsy();
+    const clinical = moduleColumnDefsForStage('Clinical Intake RN Review');
+    const review = clinical.find((c) => c.key === 'days_in_review');
+    expect(review).toBeTruthy();
+    expect(review.defaultOn).toBe(true);
+    expect(clinical.find((c) => c.key === 'days_in_stage')).toBeTruthy();
+  });
+
+  it('relabels Days in Stage to Days in Staffing on the Staffing module', () => {
+    const staffing = moduleColumnDefsForStage('Staffing Feasibility');
+    const days = staffing.find((c) => c.key === 'days_in_stage');
+    expect(days.label).toBe('Days in Staffing');
+    expect(staffing.find((c) => c.key === 'days_in_review')).toBeFalsy();
+    expect(moduleColumnDefsForStage('Intake').find((c) => c.key === 'days_in_stage').label).toBe('Days in Stage');
   });
 });
 
@@ -107,6 +124,7 @@ vi.mock('react-router-dom', () => ({
   useOutletContext: () => ({ division: 'All' }),
   useLocation: () => ({ pathname: '/modules/lead-entry', state: null }),
   NavLink: ({ children, ...props }) => <a {...props}>{children}</a>,
+  Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
 }));
 
 const mockReferrals = [
@@ -311,7 +329,7 @@ describe('ModulePage — search with clear × button', () => {
 
   it('shows × button in search when text is entered', () => {
     renderModule();
-    const searchInput = screen.getByPlaceholderText('Search patients...');
+    const searchInput = screen.getByPlaceholderText('Search by patient name…');
     fireEvent.change(searchInput, { target: { value: 'john' } });
     const searchContainer = searchInput.closest('div');
     const clearBtn = searchContainer.querySelector('button');
@@ -320,7 +338,7 @@ describe('ModulePage — search with clear × button', () => {
 
   it('clears search when × is clicked', () => {
     renderModule();
-    const searchInput = screen.getByPlaceholderText('Search patients...');
+    const searchInput = screen.getByPlaceholderText('Search by patient name…');
     fireEvent.change(searchInput, { target: { value: 'nonexistent' } });
     expect(screen.queryByText('John Doe')).toBeFalsy();
     const clearBtn = searchInput.closest('div').querySelector('button');
@@ -332,10 +350,11 @@ describe('ModulePage — search with clear × button', () => {
 describe('ModulePage — button color conventions', () => {
   beforeEach(() => { vi.clearAllMocks(); mockCan.mockReturnValue(true); });
 
-  it('renders "+ New Lead" as a green (actionable) button for Lead Entry', () => {
+  it('renders "+ New Lead" as the brand-magenta primary action for Lead Entry', () => {
     renderModule();
     const newRefBtns = screen.getAllByText('+ New Lead');
-    const greenBtn = newRefBtns.find((el) => el.style.background?.includes('#6EC72B'));
-    expect(greenBtn).toBeTruthy();
+    // primaryMagenta (#D91E75) is the palette's "Primary accent / call-to-action" role.
+    const primaryBtn = newRefBtns.find((el) => el.style.background?.toLowerCase().includes('#d91e75'));
+    expect(primaryBtn).toBeTruthy();
   });
 });

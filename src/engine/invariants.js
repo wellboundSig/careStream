@@ -30,6 +30,15 @@ const POST_CLINICAL_STAGES = new Set([
   'Pre-SOC',
   'SOC Scheduled',
   'SOC Completed',
+  'Completed',
+]);
+
+// Stages that imply the SOC/ROC visit already happened.
+const POST_VISIT_DATE_STAGES = new Set([
+  'SOC Completed',
+  'Post Visit Intake',
+  'Post Visit Clinical Review',
+  'Completed',
 ]);
 
 const OPEN_CONFLICT_STATUSES = new Set(['Open', 'Unaddressed', 'In Progress']);
@@ -85,8 +94,11 @@ export function assertReferralInvariants(referral, world = {}) {
 
   // 3. Anything at/after EMR Onboarding must carry a clinical review decision —
   //    unless this is a deferred-documentation fast-track (F2F + clinical after SOC).
+  //    A historical deferral stamp also counts: cases that took the post-visit
+  //    documentation path may reach Completed with the decision recorded there.
   const deferredDocs = referral.documentation_deferred === true
-    || referral.documentation_deferred === 'true';
+    || referral.documentation_deferred === 'true'
+    || !!referral.documentation_deferred_at;
   if (
     POST_CLINICAL_STAGES.has(stage)
     && !VALID_CLINICAL_DECISIONS.has(referral.clinical_review_decision)
@@ -103,8 +115,8 @@ export function assertReferralInvariants(referral, world = {}) {
   if ((stage === 'SOC Scheduled') && !referral.soc_scheduled_date) {
     violations.push({ code: 'SOC_DATE_REQUIRED', severity: 'error', message: `${label} is "SOC Scheduled" with no soc_scheduled_date.` });
   }
-  if ((stage === 'SOC Completed') && !referral.soc_completed_date) {
-    violations.push({ code: 'SOC_DATE_REQUIRED', severity: 'warn', message: `${label} is "SOC Completed" with no soc_completed_date.` });
+  if (POST_VISIT_DATE_STAGES.has(stage) && !referral.soc_completed_date) {
+    violations.push({ code: 'SOC_DATE_REQUIRED', severity: 'warn', message: `${label} is "${stage}" with no soc_completed_date.` });
   }
 
   // 5. Eligibility re-check consistency: a pending re-check should have cleared
@@ -124,7 +136,7 @@ export function assertReferralInvariants(referral, world = {}) {
 
   // 7. Audit trail: a referral past the first stage should have at least one
   //    StageHistory row (only checked when history is supplied).
-  if (world.stageHistory !== undefined && stage !== 'Lead Entry' && stage !== 'OPWDD Enrollment') {
+  if (world.stageHistory !== undefined && stage !== 'Lead Entry' && stage !== 'Clinical Lead Pre-Check' && stage !== 'OPWDD Enrollment') {
     const hasHistory = asArray(world.stageHistory).some((h) => linkMatches(h.referral_id, referral.id));
     if (!hasHistory) {
       violations.push({ code: 'MISSING_AUDIT', severity: 'warn', message: `${label} is in "${stage}" with no StageHistory rows.` });

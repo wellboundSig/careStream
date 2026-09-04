@@ -13,6 +13,8 @@ export function PatientDrawerProvider({ children }) {
   const [sideFile, setSideFile] = useState(null);
   /** Note to scroll to after opening from a mention notification. */
   const [focusNoteId, setFocusNoteId] = useState(null);
+  /** Force the whole drawer view-only (e.g. opened from the Patients directory). */
+  const [forceReadOnly, setForceReadOnly] = useState(false);
 
   const open = useCallback((patientObj, referralObj = null, tab = 'demographics', opts = {}) => {
     setPatient(patientObj);
@@ -20,6 +22,7 @@ export function PatientDrawerProvider({ children }) {
     setActiveTab(tab);
     setSideFile(null);
     setFocusNoteId(opts?.focusNoteId || null);
+    setForceReadOnly(opts?.readOnly === true);
     setIsOpen(true);
   }, []);
 
@@ -27,6 +30,7 @@ export function PatientDrawerProvider({ children }) {
     setIsOpen(false);
     setSideFile(null);
     setFocusNoteId(null);
+    setForceReadOnly(false);
   }, []);
 
   const clearFocusNote = useCallback(() => setFocusNoteId(null), []);
@@ -77,6 +81,7 @@ export function PatientDrawerProvider({ children }) {
         clearSideFile,
         focusNoteId,
         clearFocusNote,
+        forceReadOnly,
       }}
     >
       {children}

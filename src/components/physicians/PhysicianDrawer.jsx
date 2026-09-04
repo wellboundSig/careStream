@@ -3,6 +3,7 @@ import { usePhysicianData } from '../../hooks/usePhysicianData.js';
 import PhysicianOverviewTab from './tabs/PhysicianOverviewTab.jsx';
 import PhysicianPatientsTab from './tabs/PhysicianPatientsTab.jsx';
 import { formatPhysicianName, normalizePhysicianTitle } from '../../utils/physicianName.js';
+import DateRangeFilter, { DEFAULT_DATE_RANGE } from '../common/DateRangeFilter.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [{ id: 'overview', label: 'Overview' }, { id: 'patients', label: 'Patients' }];
@@ -13,7 +14,8 @@ export default function PhysicianDrawer({ physician, onClose }) {
   // Only track the fields that can be toggled from inside the drawer.
   // Everything else reads directly from the physician prop so there's no stale-state flash.
   const [enrollmentOverride, setEnrollmentOverride] = useState(null);
-  const { referrals, stats, loading } = usePhysicianData(physician);
+  const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE);
+  const { referrals, stats, loading } = usePhysicianData(physician, dateRange);
 
   useEffect(() => {
     if (physician) {
@@ -107,6 +109,9 @@ export default function PhysicianDrawer({ physician, onClose }) {
               </button>
             );
           })}
+        </div>
+        <div style={{ padding: '8px 18px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {activeTab === 'overview' && <div style={{ overflowY: 'auto' }}><PhysicianOverviewTab physician={physician} onUpdated={handleUpdated} /></div>}

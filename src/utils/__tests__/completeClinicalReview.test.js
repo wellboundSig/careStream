@@ -32,7 +32,7 @@ describe('completeClinicalReview', () => {
     applyTransition.mockReset();
   });
 
-  it('moves Clinical → EMR even when the graph edge would normally block', async () => {
+  it('moves Clinical → Staffing even when the graph edge would normally block', async () => {
     attemptTransition.mockReturnValue({ allowed: true, fieldUpdates: {} });
     applyTransition.mockResolvedValue({ ok: true });
     const referral = { _id: 'rec_1', current_stage: 'F2F/MD Orders Pending' };
@@ -42,7 +42,7 @@ describe('completeClinicalReview', () => {
       appUserId: 'usr_julia',
     });
     expect(attemptTransition).toHaveBeenCalledWith(expect.objectContaining({
-      toStage: 'EMR Onboarding',
+      toStage: 'Staffing Feasibility',
       context: expect.objectContaining({ system: true }),
     }));
     expect(applyTransition).toHaveBeenCalled();

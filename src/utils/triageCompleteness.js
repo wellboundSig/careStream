@@ -36,6 +36,8 @@ const CCO_NAMES = new Set([
   'Advance Care Alliance (ACA/NY)',
   'Care Design NY',
   'Tri-County Care',
+  'Health Home',
+  'Not Applicable',
 ]);
 
 // ── Required field lists (always required when present in data) ─────────────

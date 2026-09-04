@@ -4,6 +4,7 @@ import {
   validateAuthorizationRecord,
   suggestNar,
   isMedicareNoAuthRequired,
+  isNoAuthRequired,
   validateFollowUp,
   determineRequiresFollowUp,
 } from '../authorizationPolicies.js';
@@ -156,8 +157,27 @@ describe('isMedicareNoAuthRequired', () => {
   });
 });
 
+describe('isNoAuthRequired', () => {
+  it('is true for straight Medicare and straight Medicaid', () => {
+    expect(isNoAuthRequired(INSURANCE_CATEGORY.MEDICARE)).toBe(true);
+    expect(isNoAuthRequired(INSURANCE_CATEGORY.MEDICAID)).toBe(true);
+    expect(isNoAuthRequired({ insurance_category: INSURANCE_CATEGORY.MEDICAID })).toBe(true);
+  });
+
+  it('is false for managed or commercial plans', () => {
+    expect(isNoAuthRequired(INSURANCE_CATEGORY.MEDICARE_MANAGED)).toBe(false);
+    expect(isNoAuthRequired(INSURANCE_CATEGORY.MEDICAID_MANAGED)).toBe(false);
+    expect(isNoAuthRequired(INSURANCE_CATEGORY.COMMERCIAL)).toBe(false);
+  });
+});
+
 // ── suggestNar ──────────────────────────────────────────────────────────────
 describe('suggestNar', () => {
+  it('suggests NAR when only straight Medicaid is present', () => {
+    const r = suggestNar([{ insuranceCategory: INSURANCE_CATEGORY.MEDICAID }]);
+    expect(r.suggestNar).toBe(true);
+  });
+
   it('suggests NAR when ONLY straight Medicare + Medicaid present', () => {
     const r = suggestNar([
       { insuranceCategory: INSURANCE_CATEGORY.MEDICARE },

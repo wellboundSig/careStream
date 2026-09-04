@@ -19,8 +19,12 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysSinceCalendarDate } from '../utils/dateFormat.js';
-import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { isSocCompletedReferral, STAGE_META } from '../data/stageConfig.js';
 import OverduePatientsModal from '../components/dashboard/OverduePatientsModal.jsx';
+import CaseloadTasksSection from '../components/dashboard/CaseloadTasksSection.jsx';
+import { sortTasksBySchedule } from '../utils/taskSort.js';
+import { isOpenTask } from '../utils/taskReminders.js';
+import { updateTaskOptimistic } from '../store/mutations.js';
 import { useLockedTableGrid } from '../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../utils/tableScrollMode.js';
@@ -33,14 +37,17 @@ import {
 } from '../utils/dashboardOverdue.js';
 
 const PIPELINE_STAGES = [
-  'Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
+  'Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
   'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
-  'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
+  'Pre-SOC','SOC Scheduled','SOC Completed',
+  'Post Visit Intake','Post Visit Clinical Review','Completed',
+  'Hold','NTUC',
 ];
 
 // Maps each stage to its dedicated module route
 const STAGE_ROUTE = {
+  'Clinical Lead Pre-Check':   '/modules/clinical-rn',
   'Lead Entry':                '/modules/lead-entry',
   'Intake':                    '/modules/intake',
   'Eligibility Verification':  '/modules/eligibility',
@@ -54,7 +61,10 @@ const STAGE_ROUTE = {
   'Admin Confirmation':        '/modules/admin-confirmation',
   'Pre-SOC':                   '/modules/pre-soc',
   'SOC Scheduled':             '/modules/soc-scheduled',
-  'SOC Completed':             '/modules/soc-completed',
+  'SOC Completed':             '/modules/completed',
+  'Post Visit Intake':         '/modules/intake',
+  'Post Visit Clinical Review': '/modules/clinical-rn',
+  'Completed':                 '/modules/completed',
   'Hold':                      '/modules/hold',
   'NTUC':                      '/modules/ntuc',
 };
@@ -70,6 +80,7 @@ const STAGE_ROUTE = {
 //  Yellow        → Hold (100%)
 //  Dark          → NTUC (33%)
 const STAGE_BAR_COLOR = {
+  'Clinical Lead Pre-Check':   palette.primaryDeepPlum.hex,
   'Lead Entry':                palette.accentBlue.hex,
   'Intake':                    hexToRgba(palette.accentBlue.hex, 0.66),
   'Staffing Feasibility':      hexToRgba(palette.accentBlue.hex, 0.33),
@@ -87,6 +98,9 @@ const STAGE_BAR_COLOR = {
   'SOC Completed':             palette.accentGreen.hex,
   'SOC Scheduled':             hexToRgba(palette.accentGreen.hex, 0.66),
   'Pre-SOC':                   hexToRgba(palette.accentGreen.hex, 0.33),
+  'Post Visit Intake':         hexToRgba(palette.accentBlue.hex, 0.66),
+  'Post Visit Clinical Review': hexToRgba(palette.primaryMagenta.hex, 0.66),
+  'Completed':                 palette.accentGreen.hex,
 
   'Hold':                      palette.highlightYellow.hex,
   'NTUC':                      hexToRgba(palette.backgroundDark.hex, 0.33),
@@ -154,7 +168,7 @@ function DashboardModeToggle({ mode, onToggle }) {
 }
 
 // Quiet secondary header button — deliberately lower-key than the magenta
-// "+ New Referral" primary so the header has a clear hierarchy.
+// "+ New Lead" primary so the header has a clear hierarchy.
 const HEADER_SECONDARY_BTN = {
   padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
   background: 'transparent',
@@ -207,22 +221,56 @@ function CaseloadDashboard({ modeToggle = null }) {
   const { resolveSource, resolveUser } = useLookups();
   const navigate = useNavigate();
   const allTasks = useCareStore((s) => s.tasks);
+  const storePatients = useCareStore((s) => s.patients) || {};
   const isMobile = useIsMobile();
   const lockedGrid = useLockedTableGrid();
+  const { can } = usePermissions();
 
   const myReferrals = useMemo(() => {
     if (!appUserId) return [];
     return referrals
       .filter((r) => r.intake_owner_id === appUserId)
       .filter((r) => division === 'All' || r.division === division)
-      .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC');
+      .filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage));
   }, [referrals, appUserId, division]);
 
   const myTasks = useMemo(() => {
     if (!appUserId) return [];
-    return Object.values(allTasks)
-      .filter((t) => t.assigned_to_id === appUserId && t.status !== 'Completed' && t.status !== 'Cancelled');
+    return sortTasksBySchedule(
+      Object.values(allTasks).filter((t) => t.assigned_to_id === appUserId && isOpenTask(t)),
+    );
   }, [allTasks, appUserId]);
+
+  const patientNameMap = useMemo(() => {
+    const map = {};
+    Object.values(storePatients).forEach((p) => {
+      if (p.id) map[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    });
+    return map;
+  }, [storePatients]);
+
+  const patientRecordMap = useMemo(() => {
+    const map = {};
+    Object.values(storePatients).forEach((p) => {
+      if (p.id) map[p.id] = p;
+    });
+    return map;
+  }, [storePatients]);
+
+  function handleTaskStatusChange(task, newStatus) {
+    if (!task?._id || newStatus === task.status) return;
+    const movingToTerminal = newStatus === 'Completed' || newStatus === 'Cancelled';
+    if (movingToTerminal && !can(PERMISSION_KEYS.TASK_COMPLETE)) return;
+    const fields = { status: newStatus };
+    if (movingToTerminal && !task.completed_at) {
+      fields.completed_at = new Date().toISOString();
+    }
+    updateTaskOptimistic(task._id, fields).catch(() => {});
+  }
+
+  function scrollToTasks() {
+    document.getElementById('caseload-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState('days');
@@ -310,8 +358,18 @@ function CaseloadDashboard({ modeToggle = null }) {
           </p>
           <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '8px 0 0', lineHeight: 1.55 }}>
             Cases appear here when you are the intake owner on a referral.
-            {myTasks.length > 0 && ` You do have ${myTasks.length} open task${myTasks.length !== 1 ? 's' : ''} on the Tasks page.`}
           </p>
+          {myTasks.length > 0 && (
+            <div style={{ textAlign: 'left', marginTop: 22, maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
+              <CaseloadTasksSection
+                tasks={myTasks}
+                resolveUser={resolveUser}
+                resolvePatient={(id) => patientNameMap[id] || null}
+                resolvePatientRecord={(id) => patientRecordMap[id] || null}
+                onStatusChange={handleTaskStatusChange}
+              />
+            </div>
+          )}
           {modeToggle && (
             <button
               onClick={modeToggle.onToggle}
@@ -352,10 +410,18 @@ function CaseloadDashboard({ modeToggle = null }) {
       {/* KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
         <StatCard label="My Cases" value={myReferrals.length} sub="active referrals" color={palette.primaryMagenta.hex} />
-        <StatCard label="Open Tasks" value={myTasks.length} sub="assigned to me" color={palette.accentBlue.hex} />
+        <StatCard label="Open Tasks" value={myTasks.length} sub="assigned to me" color={palette.accentBlue.hex} onClick={scrollToTasks} />
         <StatCard label="Overdue" value={overdue} sub="in stage >14 days" color={overdue > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdue > 0} onClick={() => setShowOverdue(true)} />
         <StatCard label="Stages" value={stageBuckets.length} sub="across modules" color={palette.primaryDeepPlum.hex} />
       </div>
+
+      <CaseloadTasksSection
+        tasks={myTasks}
+        resolveUser={resolveUser}
+        resolvePatient={(id) => patientNameMap[id] || null}
+        resolvePatientRecord={(id) => patientRecordMap[id] || null}
+        onStatusChange={handleTaskStatusChange}
+      />
 
       {/* Stage breakdown pills */}
       {stageBuckets.length > 0 && (
@@ -412,7 +478,7 @@ function CaseloadDashboard({ modeToggle = null }) {
                     <td className={lockColClass(lockedGrid)} style={{ padding: '11px 14px' }}>
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
                     </td>
-                    <td style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '11px 14px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>
                     <td style={{ padding: '11px 14px' }}><DivisionBadge division={ref.division} size="small" /></td>
                     <td style={{ padding: '11px 14px' }}>
                       <span style={{ fontSize: 13, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : palette.backgroundDark.hex }}>
@@ -564,7 +630,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
         <div style={{ marginBottom: 14 }}>
           <h1 style={{ fontSize: 22, fontWeight: 750, color: palette.backgroundDark.hex, marginBottom: 2 }}>Home</h1>
           <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: 0 }}>
-            Tap a patient for files & notes · use Completed for the Pending Log
+            Tap a patient for files & notes · use Pending for the Pending Log
           </p>
         </div>
 
@@ -639,7 +705,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
                     <p style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0 }}>
                       {ref.patientName || ref.patient_id}
                     </p>
-                    <StageBadge stage={ref.current_stage} size="small" />
+                    <StageBadge stage={ref.current_stage} referral={ref} size="small" />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <DivisionBadge division={ref.division} size="small" />
@@ -703,7 +769,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
               onClick={() => setShowNewReferral(true)}
               style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}
             >
-              + New Referral
+              + New Lead
             </button>
           )}
         </div>
@@ -778,7 +844,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</p>
                     </td>
                     <td style={{ padding: '11px 16px' }}><DivisionBadge division={ref.division} size="small" /></td>
-                    <td style={{ padding: '11px 16px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '11px 16px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>
                     <td style={{ padding: '11px 16px' }}><PriorityDot priority={ref.priority} /></td>
                     <td style={{ padding: '11px 16px', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>
                       {formatDate(ref.referral_date)}
@@ -1036,6 +1102,7 @@ function StageDistributionBar({ stageCounts, total, onNavigateToStage }) {
 }
 
 function StageCard({ stage, count, muted }) {
+  const label = STAGE_META[stage]?.displayName || stage;
   return (
     <div
       style={{
@@ -1046,7 +1113,7 @@ function StageCard({ stage, count, muted }) {
         cursor:       'pointer',
       }}
     >
-      <p style={{ fontSize: 11, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, muted ? 0.35 : 0.55), marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={stage}>{stage}</p>
+      <p style={{ fontSize: 11, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, muted ? 0.35 : 0.55), marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={label}>{label}</p>
       <p style={{ fontSize: 26, fontWeight: 700, color: muted ? hexToRgba(palette.backgroundDark.hex, 0.35) : palette.backgroundDark.hex, lineHeight: 1 }}>{count}</p>
     </div>
   );

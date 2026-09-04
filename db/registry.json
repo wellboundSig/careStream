@@ -1093,6 +1093,16 @@
         "pg": "text",
         "wire": "text"
       },
+      "clinical_lead_precheck_approved_at": {
+        "column": "clinical_lead_precheck_approved_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_lead_precheck_approved_by_id": {
+        "column": "clinical_lead_precheck_approved_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "in_clinical_review": {
         "column": "in_clinical_review",
         "pg": "boolean",
@@ -2176,6 +2186,21 @@
         "column": "physician_id",
         "pg": "text",
         "wire": "text"
+      },
+      "reminder_preset": {
+        "column": "reminder_preset",
+        "pg": "text",
+        "wire": "text"
+      },
+      "reminder_at": {
+        "column": "reminder_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "reminder_sent_at": {
+        "column": "reminder_sent_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
       }
     }
   },
@@ -3963,6 +3988,136 @@
         "column": "latest_blocker_note",
         "pg": "text",
         "wire": "text"
+      },
+      "packet_assembled_at": {
+        "column": "packet_assembled_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "packet_assembled_by_id": {
+        "column": "packet_assembled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "psychological_visit_completed_at": {
+        "column": "psychological_visit_completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "psychosocial_visit_completed_at": {
+        "column": "psychosocial_visit_completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "submitted_to_entity_id": {
+        "column": "submitted_to_entity_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submitted_to_entity_name": {
+        "column": "submitted_to_entity_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "parent_letter_file_id": {
+        "column": "parent_letter_file_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "parent_letter_received_at": {
+        "column": "parent_letter_received_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "HomehealthOpwddEntities": {
+    "pgTable": "homehealth_opwdd_entities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "tier": {
+        "column": "tier",
+        "pg": "text",
+        "wire": "text"
+      },
+      "category": {
+        "column": "category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_status": {
+        "column": "submission_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "direct_authority_basis": {
+        "column": "direct_authority_basis",
+        "pg": "text",
+        "wire": "text"
+      },
+      "population": {
+        "column": "population",
+        "pg": "text",
+        "wire": "text"
+      },
+      "counties": {
+        "column": "counties",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address": {
+        "column": "address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "next_step": {
+        "column": "next_step",
+        "pg": "text",
+        "wire": "text"
+      },
+      "source_url": {
+        "column": "source_url",
+        "pg": "text",
+        "wire": "text"
+      },
+      "verification_notes": {
+        "column": "verification_notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "boolean",
+        "wire": "checkbox"
       },
       "created_at": {
         "column": "created_at",

@@ -104,7 +104,7 @@ export default function PhysicianPatientsTab({ referrals, loading }) {
                 <p style={{ fontSize: 13.5, fontWeight: 650, color: palette.backgroundDark.hex, marginBottom: 4 }}>{ref.patientName || ref.patient_id}</p>
                 <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
                   <DivisionBadge division={ref.division} size="small" />
-                  <StageBadge stage={ref.current_stage} size="small" />
+                  <StageBadge stage={ref.current_stage} referral={ref} size="small" />
                   <span style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5) }}>
                     {entityLabel && entityLabel !== '—' ? entityLabel : 'No entity'}
                     {' · '}

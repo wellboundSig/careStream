@@ -216,7 +216,7 @@ function MentionCard({ m, isMobile, resolveUser, resolveFacility, resolveMarkete
         </p>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {referral?.division && <DivisionBadge division={referral.division} size="small" />}
-          {referral?.current_stage && <StageBadge stage={referral.current_stage} size="small" />}
+          {referral?.current_stage && <StageBadge stage={referral.current_stage} referral={referral} size="small" />}
         </div>
         <div style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.6 }}>
           {patient?.dob && (

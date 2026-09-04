@@ -17,6 +17,8 @@
  *                       stage change.
  */
 
+import { isActiveClinicalHandoff } from '../data/stageConfig.js';
+
 const MS_PER_DAY = 86400000;
 
 export function daysBetween(from, to = Date.now()) {
@@ -67,6 +69,52 @@ export function daysInPipeline(referral) {
   return daysBetween(referral?.referral_date || referral?.created_at);
 }
 
+export const CLINICAL_RN_STAGE = 'Clinical Intake RN Review';
+export const POST_VISIT_CLINICAL_STAGE = 'Post Visit Clinical Review';
+
+/** Sitting in the Clinical Review queue, including post-SOC / post-visit handoffs. */
+export function isOpenClinicalReview(referral) {
+  return isActiveClinicalHandoff(referral);
+}
+
+/**
+ * When the case entered the clinical queue.
+ * Assigned (post-SOC) wins, then Intake push, then stage-entry if Clinical is the pipeline stage.
+ */
+export function clinicalReviewEnteredAt(referral, stageEnteredAt = null) {
+  if (!isOpenClinicalReview(referral)) return null;
+  const inClinicalStage = referral.current_stage === CLINICAL_RN_STAGE
+    || referral.current_stage === POST_VISIT_CLINICAL_STAGE;
+  return referral.clinical_review_assigned_at
+    || referral.clinical_review_pushed_at
+    || (inClinicalStage ? (stageEnteredAt || null) : null)
+    || null;
+}
+
+export function daysInClinicalReview(referral, stageEnteredAt = null, now) {
+  return daysBetween(clinicalReviewEnteredAt(referral, stageEnteredAt), now);
+}
+
+export const STAFFING_STAGE = 'Staffing Feasibility';
+
+/** Hard-pushed to Staffing — green check / On Track. Concurrent radar cases are not this. */
+export function isOnTrackStaffing(referral) {
+  return referral?.current_stage === STAFFING_STAGE;
+}
+
+/**
+ * When the staffing clock started. Only after the hard push to Staffing
+ * Feasibility (On Track). Concurrent visibility in the radar does not count.
+ */
+export function staffingEnteredAt(referral, stageEnteredAt = null) {
+  if (!isOnTrackStaffing(referral)) return null;
+  return stageEnteredAt || null;
+}
+
+export function daysInStaffing(referral, stageEnteredAt = null, now) {
+  return daysBetween(staffingEnteredAt(referral, stageEnteredAt), now);
+}
+
 /** "Today" / "1d" / "12d" / "—" */
 export function formatDaysShort(n) {
   if (n === null || n === undefined) return '—';
@@ -81,10 +129,16 @@ export function formatDaysShort(n) {
  */
 export function enrichReferralWithMetrics(referral, stageHistoryList) {
   const stageEnteredAt = resolveStageEnteredAt(referral, stageHistoryList);
+  const clinicalEnteredAt = clinicalReviewEnteredAt(referral, stageEnteredAt);
+  const staffingAt = staffingEnteredAt(referral, stageEnteredAt);
   return {
     ...referral,
     _stage_entered_at: stageEnteredAt,
     _days_in_stage:    daysBetween(stageEnteredAt),
     _days_in_pipeline: daysInPipeline(referral),
+    _clinical_entered_at: clinicalEnteredAt,
+    _days_in_clinical: daysBetween(clinicalEnteredAt),
+    _staffing_entered_at: staffingAt,
+    _days_in_staffing: daysBetween(staffingAt),
   };
 }

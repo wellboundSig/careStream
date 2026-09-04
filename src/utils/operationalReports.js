@@ -9,6 +9,7 @@
 
 import { ageFromDob, parseCalendarDate } from './dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { hoursToClinicalLeadPreCheck } from './clinicalLeadPreCheck.js';
 import { normalizeEpisodeType } from './episodeType.js';
 import { hasF2FReceived } from './documentationDeferred.js';
 
@@ -137,6 +138,8 @@ export const REFERRAL_SPEED_COLUMNS = [
   { key: 'hchb_entry_at', label: 'HCHB Entered' },
   { key: 'days_to_hchb', label: 'Days Referral → HCHB' },
   { key: 'opened_in_1_day', label: 'Opened within 1 day' },
+  { key: 'precheck_at', label: 'Lead Pre-Check At' },
+  { key: 'hours_to_precheck', label: 'Hours Referral → Pre-Check' },
   { key: 'first_visit_at', label: 'First Visit (SOC completed)' },
   { key: 'days_to_first_visit', label: 'Days Referral → First Visit' },
   { key: 'intake_owner', label: 'Intake Owner' },
@@ -150,6 +153,8 @@ export function buildReferralSpeedRow(referral, { today = new Date() } = {}) {
   const visitAt = firstVisitAt(referral);
   const daysToHchb = calendarDaysBetween(referralDate, hchbAt);
   const daysToVisit = calendarDaysBetween(referralDate, visitAt);
+  const precheckAt = referral.clinical_lead_precheck_approved_at || '';
+  const hoursToPrecheck = hoursToClinicalLeadPreCheck(referral);
   let opened = 'Not entered';
   if (daysToHchb != null) opened = daysToHchb <= HCHB_OPEN_TARGET_DAYS ? 'Yes' : 'No';
 
@@ -163,6 +168,8 @@ export function buildReferralSpeedRow(referral, { today = new Date() } = {}) {
     hchb_entry_at: hchbAt || '-',
     days_to_hchb: daysToHchb == null ? '-' : daysToHchb,
     opened_in_1_day: opened,
+    precheck_at: precheckAt || '-',
+    hours_to_precheck: hoursToPrecheck == null ? '-' : hoursToPrecheck,
     first_visit_at: visitAt || '-',
     days_to_first_visit: daysToVisit == null ? '-' : daysToVisit,
     intake_owner: cleanName(referral.__intake_owner),
@@ -170,6 +177,7 @@ export function buildReferralSpeedRow(referral, { today = new Date() } = {}) {
     source: cleanName(referral.__source_name),
     _days_to_hchb: daysToHchb,
     _days_to_first_visit: daysToVisit,
+    _hours_to_precheck: hoursToPrecheck,
     _as_of: today,
   };
 }
@@ -191,11 +199,14 @@ export function summarizeReferralSpeed(rows) {
   const entered = rows.filter((r) => r._days_to_hchb != null);
   const onTime = entered.filter((r) => r._days_to_hchb <= HCHB_OPEN_TARGET_DAYS);
   const visited = rows.filter((r) => r._days_to_first_visit != null);
+  const prechecked = rows.filter((r) => r._hours_to_precheck != null);
   const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '-');
 
   return {
     kpis: [
       { label: 'Referrals', value: rows.length },
+      { label: 'Lead pre-check signed off', value: prechecked.length },
+      { label: 'Median hours to pre-check', value: median(prechecked.map((r) => r._hours_to_precheck)) ?? '-' },
       { label: 'HCHB entered', value: entered.length },
       { label: 'Opened within 1 day', value: `${onTime.length} (${pct(onTime.length, entered.length)})` },
       { label: 'Median days to HCHB', value: median(entered.map((r) => r._days_to_hchb)) ?? '-' },

@@ -17,6 +17,10 @@ dbconfig.md
 tools/hchb-dup-agent/.env
 tools/hchb-dup-agent/.env.local
 tools/hchb-dup-bridge/.deploy-secrets.env
+# Clearinghouse / eligibility credentials (Waystar, Availity, Optum) — NEVER commit
+services/wellbound-api/.deploy-secrets*.env
+services/wellbound-api/.env
+services/wellbound-api/.env.*
 tools/hchb-dup-bridge/.aws-sam/
 tools/hchb-dup-bridge/packaged.yaml
 tools/hchb-dup-bridge/build/

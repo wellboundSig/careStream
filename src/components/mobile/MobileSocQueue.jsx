@@ -2,7 +2,15 @@ import { useMemo, useState } from 'react';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
 import { isDocumentationDeferred } from '../../utils/documentationDeferred.js';
-import { getUrgentCareType, isUrgentCare, urgentCareTypeLabel } from '../../utils/urgentCare.js';
+import {
+  getUrgentCareType,
+  getUrgentCareTypes,
+  isUrgentCare,
+  urgentCareTypeColor,
+  urgentCareTypeBg,
+  urgentCareTypeLabel,
+} from '../../utils/urgentCare.js';
+import UrgentCareIcon from '../common/UrgentCareIcon.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
@@ -21,6 +29,7 @@ export default function MobileSocQueue({
   isPendingLogView,
   canPendingLog,
   isSocCompleted = false,
+  reportMode = false,
   onTogglePendingLog,
   onOpenPatient,
   onOpenFiles,
@@ -33,7 +42,8 @@ export default function MobileSocQueue({
   pcpByReferralId,
 }) {
   // SOC Completed mobile: default to “needs docs” so marketers see follow-ups first.
-  const showNeedsDocsToggle = !!isSocCompleted || !!(canPendingLog || isPendingLogView);
+  // Pending Log report mode is a follow-up list, not a docs-wait queue.
+  const showNeedsDocsToggle = !reportMode && (!!isSocCompleted || !!(canPendingLog || isPendingLogView));
   const [needsDocsOnly, setNeedsDocsOnly] = useState(true);
   const [episodeFilter, setEpisodeFilter] = useState('ALL'); // ALL | SOC | ROC
   const [facilityFilter, setFacilityFilter] = useState(null); // null = all, or facility_id / '__none__'
@@ -114,7 +124,7 @@ export default function MobileSocQueue({
               color: palette.backgroundDark.hex, margin: 0,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {isPendingLogView ? 'Pending Log' : (meta?.displayName || 'Completed')}
+              {reportMode || isPendingLogView ? 'Pending Log' : (meta?.displayName || 'Completed')}
             </h1>
             <span style={{
               fontSize: 11.5, fontWeight: 750, padding: '2px 8px', borderRadius: 8, flexShrink: 0,
@@ -369,7 +379,7 @@ export default function MobileSocQueue({
               )}
             </div>
 
-            {canPendingLog && (
+            {canPendingLog && !reportMode && (
               <div style={{
                 display: 'flex', padding: 3, borderRadius: 9, marginTop: 8,
                 background: hexToRgba(palette.backgroundDark.hex, 0.05), gap: 3,
@@ -421,9 +431,11 @@ export default function MobileSocQueue({
                   ? 'No patients at this facility'
                   : showNeedsDocsToggle && needsDocsOnly
                     ? 'No one waiting on docs'
-                    : (canPendingLog || isPendingLogView)
-                      ? 'No completed SOCs yet'
-                      : `No patients in ${meta?.displayName || 'this queue'}`}
+                    : reportMode
+                      ? 'Nothing on the Pending Log'
+                      : (canPendingLog || isPendingLogView)
+                        ? 'No completed SOCs yet'
+                        : `No patients in ${meta?.displayName || 'this queue'}`}
             </p>
             <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '6px 0 0' }}>
               {search
@@ -432,9 +444,11 @@ export default function MobileSocQueue({
                   ? 'Tap All or another facility chip.'
                   : showNeedsDocsToggle && needsDocsOnly
                     ? 'Turn off “Needs docs only” to see everyone.'
-                    : (canPendingLog || isPendingLogView)
-                      ? 'Patients appear here once SOC is confirmed.'
-                      : 'They’ll show up when routed here.'}
+                    : reportMode
+                      ? 'Patients appear when a note @mentions Account manager info, or Clinical sends a file back to Intake with a note.'
+                      : (canPendingLog || isPendingLogView)
+                        ? 'Patients appear here once SOC is confirmed.'
+                        : 'They’ll show up when routed here.'}
             </p>
           </div>
         ) : (
@@ -442,7 +456,7 @@ export default function MobileSocQueue({
             <SocCard
               key={ref._id}
               referral={ref}
-              pendingLog={isPendingLogView}
+              pendingLog={!!(reportMode || isPendingLogView)}
               onOpen={() => onOpenPatient?.(ref)}
               onFiles={() => onOpenFiles?.(ref)}
               onNotes={() => onOpenNotes?.(ref)}
@@ -519,6 +533,7 @@ function SocCard({
   const marketer = referral.marketer_id ? resolveMarketer?.(referral.marketer_id) : null;
   const waitingDocs = isDocumentationDeferred(referral);
   const urgent = isUrgentCare(referral);
+  const urgentTypes = getUrgentCareTypes(referral);
   const urgentType = getUrgentCareType(referral);
   const urgentLabel = urgentCareTypeLabel(urgentType);
   const amInfo = String(referral.account_manager_info || '').trim();
@@ -538,7 +553,10 @@ function SocCard({
   const socDate = referral.soc_completed_date
     ? (fmtCalendarDate(referral.soc_completed_date) || String(referral.soc_completed_date).slice(0, 10))
     : null;
-  const addedRaw = referral._stage_entered_at || referral.soc_completed_date || null;
+  const scheduledDate = !socDate && referral.soc_scheduled_date
+    ? (fmtCalendarDate(referral.soc_scheduled_date) || String(referral.soc_scheduled_date).slice(0, 10))
+    : null;
+  const addedRaw = referral._stage_entered_at || referral.soc_completed_date || referral.returned_from_clinical_at || null;
   const addedDate = addedRaw
     ? (fmtCalendarDate(addedRaw) || String(addedRaw).slice(0, 10))
     : null;
@@ -573,7 +591,12 @@ function SocCard({
                   {ep} {socDate}
                 </Chip>
               )}
-              {!socDate && addedDate && (
+              {scheduledDate && (
+                <Chip strong color={palette.accentBlue.hex}>
+                  {ep} scheduled {scheduledDate}
+                </Chip>
+              )}
+              {!socDate && !scheduledDate && addedDate && (
                 <Chip>Added {addedDate}</Chip>
               )}
               {workStage && (
@@ -590,28 +613,31 @@ function SocCard({
           </div>
           {(urgent || urgentLabel) && (
             <span style={{
-              flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: '0.03em',
-              color: palette.primaryMagenta.hex,
-              background: hexToRgba(palette.primaryMagenta.hex, 0.12),
+              display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+              fontSize: 10, fontWeight: 800, letterSpacing: '0.03em',
+              color: urgentCareTypeColor(urgentTypes[0]),
+              background: urgentCareTypeBg(urgentTypes[0]),
               borderRadius: 5, padding: '3px 6px', textAlign: 'center', lineHeight: 1.25,
             }}>
+              <UrgentCareIcon size={11} types={urgentTypes} />
               {urgentLabel ? urgentLabel.toUpperCase() : 'URGENT'}
             </span>
           )}
         </div>
 
-        {(socDate || urgent || pendingLog) && (
+        {(socDate || scheduledDate || urgent || pendingLog) && (
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 7,
             padding: '7px 9px', borderRadius: 7,
             background: hexToRgba(palette.backgroundDark.hex, 0.04),
           }}>
-            {(socDate || pendingLog) && (
-              <DateStat label={`${ep} completed`} value={socDate || '—'} emphasize={!!socDate} />
-            )}
-            {pendingLog && (
-              <DateStat label="Added to module" value={addedDate || '—'} />
-            )}
+            {socDate ? (
+              <DateStat label={`${ep} completed`} value={socDate} emphasize />
+            ) : scheduledDate ? (
+              <DateStat label={`${ep} scheduled`} value={scheduledDate} emphasize />
+            ) : pendingLog ? (
+              <DateStat label={`${ep} visit`} value="Not scheduled" />
+            ) : null}
             {urgent && (
               <DateStat
                 label="Urgent type"
@@ -633,12 +659,30 @@ function SocCard({
           {pcp && pcp !== '—' && <MetaRow label="PCP" value={pcp} />}
           {marketer && marketer !== '—' && <MetaRow label="Marketer" value={marketer} />}
           {rn && rn !== '—' && <MetaRow label="Clinical RN" value={rn} />}
-          {!pendingLog && !workStage && (
+          {!pendingLog && !workStage && socDate && (
             <div style={{ marginTop: 2 }}>
               <StageBadge stage="SOC Completed" size="small" />
             </div>
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {socDate && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: palette.accentGreen.hex,
+                background: hexToRgba(palette.accentGreen.hex, 0.14),
+                borderRadius: 5, padding: '2px 7px',
+              }}>
+                Visit Done
+              </span>
+            )}
+            {scheduledDate && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: palette.accentBlue.hex,
+                background: hexToRgba(palette.accentBlue.hex, 0.14),
+                borderRadius: 5, padding: '2px 7px',
+              }}>
+                Scheduled
+              </span>
+            )}
             {waitingDocs && (
               <span style={{
                 fontSize: 11, fontWeight: 700, color: palette.accentOrange.hex,

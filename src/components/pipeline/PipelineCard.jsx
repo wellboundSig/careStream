@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -31,7 +31,7 @@ function fmtDays(n) {
   return `${n}d`;
 }
 
-export default function PipelineCard({ referral, isDragging, onDragStart, onDragEnd, onContextMenu }) {
+function PipelineCard({ referral, isDragging, onDragStart, onDragEnd, onContextMenu }) {
   const { open } = usePatientDrawer();
   const [hovered, setHovered] = useState(false);
 
@@ -194,3 +194,5 @@ export default function PipelineCard({ referral, isDragging, onDragStart, onDrag
     </div>
   );
 }
+
+export default memo(PipelineCard);

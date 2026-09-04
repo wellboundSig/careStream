@@ -8,5 +8,8 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     css: false,
+    // services/wellbound-api tests use node:test and run under plain Node,
+    // not vitest.
+    exclude: ['**/node_modules/**', 'services/**'],
   },
 });

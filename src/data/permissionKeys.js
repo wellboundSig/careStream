@@ -45,9 +45,20 @@ export const PERMISSION_KEYS = {
    * Deny-by-default — grant only to named users (Rafi / David).
    */
   REFERRAL_CHANGE_MARKETER: 'referral.change_marketer',
+  /**
+   * Change facility_id on an existing referral, with per-case reconciliation
+   * of primary marketer, COC nurse, entity, and patient address.
+   * Deny-by-default — grant only to named users (Rafi Barides / Mordy Slomovics).
+   */
+  REFERRAL_CHANGE_FACILITY: 'referral.change_facility',
   REFERRAL_TRANSITION: 'referral.transition',
   REFERRAL_HOLD: 'referral.hold',
   REFERRAL_NTUC: 'referral.ntuc',
+  /**
+   * Send directly to NTUC, bypassing Admin Confirmation.
+   * Deny-by-default — everyone goes through Admin Confirmation; granted only
+   * to Adam Yanofsky.
+   */
   REFERRAL_NTUC_DIRECT: 'referral.ntuc_direct',
   REFERRAL_FLAG_URGENT_CARE: 'referral.flag_urgent_care',
 
@@ -167,6 +178,27 @@ export const PERMISSION_KEYS = {
   MODULE_SCHEDULING: 'module.scheduling',
   MODULE_ADMIN: 'module.admin',
   MODULE_INBOUND: 'module.inbound',
+  /**
+   * Conflict / NTUC / Discarded module access on its own — for marketers and
+   * account managers who must see those queues WITHOUT clinical, intake, or
+   * admin module access. Clinical/intake/admin module keys still open these
+   * pages as before.
+   */
+  MODULE_CONFLICT: 'module.conflict',
+
+  // Pages
+  /**
+   * Pipeline board view. Deny-by-default — grant only to named users
+   * (Rafi Barides, Adam Yonafsky).
+   */
+  PAGE_PIPELINE: 'page.pipeline',
+
+  /**
+   * Edit patients from the Patients directory. Deny-by-default — the
+   * directory is view-only for everyone; operational work happens in the
+   * dedicated modules. Grant this key to make the directory drawer editable.
+   */
+  PAGE_PATIENTS_EDIT: 'page.patients_edit',
 
   // Inbound Submissions (email → ticket queue)
   INBOUND_VIEW: 'inbound.view',
@@ -226,6 +258,14 @@ const RESTRICTED_FROM_ADMIN_PRESET = new Set([
   K.CLINICAL_ELIGIBILITY_BATCH,
   K.REFERRAL_DISCARD_ANY,
   K.REFERRAL_CHANGE_MARKETER,
+  K.REFERRAL_CHANGE_FACILITY,
+  K.PAGE_PIPELINE,
+  K.REFERRAL_NTUC_DIRECT,
+  K.PAGE_PATIENTS_EDIT,
+  K.ADMIN_USER_MANAGEMENT,
+  K.ADMIN_DEPARTMENTS,
+  K.CONFLICT_MANAGE_CATEGORIES,
+  K.DEVELOPER_TOOLS,
 ]);
 
 /**
@@ -240,6 +280,14 @@ export const DENY_BY_DEFAULT_PERMISSIONS = new Set([
   K.REFERRAL_DISCARD_ANY,
   K.REFERRAL_MERGE_DUPLICATES,
   K.REFERRAL_CHANGE_MARKETER,
+  K.REFERRAL_CHANGE_FACILITY,
+  K.PAGE_PIPELINE,
+  K.REFERRAL_NTUC_DIRECT,
+  K.PAGE_PATIENTS_EDIT,
+  K.ADMIN_USER_MANAGEMENT,
+  K.ADMIN_DEPARTMENTS,
+  K.CONFLICT_MANAGE_CATEGORIES,
+  K.DEVELOPER_TOOLS,
 ]);
 const ADMIN_KEYS = ALL_KEYS.filter((k) => !RESTRICTED_FROM_ADMIN_PRESET.has(k));
 
@@ -293,6 +341,9 @@ export const PERMISSION_CATALOG = [
   { key: K.MODULE_SCHEDULING,    label: 'Open Scheduling module pages',    category: 'Module Pages', description: 'Access Staffing, Pre-SOC, SOC Scheduled, SOC Completed module pages', sort: 6 },
   { key: K.MODULE_ADMIN,         label: 'Open Admin module pages',         category: 'Module Pages', description: 'Access Admin Confirmation, Hold, and NTUC module pages', sort: 7 },
   { key: K.MODULE_INBOUND,       label: 'Open Inbound Submissions',        category: 'Module Pages', description: 'Access the inbound email submissions queue', sort: 7.5 },
+  { key: K.MODULE_CONFLICT,      label: 'Open Conflict / NTUC / Discarded', category: 'Module Pages', description: 'Access the Conflict, NTUC, and Discarded module pages without full clinical/intake/admin module access', sort: 7.6 },
+  { key: K.PAGE_PIPELINE,        label: 'Open Pipeline board',             category: 'Module Pages', description: 'Access the Pipeline board view (deny-by-default; named users only)', sort: 7.7 },
+  { key: K.PAGE_PATIENTS_EDIT,   label: 'Edit from Patients directory',    category: 'Module Pages', description: 'Open patients editable from the Patients directory (deny-by-default; directory is view-only for everyone else)', sort: 7.8 },
   { key: K.CALENDAR_VIEW,        label: 'View calendar',                   category: 'Workspace', description: 'Access the Calendar page with tasks and F2F dates', sort: 8 },
   { key: K.DASHBOARD_MODE_TOGGLE, label: 'Toggle dashboard mode',          category: 'Workspace', description: 'Switch between executive and caseload dashboard views', sort: 9 },
 
@@ -320,10 +371,11 @@ export const PERMISSION_CATALOG = [
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Referrals', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
   { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Referrals', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
   { key: K.REFERRAL_CHANGE_MARKETER, label: 'Change referral marketer',    category: 'Referrals', description: 'Reassign the marketer on an existing referral from the Referral tab (writes a timeline event). Deny-by-default — grant only to named users.', sort: 14.6 },
+  { key: K.REFERRAL_CHANGE_FACILITY, label: 'Change referral facility',    category: 'Referrals', description: 'Change the facility on an existing referral and reconcile primary marketer, COC nurse, entity, and address per case (writes a timeline event). Deny-by-default — grant only to named users.', sort: 14.7 },
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 15 },
   { key: K.REFERRAL_HOLD,       label: 'Place referrals on Hold',          category: 'Referrals', description: 'Move any active referral to Hold stage', sort: 16 },
   { key: K.REFERRAL_NTUC,       label: 'Move referrals to NTUC',           category: 'Referrals', description: 'Move referrals to Unable to Convert (terminal)', sort: 17 },
-  { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Referrals', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Without this, NTUC requests go through Admin Confirmation first.', sort: 18 },
+  { key: K.REFERRAL_NTUC_DIRECT, label: 'Send directly to NTUC (bypass Admin Confirmation)', category: 'Referrals', description: 'Skip Admin Confirmation and move a referral directly to NTUC. Deny-by-default — everyone else goes through Admin Confirmation (Adam Yanofsky only).', sort: 18 },
   { key: K.REFERRAL_FLAG_URGENT_CARE, label: 'Flag urgent care / pre-assessment', category: 'Referrals', description: 'Mark a patient as requiring urgent pre-SOC care. Adds a red first-aid indicator on every module surface and is visible via the row context menu and the Patient Snapshot.', sort: 19 },
   { key: K.PATIENT_VIEW, label: 'View patient records',      category: 'Patients', description: 'See patient list, drawer, and details', sort: 20 },
   { key: K.PATIENT_EDIT, label: 'Edit patient information',   category: 'Patients', description: 'Modify demographics, contacts, and insurance', sort: 21 },
@@ -374,7 +426,7 @@ export const PERMISSION_CATALOG = [
   // ── Conflicts ─────────────────────────────────────────────────────────────
   { key: K.CONFLICT_FLAG,             label: 'Flag conflicts',             category: 'Conflicts', description: 'Create conflict records on referrals', sort: 90 },
   { key: K.CONFLICT_RESOLVE,          label: 'Resolve conflicts',          category: 'Conflicts', description: 'Mark conflicts as resolved or waived', sort: 91 },
-  { key: K.CONFLICT_MANAGE_CATEGORIES, label: 'Manage conflict categories', category: 'Conflicts', description: 'Add, rename, and enable/disable the conflict category list used across the app', sort: 92 },
+  { key: K.CONFLICT_MANAGE_CATEGORIES, label: 'Manage conflict categories', category: 'Conflicts', description: 'Open the Conflict Categories page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 92 },
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
   { key: K.TASK_VIEW,     label: 'View tasks',                  category: 'Tasks', description: 'See task lists and details', sort: 100 },
@@ -426,14 +478,14 @@ export const PERMISSION_CATALOG = [
   { key: K.REPORT_EXPORT, label: 'Export reports & data', category: 'Reports', description: 'Download CSV/PDF exports', sort: 161 },
 
   // ── Administration ────────────────────────────────────────────────────────
-  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',      category: 'Administration', description: 'Create, edit, and delete departments, supervisors, members, and scopes', sort: 170 },
-  { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',  category: 'Administration', description: 'View and edit users, roles, and statuses', sort: 171 },
+  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',      category: 'Administration', description: 'Open the Departments page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 170 },
+  { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',  category: 'Administration', description: 'Open the User Management page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 171 },
   { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions', category: 'Administration', description: 'Open permission modals and edit presets', sort: 172 },
   { key: K.ADMIN_DATA_TOOLS,      label: 'Access Data Tools',       category: 'Administration', description: 'Use raw data inspection and admin utilities', sort: 173 },
   { key: K.ADMIN_SETTINGS,        label: 'Access system Settings',  category: 'Administration', description: 'Modify app-wide settings and preferences', sort: 174 },
 
   // ── Developer ─────────────────────────────────────────────────────────────
-  { key: K.DEVELOPER_TOOLS, label: 'Access Developer Tools', category: 'Developer', description: 'Raw database grid: browse, search, and edit any table directly. Engineering use only — every change is audit-logged.', sort: 180 },
+  { key: K.DEVELOPER_TOOLS, label: 'Access Developer Tools', category: 'Developer', description: 'Open Developer Tools (raw database grid). Deny-by-default — the menu item is hidden unless this key is granted.', sort: 180 },
 ];
 
 // ── Default presets (seeded into PermissionPresets table) ────────────────────

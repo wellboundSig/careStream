@@ -78,7 +78,9 @@ export default function DeveloperTools() {
     || appUser?.is_support_staff === 'TRUE'
     || appUser?.is_support_staff === 1
   );
-  const canUseGrid = can(PERMISSION_KEYS.DEVELOPER_TOOLS) || can(PERMISSION_KEYS.ADMIN_DATA_TOOLS);
+  // Developer Tools requires its own key. admin.data_tools alone is no longer
+  // enough — marketers get Data Tools without raw database access.
+  const canUseGrid = can(PERMISSION_KEYS.DEVELOPER_TOOLS);
 
   const [view, setView] = useState(() => (isSupportStaff ? 'reports' : 'grid'));
 
@@ -177,15 +179,13 @@ export default function DeveloperTools() {
   }
 
   // ── Gates ──────────────────────────────────────────────────────────────────
-  // Support staff can open this page for Issue Reports even without the
-  // developer-tools permission. The raw database grid still requires both
-  // permission and the session password.
-  if (!canUseGrid && !isSupportStaff) {
+  // Named-user only. Support-staff status no longer opens this page.
+  if (!canUseGrid) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12, padding: 48 }}>
         <p style={{ fontSize: 15, fontWeight: 650, color: palette.backgroundDark.hex }}>Access Restricted</p>
         <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.5), maxWidth: 340, textAlign: 'center' }}>
-          You need the “Developer Tools” permission or support-staff access to open this page.
+          You need the “Developer Tools” permission to open this page.
         </p>
       </div>
     );

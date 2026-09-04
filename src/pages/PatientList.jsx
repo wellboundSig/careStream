@@ -1,18 +1,11 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
-import { useOutletContext, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { usePageOutlet } from '../context/pageOutletContext.jsx';
 import { usePatients } from '../hooks/usePatients.js';
 import { usePipelineData } from '../hooks/usePipelineData.js';
+import { useProgressiveReveal } from '../hooks/useProgressiveReveal.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
-import { triggerDataRefresh } from '../hooks/useRefreshTrigger.js';
-import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
-import { canMoveFromTo, needsModal } from '../utils/stageTransitions.js';
-import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
-import { flagConflict, inferConflictSourceModuleFromStage } from '../utils/conflictFlagging.js';
-import TransitionModal from '../components/pipeline/TransitionModal.jsx';
-import QuickNoteModal from '../components/patients/QuickNoteModal.jsx';
-import NewReferralForm from '../components/forms/NewReferralForm.jsx';
-import ChangeIntakeOwnerModal from '../components/referrals/ChangeIntakeOwnerModal.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
 import StageBadge from '../components/common/StageBadge.jsx';
 import EpisodeTypeBadge from '../components/common/EpisodeTypeBadge.jsx';
@@ -24,11 +17,6 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysUntilCalendarDate } from '../utils/dateFormat.js';
-import {
-  isDocumentationDeferred,
-  documentationFilterStatus,
-  daysUntilDocumentationDue,
-} from '../utils/documentationDeferred.js';
 import { episodeTypeLongLabel } from '../utils/episodeType.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
 import { useLockedTableGrid } from '../hooks/useLockedTableGrid.js';
@@ -46,7 +34,7 @@ import {
   triageColumnLabel,
 } from '../utils/triageColumn.js';
 
-const ALL_STAGE_ORDER = ['Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC'];
+const ALL_STAGE_ORDER = ['Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Post Visit Intake','Post Visit Clinical Review','Completed','Hold','NTUC'];
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 const COLUMN_DEFS = [
@@ -66,13 +54,8 @@ const COLUMN_DEFS = [
   { key: 'source_entity',   label: 'Referral Entity',   defaultOn: true, filterable: true, tooltip: 'Company or CCO of the referral source — not the Wellbound licence' },
   { key: 'facility',        label: 'Facility',          defaultOn: true, filterable: true  },
   { key: 'physician',       label: 'Physician',         defaultOn: true, filterable: true  },
-  {
-    key: 'post_soc_docs',
-    label: 'Post-SOC/ROC Docs',
-    defaultOn: true,
-    filterable: true,
-    tooltip: 'Deferred post-SOC paperwork. Filter: waiting_docs · waiting_clinical · overdue · yes · no',
-  },
+  // Deferred-docs ("Post-SOC/ROC Docs") column removed from the updated UI —
+  // post-visit paperwork is now worked inside the Intake module instead.
 ];
 
 const DEFAULT_COL_FILTERS = Object.fromEntries(
@@ -112,13 +95,13 @@ function F2FCell({ referral }) {
 }
 
 // ── Context menu ───────────────────────────────────────────────────────────────
-function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onChangeOwner, canChangeOwner, onStageChange, onDismiss }) {
+// The Patients directory is VIEW-ONLY for everyone — operational work (stage
+// moves, notes, owner changes) happens in the dedicated modules. The menu only
+// opens the (read-only) drawer.
+function ContextMenu({ x, y, row, onOpen, onTriage, onDismiss, readOnly = true }) {
   const menuRef = useRef(null);
   const isSN = row.division === 'Special Needs';
   const currentStage = row.current_stage;
-  const validStages = currentStage
-    ? ALL_STAGE_ORDER.filter((s) => canMoveFromTo(currentStage, s))
-    : [];
 
   useLayoutEffect(() => {
     const el = menuRef.current;
@@ -144,14 +127,6 @@ function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onChangeOwner, canCh
     </button>
   );
 
-  const stageItem = (stage) => (
-    <button key={stage} onClick={() => onStageChange(stage)} style={{ width: '100%', padding: '6px 14px 6px 30px', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 12.5, color: stage === 'NTUC' ? hexToRgba(palette.backgroundDark.hex, 0.5) : stage === 'Hold' ? '#7A5F00' : palette.backgroundDark.hex, transition: 'background 0.1s' }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.04))}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}>
-      → {stage}
-    </button>
-  );
-
   return (
     <>
       <div onClick={onDismiss} style={{ position: 'fixed', inset: 0, zIndex: 9990 }} />
@@ -161,20 +136,9 @@ function ContextMenu({ x, y, row, onOpen, onTriage, onNote, onChangeOwner, canCh
           {currentStage && <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginTop: 1 }}>{currentStage}</p>}
         </div>
         <div style={{ padding: '4px 0' }}>
-          {item('Open', <PersonIcon />, onOpen)}
+          {item(readOnly ? 'Open (view only)' : 'Open', <PersonIcon />, onOpen)}
           {isSN && item('Triage Form', <ClipboardIcon />, onTriage, palette.primaryMagenta.hex)}
-          {item('Add Note', <NoteIcon />, onNote, palette.accentBlue.hex)}
-          {canChangeOwner && row.referral_id && item('Change intake owner', <PersonIcon />, onChangeOwner, palette.accentBlue.hex)}
         </div>
-        {validStages.length > 0 && (
-          <>
-            <div style={{ height: 1, background: hexToRgba(palette.backgroundDark.hex, 0.07) }} />
-            <div style={{ padding: '4px 0' }}>
-              <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.35), padding: '4px 14px 2px' }}>Move to</p>
-              {validStages.map(stageItem)}
-            </div>
-          </>
-        )}
       </div>
     </>
   );
@@ -220,13 +184,12 @@ function ColumnPicker({ visibleCols, onChange, onClose }) {
 // ── Tiny SVG icons ─────────────────────────────────────────────────────────────
 const PersonIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.7"/></svg>;
 const ClipboardIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><rect x="9" y="3" width="6" height="4" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>;
-const NoteIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>;
 const FilterIcon = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 const ColsIcon = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.7"/><rect x="14" y="3" width="7" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.7"/></svg>;
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function PatientList() {
-  const { division } = useOutletContext();
+  const { division } = usePageOutlet();
   const { data: patients, loading: pLoading } = usePatients();
   const { data: enriched, loading: eLoading } = usePipelineData();
   const triageAdultStore = useCareStore((s) => s.triageAdult);
@@ -242,30 +205,27 @@ export default function PatientList() {
     resolveSource,
     resolveFacility,
     resolvePhysician,
-    resolveUser,
     resolveEntity = (id) => id || '—',
     resolveSourceEntity = () => '—',
   } = useLookups();
   const { open: openPatient } = usePatientDrawer();
-  const { appUser, appUserId } = useCurrentAppUser();
   const location = useLocation();
   const { can, hasDivision } = usePermissions();
   const canViewAllCases = can(PERMISSION_KEYS.REFERRAL_VIEW_ALL);
+  // Directory is view-only unless the (deny-by-default) edit key is granted —
+  // togglable per user from the Permissions page, not hardcoded.
+  const directoryReadOnly = !can(PERMISSION_KEYS.PAGE_PATIENTS_EDIT);
 
   const [search, setSearch] = useState('');
   // Pre-populate stage filter when navigated here from the dashboard chart
   const [stageFilter, setStageFilter] = useState(location.state?.stageFilter || '');
+  useEffect(() => {
+    if (location.state?.stageFilter) setStageFilter(location.state.stageFilter);
+  }, [location.state]);
   const [showActive, setShowActive] = useState(true);
   const [sortField, setSortField] = useState('last_name');
   const [sortDir, setSortDir] = useState('asc');
   const [contextMenu, setContextMenu] = useState(null);
-  const [changeOwnerTarget, setChangeOwnerTarget] = useState(null);
-  const [pendingTransition, setPendingTransition] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
-  const [noteTarget, setNoteTarget] = useState(null);
-  const [toast, setToast] = useState(null);
-  const [showNewReferral, setShowNewReferral] = useState(false);
-  const canChangeIntakeOwner = can(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
 
   // Column picker + filter row
   const [visibleCols, setVisibleCols] = useState(() => new Set(COLUMN_DEFS.filter((c) => c.defaultOn).map((c) => c.key)));
@@ -306,8 +266,10 @@ export default function PatientList() {
     return map;
   }, [enriched]);
 
-  // Unique values per filterable column — drives datalist suggestions
+  // Unique values per filterable column — drives datalist suggestions.
+  // Skip the full census scan until the user actually opens column filters.
   const colOptions = useMemo(() => {
+    if (!showFilters) return {};
     const opts = {};
     COLUMN_DEFS.filter((c) => c.filterable).forEach((col) => {
       const vals = new Set();
@@ -382,7 +344,7 @@ export default function PatientList() {
       opts[col.key] = [...vals].sort((a, b) => a.localeCompare(b));
     });
     return opts;
-  }, [patients, refByPatientId, resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity]);
+  }, [showFilters, patients, refByPatientId, resolveMarketer, resolveSource, resolveSourceEntity, resolveFacility, resolvePhysician, resolveEntity]);
 
   const filtered = useMemo(() => {
     let list = patients.filter((p) => {
@@ -418,21 +380,6 @@ export default function PatientList() {
         if (key === 'triage') {
           const label = triageColumnLabel(ref, !!(ref?.id && triagePresence[ref.id]));
           if (!matchesTriageFilter(label, val)) return false;
-          continue;
-        }
-        if (key === 'post_soc_docs') {
-          const status = documentationFilterStatus(ref);
-          const open = isDocumentationDeferred(ref);
-          const ok = selectedFilterValues(val).some((raw) => {
-            const v = String(raw).toLowerCase().replace(/\s+/g, '_');
-            if (v === 'yes' || v === 'y' || v === 'true' || v === 'open') return open;
-            if (v === 'no' || v === 'n' || v === 'false') return !open;
-            if (v === 'waiting_docs' || v === 'docs' || v === 'f2f') return status === 'waiting_docs' || status === 'overdue';
-            if (v === 'waiting_clinical' || v === 'clinical') return status === 'waiting_clinical' || status === 'overdue';
-            if (v === 'overdue') return status === 'overdue';
-            return false;
-          });
-          if (!ok) return false;
           continue;
         }
         let cellVal = '';
@@ -475,6 +422,12 @@ export default function PatientList() {
 
   const patientHeaderH = 38;
   const flip = useFlipWindow(filtered, lockedGrid, { rowHeight: 44, headerHeight: patientHeaderH });
+  const reveal = useProgressiveReveal(filtered, {
+    enabled: !lockedGrid,
+    resetKey: `${division}|${search}|${stageFilter}|${showActive}|${sortField}|${sortDir}|${JSON.stringify(colFilters)}`,
+    rootRef: flip.viewportRef,
+  });
+  const paintedRows = lockedGrid ? flip.windowItems : reveal.visible;
 
   function toggleSort(f) {
     if (sortField === f) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -484,81 +437,6 @@ export default function PatientList() {
   function buildPatient(row) {
     // Pass the full patient record — all fields are already on the object from useAirtable
     return { ...row };
-  }
-
-  function initiateTransition(row, toStage) {
-    const ref = refByPatientId[row.id];
-    if (!ref) return;
-    setContextMenu(null);
-    if (needsModal(ref.current_stage, toStage)) {
-      setPendingTransition({ referral: ref, patient: row, toStage });
-    } else {
-      executeTransition(ref, row, toStage, '');
-    }
-  }
-
-  async function executeTransition(referral, patient, toStage, noteOrPayload) {
-    if (!can(PERMISSION_KEYS.REFERRAL_TRANSITION)) return;
-    setTransitioning(true);
-    setPendingTransition(null);
-    const note = typeof noteOrPayload === 'string' ? noteOrPayload : '';
-
-    // Conflict creation is a bespoke pre-step; the move goes through the shared
-    // transition engine (same path as ModulePage + PipelineBoard).
-    if (toStage === 'Conflict' && typeof noteOrPayload === 'object' && noteOrPayload) {
-      const patientCustomId = patient?.id || referral?.patient_id;
-      const referralCustomId = referral?.id;
-      if (!patientCustomId || !referralCustomId || !appUserId) {
-        showToast('Cannot send to Conflict — missing patient/referral/user linkage', 'error');
-        setTransitioning(false);
-        return;
-      }
-      try {
-        await flagConflict({
-          referral,
-          patientRecordId: patient?._id || referral?.patient?._id,
-          patientCustomId,
-          referralCustomId,
-          createdByUserRecordId: appUser?._id,
-          actorUserId: appUserId,
-          sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
-          category: noteOrPayload.category,
-          severity: noteOrPayload.severity,
-          description: noteOrPayload.description,
-          origin: 'patient_list',
-        });
-      } catch (err) {
-        console.error('Conflict create failed:', err);
-        showToast(err?.message || 'Failed to create Conflict record — not moved', 'error');
-        setTransitioning(false);
-        return;
-      }
-    }
-
-    const result = attemptTransition({
-      referral,
-      toStage,
-      context: { note, actorUserId: appUserId, canDirectNtuc: can(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT), resolveUserName: resolveUser },
-    });
-    if (!result.allowed) {
-      showToast(result.reason || `Cannot move to ${toStage}`, 'error');
-      setTransitioning(false);
-      return;
-    }
-    try {
-      await applyTransition({ referral, result, context: { actorUserId: appUserId } });
-      triggerDataRefresh();
-      showToast(result.wasIntercepted ? 'Sent to Admin Confirmation for NTUC review' : `Moved to ${result.effectiveStage}`);
-    } catch {
-      showToast('Stage change failed', 'error');
-    } finally {
-      setTransitioning(false);
-    }
-  }
-
-  function showToast(msg, type = 'success') {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
   }
 
   const colHdr = (col) => (
@@ -595,16 +473,6 @@ export default function PatientList() {
   if (isMobile) {
     return (
       <>
-        {showNewReferral && (
-          <NewReferralForm
-            onClose={() => setShowNewReferral(false)}
-            onSuccess={({ patient, referral }) => {
-              triggerDataRefresh();
-              setShowNewReferral(false);
-              openPatient(patient, referral, 'files');
-            }}
-          />
-        )}
         <div style={{ padding: '14px 14px 24px' }}>
           <div style={{ marginBottom: 12 }}>
             <h1 style={{ fontSize: 22, fontWeight: 750, color: palette.backgroundDark.hex, margin: '0 0 2px' }}>Patients</h1>
@@ -662,7 +530,7 @@ export default function PatientList() {
             <EmptyState title="No patients found" subtitle={search ? 'Try a different search.' : 'No patient records yet.'} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filtered.map((row) => {
+              {reveal.visible.map((row) => {
                 const ref = refByPatientId[row.id];
                 const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.id;
                 return (
@@ -678,7 +546,7 @@ export default function PatientList() {
                   >
                     <button
                       type="button"
-                      onClick={() => openPatient(buildPatient(row), ref, 'files')}
+                      onClick={() => openPatient(buildPatient(row), ref, 'files', { readOnly: directoryReadOnly })}
                       style={{
                         display: 'block', width: '100%', textAlign: 'left', border: 'none',
                         background: 'transparent', padding: '14px 14px 10px', cursor: 'pointer',
@@ -687,7 +555,7 @@ export default function PatientList() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', minWidth: 0 }}>
                         <p title={name} style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{name}</p>
-                        {ref?.current_stage && <StageBadge stage={ref.current_stage} size="small" />}
+                        {ref?.current_stage && <StageBadge stage={ref.current_stage} referral={ref} size="small" />}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
                         <DivisionBadge division={row.division || ref?.division} size="small" />
@@ -710,7 +578,7 @@ export default function PatientList() {
                         <button
                           key={a.tab}
                           type="button"
-                          onClick={() => openPatient(buildPatient(row), ref, a.tab)}
+                          onClick={() => openPatient(buildPatient(row), ref, a.tab, { readOnly: directoryReadOnly })}
                           style={{
                             flex: 1, height: 44, border: 'none',
                             borderRight: i < arr.length - 1 ? `1px solid var(--color-border)` : 'none',
@@ -727,6 +595,9 @@ export default function PatientList() {
                   </article>
                 );
               })}
+              {reveal.hasMore && (
+                <div ref={reveal.sentinelRef} aria-hidden="true" style={{ height: 1 }} />
+              )}
             </div>
           )}
         </div>
@@ -741,11 +612,8 @@ export default function PatientList() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 2 }}>Patients</h1>
-            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} of {patients.length} records</p>
+            <p style={{ fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{filtered.length} of {patients.length} records{directoryReadOnly ? ' · view only' : ''}</p>
           </div>
-          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
-            <button onClick={() => setShowNewReferral(true)} style={{ padding: '7px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer' }}>+ New Referral</button>
-          )}
         </div>
 
         {/* Filter / toolbar bar */}
@@ -834,7 +702,7 @@ export default function PatientList() {
                     </td>
                   </tr>
                 ) : (
-                  flip.windowItems.map((patient) => {
+                  paintedRows.map((patient) => {
                     const ref = refByPatientId[patient.id];
                     const days = ref ? daysInStage(ref) : null;
                     const totalDays = ref ? daysInPipeline(ref) : null;
@@ -848,7 +716,7 @@ export default function PatientList() {
                         lockFirstCol={false}
                         resolvers={resolvers}
                         activeColumns={activeColumns}
-                        onDoubleClick={() => openPatient(buildPatient(patient), ref || null)}
+                        onDoubleClick={() => openPatient(buildPatient(patient), ref || null, 'demographics', { readOnly: directoryReadOnly })}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setContextMenu({
@@ -863,6 +731,11 @@ export default function PatientList() {
                       />
                     );
                   })
+                )}
+                {!lockedGrid && reveal.hasMore && (
+                  <tr ref={reveal.sentinelRef}>
+                    <td colSpan={activeColumns.length} style={{ padding: 0, height: 1, border: 'none' }} />
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -885,70 +758,14 @@ export default function PatientList() {
               division: contextMenu.division,
               referral_id: r?.id || null,
             }}
-            canChangeOwner={canChangeIntakeOwner}
-            onOpen={() => { if (p) openPatient(buildPatient(p), r || null); setContextMenu(null); }}
-            onTriage={() => { if (p) openPatient(buildPatient(p), r || null, 'triage'); setContextMenu(null); }}
-            onNote={() => { if (p) setNoteTarget({ patient: p, referral: r }); setContextMenu(null); }}
-            onChangeOwner={() => {
-              if (r) setChangeOwnerTarget({ referral: r, patientName: contextMenu.patientName });
-              setContextMenu(null);
-            }}
-            onStageChange={(toStage) => { if (p) initiateTransition(p, toStage); setContextMenu(null); }}
+            readOnly={directoryReadOnly}
+            onOpen={() => { if (p) openPatient(buildPatient(p), r || null, 'demographics', { readOnly: directoryReadOnly }); setContextMenu(null); }}
+            onTriage={() => { if (p) openPatient(buildPatient(p), r || null, 'triage', { readOnly: directoryReadOnly }); setContextMenu(null); }}
             onDismiss={() => setContextMenu(null)}
           />
         );
       })()}
 
-      {changeOwnerTarget && (
-        <ChangeIntakeOwnerModal
-          referral={changeOwnerTarget.referral}
-          patientName={changeOwnerTarget.patientName}
-          onCancel={() => setChangeOwnerTarget(null)}
-          onDone={() => {
-            setChangeOwnerTarget(null);
-            setToast({ msg: 'Intake owner updated', type: 'ok' });
-            triggerDataRefresh();
-          }}
-        />
-      )}
-
-      {/* Transition modal */}
-      {pendingTransition && (
-        <TransitionModal
-          referral={pendingTransition.referral}
-          toStage={pendingTransition.toStage}
-          loading={transitioning}
-          onConfirm={(note) => executeTransition(pendingTransition.referral, pendingTransition.patient, pendingTransition.toStage, note)}
-          onCancel={() => setPendingTransition(null)}
-        />
-      )}
-
-      {/* New referral */}
-      {showNewReferral && (
-        <NewReferralForm
-          onClose={() => setShowNewReferral(false)}
-          onSuccess={({ patient, referral }) => {
-            triggerDataRefresh();
-            openPatient(buildPatient(patient), referral);
-          }}
-        />
-      )}
-
-      {/* Quick note modal */}
-      {noteTarget && (
-        <QuickNoteModal
-          patient={noteTarget.patient}
-          referral={noteTarget.referral}
-          onClose={() => setNoteTarget(null)}
-          onSaved={() => triggerDataRefresh()}
-        />
-      )}
-
-      {toast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9997, background: toast.type === 'error' ? palette.primaryMagenta.hex : palette.backgroundDark.hex, color: palette.backgroundLight.hex, padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 550, boxShadow: `0 4px 20px ${hexToRgba(palette.backgroundDark.hex, 0.25)}`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-          {toast.msg}
-        </div>
-      )}
     </>
   );
 }
@@ -1039,7 +856,7 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
       case 'stage':
         return (
           <td key="stage" style={TD}>
-            {referral?.current_stage ? <StageBadge stage={referral.current_stage} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
+            {referral?.current_stage ? <StageBadge stage={referral.current_stage} referral={referral} size="small" /> : <span style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.3) }}>—</span>}
           </td>
         );
       case 'triage': {
@@ -1159,25 +976,6 @@ function PatientRow({ patient, referral, days, totalDays, resolvers, activeColum
             </span>
           </td>
         );
-      case 'post_soc_docs': {
-        const status = documentationFilterStatus(referral);
-        if (status === 'none' || status === 'cleared') {
-          return <td key="post_soc_docs" style={{ ...TD, fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.25) }}>—</td>;
-        }
-        const daysLeft = daysUntilDocumentationDue(referral);
-        const label = status === 'overdue' ? 'Overdue' : status === 'waiting_docs' ? 'Need F2F' : 'Send to clinical';
-        const color = status === 'overdue' ? palette.primaryMagenta.hex : palette.accentOrange.hex;
-        return (
-          <td key="post_soc_docs" style={TD} title={referral?.documentation_due_date ? `Due ${String(referral.documentation_due_date).slice(0, 10)}` : 'Deferred docs'}>
-            <span style={{
-              fontSize: 10.5, fontWeight: 750, color, padding: '2px 7px', borderRadius: 20,
-              background: hexToRgba(color, 0.12), border: `1px solid ${hexToRgba(color, 0.3)}`,
-            }}>
-              {label}{daysLeft != null ? ` · ${daysLeft < 0 ? `${Math.abs(daysLeft)}d` : `${daysLeft}d`}` : ''}
-            </span>
-          </td>
-        );
-      }
       default:
         return <td key={col.key} />;
     }

@@ -10,6 +10,7 @@ import { useLockedTableGrid } from '../../hooks/useLockedTableGrid.js';
 import { lockedGridClass, lockColClass } from '../../utils/tableScrollMode.js';
 
 const STAGE_ROUTE = {
+  'Clinical Lead Pre-Check': '/modules/clinical-rn',
   'Lead Entry': '/modules/lead-entry',
   'Intake': '/modules/intake',
   'Eligibility Verification': '/modules/eligibility',
@@ -23,7 +24,10 @@ const STAGE_ROUTE = {
   'Admin Confirmation': '/modules/admin-confirmation',
   'Pre-SOC': '/modules/pre-soc',
   'SOC Scheduled': '/modules/soc-scheduled',
-  'SOC Completed': '/modules/soc-completed',
+  'SOC Completed': '/modules/completed',
+  'Post Visit Intake': '/modules/intake',
+  'Post Visit Clinical Review': '/modules/clinical-rn',
+  'Completed': '/modules/completed',
   'Hold': '/modules/hold',
   'NTUC': '/modules/ntuc',
 };
@@ -125,7 +129,7 @@ export default function OverduePatientsModal({ referrals, onClose, onOpenPatient
                         )}
                       </td>
                       <td style={{ padding: '11px 16px' }}>
-                        <StageBadge stage={ref.current_stage} size="small" />
+                        <StageBadge stage={ref.current_stage} referral={ref} size="small" />
                       </td>
                       <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
                         <span style={{

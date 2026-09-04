@@ -8,15 +8,13 @@ import { createNoteOptimistic, updateReferralOptimistic } from '../../store/muta
 import { createSocRescheduleLog } from '../../api/socRescheduleLog.js';
 import { updateEpisode } from '../../api/episodes.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
+import { runEffects } from '../../engine/effects.js';
+import { recordActivity } from '../../api/activityLog.js';
 import { isUrgentCare } from '../../utils/urgentCare.js';
 import {
   isDocumentationDeferred,
-  documentationDeferredStartFields,
   documentationDueFieldsForSocDate,
   maybeClearDocumentationDeferred,
-  needsPostSocClinical,
-  clinicalConfirmDestination,
-  CLINICAL_CONFIRM_SOC_COMPLETED,
 } from '../../utils/documentationDeferred.js';
 import { hasInsuranceDetails } from '../../utils/insuranceDetails.js';
 import { discardReferral } from '../../utils/discardReferral.js';
@@ -26,7 +24,10 @@ import DocumentationCompleteAction from '../common/DocumentationCompleteAction.j
 import RequestClinicalReviewAction from '../common/RequestClinicalReviewAction.jsx';
 import DiscardReferralModal from '../common/DiscardReferralModal.jsx';
 import EpisodeTypeBadge from '../common/EpisodeTypeBadge.jsx';
+import ClinicalLeadPreCheckPanel from './ClinicalLeadPreCheckPanel.jsx';
+import { isClinicalLeadPreCheck, restoreLeadStage, needsPreCheckIntakeWarning } from '../../utils/clinicalLeadPreCheck.js';
 import { isSocCompletedReferral } from '../../data/stageConfig.js';
+import { displayStageName } from '../common/StageBadge.jsx';
 import {
   scheduleVerb,
   rescheduleVerb,
@@ -35,7 +36,6 @@ import {
   episodeDateLabel,
   episodeTypeLongLabel,
   episodeTypeLabel,
-  preSocStageLabel,
   isRoc,
 } from '../../utils/episodeType.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -50,6 +50,7 @@ import { useCareStore } from '../../store/careStore.js';
 import { languageName, languageByCode } from '../../data/languages.js';
 import ClinicalChecklistUI from '../clinical/ClinicalChecklistUI.jsx';
 import { completeClinicalReview, resolveClinicalConfirmDecision } from '../../utils/completeClinicalReview.js';
+import { completeVisit } from '../../utils/completeVisit.js';
 import { F2F_REVIEW_CHECKLIST, F2F_REQUIRED_ITEMS, isF2FChecklistComplete } from '../../data/f2fChecklist.js';
 import { useCursoryReview } from '../../hooks/useCursoryReview.js';
 import { useClinicalReview } from '../../hooks/useClinicalReview.js';
@@ -478,9 +479,11 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
   const siblingLeads = useMemo(() => findSiblingLeadReferrals(referral), [referral]);
   const [moveSiblings, setMoveSiblings] = useState(true);
   const [selectedSiblingIds, setSelectedSiblingIds] = useState(() => new Set());
+  const [ackPreCheck, setAckPreCheck] = useState(false);
   useEffect(() => {
     setSelectedSiblingIds(new Set(siblingLeads.map((r) => r._id)));
     setMoveSiblings(siblingLeads.length > 0);
+    setAckPreCheck(false);
   }, [siblingLeads]);
   const canSubmit = !!ownerId;
   const selectedOwner = useMemo(
@@ -512,6 +515,11 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
 
   const langLabel = preferredLang?.name || '';
   const myselfSelected = !!(appUserId && ownerId === appUserId);
+  const extrasIfMoved = moveSiblings
+    ? siblingLeads.filter((r) => selectedSiblingIds.has(r._id))
+    : [];
+  const batchNeedsPreCheckWarning = needsPreCheckIntakeWarning(referral)
+    || extrasIfMoved.some(needsPreCheckIntakeWarning);
 
   return (
     <div onClick={(e) => e.target === e.currentTarget && onCancel()} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: hexToRgba(palette.backgroundDark.hex, 0.5), display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -748,21 +756,29 @@ function PromoteToIntakeModal({ referral, onConfirm, onCancel }) {
           </div>
         )}
 
-        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: '14px 22px', borderTop: `1px solid var(--color-border)`, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+          {batchNeedsPreCheckWarning && ackPreCheck && (
+            <p data-testid="precheck-intake-warning" style={{ fontSize: 12.5, color: palette.backgroundDark.hex, lineHeight: 1.45, margin: 0 }}>
+              Clinical has not signed off on {extrasIfMoved.some(needsPreCheckIntakeWarning) ? 'one or more of these leads' : 'this lead'} yet. Move to Intake anyway?
+            </p>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={onCancel} style={{ padding: '7px 18px', borderRadius: 7, border: `1px solid var(--color-border)`, background: 'none', fontSize: 13, fontWeight: 550, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>Cancel</button>
           <button
             onClick={() => {
               if (!canSubmit) return;
-              const extras = moveSiblings
-                ? siblingLeads.filter((r) => selectedSiblingIds.has(r._id))
-                : [];
-              onConfirm(ownerId, extras);
+              if (batchNeedsPreCheckWarning && !ackPreCheck) {
+                setAckPreCheck(true);
+                return;
+              }
+              onConfirm(ownerId, extrasIfMoved);
             }}
             disabled={!canSubmit}
             style={{ padding: '7px 20px', borderRadius: 7, background: canSubmit ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.07), border: 'none', fontSize: 13, fontWeight: 650, color: canSubmit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.3), cursor: canSubmit ? 'pointer' : 'not-allowed' }}
           >
-            Move to Intake
+            {batchNeedsPreCheckWarning && ackPreCheck ? 'Move anyway' : 'Move to Intake'}
           </button>
+          </div>
         </div>
       </div>
     </div>
@@ -780,6 +796,8 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
     const days = daysSinceCalendarDate(r.referral_date);
     return days != null && days >= 0 && days < 7;
   }).length;
+  const preCheckCount = referrals.filter(isClinicalLeadPreCheck).length;
+  const readyCount = referrals.filter((r) => r.current_stage === 'Lead Entry').length;
 
   async function handleDiscard(reason, explanation) {
     if (!selectedReferral) return;
@@ -838,6 +856,8 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
   return (
     <Panel>
       <PanelSection title="Lead Stats">
+        <InfoRow label="Awaiting clinical" value={preCheckCount} highlight={preCheckCount > 0 ? palette.primaryDeepPlum.hex : null} />
+        <InfoRow label="Ready leads" value={readyCount} />
         <InfoRow label="Today" value={today} highlight={today > 0 ? palette.primaryMagenta.hex : null} />
         <InfoRow label="This week" value={thisWeek} />
         <InfoRow label="Total in queue" value={referrals.length} />
@@ -886,6 +906,7 @@ function LeadEntryPanel({ referrals, selectedReferral, resolveSource, onInitiate
 
 // ── 1b. Discarded Leads ───────────────────────────────────────────────────────
 function DiscardedLeadsPanel({ referrals, selectedReferral, onInitiateTransition }) {
+  const { appUserId } = useCurrentAppUser();
   const byReason = {};
   referrals.forEach((r) => { const k = r.discard_reason || 'Unspecified'; byReason[k] = (byReason[k] || 0) + 1; });
 
@@ -909,7 +930,33 @@ function DiscardedLeadsPanel({ referrals, selectedReferral, onInitiateTransition
             </div>
           )}
           <div style={{ marginTop: 10 }}>
-            <ActionBtn label="Restore to Leads" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Lead Entry')} />
+            <ActionBtn
+              label="Restore to Leads"
+              variant="forward"
+              onClick={async () => {
+                if (!selectedReferral) return;
+                const toStage = restoreLeadStage(selectedReferral);
+                const result = attemptTransition({
+                  referral: selectedReferral,
+                  toStage,
+                  context: {
+                    system: true,
+                    actorUserId: appUserId,
+                    note: 'Restored from Discarded',
+                  },
+                });
+                if (!result.allowed) {
+                  window.alert?.(result.reason || 'Restore failed');
+                  return;
+                }
+                try {
+                  await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+                  triggerDataRefresh();
+                } catch (err) {
+                  window.alert?.(err.message || 'Restore failed');
+                }
+              }}
+            />
           </div>
         </PanelSection>
       )}
@@ -1019,7 +1066,10 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
   }
 
   const canStampInitialEmr = canPerm(PERMISSION_KEYS.INTAKE_EMR_INITIAL);
-  const initialEmrDone = !!selectedReferral?.emr_initial_onboarded_at;
+  // Complete EMR implies initial — you can't have the full chart without it.
+  const initialEmrDone = !!selectedReferral?.emr_initial_onboarded_at || !!selectedReferral?.emr_onboarded_at;
+  const initialEmrAt = selectedReferral?.emr_initial_onboarded_at || selectedReferral?.emr_onboarded_at;
+  const initialEmrById = selectedReferral?.emr_initial_onboarded_by_id || selectedReferral?.emr_onboarded_by_id;
 
   async function handleConfirmInitialEmr() {
     if (!selectedReferral || !canStampInitialEmr || initialEmrDone) return;
@@ -1048,9 +1098,11 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
           <SelectedPatientHeader
             referral={selectedReferral}
             stageLabel={
-              isF2F
-                ? (selectedReferral.soc_completed_date ? 'F2F / MD Orders · SOC done' : 'F2F / MD Orders')
-                : (selectedReferral.soc_completed_date ? 'Intake · SOC done' : 'Intake')
+              selectedReferral.current_stage === 'Post Visit Intake'
+                ? 'Post Visit Intake'
+                : isF2F
+                  ? (selectedReferral.soc_completed_date ? 'F2F / MD Orders · SOC done' : 'F2F / MD Orders')
+                  : (selectedReferral.soc_completed_date ? 'Intake · SOC done' : 'Intake')
             }
           />
 
@@ -1063,42 +1115,11 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
             />
           </div>
 
-          {selectedReferral.soc_completed_date && selectedReferral.current_stage !== 'SOC Completed' && (
-            <div
-              data-testid="post-soc-work-banner"
-              style={{
-                borderRadius: 10,
-                background: '#E5F3E4',
-                marginBottom: 12,
-                padding: '10px 12px',
-              }}
-            >
-              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: 0 }}>
-                SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)}
-              </p>
-              <p style={{ fontSize: 12, color: palette.backgroundDark.hex, margin: '4px 0 0', lineHeight: 1.45 }}>
-                Still on the Completed list. Finish remaining paperwork here.
-              </p>
-            </div>
-          )}
-
-          {/* Returned from Eligibility — required note becomes a flag here */}
-          {selectedReferral.eligibility_returned_to_intake_note && (
-            <ReturnedFromEligibilityFlag note={selectedReferral.eligibility_returned_to_intake_note} at={selectedReferral.eligibility_returned_to_intake_at} />
-          )}
-
-          {/* Returned from Clinical RN Review — note is optional, so flag on
-              the boolean (the send-back can happen with nothing filled out). */}
-          {(selectedReferral.returned_from_clinical === 'true' || selectedReferral.returned_from_clinical === true) && (
-            <ReturnedFromClinicalFlag
-              note={selectedReferral.returned_from_clinical_note}
-              at={selectedReferral.returned_from_clinical_at}
-            />
-          )}
-
-          {/* ALF-only: early HCHB chart creation during Intake. Companion
-              milestone — does NOT advance stage. Full EMR Onboarding later
-              still stamps emr_onboarded_at and moves to Staffing. */}
+          {/* ALF-only: Initial EMR Onboarding is the FIRST intake job — the
+              chart must exist in HCHB before anything else (visit scheduling
+              runs concurrently in SOC/ROC). Companion milestone — does NOT
+              advance stage. Complete EMR onboarding lives in the patient
+              drawer's EMR Onboarding tab. */}
           {isALF && (
             <PanelSection title="Initial EMR Onboarding">
               {initialEmrDone ? (
@@ -1113,15 +1134,15 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                   </p>
                   <InfoRow
                     label="Completed"
-                    value={new Date(selectedReferral.emr_initial_onboarded_at).toLocaleString('en-US', {
+                    value={new Date(initialEmrAt).toLocaleString('en-US', {
                       month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
                     })}
                     highlight="#2F6B2A"
                   />
-                  {selectedReferral.emr_initial_onboarded_by_id && (
+                  {initialEmrById && (
                     <InfoRow
                       label="By"
-                      value={resolveUser?.(selectedReferral.emr_initial_onboarded_by_id) || selectedReferral.emr_initial_onboarded_by_id}
+                      value={resolveUser?.(initialEmrById) || initialEmrById}
                     />
                   )}
                 </div>
@@ -1201,6 +1222,61 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 </p>
               )}
             </PanelSection>
+          )}
+
+          {selectedReferral.soc_completed_date && selectedReferral.current_stage !== 'SOC Completed' && (
+            <div
+              data-testid="post-soc-work-banner"
+              style={{
+                borderRadius: 10,
+                background: '#E5F3E4',
+                marginBottom: 12,
+                padding: '10px 12px',
+              }}
+            >
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: 0 }}>
+                SOC completed {fmtCalendarDate(selectedReferral.soc_completed_date)}
+              </p>
+              <p style={{ fontSize: 12, color: palette.backgroundDark.hex, margin: '4px 0 0', lineHeight: 1.45 }}>
+                Still on the Completed list. Finish remaining paperwork here.
+              </p>
+            </div>
+          )}
+
+          {/* Concurrent SOC/ROC: visit scheduled while paperwork continues here */}
+          {!selectedReferral.soc_completed_date && selectedReferral.soc_scheduled_date && (
+            <div
+              data-testid="soc-scheduled-banner"
+              style={{
+                borderRadius: 10,
+                background: hexToRgba(palette.accentBlue.hex, 0.08),
+                marginBottom: 12,
+                padding: '10px 12px',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: palette.accentBlue.hex }}>
+                <rect x="3" y="5" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="2" />
+                <path d="M3 9.5h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <p style={{ fontSize: 12.5, fontWeight: 650, color: palette.accentBlue.hex, margin: 0 }}>
+                {episodeTypeLabel(selectedReferral)} scheduled for {fmtCalendarDate(selectedReferral.soc_scheduled_date)}
+              </p>
+            </div>
+          )}
+
+          {/* Returned from Eligibility — required note becomes a flag here */}
+          {selectedReferral.eligibility_returned_to_intake_note && (
+            <ReturnedFromEligibilityFlag note={selectedReferral.eligibility_returned_to_intake_note} at={selectedReferral.eligibility_returned_to_intake_at} />
+          )}
+
+          {/* Returned from Clinical RN Review — note is optional, so flag on
+              the boolean (the send-back can happen with nothing filled out). */}
+          {(selectedReferral.returned_from_clinical === 'true' || selectedReferral.returned_from_clinical === true) && (
+            <ReturnedFromClinicalFlag
+              note={selectedReferral.returned_from_clinical_note}
+              at={selectedReferral.returned_from_clinical_at}
+            />
           )}
 
           {/* F2F section — shown for F2F-stage referrals OR whenever an F2F
@@ -1295,16 +1371,16 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 </span>
               </label>
             ))}
-            <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
             </div>
+            <HospitalizationReview referral={selectedReferral} patient={selectedReferral?.patient} />
 
             {/* Push-to-Clinical lives DIRECTLY UNDER the cursory review
-                checkboxes per spec — it's only clickable once every
-                required item is checked off. Once fired it flips the
-                `in_clinical_review` flag but does NOT change current_stage
-                (the patient remains in Intake until Insurance Details are
-                collected and the user pushes to Eligibility). Shown for
-                every Intake case, not only after an F2F date is logged. */}
+                checkboxes. Once fired it hands the case to Clinical
+                (`in_clinical_review` + stage move). Intake's queue then
+                drops the row; Clinical Send Back is what brings it back.
+                Shown for every Intake case, including legacy 'Post Visit
+                Intake' rows, which normalize into the regular clinical
+                queue on push. */}
             <PushToClinicalRNButton
               referral={selectedReferral}
               cursoryReviewComplete={reviewComplete}
@@ -1335,100 +1411,15 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
                 onClick={() => onOpenTriage?.(selectedReferral)}
               />
             )}
-            {canPerm(PERMISSION_KEYS.INTAKE_ADVANCE_WITHOUT_F2F)
-              && selectedReferral?.current_stage === 'Intake'
-              && !isDocumentationDeferred(selectedReferral) && (
-              <AdvanceWithoutF2FButton
-                referral={selectedReferral}
-                actorUserId={appUserId}
-                onSelectedReferralLeftModule={onSelectedReferralLeftModule}
-              />
-            )}
-            {isDocumentationDeferred(selectedReferral) && (
-              <div style={{ marginTop: 8 }}>
-                <DocumentationCompleteAction
-                  referral={selectedReferral}
-                  source="intake_panel"
-                  onOpenF2F={() => onOpenTab?.(selectedReferral, 'f2f')}
-                  onOpenClinical={() => onOpenTab?.(selectedReferral, 'clinical_review')}
-                />
-              </div>
-            )}
+            {/* The deferred-docs machinery ("Advance without F2F" fast-track,
+                "Post-SOC documentation" action, 30-day clock) is deprecated:
+                visits and paperwork run side by side for every case, so
+                post-visit paperwork is just normal Intake work — cursory
+                review + Push to Clinical above. */}
           </PanelSection>
         </>
       )}
     </Panel>
-  );
-}
-
-/** Permission-gated fast-track: Intake → EMR without F2F or clinical (both after SOC). */
-function AdvanceWithoutF2FButton({ referral, actorUserId, onSelectedReferralLeftModule }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
-
-  async function handleAdvance() {
-    if (!referral?._id || busy) return;
-    const ok = window.confirm(
-      'Advance this referral to EMR Onboarding without F2F and without clinical review?\n\n'
-      + 'Both will be completed AFTER SOC. A 30-day paperwork clock starts when SOC is scheduled.',
-    );
-    if (!ok) return;
-    setBusy(true);
-    setErr(null);
-    const result = attemptTransition({
-      referral,
-      toStage: 'EMR Onboarding',
-      context: {
-        note: '[Advanced without F2F / clinical — both due after SOC]',
-        actorUserId,
-        extraFields: {
-          ...documentationDeferredStartFields(actorUserId),
-          in_clinical_review: false,
-        },
-      },
-    });
-    if (!result.allowed) {
-      setErr(result.reason || 'Cannot advance');
-      setBusy(false);
-      return;
-    }
-    onSelectedReferralLeftModule?.();
-    try {
-      await applyTransition({ referral, result, context: { actorUserId } });
-      triggerDataRefresh();
-    } catch (e) {
-      setErr(e.message || 'Advance failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 8 }}>
-      <button
-        type="button"
-        onClick={handleAdvance}
-        disabled={busy}
-        style={{
-          width: '100%',
-          padding: '9px 12px',
-          borderRadius: 8,
-          border: 'none',
-          background: busy ? hexToRgba(palette.accentOrange.hex, 0.65) : palette.accentOrange.hex,
-          color: palette.backgroundLight.hex,
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: busy ? 'wait' : 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        {busy ? 'Advancing…' : 'Advance to EMR without F2F / clinical →'}
-      </button>
-      <p style={{ margin: '5px 0 0', fontSize: 10.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.35 }}>
-        Schedules the case now; F2F + clinical review are completed after SOC (30-day clock).
-      </p>
-      {err && <p style={{ margin: '4px 0 0', fontSize: 11, color: palette.primaryMagenta.hex }}>{err}</p>}
-    </div>
   );
 }
 
@@ -1453,6 +1444,11 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
       referral,
       toStage: 'Clinical Intake RN Review',
       context: {
+        // System: this button is the sanctioned handoff, and legacy rows
+        // parked in 'Post Visit Intake' don't have this edge on their
+        // declared allowlist — pushing normalizes them into the regular
+        // clinical queue.
+        system: true,
         note: '[Pushed to Clinical RN — left Intake]',
         actorUserId,
         extraFields: {
@@ -1484,7 +1480,7 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
     return (
       <div style={{ padding: '10px 12px', borderRadius: 10, background: '#E5F3E4', marginTop: 10 }}>
         <p style={{ fontSize: 12.5, fontWeight: 700, color: '#2F6B2A', margin: 0 }}>
-          Pushed to Clinical RN Review
+          Pushed to Clinical Review
         </p>
       </div>
     );
@@ -1517,7 +1513,7 @@ function PushToClinicalRNButton({ referral, cursoryReviewComplete, actorUserId, 
       onMouseEnter={(e) => cursoryReviewComplete && (e.currentTarget.style.filter = 'brightness(1.06)')}
       onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
     >
-      {cursoryReviewComplete ? 'Push to Clinical RN Review' : 'Finish cursory review to push'}
+      {cursoryReviewComplete ? 'Push to Clinical Review' : 'Finish required cursory review to push'}
       {cursoryReviewComplete && (
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
           <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
@@ -2094,7 +2090,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
               onMouseEnter={(e) => reviewComplete && (e.currentTarget.style.filter = 'brightness(1.08)')}
               onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
             >
-              {reviewComplete ? 'Confirm → Clinical Intake RN Review' : 'Complete review to send to Clinical RN'}
+              {reviewComplete ? 'Confirm → Clinical Review' : 'Finish required cursory review to send'}
             </button>
           </PanelSection>
         </>
@@ -2163,7 +2159,7 @@ function ApproveButton({ enabled, onSelect }) {
 //         'Staffing Feasibility'.
 //       - otherwise we just clear in_clinical_review and record the timestamp;
 //         the Eligibility "Completed" action will flip the stage later.
-function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition, onSelectedReferralLeftModule }) {
+function ClinicalRNPanel({ referrals = [], selectedReferral, onOpenTriage, onOpenFiles, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const { resolveUser } = useLookups();
@@ -2231,12 +2227,8 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
   // whether eligibility has also completed (the drawer's eligibility tab
   // can finish that work in parallel). Does not gate the Confirm action.
   const eligibilityDone = !!selectedReferral?.eligibility_completed_at;
-
-  const isPostSocClinical = !!selectedReferral && (
-    isSocCompletedReferral(selectedReferral)
-    || isDocumentationDeferred(selectedReferral)
-    || needsPostSocClinical(selectedReferral)
-  );
+  const preCheckCount = (referrals || []).filter(isClinicalLeadPreCheck).length;
+  const reviewCount = (referrals || []).length - preCheckCount;
 
   async function handleConfirm() {
     if (!selectedReferral || confirming) return;
@@ -2269,22 +2261,63 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
     setSendBackError(null);
     // Clear working Accept/Conditional so a later re-push is not locked.
     if (decisionLocked) setDecision(null);
+    // Everything returns to Intake — the post-visit detour through 'Post
+    // Visit Intake' is deprecated (visits and paperwork run side by side as
+    // the status quo). Concurrent cases already sitting on an Intake-side
+    // stage just get the send-back flags with no stage move.
+    const sendBackStage = 'Intake';
+    const staysPut = selectedReferral.current_stage === 'Intake'
+      || selectedReferral.current_stage === 'F2F/MD Orders Pending';
+    const sendBackFields = clinicalSendBackFields({ note, actorUserId: appUserId });
+    const noteText = note ? `[Returned from Clinical] ${note}` : '[Returned from Clinical — more paperwork needed]';
+
+    if (staysPut) {
+      setShowSendBack(false);
+      setSendBackNote('');
+      onSelectedReferralLeftModule?.();
+      try {
+        await updateReferralOptimistic(selectedReferral._id, sendBackFields);
+        await createNoteOptimistic({
+          id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          patient_id: selectedReferral.patient_id || null,
+          referral_id: selectedReferral.id || null,
+          author_id: appUserId || 'unknown',
+          content: noteText,
+          created_at: new Date().toISOString(),
+          is_pinned: false,
+        });
+        recordActivity({
+          actorUserId: appUserId,
+          action: 'Returned from Clinical',
+          patientId: selectedReferral.patient_id,
+          referralId: selectedReferral.id,
+          detail: note || 'More paperwork needed',
+        }).catch(() => {});
+        triggerDataRefresh();
+      } catch (err) {
+        setSendBackError(err.message || 'Failed to send back to Intake');
+        setSendingBack(false);
+        setShowSendBack(true);
+      }
+      return;
+    }
+
     const result = attemptTransition({
       referral: selectedReferral,
-      toStage: 'Intake',
+      toStage: sendBackStage,
       context: {
         // Clinical Intake RN Review is a protectedExit stage and 'Intake' is
         // not on its declared edge list; this in-panel action is the
         // sanctioned exit, so bypass the edge allowlist like the Eligibility
         // → Intake send-back does.
         system: true,
-        note: note ? `[Returned from Clinical] ${note}` : '[Returned from Clinical — more paperwork needed]',
+        note: noteText,
         actorUserId: appUserId,
-        extraFields: clinicalSendBackFields({ note, actorUserId: appUserId }),
+        extraFields: sendBackFields,
       },
     });
     if (!result.allowed) {
-      setSendBackError(result.reason || 'Cannot send back to Intake');
+      setSendBackError(result.reason || `Cannot send back to ${sendBackStage}`);
       setSendingBack(false);
       return;
     }
@@ -2297,7 +2330,7 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
       await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
       triggerDataRefresh();
     } catch (err) {
-      setSendBackError(err.message || 'Failed to send back to Intake');
+      setSendBackError(err.message || `Failed to send back to ${sendBackStage}`);
       setSendingBack(false);
       setShowSendBack(true);
     }
@@ -2305,33 +2338,35 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
 
   return (
     <Panel width={320}>
+      {(preCheckCount > 0 || reviewCount > 0) && (
+        <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #E6E4EB' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+            <span style={{ fontSize: 12, color: '#5A5466' }}>Lead pre-check</span>
+            <span style={{ fontSize: 12.5, fontWeight: 650, color: palette.primaryDeepPlum.hex }}>{preCheckCount}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+            <span style={{ fontSize: 12, color: '#5A5466' }}>Clinical review</span>
+            <span style={{ fontSize: 12.5, fontWeight: 650, color: palette.backgroundDark.hex }}>{reviewCount}</span>
+          </div>
+        </div>
+      )}
       {!selectedReferral ? <EmptyPanelState /> : (
         <>
           {/* Concurrent presence indicator — reminds clinical staff that the
               patient may still be in Intake / Eligibility. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.primaryMagenta.hex, 0.12), color: palette.primaryMagenta.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              Clinical RN
+              Clinical Review
             </span>
             {isSocCompletedReferral(selectedReferral) ? (
               <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                also on SOC/ROC Completed
+                Visit already done
               </span>
-            ) : selectedReferral.current_stage && selectedReferral.current_stage !== 'Clinical Intake RN Review' ? (
+              ) : selectedReferral.current_stage && selectedReferral.current_stage !== 'Clinical Intake RN Review' ? (
               <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentBlue.hex, 0.1), color: palette.accentBlue.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                also in {selectedReferral.current_stage}
+                also in {displayStageName(selectedReferral) || selectedReferral.current_stage}
               </span>
             ) : null}
-            {isDocumentationDeferred(selectedReferral) && (
-              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentOrange.hex, 0.14), color: palette.accentOrange.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                docs pending
-              </span>
-            )}
-            {!isDocumentationDeferred(selectedReferral) && selectedReferral.documentation_cleared_at && (
-              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                docs complete
-              </span>
-            )}
             {eligibilityDone && (
               <span style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: hexToRgba(palette.accentGreen.hex, 0.12), color: palette.accentGreen.hex, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 eligibility ✓
@@ -2361,7 +2396,9 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
                 {confirming
                   ? 'Saving…'
                   : canConfirm
-                    ? (isPostSocClinical ? 'Mark clinical completed' : 'Confirm → EMR Onboarding')
+                    ? (isSocCompletedReferral(selectedReferral)
+                      ? 'Approve → Completed'
+                      : 'Confirm → Staffing')
                     : 'Select Accept or Conditional to confirm'}
               </button>
               {confirmError && (
@@ -2374,11 +2411,11 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
                   Choose Accept or Conditional below, then this button sends the case on.
                 </p>
               )}
-              {isPostSocClinical && canConfirm && (
+              {canConfirm && (
                 <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: '8px 0 0', lineHeight: 1.4 }}>
-                  {clinicalConfirmDestination(selectedReferral) === CLINICAL_CONFIRM_SOC_COMPLETED
-                    ? 'Leaves Clinical and goes to SOC/ROC Completed. Does not go through EMR, staffing, or scheduling.'
-                    : 'Leaves Clinical. Stays on the current stage. Clears docs hold when F2F is also done.'}
+                  {isSocCompletedReferral(selectedReferral)
+                    ? 'The visit already happened — approving sends the case to Completed.'
+                    : 'Approving is a hard push to Staffing.'}
                 </p>
               )}
             </div>
@@ -2445,9 +2482,10 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
             <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, fontWeight: 600, margin: '0 0 8px' }}>{unlockError}</p>
           )}
 
-          {/* Send back to Intake — pre-SOC concurrent path only. Post-SOC
-              handoffs stay on Completed; RNs mark clinical completed instead. */}
-          {!isSocCompletedReferral(selectedReferral) && (
+          {/* Send back — everything returns to Intake (post-visit cases too;
+              the visit already happened but the paperwork loop continues in
+              Intake, never in a special post-visit stage). */}
+          {selectedReferral.current_stage !== 'Completed' && (
           <PanelSection title="Send Back">
             {decisionLocked && !showSendBack && (
               <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.45), lineHeight: 1.45, margin: '0 0 8px' }}>
@@ -2455,7 +2493,11 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </p>
             )}
             {!showSendBack ? (
-              <ActionBtn label="↩ Send Back to Intake" variant="warning" onClick={() => setShowSendBack(true)} />
+              <ActionBtn
+                label="↩ Send Back to Intake"
+                variant="warning"
+                onClick={() => setShowSendBack(true)}
+              />
             ) : (
               <div style={{ borderRadius: 8, border: `1px solid ${hexToRgba(palette.accentOrange.hex, 0.3)}`, background: hexToRgba(palette.accentOrange.hex, 0.04), padding: '10px 11px', marginBottom: 6 }}>
                 <p style={{ fontSize: 11.5, fontWeight: 600, color: palette.backgroundDark.hex, marginBottom: 6 }}>
@@ -2488,21 +2530,6 @@ function ClinicalRNPanel({ selectedReferral, onOpenTriage, onOpenFiles, onInitia
               </div>
             )}
           </PanelSection>
-          )}
-
-          {/* Confirm + clinical decision actions — gated by permission.
-              Decline is gone; issues route through the toolbar Conflict
-              button at the top of the module page. */}
-          {isPostSocClinical && (
-            <PanelSection title="Post-SOC docs">
-              <DocumentationCompleteAction
-                referral={selectedReferral}
-                source="clinical_post_soc_panel"
-                compact
-                offerSendToClinical={false}
-                onOpenF2F={() => onOpenFiles?.(selectedReferral)}
-              />
-            </PanelSection>
           )}
 
           <PanelSection title="Documents">
@@ -3045,12 +3072,45 @@ function EmrOnboardingPanel({ selectedReferral, resolveSource, resolveUser, onSe
   );
 }
 
-function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, onInitiateTransition }) {
+function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, onInitiateTransition, onSelectedReferralLeftModule }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
   const [clinicianMatched, setClinicianMatched] = useState(false);
+  const [visitDate, setVisitDate] = useState('');
+  const [completingVisit, setCompletingVisit] = useState(false);
+  const [visitError, setVisitError] = useState(null);
 
-  useEffect(() => { setClinicianMatched(false); }, [selectedReferral?._id]);
+  useEffect(() => {
+    setClinicianMatched(false);
+    setVisitDate('');
+    setCompletingVisit(false);
+    setVisitError(null);
+  }, [selectedReferral?._id]);
+
+  // Rushed / urgent care path: the visit gets scheduled outside the normal
+  // Pre-SOC flow, so Staffing marks it completed directly — with a
+  // backdatable date since the visit already happened. completeVisit sends
+  // the case back to Intake for the remaining paperwork (or Completed when
+  // clinical already approved).
+  async function handleRushedVisitComplete() {
+    if (!selectedReferral?._id || !visitDate || completingVisit) return;
+    setCompletingVisit(true);
+    setVisitError(null);
+    try {
+      const result = await completeVisit({
+        referral: selectedReferral,
+        appUserId,
+        completedDate: visitDate,
+      });
+      if (!result.ok) throw new Error(result.reason || 'Failed to mark visit completed');
+      triggerDataRefresh();
+      onSelectedReferralLeftModule?.();
+    } catch (err) {
+      setVisitError(err.message || 'Failed to mark visit completed');
+    } finally {
+      setCompletingVisit(false);
+    }
+  }
 
   // Stamp the staffing confirmation (clinician matched) on the referral before
   // moving to Pre-SOC, so the timeline can show it as a milestone.
@@ -3144,12 +3204,19 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
               <span key={s} style={{ fontSize: 11, fontWeight: 650, padding: '2px 8px', borderRadius: 5, background: hexToRgba(palette.primaryMagenta.hex, 0.1), color: palette.primaryMagenta.hex }}>{s}</span>
             ))}
           </div>
+          <InfoRow
+            label="Days in Staffing"
+            value={isOnTrack
+              ? `${Number.isFinite(selectedReferral._days_in_staffing) ? selectedReferral._days_in_staffing : 0}d`
+              : '—'}
+            highlight={isOnTrack ? palette.accentGreen.hex : undefined}
+          />
 
           {/* On Track immediate attention banner */}
           {isOnTrack && (
             <div data-testid="on-track-banner" style={{ marginTop: 10, padding: '8px 10px', borderRadius: 7, background: hexToRgba(palette.accentGreen.hex, 0.08), border: `1px solid ${hexToRgba(palette.accentGreen.hex, 0.2)}` }}>
               <p style={{ fontSize: 11.5, fontWeight: 650, color: palette.accentGreen.hex }}>
-                On Track — all other steps complete. Match a clinician to confirm.
+                On Track. All other steps complete. Match a clinician to confirm.
               </p>
             </div>
           )}
@@ -3175,7 +3242,53 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
                 onMouseEnter={(e) => canConfirm && (e.currentTarget.style.filter = 'brightness(1.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
               >
-                {canConfirm ? `Confirm → ${preSocStageLabel(selectedReferral)}` : 'Match a clinician to confirm'}
+                {canConfirm ? 'Confirm → SOC/ROC' : 'Match a clinician to confirm'}
+              </button>
+            </div>
+          )}
+
+          {/* Rushed / urgent path: visit happened outside the normal Pre-SOC
+              flow — mark it completed here with the (backdatable) actual date. */}
+          {isOnTrack
+            && (isDocumentationDeferred(selectedReferral) || isUrgentCare(selectedReferral))
+            && canPerm(PERMISSION_KEYS.SCHEDULING_SOC_COMPLETE) && (
+            <div data-testid="staffing-rushed-visit-complete" style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: hexToRgba(palette.accentBlue.hex, 0.07), border: `1px solid ${hexToRgba(palette.accentBlue.hex, 0.2)}` }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 4 }}>
+                Rushed case — visit already done?
+              </p>
+              <p style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), lineHeight: 1.5, marginBottom: 8 }}>
+                Mark the {episodeTypeLabel(selectedReferral)} visit completed with the date it actually happened.
+                The case returns to Intake for the remaining paperwork.
+              </p>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 4 }}>
+                Visit date
+              </label>
+              <input
+                type="date"
+                value={visitDate}
+                max={todayCalendarDate()}
+                onChange={(e) => setVisitDate(e.target.value)}
+                data-testid="staffing-visit-date"
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, marginBottom: 8,
+                  border: `1px solid ${visitDate ? palette.accentBlue.hex : 'var(--color-border)'}`,
+                  fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                  background: palette.backgroundLight.hex, color: palette.backgroundDark.hex,
+                }}
+              />
+              {visitError && <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{visitError}</p>}
+              <button
+                data-testid="staffing-visit-complete-btn"
+                onClick={handleRushedVisitComplete}
+                disabled={!visitDate || completingVisit}
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 7, border: 'none',
+                  background: visitDate && !completingVisit ? palette.accentBlue.hex : hexToRgba(palette.backgroundDark.hex, 0.07),
+                  color: visitDate && !completingVisit ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.35),
+                  fontSize: 12.5, fontWeight: 700, cursor: visitDate && !completingVisit ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {completingVisit ? 'Saving…' : 'Mark visit completed'}
               </button>
             </div>
           )}
@@ -3246,7 +3359,7 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
           {canPerm(PERMISSION_KEYS.SCHEDULING_ADMIN_CONFIRM) && (
           <PanelSection title="Decision">
             {!hasNtucRequest && (
-              <ActionBtn label={`Accept → ${preSocStageLabel(selectedReferral)}`} variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
+              <ActionBtn label="Accept → SOC/ROC" variant="forward" onClick={() => onInitiateTransition?.(selectedReferral, 'Pre-SOC')} />
             )}
 
             {hasNtucRequest && (
@@ -3499,6 +3612,13 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   const actualStage = selectedReferral?.current_stage;
   const today = todayCalendarDate();
 
+  // Concurrent membership: the SOC/ROC module also lists cases still working
+  // paperwork in Intake / Clinical (EMR chart exists, visit not completed).
+  // Those cases schedule + complete via flags, without moving current_stage.
+  const isLegacyStage = actualStage === 'Pre-SOC' || actualStage === 'SOC Scheduled';
+  const isScheduled = actualStage === 'SOC Scheduled'
+    || (!isLegacyStage && !!selectedReferral?.soc_scheduled_date);
+
   const [socDate, setSocDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -3516,33 +3636,53 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     if (!socDate || !selectedReferral || !canPerm(PERMISSION_KEYS.SCHEDULING_SOC_SCHEDULE)) return;
     setSaving(true);
     setError(null);
-    // Pre-SOC -> SOC Scheduled is a sanctioned sub-state move (not a user-facing
-    // graph edge), so it goes through the engine as a `system` transition. The
-    // engine writes optimistically, so the panel re-renders into Step 2
-    // immediately. createEpisode rides along as a side effect.
-    const result = attemptTransition({
-      referral: selectedReferral,
-      toStage: 'SOC Scheduled',
-      context: {
-        system: true,
-        actorUserId: appUserId,
-        extraFields: {
-          soc_scheduled_date: socDate,
-          soc_scheduled_at: new Date().toISOString(),
-          soc_scheduled_by_id: appUserId || 'unknown',
-          // 30-day paperwork clock for deferred F2F/clinical cases
-          ...(isDocumentationDeferred(selectedReferral)
-            ? documentationDueFieldsForSocDate(socDate)
-            : {}),
-        },
-        extraSideEffects: [
-          { type: 'createEpisode', patientId: selectedReferral.patient_id, referralRecordId: selectedReferral._id, socDate },
-        ],
-      },
-    });
-    if (!result.allowed) { setError(result.reason || 'Failed to schedule SOC'); setSaving(false); return; }
+    const scheduleFields = {
+      soc_scheduled_date: socDate,
+      soc_scheduled_at: new Date().toISOString(),
+      soc_scheduled_by_id: appUserId || 'unknown',
+      // 30-day paperwork clock for deferred F2F/clinical cases
+      ...(isDocumentationDeferred(selectedReferral)
+        ? documentationDueFieldsForSocDate(socDate)
+        : {}),
+    };
+    const episodeEffect = {
+      type: 'createEpisode',
+      patientId: selectedReferral.patient_id,
+      referralRecordId: selectedReferral._id,
+      socDate,
+    };
+
     try {
-      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      if (actualStage === 'Pre-SOC') {
+        // Pre-SOC -> SOC Scheduled is a sanctioned sub-state move (not a
+        // user-facing graph edge), so it goes through the engine as a `system`
+        // transition. The engine writes optimistically, so the panel
+        // re-renders into Step 2 immediately. createEpisode rides along.
+        const result = attemptTransition({
+          referral: selectedReferral,
+          toStage: 'SOC Scheduled',
+          context: {
+            system: true,
+            actorUserId: appUserId,
+            extraFields: scheduleFields,
+            extraSideEffects: [episodeEffect],
+          },
+        });
+        if (!result.allowed) { setError(result.reason || 'Failed to schedule SOC'); setSaving(false); return; }
+        await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      } else {
+        // Concurrent case — paperwork continues in its current stage; the
+        // schedule is flags only (no stage move, no stage-history noise).
+        await updateReferralOptimistic(selectedReferral._id, scheduleFields);
+        await runEffects([episodeEffect], { referral: selectedReferral, actorUserId: appUserId });
+        recordActivity({
+          actorUserId: appUserId,
+          action: 'SOC/ROC Scheduled',
+          patientId: selectedReferral.patient_id,
+          referralId: selectedReferral.id,
+          detail: `Visit scheduled for ${socDate} (concurrent with ${actualStage})`,
+        }).catch(() => {});
+      }
       triggerDataRefresh();
     } catch (err) {
       setError(err.message || 'Failed to schedule SOC');
@@ -3559,17 +3699,12 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     let succeeded = false;
     const completedDate = todayCalendarDate();
     const patientName = selectedReferral.patientName || 'Patient';
-    // current_stage at click time is either 'Pre-SOC' (no SOC Scheduled
-    // sub-state yet) or 'SOC Scheduled'. Both reach SOC Completed; mark the
-    // move `system` so it works from either without depending on the edge list.
-    const result = attemptTransition({
-      referral: selectedReferral,
-      toStage: 'SOC Completed',
-      context: { system: true, actorUserId: appUserId, extraFields: { soc_completed_date: completedDate } },
-    });
+    // completeVisit stamps soc_completed_date and routes: paperwork done →
+    // Completed; paperwork open → the case keeps working in Intake (stamp
+    // only when already on an Intake-side stage).
     try {
-      if (!result.allowed) throw new Error(result.reason || 'Failed');
-      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      const result = await completeVisit({ referral: selectedReferral, appUserId, completedDate });
+      if (!result.ok) throw new Error(result.reason || 'Failed');
       triggerDataRefresh();
       succeeded = true;
     } catch (err) {
@@ -3589,14 +3724,17 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
     }
   }
 
-  // Step indicator. EMR onboarding now happens upstream (its own stage), so by
-  // the time a patient is in Pre-SOC it's already done — reflect that.
+  // Step indicator. EMR onboarding is no longer a step here — it's an Intake
+  // milestone and a precondition for scheduling, surfaced as a status line.
   const epLabel = episodeTypeLabel(selectedReferral);
   const steps = [
-    { key: 'emr', label: 'EMR Onboarding', done: !!selectedReferral?.emr_onboarded_at || actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
-    { key: 'schedule', label: `${epLabel} Scheduled`, done: actualStage === 'SOC Scheduled' || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
+    { key: 'schedule', label: `${epLabel} Scheduled`, done: isScheduled || actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
     { key: 'complete', label: `${epLabel} Completed`, done: actualStage === 'SOC Completed' || !!selectedReferral?.soc_completed_date },
   ];
+
+  const emrInitialAt = selectedReferral?.emr_initial_onboarded_at;
+  const emrFullAt = selectedReferral?.emr_onboarded_at;
+  const emrDone = !!(emrInitialAt || emrFullAt);
 
   const socDateDisplay = fmtCalendarDate(selectedReferral?.soc_scheduled_date);
 
@@ -3617,6 +3755,35 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
             <InfoRow label="Division" value={selectedReferral.division} />
             <InfoRow label="Insurance" value={selectedReferral.patient?.insurance_plan} />
             <InfoRow label="DB Stage" value={actualStage} />
+          </PanelSection>
+
+          {/* EMR onboarding is a precondition for scheduling — show it as a
+              status line, not a step. */}
+          <PanelSection title="EMR Onboarding">
+            {emrDone ? (
+              <div
+                title={emrFullAt
+                  ? `Fully onboarded ${fmtCalendarDate(emrFullAt.slice(0, 10)) || ''}`
+                  : `Initial chart created ${fmtCalendarDate(emrInitialAt.slice(0, 10)) || ''}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  borderRadius: 999, padding: '4px 11px',
+                  background: emrFullAt ? '#E5F3E4' : hexToRgba(palette.highlightYellow.hex, 0.16),
+                  fontSize: 11.5, fontWeight: 700,
+                  color: emrFullAt ? '#2F6B2A' : '#7A5F00',
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <circle cx="6" cy="6" r="5.5" fill={emrFullAt ? '#2F6B2A' : '#B08900'} />
+                  <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {emrFullAt ? 'EMR onboarded' : 'Initial EMR done'}
+              </div>
+            ) : (
+              <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55), margin: 0, lineHeight: 1.5 }}>
+                Not yet in the EMR — Intake creates the HCHB chart before a visit can be scheduled.
+              </p>
+            )}
           </PanelSection>
 
           {/* Step progress indicator */}
@@ -3643,11 +3810,10 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
             </div>
           </PanelSection>
 
-          {/* Step 1: Schedule SOC (only when in Pre-SOC). EMR onboarding now
-              happens upstream in the dedicated EMR Onboarding stage, so this
-              panel only schedules the SOC. The packet stays downloadable here
-              as a reference copy. */}
-          {actualStage === 'Pre-SOC' && (
+          {/* Step 1: Schedule SOC — legacy Pre-SOC stage cases AND concurrent
+              cases (still in Intake/Clinical) that have no scheduled date yet.
+              The packet stays downloadable here as a reference copy. */}
+          {(actualStage === 'Pre-SOC' || (!isLegacyStage && !isScheduled)) && (
             <PanelSection title={`Step 1: ${scheduleVerb(selectedReferral)}`}>
               <div style={{ marginBottom: 8 }}>
                 <EpisodeTypeBadge referral={selectedReferral} size="tiny" />
@@ -3670,8 +3836,11 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
             </PanelSection>
           )}
 
-          {/* Step B+C: SOC Scheduled → Complete (when DB stage is SOC Scheduled) */}
-          {actualStage === 'SOC Scheduled' && (
+          {/* Step B+C: Scheduled → Complete — legacy SOC Scheduled stage cases
+              AND concurrent cases with a scheduled date. Marking completed
+              stamps soc_completed_date, which removes the case from this
+              module (post-visit paperwork continues in Intake). */}
+          {(actualStage === 'SOC Scheduled' || (!isLegacyStage && isScheduled)) && (
             <PanelSection title={`Step 2: ${epLabel} Scheduled`}>
               <div style={{ marginBottom: 8 }}>
                 <EpisodeTypeBadge referral={selectedReferral} size="tiny" />
@@ -3752,14 +3921,9 @@ function SocScheduledPanel({ selectedReferral, resolveSource, resolveUser, onIni
     let succeeded = false;
     const completedDate = todayCalendarDate();
     const patientName = selectedReferral.patientName || 'Patient';
-    const result = attemptTransition({
-      referral: selectedReferral,
-      toStage: 'SOC Completed',
-      context: { actorUserId: appUserId, extraFields: { soc_completed_date: completedDate } },
-    });
     try {
-      if (!result.allowed) throw new Error(result.reason || 'Failed to update patient');
-      await applyTransition({ referral: selectedReferral, result, context: { actorUserId: appUserId } });
+      const result = await completeVisit({ referral: selectedReferral, appUserId, completedDate });
+      if (!result.ok) throw new Error(result.reason || 'Failed to update patient');
       triggerDataRefresh();
       succeeded = true;
     } catch (err) {
@@ -4199,7 +4363,11 @@ export default function StagePanel({ stage, referrals, allReferrals, selectedRef
     case 'Eligibility Verification':  panel = <EligibilityPanel {...props} />; break;
     case 'Disenrollment Required':    panel = <DisenrollmentPanel {...props} />; break;
     case 'F2F/MD Orders Pending':     panel = <F2FPanel {...props} />; break;
-    case 'Clinical Intake RN Review': panel = <ClinicalRNPanel {...props} />; break;
+    case 'Clinical Intake RN Review':
+      panel = isClinicalLeadPreCheck(selectedReferral)
+        ? <ClinicalLeadPreCheckPanel {...props} />
+        : <ClinicalRNPanel {...props} />;
+      break;
     case 'Authorization Pending':     panel = <AuthorizationPanel {...props} />; break;
     case 'Conflict':                  panel = <ConflictPanel {...props} />; break;
     case 'EMR Onboarding':            panel = <EmrOnboardingPanel {...props} />; break;
@@ -4208,6 +4376,7 @@ export default function StagePanel({ stage, referrals, allReferrals, selectedRef
     case 'Pre-SOC':                   panel = <PreSocPanel {...props} />; break;
     case 'SOC Scheduled':             panel = <SocScheduledPanel {...props} />; break;
     case 'SOC Completed':             panel = <SocCompletedPanel {...props} />; break;
+    case 'Completed':                 panel = <SocCompletedPanel {...props} />; break;
     case 'Hold':                      panel = <HoldPanel {...props} />; break;
     case 'NTUC':                      panel = <NtucPanel {...props} />; break;
     case 'OPWDD Enrollment':          panel = <OPWDDEnrollmentPanel {...props} />; break;

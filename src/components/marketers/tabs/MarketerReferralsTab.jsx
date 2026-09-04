@@ -42,6 +42,7 @@ const COLUMN_DEFS = [
 export default function MarketerReferralsTab({ referrals }) {
   const { open: openPatient } = usePatientDrawer();
   const { resolveSource, resolveSourceEntity, resolveEntity } = useLookups();
+  const storePatients = useCareStore((s) => s.patients);
   const lockedGrid = useLockedTableGrid();
   const triageAdult = useCareStore((s) => s.triageAdult);
   const triagePediatric = useCareStore((s) => s.triagePediatric);
@@ -63,7 +64,7 @@ export default function MarketerReferralsTab({ referrals }) {
 
   const displayed = useMemo(() => {
     let list = referrals;
-    if (statusFilter === 'active') list = list.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed');
+    if (statusFilter === 'active') list = list.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage));
     else if (statusFilter === 'admitted') list = list.filter((r) => isSocCompletedReferral(r));
     else if (statusFilter === 'ntuc') list = list.filter((r) => r.current_stage === 'NTUC');
 
@@ -132,6 +133,19 @@ export default function MarketerReferralsTab({ referrals }) {
     else { setSortField(field); setSortDir('desc'); }
   }
 
+  function openReferralPatient(ref) {
+    const stored = Object.values(storePatients || {}).find((p) => p.id === ref.patient_id);
+    const nameParts = String(ref.patientName || '').trim().split(/\s+/);
+    const patient = stored || {
+      id: ref.patient_id,
+      _id: ref.patient_id,
+      first_name: nameParts[0] || '',
+      last_name: nameParts.slice(1).join(' ') || '',
+      division: ref.division,
+    };
+    openPatient(patient, ref);
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Toolbar */}
@@ -185,13 +199,32 @@ export default function MarketerReferralsTab({ referrals }) {
               {flip.windowItems.map((ref) => {
                 const f2fColor = F2F_COLORS[ref.f2f_urgency] || null;
                 return (
-                  <tr key={ref._id} onDoubleClick={() => openPatient({ id: ref.patient_id, _id: ref.patient_id, division: ref.division }, ref)} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, cursor: 'pointer' }}
+                  <tr
+                    key={ref._id}
+                    onClick={() => openReferralPatient(ref)}
+                    style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}`, cursor: 'pointer' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = hexToRgba(palette.primaryDeepPlum.hex, 0.03))}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                    <td className={lockColClass(lockedGrid)} style={{ padding: '9px 12px', fontSize: 13, fontWeight: 550, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</td>
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td className={lockColClass(lockedGrid)} style={{ padding: '9px 12px' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openReferralPatient(ref); }}
+                        style={{
+                          background: 'none', border: 'none', padding: 0, margin: 0,
+                          fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+                          color: palette.primaryDeepPlum.hex, cursor: 'pointer',
+                          textAlign: 'left', textDecoration: 'underline',
+                          textDecorationColor: hexToRgba(palette.primaryDeepPlum.hex, 0.28),
+                          textUnderlineOffset: 2,
+                        }}
+                      >
+                        {ref.patientName || ref.patient_id}
+                      </button>
+                    </td>
                     <td style={{ padding: '9px 12px' }}><DivisionBadge division={ref.division} size="small" /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveEntity(ref.entity_id) || '—'}</td>
-                    <td style={{ padding: '9px 12px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '9px 12px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>
                     <td style={{ padding: '9px 12px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>{triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]))}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSource(ref.referral_source_id) || '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveSourceEntity(ref.referral_source_id) || '—'}</td>

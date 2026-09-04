@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useMarketerData } from '../../hooks/useMarketerData.js';
+import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import MarketerOverviewTab from './tabs/MarketerOverviewTab.jsx';
 import MarketerReferralsTab from './tabs/MarketerReferralsTab.jsx';
 import MarketerMetricsTab from './tabs/MarketerMetricsTab.jsx';
 import MarketerFacilitiesTab from './tabs/MarketerFacilitiesTab.jsx';
 import MarketerDataToolsTab from './tabs/MarketerDataToolsTab.jsx';
+import DateRangeFilter, { DEFAULT_DATE_RANGE } from '../common/DateRangeFilter.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [
@@ -27,8 +29,10 @@ function initials(first, last) {
 
 export default function MarketerDrawer({ marketer, onClose }) {
   const [activeTab, setActiveTab] = useState('overview');
-  const { referrals, facilities, stats, ntucReasons, loading } = useMarketerData(marketer);
+  const [dateRange, setDateRange] = useState(DEFAULT_DATE_RANGE);
+  const { referrals, facilities, stats, ntucReasons, loading } = useMarketerData(marketer, dateRange);
   const [animated, setAnimated] = useState(false);
+  const { isOpen: isPatientOpen } = usePatientDrawer();
 
   useEffect(() => {
     if (marketer) {
@@ -41,7 +45,7 @@ export default function MarketerDrawer({ marketer, onClose }) {
   }, [marketer?.id]);
 
   useEffect(() => {
-    if (!marketer) return;
+    if (!marketer || isPatientOpen) return;
     function onKey(e) {
       if (e.key === 'Escape') { onClose(); return; }
       const tag = document.activeElement?.tagName;
@@ -61,7 +65,7 @@ export default function MarketerDrawer({ marketer, onClose }) {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [marketer, onClose]);
+  }, [marketer, onClose, isPatientOpen]);
 
   if (!marketer) return null;
 
@@ -69,11 +73,20 @@ export default function MarketerDrawer({ marketer, onClose }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: hexToRgba(palette.backgroundDark.hex, animated ? 0.35 : 0), transition: 'background 0.3s', backdropFilter: animated ? 'blur(2px)' : 'none' }} />
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: hexToRgba(palette.backgroundDark.hex, animated ? 0.35 : 0),
+          transition: 'background 0.3s',
+          backdropFilter: animated ? 'blur(2px)' : 'none',
+          display: isPatientOpen ? 'none' : undefined,
+        }}
+      />
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 100vw)',
         zIndex: 1001, background: palette.backgroundLight.hex,
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        display: isPatientOpen ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: `-8px 0 32px ${hexToRgba(palette.backgroundDark.hex, 0.15)}`,
         transform: animated ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -119,6 +132,11 @@ export default function MarketerDrawer({ marketer, onClose }) {
               </button>
             );
           })}
+        </div>
+
+        {/* Date range (applies to every tab's referral metrics) */}
+        <div style={{ padding: '8px 18px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
 
         {/* Tab content */}

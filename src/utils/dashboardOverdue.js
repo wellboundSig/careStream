@@ -3,6 +3,7 @@ import { isSocCompletedReferral } from '../data/stageConfig.js';
 /** Same exits as the executive "Active Referrals" KPI. */
 export const INACTIVE_FOR_ACTIVE_KPI = new Set([
   'SOC Completed',
+  'Completed',
   'Conflict',
   'NTUC',
   'Admin Confirmation',

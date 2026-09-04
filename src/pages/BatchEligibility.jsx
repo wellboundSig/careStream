@@ -3,7 +3,7 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import AccessDenied from '../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../utils/colors.js';
-import { runOptumEligibilityCheck, resolveProviderOrg } from '../api/optumEligibility.js';
+import { runSmartEligibilityCheck, resolveProviderOrg } from '../api/optumEligibility.js';
 import {
   parseUploadedSpreadsheet,
   planRowChecks,
@@ -75,7 +75,10 @@ export default function BatchEligibility() {
           const provider = resolveProviderOrg({
             referral: { division: /special|sn\b|wbii/i.test(row.residentType || '') ? 'Special Needs' : 'ALF' },
           });
-          return runOptumEligibilityCheck({
+          // Smart router: picks Optum / Availity / Waystar per payer with
+          // fallback. Unwrap to the deciding attempt so the row/export shape
+          // is unchanged from the Optum-only days.
+          const data = await runSmartEligibilityCheck({
             patient: {
               first_name: row.firstName,
               last_name: row.lastName,
@@ -89,12 +92,16 @@ export default function BatchEligibility() {
               insurance_category: check.category,
               payer_display_name: check.payerName,
             },
-            tradingPartnerServiceId: check.payerId,
+            payerId: check.payerId || undefined,
             providerNpi: provider.npi,
             providerName: provider.name,
             dateOfService: check.dateOfService,
             serviceTypeCodes: ['30'],
           });
+          const attempts = Array.isArray(data?.attempts) ? data.attempts : null;
+          return data?.result
+            || (attempts ? [...attempts].reverse().find((a) => !a.skipped) : null)
+            || data;
         },
       });
       setRows([...rows]);

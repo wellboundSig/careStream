@@ -134,6 +134,14 @@ export function validateAuthorizationRecord(record) {
  *   with shape: { insuranceCategory }
  * @returns {{ suggestNar: boolean, rationale: string, requiresConfirmation: true }}
  */
+function insuranceCategoryOf(insuranceOrCategory) {
+  return typeof insuranceOrCategory === 'string'
+    ? insuranceOrCategory
+    : (insuranceOrCategory?.insurance_category
+      || insuranceOrCategory?.payer_type
+      || '');
+}
+
 /**
  * Straight fee-for-service Medicare never requires prior auth — the Auth
  * workspace must not record a response against that payer. Medicare Advantage
@@ -142,12 +150,24 @@ export function validateAuthorizationRecord(record) {
  * @param {string|{ insurance_category?: string, payer_type?: string }} insuranceOrCategory
  */
 export function isMedicareNoAuthRequired(insuranceOrCategory) {
-  const cat = typeof insuranceOrCategory === 'string'
-    ? insuranceOrCategory
-    : (insuranceOrCategory?.insurance_category
-      || insuranceOrCategory?.payer_type
-      || '');
-  return cat === INSURANCE_CATEGORY.MEDICARE;
+  return insuranceCategoryOf(insuranceOrCategory) === INSURANCE_CATEGORY.MEDICARE;
+}
+
+/**
+ * Straight Medicare and straight Medicaid do not require prior auth.
+ * Managed variants (Advantage / MCO / MLTC) still may.
+ */
+export function isNoAuthRequired(insuranceOrCategory) {
+  const cat = insuranceCategoryOf(insuranceOrCategory);
+  return cat === INSURANCE_CATEGORY.MEDICARE || cat === INSURANCE_CATEGORY.MEDICAID;
+}
+
+export function noAuthRequiredCopy(insuranceOrCategory) {
+  const cat = insuranceCategoryOf(insuranceOrCategory);
+  if (cat === INSURANCE_CATEGORY.MEDICAID) {
+    return 'Straight Medicaid does not need prior auth. Medicaid managed (MCO / MLTC) still may.';
+  }
+  return 'Straight Medicare does not need prior auth. Medicare Advantage still may.';
 }
 
 export function suggestNar(verifiedInsurances = []) {
@@ -155,15 +175,14 @@ export function suggestNar(verifiedInsurances = []) {
     return { suggestNar: false, rationale: 'No confirmed insurances yet.', requiresConfirmation: true };
   }
   const cats = verifiedInsurances.map((i) => i.insuranceCategory);
-  const onlyStraight =
-    cats.every((c) => c === INSURANCE_CATEGORY.MEDICARE || c === INSURANCE_CATEGORY.MEDICAID) &&
-    cats.includes(INSURANCE_CATEGORY.MEDICARE) &&
-    cats.includes(INSURANCE_CATEGORY.MEDICAID);
+  const onlyStraight = cats.every((c) =>
+    c === INSURANCE_CATEGORY.MEDICARE || c === INSURANCE_CATEGORY.MEDICAID,
+  );
 
   if (onlyStraight) {
     return {
       suggestNar: true,
-      rationale: 'Only straight Medicare + Medicaid confirmed. Business note suggests no auth required — staff must confirm.',
+      rationale: 'Only straight Medicare and/or Medicaid confirmed. No auth required — staff must confirm.',
       requiresConfirmation: true,
     };
   }

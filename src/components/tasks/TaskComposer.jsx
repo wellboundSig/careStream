@@ -42,6 +42,12 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCareStore } from '../../store/careStore.js';
 import { createTaskOptimistic } from '../../store/mutations.js';
 import { todayCalendarDate } from '../../utils/dateFormat.js';
+import {
+  TASK_REMINDER_PRESETS,
+  combineDateAndTime,
+  defaultReminderPreset,
+  reminderFieldsForTask,
+} from '../../utils/taskReminders.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -114,6 +120,13 @@ export default function TaskComposer({
   const [priority, setPriority] = useState(defaultPriority);
   const [dueDate, setDueDate]   = useState(defaultDueDate);
   const [scheduledDate, setScheduledDate] = useState(defaultScheduledDate);
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [reminderPreset, setReminderPreset] = useState(() =>
+    defaultReminderPreset({
+      dueDate: defaultDueDate,
+      scheduledDate: defaultScheduledDate,
+    }),
+  );
 
   const [patient, setPatient]       = useState(defaultPatient);
   const [referral, setReferral]     = useState(defaultReferral);
@@ -268,11 +281,30 @@ export default function TaskComposer({
       ...(physician?.id     ? { physician_id: physician.id }       : {}),
       ...(description.trim()? { description: description.trim() } : {}),
       ...(dueDate           ? { due_date: dueDate }                 : {}),
-      ...(scheduledDate     ? { scheduled_date: scheduledDate }    : {}),
+      ...(scheduledDate     ? {
+        scheduled_date: combineDateAndTime(scheduledDate, scheduledTime) || scheduledDate,
+      } : {}),
+      ...reminderFieldsForTask({
+        dueDate,
+        scheduledDate: scheduledDate
+          ? (combineDateAndTime(scheduledDate, scheduledTime) || scheduledDate)
+          : '',
+        preset: reminderPreset,
+      }),
     };
 
     try {
-      const record = await createTaskOptimistic(fields);
+      let record;
+      try {
+        record = await createTaskOptimistic(fields);
+      } catch (first) {
+        if (fields.reminder_preset && /unknown|not allowed|column|unrecognized/i.test(first.message || '')) {
+          const { reminder_preset, reminder_at, reminder_sent_at, ...rest } = fields;
+          record = await createTaskOptimistic(rest);
+        } else {
+          throw first;
+        }
+      }
       onCreated?.(record);
     } catch (e) {
       setError(e.message || 'Failed to create task');
@@ -445,14 +477,24 @@ export default function TaskComposer({
         </div>
       </Field>
 
-      {/* Dates */}
+      {/* Dates + schedule */}
       <div style={{ display: 'flex', gap: 10 }}>
         <Field label="Due date" optional style={{ flex: 1 }}>
           <input
             type="date"
             value={dueDate}
             min={todayCalendarDate()}
-            onChange={(e) => setDueDate(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDueDate(next);
+              if (!reminderPreset && (next || scheduledDate)) {
+                setReminderPreset(defaultReminderPreset({
+                  dueDate: next,
+                  scheduledDate,
+                  scheduledTime,
+                }));
+              }
+            }}
             style={inputStyle}
           />
         </Field>
@@ -461,11 +503,57 @@ export default function TaskComposer({
             type="date"
             value={scheduledDate}
             min={todayCalendarDate()}
-            onChange={(e) => setScheduledDate(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setScheduledDate(next);
+              if (!reminderPreset && (next || dueDate)) {
+                setReminderPreset(defaultReminderPreset({
+                  dueDate,
+                  scheduledDate: next,
+                  scheduledTime,
+                }));
+              }
+            }}
             style={inputStyle}
           />
         </Field>
       </div>
+      {scheduledDate && (
+        <Field label="Scheduled time" optional>
+          <input
+            type="time"
+            value={scheduledTime}
+            onChange={(e) => {
+              const next = e.target.value;
+              setScheduledTime(next);
+              if (reminderPreset === 'day_before' && next) setReminderPreset('30m');
+            }}
+            style={inputStyle}
+          />
+        </Field>
+      )}
+
+      <Field label="Reminder" optional>
+        <select
+          value={reminderPreset}
+          onChange={(e) => setReminderPreset(e.target.value)}
+          disabled={!dueDate && !scheduledDate}
+          style={{
+            ...inputStyle,
+            opacity: !dueDate && !scheduledDate ? 0.55 : 1,
+            cursor: !dueDate && !scheduledDate ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {TASK_REMINDER_PRESETS.map((p) => (
+            <option key={p.value || 'none'} value={p.value}>{p.label}</option>
+          ))}
+        </select>
+        {!dueDate && !scheduledDate && (
+          <p style={{ margin: '6px 0 0', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.42) }}>
+            Add a due or scheduled date to set a reminder.
+          </p>
+        )}
+      </Field>
 
       {/* Description */}
       <Field label="Description" optional>

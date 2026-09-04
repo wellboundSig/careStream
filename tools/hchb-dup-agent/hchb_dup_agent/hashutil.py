@@ -19,6 +19,28 @@ def normalize_name(value: str | None) -> str:
     return s
 
 
+def first_token(value: str | None) -> str:
+    """First word of a normalized name — 'JOHN MICHAEL' → 'JOHN'."""
+    n = normalize_name(value)
+    if not n:
+        return ''
+    return n.split()[0]
+
+
+def parse_hchb_client_name(value: str | None) -> tuple[str, str]:
+    """HCHB visit-report client names are 'LAST, FIRST' (optional middle)."""
+    s = (value or '').strip()
+    if not s:
+        return '', ''
+    if ',' in s:
+        last, rest = s.split(',', 1)
+        return last.strip(), first_token(rest)
+    parts = s.split()
+    if len(parts) >= 2:
+        return parts[0].strip(), first_token(parts[1])
+    return s, ''
+
+
 def normalize_ssn(value: str | None) -> str:
     if not value:
         return ''

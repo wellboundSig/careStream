@@ -5,8 +5,12 @@ import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { createPatient, updatePatient } from '../../api/patients.js';
 import { createReferral, updateReferral } from '../../api/referrals.js';
-import { createNote } from '../../api/notes.js';
+import { createNoteOptimistic } from '../../store/mutations.js';
 import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
+import {
+  serializeUrgentCareTypes,
+} from '../../utils/urgentCare.js';
+import UrgentCareTypePicker from '../common/UrgentCareTypePicker.jsx';
 import { openCaseForReferral } from '../../store/opwddOrchestration.js';
 import { useCareStore, mergeEntities, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
@@ -22,6 +26,7 @@ import {
   inferAgeGroupFromDob,
 } from '../../utils/validation.js';
 import { parseFlexibleBirthDate } from '../../utils/dateFormat.js';
+import { defaultLeadStage } from '../../utils/clinicalLeadPreCheck.js';
 import { DEFAULT_LANGUAGE_CODE, LANGUAGE_OPTIONS } from '../../data/languages.js';
 import { createReferralSource } from '../../api/referralSources.js';
 import {
@@ -43,6 +48,10 @@ import HchbDupWarning from '../common/HchbDupWarning.jsx';
 import InsurancePlanPicker from '../common/InsurancePlanPicker.jsx';
 import { EPISODE_TYPES, normalizeEpisodeType } from '../../utils/episodeType.js';
 import { memberIdFromDetail } from '../../utils/insuranceDetails.js';
+import LeadFileAttachments, {
+  stagedFilesNeedF2fDate,
+  uploadStagedLeadFiles,
+} from './LeadFileAttachments.jsx';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -542,6 +551,8 @@ export default function NewReferralForm({
   const [showReferralDetails, setShowReferralDetails] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState('creating');
+  const [stagedFiles, setStagedFiles] = useState([]);
   const [error, setError] = useState(null);
   // If patient insert succeeds and referral insert fails, reuse this row on
   // retry instead of minting another pat_… shell.
@@ -587,6 +598,8 @@ export default function NewReferralForm({
     emergency_same_as_primary: true,
     services_requested: [],
     initial_notes: '',
+    requires_urgent_care: false,
+    urgent_care_types: [],
     insurance_plans: [],
     insurance_plan_details: {},
     sn_age_group: '',
@@ -926,6 +939,9 @@ export default function NewReferralForm({
         if (!dobCheck.valid) errs.dob = dobCheck.error;
       }
     }
+    if (stagedFilesNeedF2fDate(stagedFiles)) {
+      errs.files = 'Enter a visit date for each F2F file';
+    }
     return errs;
   }
 
@@ -975,6 +991,7 @@ export default function NewReferralForm({
     }
 
     setSubmitting(true);
+    setSubmitPhase('creating');
     setError(null);
 
     try {
@@ -1161,11 +1178,12 @@ export default function NewReferralForm({
       }
 
       const referralDate = new Date().toISOString();
-      let stage = (form.division === 'Special Needs' && form.code_95 === 'no') ? 'OPWDD Enrollment' : 'Lead Entry';
+      let stage = defaultLeadStage({ division: form.division, code_95: form.code_95 });
       if (forceStage === 'Lead Entry' || forceStage === 'Intake') {
         // Inbound convert: honor explicit mode unless SN+no Code 95 forces OPWDD.
+        // "Convert to Lead" still starts in Clinical Lead Pre-Check.
         if (!(form.division === 'Special Needs' && form.code_95 === 'no')) {
-          stage = forceStage;
+          stage = forceStage === 'Lead Entry' ? defaultLeadStage({ division: form.division, code_95: form.code_95 }) : forceStage;
         }
       }
       const referralFields = {
@@ -1177,7 +1195,7 @@ export default function NewReferralForm({
         current_stage: stage,
         division: form.division,
         episode_type: normalizeEpisodeType(form.episode_type),
-        priority: 'Normal',
+        priority: form.requires_urgent_care ? 'High' : 'Normal',
         referral_date: referralDate,
         created_at: referralDate,
         updated_at: referralDate,
@@ -1197,6 +1215,12 @@ export default function NewReferralForm({
         ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
         ...(form.entity_id && { entity_id: form.entity_id }),
         ...(form.code_95 && { code_95: form.code_95 }),
+        ...(form.requires_urgent_care ? {
+          requires_urgent_care: true,
+          urgent_care_type: serializeUrgentCareTypes(form.urgent_care_types),
+          urgent_care_marked_at: referralDate,
+          ...(appUserId && { urgent_care_marked_by_id: appUserId }),
+        } : {}),
       };
 
       const referralRecord = await createReferral(referralFields);
@@ -1222,29 +1246,42 @@ export default function NewReferralForm({
       // stage_entered_at not a column in Referrals — skip
 
       const noteStamp = Date.now();
-      if (form.initial_notes?.trim()) {
-        createNote({
-          id: `note_${noteStamp}`,
-          patient_id: createdPatientId,
-          referral_id: referralCustomId,
-          author_id: appUserId || 'unknown',
-          content: form.initial_notes.trim(),
-          is_pinned: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
-      }
-      if (otherSourceNote) {
-        createNote({
-          id: `note_${noteStamp}_src`,
-          patient_id: createdPatientId,
-          referral_id: referralCustomId,
-          author_id: appUserId || 'unknown',
-          content: otherSourceNote,
-          is_pinned: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).catch(() => {});
+      const persistLeadNote = async (content, suffix = '') => {
+        const text = String(content || '').trim();
+        if (!text || !createdPatientId) return;
+        const now = new Date().toISOString();
+        try {
+          await createNoteOptimistic({
+            id: `note_${noteStamp}${suffix}_${Math.random().toString(36).slice(2, 6)}`,
+            patient_id: createdPatientId,
+            referral_id: referralCustomId,
+            ...(appUserId ? { author_id: appUserId } : {}),
+            content: text,
+            created_at: now,
+            updated_at: now,
+          });
+        } catch (err) {
+          console.warn('[NewReferralForm] Could not save note:', err);
+        }
+      };
+      await persistLeadNote(form.initial_notes);
+      await persistLeadNote(otherSourceNote, '_src');
+
+      if (stagedFiles.length) {
+        setSubmitPhase('files');
+        const uploadFailures = await uploadStagedLeadFiles({
+          stagedFiles,
+          patientId: createdPatientId,
+          referralId: referralCustomId,
+          referralRecId: referralRecord.id,
+          appUserId,
+        });
+        if (uploadFailures.length) {
+          await persistLeadNote(
+            `Could not attach at lead creation: ${uploadFailures.map((f) => `${f.name} (${f.message})`).join('; ')}`,
+            '_files',
+          );
+        }
       }
 
       await deleteDraftQuiet();
@@ -1368,7 +1405,7 @@ export default function NewReferralForm({
 
   const servicesForDivision = getServicesForDivision(form.division);
 
-  const headerTitle = title || (forceStage === 'Intake' ? 'Convert to Referral' : forceStage === 'Lead Entry' ? 'Convert to Lead' : 'New Referral');
+  const headerTitle = title || (forceStage === 'Intake' ? 'Convert to Referral' : forceStage === 'Lead Entry' ? 'Convert to Lead' : 'New Lead');
   const headerSub = subtitle || (
     forceStage === 'Intake'
       ? 'Creates a patient and an Intake referral'
@@ -1963,6 +2000,49 @@ export default function NewReferralForm({
             );
           })()}
 
+          {/* ── Urgent care — one step: checking any type marks the patient urgent ── */}
+          <div style={{
+            margin: '8px 0 16px',
+            padding: '12px 14px 14px',
+            borderRadius: 10,
+            border: `1px solid ${form.urgent_care_types.length > 0 ? hexToRgba('#C62828', 0.3) : hexToRgba(palette.backgroundDark.hex, 0.08)}`,
+            background: form.urgent_care_types.length > 0 ? hexToRgba('#C62828', 0.04) : 'transparent',
+          }}>
+            <p style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+              textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.42),
+              marginBottom: 8,
+            }}>
+              Urgent care needed
+            </p>
+            <UrgentCareTypePicker
+              layout="row"
+              types={form.urgent_care_types}
+              onChange={(next) => {
+                setDirty(true);
+                setForm((prev) => ({
+                  ...prev,
+                  urgent_care_types: next,
+                  // Checking any type marks the patient urgent — no separate
+                  // master toggle, no second step.
+                  requires_urgent_care: next.length > 0,
+                }));
+              }}
+            />
+          </div>
+
+          <FieldBox label="Initial Notes" fullWidth>
+            <textarea
+              value={form.initial_notes}
+              onChange={(e) => setField('initial_notes', e.target.value)}
+              placeholder="Any initial context, notes, or observations… this becomes the first patient note."
+              rows={3}
+              style={{ ...inputBase, resize: 'vertical', marginBottom: 8 }}
+              onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
+              onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
+            />
+          </FieldBox>
+
           {/* ── 6. Optional referral details (services conditional on division) ── */}
           <SectionDivider title="Referral Details" expanded={showReferralDetails} onToggle={() => setShowReferralDetails((v) => !v)} />
           {showReferralDetails && (
@@ -1974,18 +2054,12 @@ export default function NewReferralForm({
                   <CheckboxGroup options={servicesForDivision} values={form.services_requested} onChange={(v) => setField('services_requested', v)} />
                 )}
               </FieldBox>
-              <FieldBox label="Initial Notes" fullWidth>
-                <textarea
-                  value={form.initial_notes}
-                  onChange={(e) => setField('initial_notes', e.target.value)}
-                  placeholder="Any initial context, notes, or observations…"
-                  rows={3}
-                  style={{ ...inputBase, resize: 'vertical' }}
-                  onFocus={(e) => (e.target.style.borderColor = palette.primaryMagenta.hex)}
-                  onBlur={(e) => (e.target.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12))}
-                />
-              </FieldBox>
             </FieldGroup>
+          )}
+
+          <LeadFileAttachments files={stagedFiles} onChange={setStagedFiles} />
+          {errors.files && (
+            <p style={{ fontSize: 11, color: palette.primaryMagenta.hex, marginTop: 6 }}>{errors.files}</p>
           )}
 
         </form>
@@ -2015,7 +2089,9 @@ export default function NewReferralForm({
                     <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
                   </svg>
                 )}
-                {submitting ? 'Creating…' : 'Create Referral'}
+                {submitting
+                  ? (submitPhase === 'files' ? 'Uploading files…' : 'Creating…')
+                  : (forceStage === 'Intake' ? 'Create Referral' : 'Create Lead')}
               </button>
             </div>
           </div>

@@ -48,9 +48,9 @@ describe('Discarded Leads stage definition', () => {
     expect(rule.requiresNote).toBe(true);
   });
 
-  it('can only move back to Lead Entry from Discarded Leads', () => {
+  it('can move back to Lead Entry or Clinical Lead Pre-Check from Discarded Leads', () => {
     const rule = StageRules.stages['Discarded Leads'];
-    expect(rule.canMoveTo).toEqual(['Lead Entry']);
+    expect(rule.canMoveTo).toEqual(['Lead Entry', 'Clinical Lead Pre-Check']);
   });
 
   it('Lead Entry can move to Discarded Leads', () => {

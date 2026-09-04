@@ -64,7 +64,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
   const displayed = useMemo(() => {
     let list = referrals;
 
-    if (statusFilter === 'active') list = list.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed');
+    if (statusFilter === 'active') list = list.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage));
     else if (statusFilter === 'admitted') list = list.filter((r) => isSocCompletedReferral(r));
     else if (statusFilter === 'ntuc') list = list.filter((r) => r.current_stage === 'NTUC');
 
@@ -210,7 +210,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
                     </td>
                     <td style={{ padding: '9px 12px' }}><DivisionBadge division={ref.division} size="small" /></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveEntity(ref.entity_id) || '—'}</td>
-                    <td style={{ padding: '9px 12px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '9px 12px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>
                     <td style={{ padding: '9px 12px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>{triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]))}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{ref.insurance_plan || '—'}</td>
                     <td style={{ padding: '9px 12px' }}>

@@ -5,9 +5,10 @@ import { useCareStore } from '../store/careStore.js';
 // LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
 
-export function useMarketerData(marketer) {
-  const [referrals, setReferrals] = useState([]);
+export function useMarketerData(marketer, dateRange = null) {
+  const [allReferrals, setAllReferrals] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +35,7 @@ export function useMarketerData(marketer) {
             nameMap[r.fields.id] = `${r.fields.first_name || ''} ${r.fields.last_name || ''}`.trim();
           });
         }
-        setReferrals(rawRefs.map((r) => ({
+        setAllReferrals(rawRefs.map((r) => ({
           ...r,
           patientName: nameMap[r.patient_id] || null,
         })));
@@ -61,10 +62,12 @@ export function useMarketerData(marketer) {
       .finally(() => setLoading(false));
   }, [marketer?.id]);
 
+  const referrals = filterByDateRange(allReferrals, dateRange, 'referral_date');
+
   const admittedCount = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const stats = {
     total:      referrals.length,
-    active:     referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
+    active:     referrals.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage)).length,
     admitted:   admittedCount,
     ntuc:       referrals.filter((r) => r.current_stage === 'NTUC').length,
     convRate:   referrals.length ? Math.round((admittedCount / referrals.length) * 100) : 0,

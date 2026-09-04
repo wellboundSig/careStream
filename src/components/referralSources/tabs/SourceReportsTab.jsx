@@ -130,7 +130,7 @@ export default function SourceReportsTab({ source, referrals }) {
     const total    = filtered.length;
     const admitted = filtered.filter((r) => isSocCompletedReferral(r)).length;
     const ntuc     = filtered.filter((r) => r.current_stage === 'NTUC').length;
-    const active   = filtered.filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC').length;
+    const active   = filtered.filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage)).length;
     return {
       total, admitted, ntuc, active,
       convRate: total ? Math.round((admitted / total) * 100) : 0,

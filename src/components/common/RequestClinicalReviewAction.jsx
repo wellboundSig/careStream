@@ -106,7 +106,7 @@ export default function RequestClinicalReviewAction({
           margin: '4px 0 0', fontSize: 11.5,
           color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.4,
         }}>
-          Alert a Clinical Intake RN. Case stays on Completed and appears in Clinical.
+          Alert a Clinical Review RN. Case stays on Completed and appears in Clinical Review.
         </p>
       )}
 

@@ -74,7 +74,13 @@ import {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const OPWDD_OPTIONS = ['OPWDD Eligible', 'OPWDD Pending', 'Non-OPWDD'];
-const CCO_OPTIONS = ['Advance Care Alliance (ACA/NY)', 'Care Design NY', 'Tri-County Care'];
+const CCO_OPTIONS = [
+  'Advance Care Alliance (ACA/NY)',
+  'Care Design NY',
+  'Tri-County Care',
+  'Health Home',
+  'Not Applicable',
+];
 
 const ADULT_SERVICES   = ['PT', 'OT', 'ST', 'HHA'];
 const PEDIATRIC_SERVICES = ['PT', 'OT', 'ST', 'ABA', 'HHA'];

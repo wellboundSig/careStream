@@ -9,7 +9,7 @@
  */
 
 import { createOpwddCase, findActiveCaseByReferral, updateOpwddCase } from '../api/opwddCases.js';
-import { seedChecklistForCase, getChecklistItemsByCase, updateChecklistItem } from '../api/opwddChecklistItems.js';
+import { seedChecklistForCase, getChecklistItemsByCase, updateChecklistItem, createChecklistItem } from '../api/opwddChecklistItems.js';
 import { updateReferral } from '../api/referrals.js';
 import { attemptTransition, applyTransition } from '../engine/transitionEngine.js';
 import { recordActivity } from '../api/activityLog.js';
@@ -23,6 +23,7 @@ import {
   OPWDD_HANDOFF_STATUS,
   OPWDD_CODE95_WINDOW_DAYS,
   OPWDD_REQUIREMENT_KEY,
+  OPWDD_VISIT_TYPES,
 } from '../data/opwddEnums.js';
 
 // ── ID generation (matches the app-wide `prefix_NNN` convention) ────────────
@@ -218,6 +219,170 @@ export async function markChecklistItemAccepted({ item, reviewedByUserId, actorU
     detail: `Accepted: ${item.requirement_label || item.requirement_key}.`,
     metadata: { caseId: item.opwdd_case_id, requirementKey: item.requirement_key },
   }).catch(() => {});
+}
+
+// ── Revamped 2-phase / 5-step flow actions (2026-08-26) ─────────────────────
+// Phase 1 (concurrent): packet assembly · visit scheduling · visit completion.
+// Phase 2: submit to health home · parent letter + case completion.
+
+/** Step 1 — mark the eligibility packet assembled. */
+export async function markPacketAssembled({ opwddCase, actorUserId }) {
+  if (!opwddCase?._id) throw new Error('markPacketAssembled: opwddCase._id required');
+  const now = new Date().toISOString();
+  await updateOpwddCase(opwddCase._id, {
+    packet_assembled_at: now,
+    packet_assembled_by_id: actorUserId,
+  });
+  await recordActivity({
+    actorUserId,
+    action: OPWDD_AUDIT_ACTION.PACKET_ASSEMBLED,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: 'OPWDD packet assembled.',
+    metadata: { caseId: opwddCase.id },
+  }).catch(() => {});
+  triggerDataRefresh();
+}
+
+/**
+ * Step 1 — check / uncheck one of the 9 packet documents.
+ * Updates the case's checklist row for the doc, creating it on the fly for
+ * cases opened before the revamp (which may lack a row for the key).
+ */
+export async function setPacketDocChecked({ opwddCase, doc, item, checked, actorUserId }) {
+  if (!opwddCase?.id) throw new Error('setPacketDocChecked: opwddCase required');
+  if (!doc?.key)      throw new Error('setPacketDocChecked: doc required');
+  const now = new Date().toISOString();
+  const fields = checked
+    ? { status: OPWDD_CHECKLIST_STATUS.ACCEPTED, reviewed_at: now, reviewed_by_id: actorUserId }
+    : { status: OPWDD_CHECKLIST_STATUS.MISSING };
+
+  if (item?._id) {
+    await updateChecklistItem(item._id, fields);
+  } else {
+    await createChecklistItem({
+      id: `opwddck_${opwddCase.id}_${doc.key}`,
+      opwdd_case_id: opwddCase.id,
+      patient_id:    opwddCase.patient_id || undefined,
+      referral_id:   opwddCase.referral_id || undefined,
+      requirement_key:   doc.key,
+      requirement_label: doc.label,
+      is_required:  !!doc.required,
+      sort_order:   doc.sortOrder,
+      is_current:   false,
+      created_at:   now,
+      updated_at:   now,
+      ...fields,
+    });
+  }
+
+  await recordActivity({
+    actorUserId,
+    action: checked ? OPWDD_AUDIT_ACTION.CHECKLIST_ITEM_ACCEPTED : OPWDD_AUDIT_ACTION.CHECKLIST_ITEM_REQUESTED,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: `${checked ? 'Checked' : 'Unchecked'} packet document: ${doc.label}.`,
+    metadata: { caseId: opwddCase.id, requirementKey: doc.key, checked },
+  }).catch(() => {});
+  triggerDataRefresh();
+}
+
+/** Step 2 — mark a psychological / psycho-social visit scheduled (with date). */
+export async function scheduleOpwddVisit({ opwddCase, actorUserId, visitType, scheduledFor }) {
+  if (!opwddCase?._id) throw new Error('scheduleOpwddVisit: opwddCase._id required');
+  if (!scheduledFor)   throw new Error('scheduleOpwddVisit: scheduledFor date required');
+  const visit = OPWDD_VISIT_TYPES.find((v) => v.value === visitType);
+  if (!visit) throw new Error(`scheduleOpwddVisit: unknown visitType "${visitType}"`);
+  const scheduledIso = new Date(scheduledFor).toISOString();
+  await updateOpwddCase(opwddCase._id, {
+    [visit.scheduledField]: scheduledIso,
+    [visit.statusField]: 'scheduled',
+  });
+  await recordActivity({
+    actorUserId,
+    action: OPWDD_AUDIT_ACTION.VISIT_SCHEDULED,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: `${visit.label} scheduled for ${String(scheduledFor).slice(0, 10)}.`,
+    metadata: { caseId: opwddCase.id, visitType, scheduledFor: scheduledIso },
+  }).catch(() => {});
+  triggerDataRefresh();
+}
+
+/** Step 3 — mark a visit completed (one at a time). */
+export async function markOpwddVisitCompleted({ opwddCase, actorUserId, visitType }) {
+  if (!opwddCase?._id) throw new Error('markOpwddVisitCompleted: opwddCase._id required');
+  const visit = OPWDD_VISIT_TYPES.find((v) => v.value === visitType);
+  if (!visit) throw new Error(`markOpwddVisitCompleted: unknown visitType "${visitType}"`);
+  const now = new Date().toISOString();
+  await updateOpwddCase(opwddCase._id, {
+    [visit.completedField]: now,
+    [visit.statusField]: 'received',
+  });
+  await recordActivity({
+    actorUserId,
+    action: OPWDD_AUDIT_ACTION.VISIT_COMPLETED,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: `${visit.label} completed.`,
+    metadata: { caseId: opwddCase.id, visitType },
+  }).catch(() => {});
+  triggerDataRefresh();
+}
+
+/**
+ * Step 4 — submit the packet to a health home / OPWDD submission partner.
+ * Logs when it was submitted and who it was submitted to (entity from the
+ * HomehealthOpwddEntities lookup) plus who did the submitting.
+ */
+export async function submitToHealthhome({ opwddCase, actorUserId, entity, submittedOn }) {
+  if (!opwddCase?._id) throw new Error('submitToHealthhome: opwddCase._id required');
+  if (!entity?.id)     throw new Error('submitToHealthhome: entity required');
+  const submittedIso = submittedOn ? new Date(submittedOn).toISOString() : new Date().toISOString();
+  await updateOpwddCase(opwddCase._id, {
+    status: OPWDD_CASE_STATUS.SUBMITTED_TO_CCO,
+    submission_sent_at: submittedIso,
+    submission_sent_by_id: actorUserId,
+    submitted_to_entity_id: entity.id,
+    submitted_to_entity_name: entity.name,
+  });
+  await recordActivity({
+    actorUserId,
+    action: OPWDD_AUDIT_ACTION.SUBMITTED_TO_HEALTHHOME,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: `OPWDD packet submitted to ${entity.name}.`,
+    metadata: {
+      caseId: opwddCase.id,
+      entityId: entity.id,
+      entityName: entity.name,
+      submittedOn: submittedIso,
+    },
+  }).catch(() => {});
+  triggerDataRefresh();
+}
+
+/**
+ * Step 5 — parent letter received: link the uploaded letter file, mark the
+ * case completed, and send the referral back to Intake (shared engine move).
+ */
+export async function completeCaseWithParentLetter({ opwddCase, referral, actorUserId, letterFileId }) {
+  if (!opwddCase?._id) throw new Error('completeCaseWithParentLetter: opwddCase._id required');
+  const now = new Date().toISOString();
+  await updateOpwddCase(opwddCase._id, {
+    parent_letter_file_id: letterFileId || null,
+    parent_letter_received_at: now,
+    notice_received_at: now,
+  });
+  await recordActivity({
+    actorUserId,
+    action: OPWDD_AUDIT_ACTION.PARENT_LETTER_RECEIVED,
+    patientId:  opwddCase.patient_id,
+    referralId: opwddCase.referral_id,
+    detail: 'Parent letter received and uploaded. Case completed.',
+    metadata: { caseId: opwddCase.id, letterFileId: letterFileId || null },
+  }).catch(() => {});
+  await convertCaseToIntake({ opwddCase, referral, actorUserId, handoffNote: 'Parent letter received — OPWDD flow completed.' });
 }
 
 // ── Case state transitions ──────────────────────────────────────────────────

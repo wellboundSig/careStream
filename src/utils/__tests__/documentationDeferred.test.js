@@ -156,20 +156,26 @@ describe('clinicalConfirmDestination', () => {
     })).toBe(CLINICAL_CONFIRM_SOC_COMPLETED);
   });
 
-  it('stamps only when deferred docs are already past the clinical gate', () => {
-    expect(clinicalConfirmDestination({
-      current_stage: 'EMR Onboarding',
-      documentation_deferred: true,
-    })).toBeNull();
+  it('stamps only when the case is already in Staffing or SOC/ROC', () => {
     expect(clinicalConfirmDestination({
       current_stage: 'Staffing Feasibility',
       documentation_deferred: true,
     })).toBeNull();
+    expect(clinicalConfirmDestination({
+      current_stage: 'Pre-SOC',
+    })).toBeNull();
   });
 
-  it('sends normal pre-SOC clinical confirms to EMR Onboarding', () => {
+  it('hard-pushes a normal pre-SOC clinical confirm to Staffing', () => {
     expect(clinicalConfirmDestination({
       current_stage: 'Clinical Intake RN Review',
+    })).toBe(CLINICAL_CONFIRM_EMR);
+    expect(clinicalConfirmDestination({
+      current_stage: 'Intake',
+    })).toBe(CLINICAL_CONFIRM_EMR);
+    expect(clinicalConfirmDestination({
+      current_stage: 'EMR Onboarding',
+      documentation_deferred: true,
     })).toBe(CLINICAL_CONFIRM_EMR);
   });
 });

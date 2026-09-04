@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PERMISSION_KEYS, PERMISSION_CATALOG, PERMISSION_CATEGORIES } from '../permissionKeys.js';
+import { PERMISSION_KEYS, PERMISSION_CATALOG, PERMISSION_CATEGORIES, DENY_BY_DEFAULT_PERMISSIONS } from '../permissionKeys.js';
 
 describe('Department permission keys', () => {
   it('defines ADMIN_DEPARTMENTS', () => {
@@ -15,6 +15,16 @@ describe('Department permission keys', () => {
 
   it('has "Administration" in PERMISSION_CATEGORIES', () => {
     expect(PERMISSION_CATEGORIES).toContain('Administration');
+  });
+
+  it('hides User Management and Departments unless explicitly granted', () => {
+    expect(DENY_BY_DEFAULT_PERMISSIONS.has(PERMISSION_KEYS.ADMIN_USER_MANAGEMENT)).toBe(true);
+    expect(DENY_BY_DEFAULT_PERMISSIONS.has(PERMISSION_KEYS.ADMIN_DEPARTMENTS)).toBe(true);
+  });
+
+  it('hides Conflict Categories and Developer Tools unless explicitly granted', () => {
+    expect(DENY_BY_DEFAULT_PERMISSIONS.has(PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES)).toBe(true);
+    expect(DENY_BY_DEFAULT_PERMISSIONS.has(PERMISSION_KEYS.DEVELOPER_TOOLS)).toBe(true);
   });
 });
 

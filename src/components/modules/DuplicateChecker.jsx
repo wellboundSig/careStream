@@ -12,6 +12,7 @@ import DuplicateMergeWizard from './DuplicateMergeWizard.jsx';
 
 /** Stages where duplicate intake still matters. */
 export const EARLY_DUP_STAGES = new Set([
+  'Clinical Lead Pre-Check',
   'Lead Entry',
   'Intake',
   'Eligibility Verification',
@@ -278,10 +279,11 @@ export default function DuplicateChecker({
         title="Review early-stage duplicate leads (skips EMR-onboarded patients)"
         style={{
           height: 32, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6,
-          borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 600,
+          borderRadius: 7, fontSize: 12, fontWeight: 600,
           cursor: 'pointer',
-          background: open ? palette.primaryDeepPlum.hex : hexToRgba(palette.backgroundDark.hex, 0.06),
-          color: open ? palette.backgroundLight.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
+          border: `1px solid ${open ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+          background: open ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none',
+          color: open ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.55),
           transition: 'all 0.12s',
         }}
       >
@@ -290,8 +292,8 @@ export default function DuplicateChecker({
         {badgeCount > 0 && (
           <span style={{
             minWidth: 18, height: 18, padding: '0 5px', borderRadius: 5,
-            background: open ? hexToRgba(palette.backgroundLight.hex, 0.2) : hexToRgba(palette.primaryMagenta.hex, 0.14),
-            color: open ? palette.backgroundLight.hex : palette.primaryMagenta.hex,
+            background: open ? hexToRgba(palette.primaryMagenta.hex, 0.12) : hexToRgba(palette.backgroundDark.hex, 0.08),
+            color: open ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.6),
             fontSize: 10.5, fontWeight: 700,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}>

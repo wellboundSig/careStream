@@ -6,6 +6,7 @@ import { useLookups } from '../../../hooks/useLookups.js';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import ChangeIntakeOwnerModal from '../../referrals/ChangeIntakeOwnerModal.jsx';
 import ChangeMarketerModal from '../../referrals/ChangeMarketerModal.jsx';
+import ChangeFacilityModal from '../../referrals/ChangeFacilityModal.jsx';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 import { usePermissions } from '../../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../../data/permissionKeys.js';
@@ -18,29 +19,103 @@ const DIVISIONS = ['ALF', 'Special Needs'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
 const SN_AGE_GROUPS = ['Adult', 'Pediatric'];
 
-const fl = () => ({ fontSize: 10.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginBottom: 3, letterSpacing: '0.02em' });
-const ds = () => ({ fontSize: 13, color: palette.backgroundDark.hex, padding: '4px 6px', borderRadius: 6, cursor: 'text', border: '1px solid transparent', transition: 'border-color 0.12s, background 0.12s', wordBreak: 'break-word' });
-const ei = () => ({ width: '100%', padding: '5px 8px', borderRadius: 6, border: `1px solid ${palette.primaryMagenta.hex}`, fontSize: 13, color: palette.backgroundDark.hex, background: hexToRgba(palette.backgroundDark.hex, 0.03), outline: 'none', fontFamily: 'inherit' });
+const LABEL_W = 132;
+const muted = (a = 0.4) => hexToRgba(palette.backgroundDark.hex, a);
+const ds = () => ({
+  fontSize: 13, color: palette.backgroundDark.hex, margin: 0, padding: '1px 0',
+  borderRadius: 4, cursor: 'text', border: '1px solid transparent',
+  transition: 'border-color 0.12s, background 0.12s', wordBreak: 'break-word',
+});
+const ei = () => ({
+  width: '100%', padding: '5px 8px', borderRadius: 6,
+  border: `1px solid ${palette.primaryMagenta.hex}`, fontSize: 13,
+  color: palette.backgroundDark.hex, background: hexToRgba(palette.backgroundDark.hex, 0.03),
+  outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+});
 
 function Section({ title, children }) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.38), marginBottom: 12, paddingBottom: 6, borderBottom: `1px solid var(--color-border)` }}>{title}</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>{children}</div>
-    </div>
+    <section style={{ marginBottom: 22 }}>
+      <p style={{
+        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: muted(0.38), margin: '0 0 2px', paddingBottom: 6,
+        borderBottom: `1px solid var(--color-border)`,
+      }}>
+        {title}
+      </p>
+      <div>{children}</div>
+    </section>
   );
 }
 
-function ReadField({ label, value, fullWidth = false }) {
+function TextAction({ children, onClick, testId }) {
   return (
-    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
-      <p style={fl()}>{label}</p>
-      <p style={{ fontSize: 13, color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: value ? 'normal' : 'italic' }}>{value || '—'}</p>
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      style={{
+        fontSize: 11.5, fontWeight: 600, color: muted(0.4), background: 'none',
+        border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+        whiteSpace: 'nowrap', lineHeight: 1.3,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = palette.primaryDeepPlum.hex; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = muted(0.4); }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FieldRow({ label, actions, children, hint }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `${LABEL_W}px minmax(0, 1fr) 108px`,
+      columnGap: 16,
+      alignItems: 'baseline',
+      padding: '9px 0',
+      borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.055)}`,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 650, color: muted(0.4), letterSpacing: '0.02em',
+        paddingTop: 2, lineHeight: 1.35,
+      }}>
+        {label}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        {children}
+        {hint}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 12, minHeight: 18 }}>
+        {actions || null}
+      </div>
     </div>
   );
 }
 
-function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, optionLabels = null, fullWidth = false, readOnly: forceReadOnly = false, allowBlank = false, blankLabel = 'Leave blank' }) {
+function ValueText({ value, empty = false, italic = false }) {
+  return (
+    <p style={{
+      fontSize: 13, margin: 0, lineHeight: 1.4, wordBreak: 'break-word',
+      color: empty ? muted(0.28) : palette.backgroundDark.hex,
+      fontStyle: italic || empty ? 'italic' : 'normal',
+    }}>
+      {empty ? '—' : value}
+    </p>
+  );
+}
+
+function ReadField({ label, value }) {
+  const empty = !value || value === '—';
+  return (
+    <FieldRow label={label}>
+      <ValueText value={value} empty={empty} />
+    </FieldRow>
+  );
+}
+
+function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, options, optionLabels = null, readOnly: forceReadOnly = false, allowBlank = false, blankLabel = 'Leave blank' }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const { can } = usePermissions();
@@ -59,31 +134,27 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
   }
 
   const display = value ? (optionLabels?.[value] || value) : null;
-  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
   return (
-    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
-      <p style={fl()}>{label}</p>
+    <FieldRow label={label}>
       {editing ? (
         <select autoFocus value={value || ''} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
           <option value="" disabled={!allowBlank}>{allowBlank ? blankLabel : 'Select…'}</option>
           {options.map((o) => <option key={o} value={o}>{optionLabels?.[o] || o}</option>)}
         </select>
       ) : forceReadOnly ? (
-        <p style={{ fontSize: 13, color: display ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: display ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : (display || empty)}
-        </p>
+        <ValueText value={saving ? 'Saving…' : display} empty={!display} />
       ) : (
-        <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+        <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1, color: display ? palette.backgroundDark.hex : muted(0.28), fontStyle: display ? 'normal' : 'italic' }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
-          {saving ? 'Saving…' : (display || empty)}
+          {saving ? 'Saving…' : (display || '—')}
         </p>
       )}
-    </div>
+    </FieldRow>
   );
 }
 
-function EditableReferralServices({ value, referralId, onSave, fullWidth = false, readOnly: forceReadOnly = false }) {
+function EditableReferralServices({ value, referralId, onSave, readOnly: forceReadOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -104,10 +175,8 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
   }
 
   const displayText = current.length ? current.join(', ') : null;
-  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
   return (
-    <div style={{ gridColumn: fullWidth ? '1 / -1' : undefined }}>
-      <p style={fl()}>Services Requested</p>
+    <FieldRow label="Services">
       {editing ? (
         <div style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${palette.primaryMagenta.hex}`, background: hexToRgba(palette.backgroundDark.hex, 0.03) }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', marginBottom: 8 }}>
@@ -120,21 +189,19 @@ function EditableReferralServices({ value, referralId, onSave, fullWidth = false
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={save} style={{ padding: '4px 12px', borderRadius: 5, background: palette.accentGreen.hex, border: 'none', fontSize: 12, fontWeight: 650, color: '#fff', cursor: 'pointer' }}>Save</button>
-            <button onClick={() => setEditing(false)} style={{ padding: '4px 10px', borderRadius: 5, background: 'none', border: `1px solid var(--color-border)`, fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => setEditing(false)} style={{ padding: '4px 10px', borderRadius: 5, background: 'none', border: `1px solid var(--color-border)`, fontSize: 12, color: muted(0.55), cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       ) : forceReadOnly ? (
-        <p style={{ fontSize: 13, color: displayText ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: displayText ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : (displayText || empty)}
-        </p>
+        <ValueText value={saving ? 'Saving…' : displayText} empty={!displayText} />
       ) : (
-        <p onClick={startEdit} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
+        <p onClick={startEdit} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1, color: displayText ? palette.backgroundDark.hex : muted(0.28), fontStyle: displayText ? 'normal' : 'italic' }}
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
-          {saving ? 'Saving…' : (displayText || empty)}
+          {saving ? 'Saving…' : (displayText || '—')}
         </p>
       )}
-    </div>
+    </FieldRow>
   );
 }
 
@@ -167,39 +234,29 @@ function SnAgeGroupField({ referral, patient, onSave, readOnly: forceReadOnly = 
     finally { setSaving(false); }
   }
 
-  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
   const conflictWarning = conflictsWithDob ? (
-    <p style={{ fontSize: 10.5, color: palette.primaryMagenta.hex, marginTop: 3, fontWeight: 600 }}>
+    <p style={{ fontSize: 10.5, color: palette.primaryMagenta.hex, margin: '4px 0 0', fontWeight: 600 }}>
       Conflicts with DOB on file ({dobInferred}). Update one to match.
     </p>
   ) : null;
 
   return (
-    <div>
-      <p style={fl()}>Age Group (SN)</p>
+    <FieldRow label="Age group" hint={conflictWarning}>
       {editing && !forceReadOnly ? (
         <select autoFocus value={value} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
           <option value="" disabled>Select…</option>
           {SN_AGE_GROUPS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : forceReadOnly ? (
-        <>
-          <p style={{ fontSize: 13, color: value ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: value ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : (value || empty)}
-          </p>
-          {conflictWarning}
-        </>
+        <ValueText value={saving ? 'Saving…' : value} empty={!value} />
       ) : (
-        <>
-          <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1 }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
-            {saving ? 'Saving…' : (value || empty)}
-          </p>
-          {conflictWarning}
-        </>
+        <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1, color: value ? palette.backgroundDark.hex : muted(0.28), fontStyle: value ? 'normal' : 'italic' }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
+          {saving ? 'Saving…' : (value || '—')}
+        </p>
       )}
-    </div>
+    </FieldRow>
   );
 }
 
@@ -222,25 +279,23 @@ function EditableReferralPhysician({ referral, onSave, readOnly: forceReadOnly =
   }
 
   const physicianName = referral.physician_id ? resolvePhysician(referral.physician_id) : null;
-  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
+  const hasPhy = !!(physicianName && physicianName !== '—');
   return (
-    <div style={{ gridColumn: '1 / -1' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <p style={fl()}>Referring / Ordering Physician</p>
-        {!editing && !forceReadOnly && (
-          <button onClick={() => setEditing(true)} style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            {referral.physician_id ? 'Change' : '+ Add'}
-          </button>
-        )}
-      </div>
+    <FieldRow
+      label="Physician"
+      actions={!editing && !forceReadOnly ? (
+        <TextAction onClick={() => setEditing(true)}>{referral.physician_id ? 'Change' : 'Add'}</TextAction>
+      ) : null}
+    >
       {editing ? (
         <PhysicianPicker physicianId={referral.physician_id} physicianName={physicianName} onChange={handleSelect} compact />
       ) : (
-        <p style={{ fontSize: 13, color: physicianName && physicianName !== '—' ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28), padding: '4px 6px', fontStyle: physicianName && physicianName !== '—' ? 'normal' : 'italic', opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Saving…' : (physicianName && physicianName !== '—' ? `Dr. ${physicianName}` : empty)}
-        </p>
+        <ValueText
+          value={saving ? 'Saving…' : (hasPhy ? `Dr. ${physicianName}` : null)}
+          empty={!saving && !hasPhy}
+        />
       )}
-    </div>
+    </FieldRow>
   );
 }
 
@@ -356,7 +411,6 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
     : null;
   const entityName = (sourceRecord?.source_entity || '').trim();
   const sourceType = (sourceRecord?.type || '').trim();
-  const empty = <span style={{ color: hexToRgba(palette.backgroundDark.hex, 0.28), fontStyle: 'italic' }}>—</span>;
   const hasSource = !!(display && display !== '—');
   const marketerLabel = sourceRecord?.marketer_id
     ? resolveMarketer(sourceRecord.marketer_id)
@@ -376,32 +430,24 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
     { label: 'Source ID', value: sourceRecord.id, mono: true },
   ].filter((r) => r.value) : [];
 
+  const sourceActions = !editing ? (
+    <>
+      {hasSource && sourceRecord && (
+        <TextAction testId="referral-source-expand" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? 'Hide' : 'Details'}
+        </TextAction>
+      )}
+      {canEdit && (
+        <TextAction onClick={() => { setEditing(true); setExpanded(false); }}>
+          {referral.referral_source_id ? 'Change' : 'Add'}
+        </TextAction>
+      )}
+    </>
+  ) : null;
+
   return (
-    <div style={{ gridColumn: '1 / -1' }} ref={containerRef}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <p style={fl()}>Referral Source</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {!editing && hasSource && sourceRecord && (
-            <button
-              type="button"
-              data-testid="referral-source-expand"
-              onClick={() => setExpanded((v) => !v)}
-              style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-            >
-              {expanded ? 'Hide details' : 'Details'}
-            </button>
-          )}
-          {!editing && canEdit && (
-            <button
-              type="button"
-              onClick={() => { setEditing(true); setExpanded(false); }}
-              style={{ fontSize: 11, color: palette.accentBlue.hex, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-            >
-              {referral.referral_source_id ? 'Change' : '+ Add'}
-            </button>
-          )}
-        </div>
-      </div>
+    <div ref={containerRef}>
+      <FieldRow label="Source" actions={sourceActions}>
       {editing ? (
         <div style={{
           borderRadius: 8, border: `1px solid ${palette.primaryMagenta.hex}`,
@@ -475,7 +521,7 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
               textAlign: 'left',
               background: 'none',
               border: 'none',
-              padding: '4px 6px',
+              padding: 0,
               cursor: sourceRecord ? 'pointer' : 'default',
               fontFamily: 'inherit',
             }}
@@ -488,7 +534,7 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
               color: hasSource ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
               fontStyle: hasSource ? 'normal' : 'italic',
             }}>
-              {saving ? 'Saving…' : (hasSource ? display : empty)}
+              {saving ? 'Saving…' : (hasSource ? display : '—')}
             </span>
             {!saving && entityName && (
               <span style={{
@@ -561,18 +607,21 @@ function EditableReferralSource({ referral, onSave, readOnly: forceReadOnly = fa
           )}
         </div>
       )}
+      </FieldRow>
     </div>
   );
 }
 
 export default function ReferralInfoTab({ patient, referral, readOnly = false }) {
-  const { updateReferralLocal } = usePatientDrawer();
+  const { updateReferralLocal, updatePatientLocal } = usePatientDrawer();
   const { resolveMarketer, resolveUser, resolveFacility } = useLookups();
   const { can } = usePermissions();
   const canChangeOwner = can(PERMISSION_KEYS.LEADS_CHANGE_INTAKE_OWNER);
   const canChangeMarketer = can(PERMISSION_KEYS.REFERRAL_CHANGE_MARKETER);
+  const canChangeFacility = can(PERMISSION_KEYS.REFERRAL_CHANGE_FACILITY);
   const [showChangeOwner, setShowChangeOwner] = useState(false);
   const [showChangeMarketer, setShowChangeMarketer] = useState(false);
+  const [showChangeFacility, setShowChangeFacility] = useState(false);
 
   function handleReferralSave(field, value) { updateReferralLocal({ [field]: value }); }
 
@@ -612,9 +661,22 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           }}
         />
       )}
-      <Section title="Referral Info">
+      {showChangeFacility && (
+        <ChangeFacilityModal
+          referral={referral}
+          patient={patient}
+          patientName={patientLabel}
+          onCancel={() => setShowChangeFacility(false)}
+          onDone={({ fields, patientFields } = {}) => {
+            if (fields) updateReferralLocal(fields);
+            if (patientFields) updatePatientLocal(patientFields);
+            setShowChangeFacility(false);
+          }}
+        />
+      )}
+      <Section title="Referral">
         <ReadField label="Referral ID" value={referral.id} />
-        <ReadField label="Referral Date" value={referral.referral_date ? fmtCalendarDate(referral.referral_date, null) : null} />
+        <ReadField label="Date" value={referral.referral_date ? fmtCalendarDate(referral.referral_date, null) : null} />
         <EditableReferralSelect
           label="Episode"
           fieldKey="episode_type"
@@ -625,65 +687,32 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           optionLabels={{ SOC: 'Start of Care', ROC: 'Resumption of Care' }}
           readOnly={readOnly}
         />
-        <div>
-          <p style={fl()}>Marketer</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
-            <p style={{
-              fontSize: 13, flex: 1, margin: 0,
-              color: referral.marketer_id ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
-              fontStyle: referral.marketer_id ? 'normal' : 'italic',
-            }}>
-              {resolveMarketer(referral.marketer_id) || '—'}
-            </p>
-            {canChangeMarketer && !readOnly && (
-              <button
-                type="button"
-                onClick={() => setShowChangeMarketer(true)}
-                style={{
-                  padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  fontSize: 11.5, fontWeight: 650,
-                  background: hexToRgba(palette.accentBlue.hex, 0.12),
-                  color: palette.accentBlue.hex, flexShrink: 0,
-                }}
-              >
-                Change
-              </button>
-            )}
-          </div>
-        </div>
-        <ReadField
-          label="Lead submitted by"
-          value={resolveUser(referral.lead_created_by_id)}
-        />
-        <div>
-          <p style={fl()}>Intake Owner</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
-            <p style={{
-              fontSize: 13, flex: 1, margin: 0,
-              color: referral.intake_owner_id ? palette.backgroundDark.hex : hexToRgba(palette.backgroundDark.hex, 0.28),
-              fontStyle: referral.intake_owner_id ? 'normal' : 'italic',
-            }}>
-              {resolveUser(referral.intake_owner_id) || '—'}
-            </p>
-            {canChangeOwner && !readOnly && (
-              <button
-                type="button"
-                onClick={() => setShowChangeOwner(true)}
-                style={{
-                  padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  fontSize: 11.5, fontWeight: 650,
-                  background: hexToRgba(palette.accentBlue.hex, 0.12),
-                  color: palette.accentBlue.hex, flexShrink: 0,
-                }}
-              >
-                Change
-              </button>
-            )}
-          </div>
-        </div>
+      </Section>
+
+      <Section title="Assignment">
+        <FieldRow
+          label="Marketer"
+          actions={canChangeMarketer && !readOnly ? (
+            <TextAction onClick={() => setShowChangeMarketer(true)}>Change</TextAction>
+          ) : null}
+        >
+          <ValueText value={resolveMarketer(referral.marketer_id)} empty={!referral.marketer_id || resolveMarketer(referral.marketer_id) === '—'} />
+        </FieldRow>
+        <FieldRow
+          label="Intake owner"
+          actions={canChangeOwner && !readOnly ? (
+            <TextAction onClick={() => setShowChangeOwner(true)}>Change</TextAction>
+          ) : null}
+        >
+          <ValueText value={resolveUser(referral.intake_owner_id)} empty={!referral.intake_owner_id || resolveUser(referral.intake_owner_id) === '—'} />
+        </FieldRow>
+        <ReadField label="Submitted by" value={resolveUser(referral.lead_created_by_id)} />
+      </Section>
+
+      <Section title="Source">
         <EditableReferralSource referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
         <EditableReferralSelect
-          label="Referral method"
+          label="Method"
           fieldKey="referral_method"
           value={referral.referral_method}
           referralId={referral._id}
@@ -693,20 +722,40 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           blankLabel="Leave blank"
           readOnly={readOnly}
         />
-        {referral.facility_id && <ReadField label="Facility" value={resolveFacility(referral.facility_id)} />}
+      </Section>
 
+      <Section title="Facility">
+        <FieldRow
+          label="Facility"
+          actions={canChangeFacility && !readOnly ? (
+            <TextAction onClick={() => setShowChangeFacility(true)}>Change</TextAction>
+          ) : null}
+        >
+          <ValueText
+            value={resolveFacility(referral.facility_id) !== '—' ? resolveFacility(referral.facility_id) : (referral.facility_id || null)}
+            empty={!referral.facility_id}
+          />
+        </FieldRow>
+        <ReadField label="COC nurse" value={resolveUser(referral.coc_nurse_id)} />
+      </Section>
+
+      <Section title="Care">
         <EditableReferralSelect label="Division" fieldKey="division" value={referral.division} referralId={referral._id} onSave={handleReferralSave} options={DIVISIONS} readOnly={readOnly} />
         {referral.division === 'Special Needs' && (
           <SnAgeGroupField referral={referral} patient={patient} onSave={handleReferralSave} readOnly={readOnly} />
         )}
-        <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} fullWidth readOnly={readOnly} />
+        <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} readOnly={readOnly} />
         <EditableReferralPhysician referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
-
-        {referral.f2f_date && <ReadField label="F2F Date" value={fmtCalendarDate(referral.f2f_date)} />}
-        {referral.f2f_expiration && <ReadField label="F2F Expiration" value={fmtCalendarDate(referral.f2f_expiration)} />}
-        {referral.hold_reason && <ReadField label="Hold Reason" value={referral.hold_reason} fullWidth />}
-        {referral.ntuc_reason && <ReadField label="NTUC Reason" value={referral.ntuc_reason} fullWidth />}
       </Section>
+
+      {(referral.f2f_date || referral.f2f_expiration || referral.hold_reason || referral.ntuc_reason) && (
+        <Section title="Status">
+          {referral.f2f_date && <ReadField label="F2F date" value={fmtCalendarDate(referral.f2f_date)} />}
+          {referral.f2f_expiration && <ReadField label="F2F expiration" value={fmtCalendarDate(referral.f2f_expiration)} />}
+          {referral.hold_reason && <ReadField label="Hold reason" value={referral.hold_reason} />}
+          {referral.ntuc_reason && <ReadField label="NTUC reason" value={referral.ntuc_reason} />}
+        </Section>
+      )}
     </div>
   );
 }

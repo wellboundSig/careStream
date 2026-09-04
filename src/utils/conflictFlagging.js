@@ -163,7 +163,7 @@ export async function resolveConflict({
 
 export function inferConflictSourceModuleFromStage(stage) {
   if (!stage) return CONFLICT_SOURCE_MODULE.OTHER;
-  if (stage === 'Lead Entry' || stage === 'Intake' || stage === 'F2F/MD Orders Pending') return CONFLICT_SOURCE_MODULE.INTAKE;
+  if (stage === 'Lead Entry' || stage === 'Clinical Lead Pre-Check' || stage === 'Intake' || stage === 'F2F/MD Orders Pending') return CONFLICT_SOURCE_MODULE.INTAKE;
   if (stage === 'Eligibility Verification' || stage === 'Disenrollment Required') return CONFLICT_SOURCE_MODULE.ELIGIBILITY;
   if (stage === 'Authorization Pending') return CONFLICT_SOURCE_MODULE.AUTHORIZATION;
   if (stage === 'Clinical Intake RN Review' || stage === 'Staffing Feasibility' || stage === 'Admin Confirmation') return CONFLICT_SOURCE_MODULE.CLINICAL;

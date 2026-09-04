@@ -164,7 +164,7 @@ export default function MarketerDataToolsTab({ referrals }) {
                     <td className={lockColClass(lockedGrid)} style={{ padding: '8px 10px', fontSize: 12.5, fontWeight: 550, color: palette.backgroundDark.hex }}>{ref.patientName || ref.patient_id}</td>
                     <td style={{ padding: '8px 10px' }}><DivisionBadge division={ref.division} size="small" /></td>
                     <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{resolveEntity(ref.entity_id) || '—'}</td>
-                    <td style={{ padding: '8px 10px' }}><StageBadge stage={ref.current_stage} size="small" /></td>
+                    <td style={{ padding: '8px 10px' }}><StageBadge stage={ref.current_stage} referral={ref} size="small" /></td>
                     <td style={{ padding: '8px 10px', fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.55) }}>{triageColumnLabel(ref, !!(ref.id && triagePresence[ref.id]))}</td>
                     <td style={{ padding: '8px 10px' }}>
                       <span style={{ fontSize: 12, fontWeight: days > 14 ? 650 : 400, color: days > 14 ? palette.primaryMagenta.hex : days > 7 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6) }}>{days === 0 ? 'Today' : `${days}d`}</span>

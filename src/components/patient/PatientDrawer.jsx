@@ -6,7 +6,7 @@ import DivisionBadge from '../common/DivisionBadge.jsx';
 import StageBadge from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { PERMISSION_KEYS, canPerformClinicalRnReview } from '../../data/permissionKeys.js';
 
 import { isTriageComplete } from '../../utils/triageCompleteness.js';
 import { isF2FTabComplete } from '../../data/f2fChecklist.js';
@@ -24,6 +24,7 @@ import AuthorizationsTab from './tabs/AuthorizationsTab.jsx';
 import ConflictsTab from './tabs/ConflictsTab.jsx';
 import ClinicalReviewTab from './tabs/ClinicalReviewTab.jsx';
 import PhysicianTab from './tabs/PhysicianTab.jsx';
+import EmrOnboardingTab from './tabs/EmrOnboardingTab.jsx';
 import FilePreviewPane from '../common/FilePreviewPane.jsx';
 import FileSourceProviderBadge from '../common/FileSourceProviderBadge.jsx';
 import { openSignedFile } from '../../utils/r2Upload.js';
@@ -39,6 +40,7 @@ export const DRAWER_TABS = [
   { id: 'f2f', label: 'Face to Face' },
   { id: 'physician', label: 'Physician' },
   { id: 'eligibility', label: 'Eligibility' },
+  { id: 'emr', label: 'EMR Onboarding' },
   { id: 'notes', label: 'Notes' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'files', label: 'Files' },
@@ -59,6 +61,7 @@ const MOBILE_DRAWER_TABS = [
   { id: 'triage', label: 'Triage' },
   { id: 'physician', label: 'Physician' },
   { id: 'eligibility', label: 'Eligibility' },
+  { id: 'emr', label: 'EMR Onboarding' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'clinical_review', label: 'Clinical Review' },
@@ -72,6 +75,9 @@ const TAB_EDIT_PERMISSIONS = {
   f2f:             PERMISSION_KEYS.SNAPSHOT_EDIT_F2F,
   physician:       PERMISSION_KEYS.SNAPSHOT_EDIT_PHYSICIAN,
   eligibility:     PERMISSION_KEYS.SNAPSHOT_EDIT_ELIGIBILITY,
+  // EMR milestones are referral-level stamps; reuse the referral edit key so
+  // existing UserPermissions rows keep working without a new snapshot key.
+  emr:             PERMISSION_KEYS.SNAPSHOT_EDIT_REFERRAL,
   notes:           PERMISSION_KEYS.SNAPSHOT_EDIT_NOTES,
   timeline:        null,
   files:           PERMISSION_KEYS.SNAPSHOT_EDIT_FILES,
@@ -80,6 +86,43 @@ const TAB_EDIT_PERMISSIONS = {
   authorizations:  PERMISSION_KEYS.SNAPSHOT_EDIT_AUTHORIZATIONS,
   conflicts:       PERMISSION_KEYS.SNAPSHOT_EDIT_CONFLICTS,
 };
+
+/** Tab status badge: true = green check, 'progress' = yellow clock, 'bad' = red X. */
+const TAB_PROGRESS_YELLOW = '#D9A800';
+function TabStatusIcon({ status, size = 11 }) {
+  if (status === true) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
+        <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (status === 'progress') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="6" cy="6" r="5.5" fill={TAB_PROGRESS_YELLOW} />
+        <path d="M6 3.2V6l1.9 1.3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (status === 'bad') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="6" cy="6" r="5.5" fill={palette.primaryMagenta.hex} />
+        <path d="M4 4l4 4M8 4l-4 4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return null;
+}
+
+function tabStatusColor(status, fallback) {
+  if (status === true) return palette.accentGreen.hex;
+  if (status === 'progress') return TAB_PROGRESS_YELLOW;
+  if (status === 'bad') return palette.primaryMagenta.hex;
+  return fallback;
+}
 
 function getF2FStatus(f2fExpiration) {
   if (!f2fExpiration) return null;
@@ -95,10 +138,14 @@ function getF2FStatus(f2fExpiration) {
 export default function PatientDrawer() {
   const {
     isOpen, patient: ctxPatient, referral: ctxReferral, activeTab, setActiveTab, close,
-    sideFile, clearSideFile,
+    sideFile, clearSideFile, forceReadOnly,
   } = usePatientDrawer();
   const isMobile = useIsMobile();
-  const tabs = isMobile ? MOBILE_DRAWER_TABS : DRAWER_TABS;
+  const { can } = usePermissions();
+  // Clinical Review is restricted to clinical staff — no view, no edit.
+  const canSeeClinicalReview = canPerformClinicalRnReview(can);
+  const tabs = (isMobile ? MOBILE_DRAWER_TABS : DRAWER_TABS)
+    .filter((t) => t.id !== 'clinical_review' || canSeeClinicalReview);
 
   // The drawer context only tracks WHICH patient/referral is open (captured at
   // open() time). The DATA shown must come from the live zustand store —
@@ -120,6 +167,12 @@ export default function PatientDrawer() {
     setActiveTab('tasks');
     setAutoNewTask(true);
   }, [setActiveTab]);
+
+  // If something opened the drawer straight onto the (restricted) Clinical
+  // Review tab, bounce non-clinical users to the Referral tab.
+  useEffect(() => {
+    if (activeTab === 'clinical_review' && !canSeeClinicalReview) setActiveTab('overview');
+  }, [activeTab, canSeeClinicalReview, setActiveTab]);
 
   useEffect(() => {
     if (isOpen) {
@@ -241,6 +294,26 @@ export default function PatientDrawer() {
       });
     const cursoryChecked = cursoryRows[0] ? cursoryDbToUiFields(cursoryRows[0]) : {};
     result.f2f = isF2FTabComplete({ hasF2FFile, hasF2FDate, cursoryChecked });
+
+    // Clinical send-back overrides the F2F check: the paperwork WAS there but
+    // was rejected, so show a red X until NEW F2F/MD-Orders files are uploaded
+    // after the send-back moment.
+    const returnedFromClinical = r.returned_from_clinical === true || r.returned_from_clinical === 'true';
+    if (returnedFromClinical) {
+      const sentBackAt = r.returned_from_clinical_at ? new Date(r.returned_from_clinical_at).getTime() : 0;
+      const hasNewF2FFile = Object.values(storeFiles || {}).some((f) => {
+        const fpid = f.patient_id;
+        const linked = Array.isArray(fpid) ? fpid.includes(p.id) : fpid === p.id;
+        if (!linked || (f.category !== 'F2F' && f.category !== 'MD Orders')) return false;
+        const uploadedAt = new Date(f.created_at || f.uploaded_at || 0).getTime();
+        return uploadedAt > sentBackAt;
+      });
+      if (!hasNewF2FFile) result.f2f = 'bad';
+    }
+
+    // EMR Onboarding: green check once fully onboarded, yellow progress icon
+    // once the initial HCHB chart is created.
+    result.emr = r.emr_onboarded_at ? true : (r.emr_initial_onboarded_at ? 'progress' : false);
 
     // Clinical Review: decision was made
     result.clinical_review = !!r.clinical_review_decision;
@@ -375,7 +448,7 @@ export default function PatientDrawer() {
           minWidth: split ? 320 : 0,
           boxShadow: split ? `-6px 0 24px ${hexToRgba(palette.backgroundDark.hex, 0.08)}` : 'none',
         }}>
-          <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={handleNewTask} isMobile={isMobile} />
+          <DrawerHeader patient={patient} referral={referral} f2f={f2f} age={age} onClose={close} setActiveTab={setActiveTab} onNewTask={forceReadOnly ? null : handleNewTask} isMobile={isMobile} />
           {isMobile ? (
             <MobileDrawerTabBar tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} tabComplete={tabComplete} />
           ) : (
@@ -387,7 +460,7 @@ export default function PatientDrawer() {
             overscrollBehaviorX: 'none',
             touchAction: 'pan-y',
           }}>
-            {patient && <TabContent tab={activeTab} patient={patient} referral={referral} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
+            {patient && <TabContent tab={activeTab} patient={patient} referral={referral} forceReadOnly={forceReadOnly} autoNewTask={autoNewTask} onAutoNewTaskConsumed={() => setAutoNewTask(false)} />}
           </div>
         </div>
       </div>
@@ -485,7 +558,7 @@ function DrawerHeader({ patient, referral, f2f, age, onClose, setActiveTab, onNe
           // keep only + Task here so the header doesn’t force sideways scroll.
           ? [{ label: '+ Task', tab: 'tasks', action: 'new' }]
           : [{ label: 'Add Note', tab: 'notes' }, { label: 'Files', tab: 'files' }, { label: '+ Task', tab: 'tasks', action: 'new' }]
-        ).map((a) => (
+        ).filter((a) => a.action !== 'new' || typeof onNewTask === 'function').map((a) => (
           <button key={a.tab} onClick={() => a.action === 'new' ? onNewTask() : setActiveTab(a.tab)}
             style={{
               flex: isMobile ? undefined : undefined,
@@ -549,7 +622,8 @@ function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} })
       }}>
         {primary.map((tab) => {
           const isActive = tab.id === activeTab;
-          const isComplete = tabComplete[tab.id] === true;
+          const status = tabComplete[tab.id];
+          const isComplete = status === true;
           return (
             <button
               key={tab.id}
@@ -572,9 +646,7 @@ function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} })
                   : hexToRgba(palette.backgroundDark.hex, 0.04),
                 color: isActive
                   ? palette.primaryMagenta.hex
-                  : isComplete
-                    ? palette.accentGreen.hex
-                    : hexToRgba(palette.backgroundDark.hex, 0.55),
+                  : tabStatusColor(status, hexToRgba(palette.backgroundDark.hex, 0.55)),
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -584,12 +656,7 @@ function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} })
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {tab.label}
               </span>
-              {isComplete && !isActive && (
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
-                  <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
-                  <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
+              {!isActive && <TabStatusIcon status={status} size={10} />}
             </button>
           );
         })}
@@ -677,7 +744,7 @@ function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} })
             <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '6px 0 12px' }}>
               {moreTabs.map((tab) => {
                 const isActive = tab.id === activeTab;
-                const isComplete = tabComplete[tab.id] === true;
+                const status = tabComplete[tab.id];
                 return (
                   <button
                     key={tab.id}
@@ -694,12 +761,7 @@ function MobileDrawerTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} })
                     }}
                   >
                     <span>{tab.label}</span>
-                    {isComplete && (
-                      <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
-                        <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
+                    <TabStatusIcon status={status} size={14} />
                   </button>
                 );
               })}
@@ -799,26 +861,22 @@ function ScrollableTabBar({ tabs, activeTab, setActiveTab, tabComplete = {} }) {
       >
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
-          const isComplete = tabComplete[tab.id] === true;
-          const tabColor = isActive ? palette.primaryMagenta.hex : isComplete ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.5);
+          const status = tabComplete[tab.id];
+          const hasStatus = status === true || status === 'progress' || status === 'bad';
+          const tabColor = isActive ? palette.primaryMagenta.hex : tabStatusColor(status, hexToRgba(palette.backgroundDark.hex, 0.5));
           return (
             <button key={tab.id} data-tab={tab.id} onClick={() => setActiveTab(tab.id)}
               style={{
                 padding: '11px 16px', background: 'none', border: 'none',
                 borderBottom: `2px solid ${isActive ? palette.primaryMagenta.hex : 'transparent'}`,
-                fontSize: 12.5, fontWeight: isActive ? 650 : isComplete ? 600 : 450,
+                fontSize: 12.5, fontWeight: isActive ? 650 : hasStatus ? 600 : 450,
                 color: tabColor,
                 cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.15s, border-color 0.15s', flexShrink: 0,
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}
             >
               {tab.label}
-              {isComplete && (
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
-                  <circle cx="6" cy="6" r="5.5" fill={palette.accentGreen.hex} />
-                  <path d="M3.5 6l2 2 3-3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
+              <TabStatusIcon status={status} size={11} />
             </button>
           );
         })}
@@ -839,7 +897,7 @@ export function canEditDrawerTab(tab, can) {
   return can(editPermKey);
 }
 
-function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed }) {
+function TabContent({ tab, patient, referral, forceReadOnly = false, autoNewTask, onAutoNewTaskConsumed }) {
   const { can } = usePermissions();
   const { sideFile } = usePatientDrawer();
   const patientKey = patient?.id || patient?._id || null;
@@ -850,9 +908,11 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
   const mountFiles = tab === 'files' || !!sideFile || keptFilesFor === patientKey;
 
   const editPermKey = TAB_EDIT_PERMISSIONS[tab];
-  const canEdit = canEditDrawerTab(tab, can);
+  // forceReadOnly = drawer opened from a view-only surface (Patients directory)
+  // — every tab is read-only regardless of the user's edit permissions.
+  const canEdit = !forceReadOnly && canEditDrawerTab(tab, can);
   const props = { patient, referral, readOnly: !canEdit };
-  const filesReadOnly = !canEditDrawerTab('files', can);
+  const filesReadOnly = forceReadOnly || !canEditDrawerTab('files', can);
 
   return (
     <>
@@ -878,6 +938,7 @@ function TabContent({ tab, patient, referral, autoNewTask, onAutoNewTaskConsumed
           case 'f2f': return <F2FTab {...props} />;
           case 'physician': return <PhysicianTab {...props} />;
           case 'eligibility': return <EligibilityTab {...props} />;
+          case 'emr': return <EmrOnboardingTab {...props} />;
           case 'notes': return <NotesTab {...props} />;
           case 'timeline': return <TimelineTab {...props} />;
           case 'tasks': return <TasksTab {...props} autoNewTask={!canEdit ? false : autoNewTask} onAutoNewTaskConsumed={onAutoNewTaskConsumed} />;

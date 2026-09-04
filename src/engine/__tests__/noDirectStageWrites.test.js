@@ -31,6 +31,13 @@ const ALLOWLIST = {
   'pages/DataTools.jsx': 'Reads current_stage into an export row.',
   'components/tasks/TaskCard.jsx': 'Builds a placeholder referral object for display (current_stage: "").',
   'test/factories.js': 'Test factory default + docstring.',
+  'utils/clinicalReviewUnlock.js': 'Local optimistic callback object AFTER an engine transition (read; the write goes through applyTransition).',
+  'utils/completeClinicalReview.js': 'Builds a post-transition local object for deferred-docs bookkeeping (transitions go through the engine).',
+  'components/patient/tabs/ClinicalReviewTab.jsx': 'Local drawer overlay after Mark Viable; the stage write goes through applyTransition.',
+  'utils/operationalReports.js': 'Reads current_stage into report/export rows.',
+  'utils/processingOverview.js': 'Reads current_stage into a report row.',
+  'utils/referralToSocJourney.js': 'Reads current_stage into an export row.',
+  'utils/reportEngine.js': 'Reads current_stage into a report row.',
 };
 
 function listSourceFiles(dir) {

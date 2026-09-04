@@ -66,7 +66,7 @@ export default function UserProfileDrawer({ user, onClose }) {
   if (!isOpen) return null;
 
   const active = referrals
-    .filter((r) => r.current_stage !== 'SOC Completed' && r.current_stage !== 'NTUC')
+    .filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage))
     .sort((a, b) => Date.parse(b.referral_date || b.updated_at || 0) - Date.parse(a.referral_date || a.updated_at || 0));
   const ntuc   = referrals.filter((r) => r.current_stage === 'NTUC');
   const completed = referrals.filter((r) => isSocCompletedReferral(r));
@@ -172,7 +172,7 @@ export default function UserProfileDrawer({ user, onClose }) {
                         {resolvePatient(ref.patient_id)}
                       </span>
                     </div>
-                    <StageBadge stage={ref.current_stage} size="small" />
+                    <StageBadge stage={ref.current_stage} referral={ref} size="small" />
                   </div>
                 ))}
                 {active.length > 12 && (

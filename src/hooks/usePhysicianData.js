@@ -3,14 +3,15 @@ import { getReferrals } from '../api/referrals.js';
 // LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
 import airtable from '../api/airtable.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
 
-export function usePhysicianData(physician) {
-  const [referrals, setReferrals] = useState([]);
+export function usePhysicianData(physician, dateRange = null) {
+  const [allReferrals, setAllReferrals] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!physician?.id) return;
-    setReferrals([]); // clear stale data immediately so stats don't show from previous physician
+    setAllReferrals([]); // clear stale data immediately so stats don't show from previous physician
     setLoading(true);
 
     getReferrals({ filterByFormula: `{physician_id} = "${physician.id}"` })
@@ -27,15 +28,17 @@ export function usePhysicianData(physician) {
             nameMap[r.fields.id] = `${r.fields.first_name || ''} ${r.fields.last_name || ''}`.trim();
           });
         }
-        setReferrals(rawRefs.map((r) => ({ ...r, patientName: nameMap[r.patient_id] || r.patient_id })));
+        setAllReferrals(rawRefs.map((r) => ({ ...r, patientName: nameMap[r.patient_id] || r.patient_id })));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [physician?.id]);
 
+  const referrals = filterByDateRange(allReferrals, dateRange, 'referral_date');
+
   const stats = {
     total:    referrals.length,
-    active:   referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
+    active:   referrals.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage)).length,
     admitted: referrals.filter((r) => isSocCompletedReferral(r)).length,
   };
 

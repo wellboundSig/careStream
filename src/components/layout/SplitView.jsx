@@ -32,6 +32,7 @@ import DeveloperTools from '../../pages/developer/DeveloperTools.jsx';
 import Settings from '../../pages/Settings.jsx';
 import DataTools from '../../pages/DataTools.jsx';
 import BatchEligibility from '../../pages/BatchEligibility.jsx';
+import HchbVisitCheck from '../../pages/HchbVisitCheck.jsx';
 
 function PaneOutlet({ division, roleMode }) {
   return <Outlet context={{ division, roleMode }} />;
@@ -99,18 +100,22 @@ export default function SplitView({ children, division, roleMode, onClose }) {
                     <Route path="modules/clinical-rn" element={<ModulePage stage="Clinical Intake RN Review" />} />
                     <Route path="modules/authorization" element={<ModulePage stage="Authorization Pending" />} />
                     <Route path="modules/conflict" element={<ModulePage stage="Conflict" />} />
-                    <Route path="modules/emr-onboarding" element={<ModulePage stage="EMR Onboarding" />} />
+                    <Route path="modules/emr-onboarding" element={<Navigate to="/modules/intake" replace />} />
                     <Route path="modules/staffing" element={<ModulePage stage="Staffing Feasibility" />} />
                     <Route path="modules/admin-confirmation" element={<ModulePage stage="Admin Confirmation" />} />
                     <Route path="modules/pre-soc" element={<ModulePage stage="Pre-SOC" />} />
                     <Route path="modules/soc-scheduled" element={<Navigate to="/modules/pre-soc" replace />} />
-                    <Route path="modules/soc-completed" element={<ModulePage stage="SOC Completed" />} />
+                    <Route path="modules/soc-completed" element={<Navigate to="/modules/completed" replace />} />
+                    <Route path="modules/post-visit-intake" element={<Navigate to="/modules/intake" replace />} />
+                    <Route path="modules/post-visit-clinical" element={<Navigate to="/modules/clinical-rn" replace />} />
+                    <Route path="modules/completed" element={<ModulePage stage="Completed" />} />
                     <Route path="modules/hold" element={<ModulePage stage="Hold" />} />
                     <Route path="modules/ntuc" element={<ModulePage stage="NTUC" />} />
 
                     <Route path="tasks" element={<Tasks />} />
                     <Route path="reports" element={<Reports />} />
                     <Route path="tools/batch-eligibility" element={<BatchEligibility />} />
+                    <Route path="tools/hchb-visit-check" element={<HchbVisitCheck />} />
 
                     <Route path="directory/marketers" element={<Marketers />} />
                     <Route path="directory/facilities" element={<Facilities />} />

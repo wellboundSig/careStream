@@ -64,4 +64,18 @@ CLOSET PC NEXT COMMANDS
   python run_agent.py ping
   python run_agent.py rebuild-index
   python run_agent.py check --last <LAST> --first <FIRST> --dob YYYY-MM-DD
+  python run_agent.py visit-check --last <LAST> --first <FIRST> --dob YYYY-MM-DD --kind SOC --date YYYY-MM-DD
   python run_agent.py run
+
+
+SOC/ROC VISIT CHECK
+-------------------
+  V_AGENTVISITTIMEREPORT   Client Name, Visit Type, Visit Date, Discipline
+  Join identity from CLIENTS_ALL (name + DOB) for hashing only.
+
+  Skilled visits only (Discipline not HHA/HA).
+  Visit Type must classify as SOC or ROC and match the CareStream episode.
+  Date window is scheduled date ± 1 calendar day.
+
+  LOAD SQL: build_load_visits_sql() / build_load_visit_identity_sql()
+  in sql_queries.py. Results over AWS are match flags + visit date/type only.

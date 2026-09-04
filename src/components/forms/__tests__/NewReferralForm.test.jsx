@@ -63,7 +63,7 @@ describe('getServicesForDivision', () => {
 
 const mockCan = vi.fn().mockReturnValue(true);
 vi.mock('../../../hooks/usePermissions.js', () => ({
-  usePermissions: () => ({ can: mockCan }),
+  usePermissions: () => ({ can: mockCan, canAny: () => true }),
 }));
 
 vi.mock('../../../hooks/useCurrentAppUser.js', () => ({
@@ -111,6 +111,26 @@ vi.mock('../../../api/notes.js', () => ({
   createNote: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock('../../../store/mutations.js', () => ({
+  createNoteOptimistic: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../../../hooks/useReferralDraftAutosave.js', () => ({
+  useReferralDraftAutosave: () => ({
+    draftRecId: null,
+    status: 'idle',
+    flushDraftSave: vi.fn(),
+    discardDraft: vi.fn(),
+    deleteDraftQuiet: vi.fn().mockResolvedValue(null),
+    hasActiveDraft: false,
+  }),
+}));
+
+vi.mock('../../../utils/knownGuardians.js', () => ({
+  savePatientContactSlot: vi.fn().mockResolvedValue({}),
+  isStaffDirectoryEmail: () => false,
+}));
+
 vi.mock('../../physicians/PhysicianPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button data-testid="physician-picker" onClick={() => onChange({ id: 'phy_1', first_name: 'Dr', last_name: 'Test' })}>
@@ -119,10 +139,19 @@ vi.mock('../../physicians/PhysicianPicker.jsx', () => ({
   ),
 }));
 
+vi.mock('../../../utils/r2Upload.js', () => ({
+  uploadToR2: vi.fn().mockResolvedValue({ r2Key: 'patients/pat_test/f2f.pdf', r2Url: 'https://signed.example/f2f.pdf' }),
+}));
+
+vi.mock('../../../api/patientFiles.js', () => ({
+  createFile: vi.fn().mockResolvedValue({ id: 'rec_file1', fields: { id: 'file_1', file_name: 'packet.pdf' } }),
+}));
+
 // Re-import after mocks
 const { default: NewReferralForm } = await import('../NewReferralForm.jsx');
 const { createPatient } = await import('../../../api/patients.js');
 const { createReferral } = await import('../../../api/referrals.js');
+const { createNoteOptimistic } = await import('../../../store/mutations.js');
 
 function renderForm(props = {}) {
   const onClose = vi.fn();
@@ -293,7 +322,7 @@ describe('NewReferralForm — Special Needs requirements', () => {
     fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '1234567890' } });
 
     // Try to submit
-    fireEvent.click(screen.getByRole('button', { name: 'Create Referral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
 
     const errors = screen.getAllByText('Required for Special Needs');
     expect(errors.length).toBeGreaterThanOrEqual(2);
@@ -339,7 +368,7 @@ describe('NewReferralForm — Priority', () => {
     if (marketerSelect) fireEvent.change(marketerSelect, { target: { value: 'mkt_1' } });
     if (facilitySelect) fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Referral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
 
     await vi.waitFor(() => {
       expect(createReferral).toHaveBeenCalled();
@@ -413,7 +442,7 @@ describe('NewReferralForm — entity_id in submission', () => {
     if (sourceSelect) fireEvent.change(sourceSelect, { target: { value: 'src_1' } });
     if (marketerSelect) fireEvent.change(marketerSelect, { target: { value: 'mkt_1' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Referral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
 
     await vi.waitFor(() => {
       expect(createReferral).toHaveBeenCalled();
@@ -451,7 +480,7 @@ describe('NewReferralForm — entity_id in submission', () => {
     if (sourceSelect) fireEvent.change(sourceSelect, { target: { value: 'src_1' } });
     if (marketerSelect) fireEvent.change(marketerSelect, { target: { value: 'mkt_1' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Referral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
 
     await vi.waitFor(() => {
       expect(createReferral).toHaveBeenCalled();
@@ -529,5 +558,147 @@ describe('NewReferralForm — Facility-Marketer filtering', () => {
     fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
 
     expect(screen.getByText(/2 marketers assigned to this facility/i)).toBeTruthy();
+  });
+});
+
+describe('NewReferralForm — optional files at lead creation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCan.mockReturnValue(true);
+  });
+
+  function fillAlfRequired() {
+    selectDivision('ALF');
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Smith' } });
+    fireEvent.change(screen.getByPlaceholderText('(XXX) XXX-XXXX'), { target: { value: '2125551234' } });
+    const comboboxes = screen.getAllByRole('combobox');
+    const sourceSelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Hospital A')
+    );
+    const marketerSelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Jane Doe')
+    );
+    const facilitySelect = comboboxes.find((s) =>
+      within(s).queryAllByRole('option').some((o) => o.textContent === 'Sunrise ALF')
+    );
+    if (sourceSelect) fireEvent.change(sourceSelect, { target: { value: 'src_1' } });
+    if (marketerSelect) fireEvent.change(marketerSelect, { target: { value: 'mkt_1' } });
+    if (facilitySelect) fireEvent.change(facilitySelect, { target: { value: 'fac_1' } });
+  }
+
+  it('renders the optional files drop zone', () => {
+    renderForm();
+    expect(screen.getByText('Files')).toBeTruthy();
+    expect(screen.getByText('Drop files or click to add')).toBeTruthy();
+  });
+
+  it('lists a staged file with category pills', () => {
+    renderForm();
+    const file = new File(['packet'], 'packet.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]');
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(screen.getByText('packet.pdf')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'F2F' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'MD Orders' })).toBeTruthy();
+  });
+
+  it('blocks submit when an F2F file is missing a visit date', async () => {
+    renderForm();
+    fillAlfRequired();
+
+    const file = new File(['f2f'], 'f2f.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'F2F' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('Enter a visit date for each F2F file')).toBeTruthy();
+    });
+    expect(createReferral).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewReferralForm — urgent care and initial notes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCan.mockReturnValue(true);
+  });
+
+  const readyAlf = {
+    first_name: 'Jane',
+    last_name: 'Smith',
+    phone_primary: '2125551234',
+    emergency_contact_phone: '2125551234',
+    division: 'ALF',
+    episode_type: 'SOC',
+    referral_source_id: 'src_1',
+    marketer_id: 'mkt_1',
+    facility_id: 'fac_1',
+  };
+
+  it('shows the urgent-care type checkboxes directly — no master toggle', () => {
+    renderForm();
+    expect(screen.getByText('Urgent care needed')).toBeTruthy();
+    expect(screen.getByText('Wound care')).toBeTruthy();
+    expect(screen.getByText('Insulin')).toBeTruthy();
+    expect(screen.getByText('Injection')).toBeTruthy();
+    // The old two-stage master checkbox is gone.
+    expect(screen.queryByRole('checkbox', { name: 'Urgent care' })).toBeFalsy();
+  });
+
+  it('checking any type marks the patient urgent in the payload', async () => {
+    renderForm({ initialForm: { ...readyAlf } });
+    fireEvent.click(screen.getByText('Wound care'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
+    await vi.waitFor(() => {
+      expect(createReferral).toHaveBeenCalled();
+    });
+    const payload = createReferral.mock.calls[0][0];
+    expect(payload.requires_urgent_care).toBe(true);
+    expect(payload.urgent_care_type).toBe('wound');
+    expect(payload.priority).toBe('High');
+  });
+
+  it('writes urgent flag, types, and High priority on create', async () => {
+    renderForm({
+      initialForm: {
+        ...readyAlf,
+        requires_urgent_care: true,
+        urgent_care_types: ['wound', 'insulin'],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
+
+    await vi.waitFor(() => {
+      expect(createReferral).toHaveBeenCalled();
+    });
+    const payload = createReferral.mock.calls[0][0];
+    expect(payload.requires_urgent_care).toBe(true);
+    expect(payload.urgent_care_type).toBe('wound,insulin');
+    expect(payload.priority).toBe('High');
+    expect(payload.urgent_care_marked_by_id).toBe('usr_test');
+  });
+
+  it('persists the initial note through createNoteOptimistic so it lands in Notes', async () => {
+    renderForm({
+      initialForm: {
+        ...readyAlf,
+        initial_notes: 'Needs insulin teaching today',
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
+
+    await vi.waitFor(() => {
+      expect(createNoteOptimistic).toHaveBeenCalled();
+    });
+    expect(createNoteOptimistic).toHaveBeenCalledWith(expect.objectContaining({
+      patient_id: 'pat_test',
+      content: 'Needs insulin teaching today',
+    }));
   });
 });

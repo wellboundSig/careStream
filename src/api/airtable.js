@@ -17,28 +17,60 @@ function auroraBaseUrl() {
   return API_URL;
 }
 
-// Clerk session JWT — the only auth wellbound-api accepts.
-async function authHeader() {
+// Clerk session JWTs last ~60s. A cached token can expire between hydrate and
+// the next write (notes, especially — staff sit in a drawer then hit Add Note).
+// skipCache forces a fresh JWT. 401 → one silent refresh, then retry.
+async function getClerkToken({ skipCache = false } = {}) {
   try {
-    const token = typeof window !== 'undefined' && window.Clerk?.session
-      ? await window.Clerk.session.getToken()
-      : null;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    const session = typeof window !== 'undefined' ? window.Clerk?.session : null;
+    if (!session?.getToken) return null;
+    const token = await session.getToken(skipCache ? { skipCache: true } : undefined);
+    return token || null;
   } catch {
-    return {};
+    return null;
   }
 }
 
+async function authHeader({ skipCache = false } = {}) {
+  let token = await getClerkToken({ skipCache });
+  if (!token && !skipCache) token = await getClerkToken({ skipCache: true });
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function withAuthHeader(options, token) {
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  else delete headers.Authorization;
+  return { ...options, headers };
+}
+
 async function fetchWithRetry(url, options, retries = 3) {
+  let lastErr = null;
+  let didAuthRetry = false;
+  let opts = options;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, options);
-    if (res.status === 429 && attempt < retries) {
-      const wait = Math.min(1000 * 2 ** attempt, 10000);
-      await new Promise((r) => setTimeout(r, wait));
-      continue;
+    try {
+      const res = await fetch(url, opts);
+      if (res.status === 401 && !didAuthRetry) {
+        didAuthRetry = true;
+        const token = await getClerkToken({ skipCache: true });
+        if (token) {
+          opts = withAuthHeader(opts, token);
+          continue;
+        }
+      }
+      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+        await new Promise((r) => setTimeout(r, Math.min(800 * 2 ** attempt, 8000)));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= retries) throw err;
+      await new Promise((r) => setTimeout(r, Math.min(400 * 2 ** attempt, 4000)));
     }
-    return res;
   }
+  if (lastErr) throw lastErr;
   throw new Error('wellbound-api rate limit exceeded after retries');
 }
 
@@ -136,7 +168,7 @@ async function fetchOne(tableName, recordId) {
 }
 
 async function create(tableName, fields, { silent = false } = {}) {
-  const res = await fetch(`${auroraBaseUrl()}/${encodeURIComponent(tableName)}`, {
+  const res = await fetchWithRetry(`${auroraBaseUrl()}/${encodeURIComponent(tableName)}`, {
     method: 'POST',
     headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
@@ -166,13 +198,13 @@ async function create(tableName, fields, { silent = false } = {}) {
 }
 
 async function update(tableName, recordId, fields) {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${auroraBaseUrl()}/${encodeURIComponent(tableName)}/${recordId}`,
     {
       method: 'PATCH',
       headers: { ...(await authHeader()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields }),
-    }
+    },
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

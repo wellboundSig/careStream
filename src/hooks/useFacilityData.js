@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useCareStore } from '../store/careStore.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
 
 /** Network facility business ids look like net_fac_001. */
 export function isNetworkFacility(facility) {
@@ -14,7 +15,7 @@ export function isNetworkFacility(facility) {
   );
 }
 
-export function useFacilityData(facility) {
+export function useFacilityData(facility, dateRange = null) {
   const storeReferrals = useCareStore((s) => s.referrals) || {};
   const storePatients = useCareStore((s) => s.patients) || {};
   const storeMF = useCareStore((s) => s.marketerFacilities) || {};
@@ -25,7 +26,7 @@ export function useFacilityData(facility) {
   const facilityId = facility?.id || null;
   const network = isNetworkFacility(facility);
 
-  const { referrals, marketerLinks, marketerDetails, cocNurses } = useMemo(() => {
+  const { referrals: allReferrals, marketerLinks, marketerDetails, cocNurses } = useMemo(() => {
     if (!facilityId) {
       return { referrals: [], marketerLinks: [], marketerDetails: {}, cocNurses: [] };
     }
@@ -87,9 +88,11 @@ export function useFacilityData(facility) {
     storeUsers,
   ]);
 
+  const referrals = filterByDateRange(allReferrals, dateRange, 'referral_date');
+
   const stats = {
     total: referrals.length,
-    active: referrals.filter((r) => r.current_stage !== 'NTUC' && r.current_stage !== 'SOC Completed').length,
+    active: referrals.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage)).length,
     admitted: referrals.filter((r) => isSocCompletedReferral(r)).length,
     ntuc: referrals.filter((r) => r.current_stage === 'NTUC').length,
   };

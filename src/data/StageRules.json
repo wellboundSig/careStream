@@ -15,6 +15,19 @@
   },
 
   "stages": {
+    "Clinical Lead Pre-Check": {
+      "displayName": "Lead Pre-Check",
+      "gridRow": 0,
+      "gridCol": 0,
+      "canMoveTo": ["Lead Entry", "Intake", "Discarded Leads", "OPWDD Enrollment"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": null,
+      "protectedExit": false,
+      "description": "New lead awaiting a clinical viability glance. Concurrent in Leads and Clinical Review. Mark Viable moves it to Lead Entry."
+    },
+
     "Lead Entry": {
       "displayName": "Leads",
       "gridRow": 0,
@@ -32,7 +45,7 @@
       "displayName": "Discarded",
       "gridRow": null,
       "gridCol": null,
-      "canMoveTo": ["Lead Entry"],
+      "canMoveTo": ["Lead Entry", "Clinical Lead Pre-Check"],
       "terminal": true,
       "isGlobal": false,
       "requiresNote": true,
@@ -50,6 +63,7 @@
         "Eligibility Verification",
         "F2F/MD Orders Pending",
         "EMR Onboarding",
+        "Staffing Feasibility",
         "OPWDD Enrollment",
         "Conflict",
         "Hold"
@@ -59,7 +73,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. Completing the cursory review and pushing to Clinical RN moves the patient to Clinical Intake RN Review (it leaves Intake). Eligibility is completed concurrently from the patient drawer. With permission, Intake may advance to EMR Onboarding without F2F/clinical (both completed after SOC)."
+      "description": "Demographics, triage, F2F/MD orders, cursory review, and insurance details collection. EMR onboarding (initial + complete) is an Intake checklist milestone. Completing the cursory review and pushing to Clinical RN moves the patient to Clinical Intake RN Review (it leaves Intake). Eligibility is completed concurrently from the patient drawer. With permission, Intake may advance to Staffing without F2F/clinical (both completed after SOC)."
     },
 
     "Eligibility Verification": {
@@ -69,6 +83,7 @@
       "canMoveTo": [
         "Intake",
         "EMR Onboarding",
+        "Staffing Feasibility",
         "OPWDD Enrollment",
         "Conflict",
         "Hold"
@@ -78,7 +93,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "Parent module for insurance / eligibility. Authorization Pending and Disenrollment Required are supportive side workflows — the patient stays here while those are in flight. Once eligibility + clinical review are both complete, the LIFO trigger advances the patient to EMR Onboarding."
+      "description": "Parent module for insurance / eligibility. Authorization Pending and Disenrollment Required are supportive side workflows — the patient stays here while those are in flight. Once eligibility + clinical review are both complete, the LIFO trigger advances the patient to Staffing Feasibility."
     },
 
     "Disenrollment Required": {
@@ -109,13 +124,14 @@
     },
 
     "Clinical Intake RN Review": {
-      "displayName": "Clinical Intake RN Review",
+      "displayName": "Clinical Review",
       "gridRow": 1,
       "gridCol": 0,
       "canMoveTo": [
         "Intake",
         "F2F/MD Orders Pending",
         "EMR Onboarding",
+        "Staffing Feasibility",
         "Conflict",
         "Hold"
       ],
@@ -125,7 +141,7 @@
       "requiresPermission": "clinical.rn_review",
       "protectedExit": true,
       "protectedExitMessage": "Only the clinical intake RN can move a patient out of Clinical RN Review. Issues should be escalated to Conflict — there is no Decline action.",
-      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to EMR Onboarding. Send Back to Intake (with flag + note) is available even after Accept when more paperwork is needed. Decline does not exist — escalate to Conflict instead."
+      "description": "Clinical RN reviews skilled need, safety, ICD-10. Accept → Confirm flips the patient to Staffing Feasibility (or Completed / Post Visit Intake when the visit already happened). Send Back to Intake (with flag + note) is available even after Accept when more paperwork is needed. Decline does not exist — escalate to Conflict instead."
     },
 
     "Authorization Pending": {
@@ -156,6 +172,9 @@
         "Staffing Feasibility",
         "Admin Confirmation",
         "Pre-SOC",
+        "SOC Completed",
+        "Post Visit Intake",
+        "Post Visit Clinical Review",
         "OPWDD Enrollment",
         "Hold",
         "NTUC"
@@ -185,7 +204,7 @@
       "displayName": "Staffing Feasibility",
       "gridRow": 1,
       "gridCol": 3,
-      "canMoveTo": ["Pre-SOC", "Conflict", "Hold"],
+      "canMoveTo": ["Pre-SOC", "SOC Completed", "Conflict", "Hold"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
@@ -224,7 +243,7 @@
     },
 
     "Pre-SOC": {
-      "displayName": "Pre-SOC",
+      "displayName": "SOC/ROC",
       "gridRow": 2,
       "gridCol": 0,
       "canMoveTo": ["SOC Completed", "Conflict", "Hold"],
@@ -250,8 +269,48 @@
     },
 
     "SOC Completed": {
-      "displayName": "Completed",
+      "displayName": "Visit Completed",
       "gridRow": 2,
+      "gridCol": 2,
+      "canMoveTo": ["Post Visit Intake", "Completed", "Conflict", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": null,
+      "protectedExit": true,
+      "description": "Visit performed and documented (soc_completed_date). Transitional: normal cases auto-advance to Completed; deferred-docs / rushed cases auto-route to Post Visit Intake for post-visit paperwork. Patient stays counted on the Visit Completed list via the durable completion stamp even after current_stage moves on."
+    },
+
+    "Post Visit Intake": {
+      "displayName": "Post Visit Intake",
+      "gridRow": 3,
+      "gridCol": 0,
+      "canMoveTo": ["Post Visit Clinical Review", "Conflict", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": null,
+      "protectedExit": false,
+      "description": "Post-visit paperwork collection for rushed / no-docs / urgent care cases whose visit already happened. Worked inside the Intake module. Docs complete sends the case to Post Visit Clinical Review; bad docs bounce it back here."
+    },
+
+    "Post Visit Clinical Review": {
+      "displayName": "Post Visit Clinical Review",
+      "gridRow": 3,
+      "gridCol": 1,
+      "canMoveTo": ["Post Visit Intake", "Completed", "Conflict", "Hold"],
+      "terminal": false,
+      "isGlobal": false,
+      "requiresNote": false,
+      "requiresPermission": "clinical.rn_review",
+      "protectedExit": true,
+      "protectedExitMessage": "Only the clinical intake RN can move a patient out of Post Visit Clinical Review. Approve to Completed or send back to Post Visit Intake.",
+      "description": "Post-visit clinical review of deferred documentation. Approve moves the case to Completed; bad docs return it to Post Visit Intake (can loop until the docs are good)."
+    },
+
+    "Completed": {
+      "displayName": "Completed",
+      "gridRow": 3,
       "gridCol": 2,
       "canMoveTo": [],
       "terminal": true,
@@ -259,7 +318,7 @@
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": true,
-      "description": "SOC performed and documented (soc_completed_date). Patient stays counted on SOC Completed even if current_stage returns to Intake for post-SOC paperwork — concurrent membership via the durable completion stamp."
+      "description": "Terminal stage. Visit completed and all documentation approved."
     },
 
     "Hold": {
@@ -280,6 +339,8 @@
         "Pre-SOC",
         "SOC Scheduled",
         "SOC Completed",
+        "Post Visit Intake",
+        "Post Visit Clinical Review",
         "NTUC"
       ],
       "terminal": false,

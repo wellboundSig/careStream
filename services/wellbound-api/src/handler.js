@@ -28,10 +28,15 @@ import {
   filterHydrateResult,
   AccessDeniedError,
   LOCKED_READ_ALLOWLIST,
+  SUPPORT_TABLES,
 } from './accessControl.js';
 import { allowHydrate, allowGeneral } from './rateLimit.js';
 import { runOptumEligibilityCheck } from './optumEligibility.js';
+import { runAvailityEligibilityCheck } from './availityEligibility.js';
+import { runWaystarEligibilityCheck } from './waystarEligibility.js';
+import { runSmartEligibilityCheck } from './payerRouting.js';
 import { runHchbDupCheck } from './hchbDupCheck.js';
+import { runHchbVisitCheck } from './hchbVisitCheck.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://wellboundcarestream.com',
@@ -171,6 +176,42 @@ export async function handler(event) {
     }
   }
 
+  // Clearinghouse eligibility (Availity / Waystar / smart-routed). Same
+  // deny-by-default gate as Optum — secrets stay on the Lambda.
+  const ELIGIBILITY_ROUTES = {
+    '/eligibility/availity-check': { runner: runAvailityEligibilityCheck, tag: '(availity-eligibility)' },
+    '/eligibility/waystar-check': { runner: runWaystarEligibilityCheck, tag: '(waystar-eligibility)' },
+    '/eligibility/check': { runner: runSmartEligibilityCheck, tag: '(smart-eligibility)' },
+  };
+  if (ELIGIBILITY_ROUTES[rawPath] && method === 'POST') {
+    const { runner, tag } = ELIGIBILITY_ROUTES[rawPath];
+    try {
+      await assertHasAnyPermission(caller, [
+        'clinical.eligibility_optum_auto',
+        'clinical.eligibility_batch',
+      ]);
+      let body = null;
+      try {
+        body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
+      } catch {
+        return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event);
+      }
+      const result = await runner(body || {});
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: tag,
+        status: result.ok ? 200 : 502,
+      });
+      return json(result.ok ? 200 : 502, result, origin, event);
+    } catch (err) {
+      const status = err instanceof AccessDeniedError ? err.status : 500;
+      if (status === 500) console.error(`[wellbound-api ${tag}]`, err);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: tag, status,
+      });
+      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
+  }
+
   // HCHB logship duplicate check (hashed → on-prem agent → flags + episode facts).
   // Any authenticated writer can use it (lead / intake / marketer flows).
   if (rawPath === '/hchb-dup/check' && method === 'POST') {
@@ -192,6 +233,42 @@ export async function handler(event) {
     } catch (err) {
       const status = err instanceof AccessDeniedError ? err.status : 500;
       if (status === 500) console.error('[wellbound-api hchb-dup]', err);
+      return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
+  }
+
+  // HCHB logship SOC/ROC visit check (hashed scheduled visits → on-prem agent).
+  if (rawPath === '/hchb-visit/check' && method === 'POST') {
+    try {
+      assertCanWrite(caller);
+      // Localhost Clerk test keys often have no Users.clerk_user_id match
+      // (same fail-open as the rest of the app). Live sessions still need
+      // scheduling.soc_complete or module.scheduling.
+      if (caller.userId) {
+        await assertHasAnyPermission(caller, [
+          'scheduling.soc_complete',
+          'module.scheduling',
+        ]);
+      }
+      let body = null;
+      try {
+        body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
+      } catch {
+        return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event);
+      }
+      const result = await runHchbVisitCheck(body || {});
+      const status = result.ok ? 200 : (result.configured === false ? 503 : 502);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(hchb-visit)',
+        status,
+      });
+      return json(status, result, origin, event);
+    } catch (err) {
+      const status = err instanceof AccessDeniedError ? err.status : 500;
+      if (status === 500) console.error('[wellbound-api hchb-visit]', err);
+      logAccess({
+        actorSub, actorUserId: caller.userId, method, table: '(hchb-visit)', status,
+      });
       return json(status, { error: { type: err.type || 'SERVER_ERROR', message: err.message } }, origin, event);
     }
   }
@@ -234,7 +311,8 @@ export async function handler(event) {
     if (method === 'GET' && !recId) {
       result = filterReadResult(caller, tableName, await listRecords(tableName, qs));
     } else if (method === 'GET') {
-      if (caller.locked && caller.kind !== 'internal' && !LOCKED_READ_ALLOWLIST.has(tableName)) {
+      if (caller.locked && caller.kind !== 'internal'
+          && !LOCKED_READ_ALLOWLIST.has(tableName) && !SUPPORT_TABLES.has(tableName)) {
         throw new ApiError(404, 'NOT_FOUND', `Record not found`);
       }
       result = await getRecord(tableName, recId);
@@ -245,13 +323,13 @@ export async function handler(event) {
         result = filtered.records[0];
       }
     } else if (method === 'POST') {
-      assertCanWrite(caller);
+      assertCanWrite(caller, tableName);
       result = await createRecords(tableName, body);
     } else if (method === 'PATCH') {
-      assertCanWrite(caller);
+      assertCanWrite(caller, tableName);
       result = await updateRecords(tableName, recId || null, body);
     } else if (method === 'DELETE' && recId) {
-      assertCanWrite(caller);
+      assertCanWrite(caller, tableName);
       result = await deleteRecord(tableName, recId);
     } else {
       throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Unsupported ${method}`);
