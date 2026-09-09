@@ -1,5 +1,4 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { useCareStore } from './careStore.js';
 
 // ── Generic optimistic update ──────────────────────────────────────────────
@@ -16,7 +15,7 @@ function optimisticUpdate(entityKey, tableName, recordId, fields) {
     },
   }));
 
-  return airtable.update(tableName, recordId, fields).catch((err) => {
+  return aurora.update(tableName, recordId, fields).catch((err) => {
     useCareStore.setState((s) => ({
       [entityKey]: { ...s[entityKey], [recordId]: previous },
     }));
@@ -34,7 +33,7 @@ function optimisticCreate(entityKey, tableName, fields) {
     },
   }));
 
-  return airtable
+  return aurora
     .create(tableName, fields)
     .then((record) => {
       useCareStore.setState((s) => {
@@ -65,7 +64,7 @@ function optimisticDelete(entityKey, tableName, recordId) {
     return { [entityKey]: collection };
   });
 
-  return airtable.remove(tableName, recordId).catch((err) => {
+  return aurora.remove(tableName, recordId).catch((err) => {
     if (previous) {
       useCareStore.setState((s) => ({
         [entityKey]: { ...s[entityKey], [recordId]: previous },
@@ -137,6 +136,7 @@ export async function createMentionNotifications({
   noteContent,
   actorName,
   patientLabel,
+  title,
 }) {
   const { createNotification } = await import('../api/notifications.js');
   const { mentionPlainPreview, isSpecialMentionId } = await import('../utils/mentions.js');
@@ -146,7 +146,7 @@ export async function createMentionNotifications({
   if (ids.length === 0) return [];
   const now = new Date().toISOString();
   const preview = mentionPlainPreview(noteContent, 120);
-  const title = `${actorName || 'Someone'} mentioned you`;
+  const resolvedTitle = title || `${actorName || 'Someone'} mentioned you`;
   const body = patientLabel
     ? `${patientLabel}: ${preview || 'Open the patient note.'}`
     : (preview || 'You were mentioned in a note.');
@@ -162,7 +162,7 @@ export async function createMentionNotifications({
         entity_id: noteId,
         patient_id: patientId || null,
         referral_id: referralId || null,
-        title,
+        title: resolvedTitle,
         body,
         is_read: false,
         created_at: now,

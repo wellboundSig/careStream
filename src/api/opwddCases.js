@@ -10,8 +10,7 @@
  * seed checklist + stamp referral + log activity" operation.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'OPWDDEligibilityCases';
 
@@ -24,27 +23,27 @@ function stripEmpty(fields) {
   return out;
 }
 
-export const getOpwddCase = (recordId) => airtable.fetchOne(TABLE, recordId);
+export const getOpwddCase = (recordId) => aurora.fetchOne(TABLE, recordId);
 
 export const getOpwddCasesByPatient = (patientId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{patient_id} = "${patientId}"`,
     sort: [{ field: 'opened_at', direction: 'desc' }],
   });
 
 export const getOpwddCaseByReferral = (referralId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{referral_id} = "${referralId}"`,
     sort: [{ field: 'opened_at', direction: 'desc' }],
   });
 
 export const getAllOpwddCases = (params) =>
-  airtable.fetchAll(TABLE, { sort: [{ field: 'opened_at', direction: 'desc' }], ...params });
+  aurora.fetchAll(TABLE, { sort: [{ field: 'opened_at', direction: 'desc' }], ...params });
 
-export const createOpwddCase = (fields) => airtable.create(TABLE, stripEmpty(fields));
+export const createOpwddCase = (fields) => aurora.create(TABLE, stripEmpty(fields));
 
 export const updateOpwddCase = (recordId, fields) =>
-  airtable.update(TABLE, recordId, stripEmpty({ ...fields, updated_at: new Date().toISOString() }));
+  aurora.update(TABLE, recordId, stripEmpty({ ...fields, updated_at: new Date().toISOString() }));
 
 /**
  * Find the active case (if any) for a referral. Returns the single most

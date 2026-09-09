@@ -5566,5 +5566,40 @@
         "wire": "timestamp"
       }
     }
+  },
+  "AppSettings": {
+    "pgTable": "app_settings",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "key": {
+        "column": "key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "value": {
+        "column": "value",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_by_id": {
+        "column": "updated_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
   }
 }

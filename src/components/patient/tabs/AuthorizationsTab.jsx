@@ -1,7 +1,7 @@
 /**
  * AuthorizationsTab — thin wrapper around the shared AuthorizationWorkspace.
  *
- * Important: pass the full patient record (both `id` and `_id`). Airtable
+ * Important: pass the full patient record (both `id` and `_id`). Aurora
  * link fields need the record id (`_id` / rec...). See
  * INSURANCE_CONSOLIDATION_PLAN.md.
  */

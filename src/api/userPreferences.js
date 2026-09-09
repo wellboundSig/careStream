@@ -1,7 +1,6 @@
 /**
  * UserPreferences — Aurora `user_preferences` via wellbound-api.
  *
- * LEGACY FILENAME: ./airtable.js is the Aurora records client, not Airtable.
  *
  * Fields:
  *   clerk_user_id        — text
@@ -12,8 +11,7 @@
  *   soc_completed_view   — 'standard' | 'pending_log'
  *   table_scroll_mode    — 'full' | 'locked'  (migration 0032 + API redeploy)
  */
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'UserPreferences';
 
@@ -62,7 +60,7 @@ function patchFields(fields) {
 }
 
 export async function fetchPreferences(clerkUserId) {
-  const records = await airtable.fetchAll(TABLE, {
+  const records = await aurora.fetchAll(TABLE, {
     filterByFormula: `{clerk_user_id} = "${clerkUserId}"`,
     maxRecords: 1,
   });
@@ -72,11 +70,11 @@ export async function fetchPreferences(clerkUserId) {
 }
 
 export async function createPreferences(clerkUserId, fields) {
-  return airtable.create(TABLE, auroraFields({ ...fields, clerkUserId }));
+  return aurora.create(TABLE, auroraFields({ ...fields, clerkUserId }));
 }
 
 export async function updatePreferences(recordId, fields) {
   const payload = patchFields(fields);
   if (Object.keys(payload).length === 0) return { id: recordId, fields: {} };
-  return airtable.update(TABLE, recordId, payload);
+  return aurora.update(TABLE, recordId, payload);
 }

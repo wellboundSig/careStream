@@ -35,7 +35,7 @@ function generateNoteId() {
 }
 
 export default function NotesTab({ patient, referral, readOnly = false }) {
-  const { appUserId, appUserName, validAuthorIds, isValidAuthor } = useCurrentAppUser();
+  const { appUserId, appUserName } = useCurrentAppUser();
   const { user: clerkUser } = useUser();
   const { resolveUser, resolveUserImage } = useLookups();
   const allNotes = useCareStore((s) => s.notes);
@@ -80,15 +80,7 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
     setError(null);
 
     if (!appUserId) {
-      setError('Your user account was not found in Airtable. See the banner above for instructions.');
-      return;
-    }
-
-    if (!isValidAuthor) {
-      setError(
-        `Your user ID (${appUserId}) is not a valid author option in Airtable. ` +
-        `See the banner above for how to fix this.`
-      );
+      setError('Your login could not be matched to a CareStream user. Contact your administrator.');
       return;
     }
 
@@ -159,39 +151,6 @@ export default function NotesTab({ patient, referral, readOnly = false }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-    {!isValidAuthor && appUserId && validAuthorIds && (
-      <div style={{
-        padding: '12px 20px', background: hexToRgba(palette.highlightYellow.hex, 0.1),
-        borderBottom: `1px solid ${hexToRgba(palette.highlightYellow.hex, 0.4)}`,
-        flexShrink: 0,
-      }}>
-        <p style={{ fontSize: 12.5, fontWeight: 650, color: '#7A5F00', marginBottom: 4 }}>
-          Action required — your user ID is not in the Notes author options
-        </p>
-        <p style={{ fontSize: 12, color: '#7A5F00', lineHeight: 1.55, marginBottom: 8 }}>
-          Your ID <code style={{ background: hexToRgba(palette.highlightYellow.hex, 0.25), padding: '1px 5px', borderRadius: 3 }}>{appUserId}</code> needs to be added as a select option
-          in the <strong>Notes → author_id</strong> field in Airtable.
-        </p>
-        <p style={{ fontSize: 12, color: '#7A5F00', marginBottom: 4 }}>
-          <strong>Fix (2 options):</strong>
-        </p>
-        <p style={{ fontSize: 12, color: '#7A5F00', lineHeight: 1.55, marginBottom: 4 }}>
-          1. In Airtable: open <strong>Notes</strong> table → click the <strong>author_id</strong> column header → Edit field → add{' '}
-          <code style={{ background: hexToRgba(palette.highlightYellow.hex, 0.25), padding: '1px 5px', borderRadius: 3 }}>{appUserId}</code> as a new option.
-        </p>
-        <p style={{ fontSize: 12, color: '#7A5F00', lineHeight: 1.55 }}>
-          2. Or in <code style={{ background: hexToRgba(palette.highlightYellow.hex, 0.25), padding: '1px 5px', borderRadius: 3 }}>.env</code>: set{' '}
-          <code style={{ background: hexToRgba(palette.highlightYellow.hex, 0.25), padding: '1px 5px', borderRadius: 3 }}>
-            VITE_DEFAULT_AUTHOR_ID=
-          </code>
-          to one of the existing valid options:{' '}
-          <code style={{ background: hexToRgba(palette.highlightYellow.hex, 0.25), padding: '1px 5px', borderRadius: 3 }}>
-            {validAuthorIds.join(' | ')}
-          </code>
-        </p>
-      </div>
-    )}
-
     {!readOnly && can(PERMISSION_KEYS.NOTE_CREATE) && <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid var(--color-border)`, flexShrink: 0 }}>
         <MentionComposer
           ref={composerRef}

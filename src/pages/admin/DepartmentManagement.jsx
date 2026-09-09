@@ -4,8 +4,7 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { createDepartment, updateDepartment, deleteDepartment } from '../../api/departments.js';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../../api/airtable.js';
+import aurora from '../../api/aurora.js';
 import { ALL_STAGES } from '../../data/stageConfig.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -53,7 +52,7 @@ export default function DepartmentManagement() {
     if (!user) return;
     const newDeptId = add ? deptId : '';
     updateEntity('users', user._id, { department_id: newDeptId });
-    airtable.update('Users', user._id, { department_id: newDeptId }).catch(() => {
+    aurora.update('Users', user._id, { department_id: newDeptId }).catch(() => {
       updateEntity('users', user._id, { department_id: user.department_id });
     });
   }

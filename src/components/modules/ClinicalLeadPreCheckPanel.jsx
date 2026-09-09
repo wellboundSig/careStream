@@ -22,6 +22,7 @@ export default function ClinicalLeadPreCheckPanel({
   selectedReferral,
   onOpenFiles,
   onSelectedReferralLeftModule,
+  onInitiateTransition,
 }) {
   const { can: canPerm } = usePermissions();
   const { appUserId } = useCurrentAppUser();
@@ -73,6 +74,12 @@ export default function ClinicalLeadPreCheckPanel({
       setError(err?.message || 'Could not mark viable.');
       setSaving(false);
     }
+  }
+
+  function handleNotViable() {
+    if (!selectedReferral || !canMark || saving) return;
+    setError(null);
+    onInitiateTransition?.(selectedReferral, 'Conflict');
   }
 
   const patient = filePatient(selectedReferral);
@@ -127,21 +134,40 @@ export default function ClinicalLeadPreCheckPanel({
           </p>
 
           {canMark && (
-            <button
-              type="button"
-              data-testid="mark-viable-btn"
-              onClick={handleMarkViable}
-              disabled={saving}
-              style={{
-                width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
-                background: palette.accentGreen.hex,
-                color: palette.backgroundLight.hex,
-                fontSize: 13.5, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
-                textAlign: 'left', letterSpacing: '-0.01em', marginBottom: 14,
-              }}
-            >
-              {saving ? 'Saving…' : 'Mark Viable'}
-            </button>
+            <>
+              <button
+                type="button"
+                data-testid="mark-viable-btn"
+                onClick={handleMarkViable}
+                disabled={saving}
+                style={{
+                  width: '100%', padding: '11px 14px', borderRadius: 8, border: 'none',
+                  background: palette.accentGreen.hex,
+                  color: palette.backgroundLight.hex,
+                  fontSize: 13.5, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
+                  textAlign: 'left', letterSpacing: '-0.01em', marginBottom: 4,
+                }}
+              >
+                {saving ? 'Saving…' : 'Mark Viable'}
+              </button>
+              <button
+                type="button"
+                data-testid="lead-not-viable-btn"
+                onClick={handleNotViable}
+                disabled={saving}
+                style={{
+                  display: 'block', width: '100%', padding: '2px 2px 12px',
+                  border: 'none', background: 'none',
+                  fontSize: 12, fontWeight: 600,
+                  color: palette.primaryMagenta.hex,
+                  cursor: saving ? 'wait' : 'pointer',
+                  textAlign: 'left', textDecoration: 'underline',
+                  textUnderlineOffset: 2,
+                }}
+              >
+                Lead is not viable
+              </button>
+            </>
           )}
           {!canMark && (
             <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.4), fontStyle: 'italic', marginBottom: 14 }}>

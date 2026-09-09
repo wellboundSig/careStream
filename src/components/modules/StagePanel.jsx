@@ -997,12 +997,12 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
   const triagePedStore = useCareStore((s) => s.triagePediatric);
   const insuranceCheckStore = useCareStore((s) => s.insuranceChecks);
   const refId = selectedReferral?.id;
-  const refAirtableId = selectedReferral?._id;
+  const refRecId = selectedReferral?._id;
   const triageData = [...Object.values(triageAdultStore || {}), ...Object.values(triagePedStore || {})].find((t) => {
     const tid = t.referral_id;
     if (!tid || !refId) return false;
-    if (tid === refId || tid === refAirtableId) return true;
-    if (Array.isArray(tid) && (tid.includes(refId) || tid.includes(refAirtableId))) return true;
+    if (tid === refId || tid === refRecId) return true;
+    if (Array.isArray(tid) && (tid.includes(refId) || tid.includes(refRecId))) return true;
     return false;
   }) || null;
   // Insurance Details readiness is now sourced from Demographics (plan +
@@ -1741,7 +1741,7 @@ function F2FPanel({ referrals, selectedReferral, onOpenFiles, onInitiateTransiti
   const [filesLoading, setFilesLoading] = useState(false);
   const [filePreview, setFilePreview] = useState(null);
 
-  // Cursory review is persisted to the CursoryReview Airtable table via
+  // Cursory review is persisted to the CursoryReview Aurora table via
   // this shared hook so the drawer and this panel stay in lockstep.
   const {
     checked: reviewChecked,
@@ -3127,12 +3127,12 @@ function StaffingPanel({ referrals, selectedReferral, allReferrals, onOpenTab, o
   const triagePedStore = useCareStore((s) => s.triagePediatric);
   const insuranceCheckStore = useCareStore((s) => s.insuranceChecks);
   const sRefId = selectedReferral?.id;
-  const sRefAirtableId = selectedReferral?._id;
+  const sRefRecId = selectedReferral?._id;
   const staffingTriageData = [...Object.values(triageAdultStore || {}), ...Object.values(triagePedStore || {})].find((t) => {
     const tid = t.referral_id;
     if (!tid || !sRefId) return false;
-    if (tid === sRefId || tid === sRefAirtableId) return true;
-    if (Array.isArray(tid) && (tid.includes(sRefId) || tid.includes(sRefAirtableId))) return true;
+    if (tid === sRefId || tid === sRefRecId) return true;
+    if (Array.isArray(tid) && (tid.includes(sRefId) || tid.includes(sRefRecId))) return true;
     return false;
   }) || null;
   // Insurance Details readiness in the staffing panel mirrors intake: it

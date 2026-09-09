@@ -50,11 +50,15 @@ function getBreadcrumbs(pathname) {
     '/directory/referral-sources': ['Directory', 'Referral Sources'],
     '/team': ['System', 'Team'],
     '/admin/users': ['System', 'User Management'],
+    '/admin/configuration': ['System', 'Configuration'],
     '/admin/settings': ['System', 'Settings'],
     '/admin/data-tools': ['System', 'Data Tools'],
     '/tools/batch-eligibility': ['Work', 'Batch Eligibility'],
     '/tools/hchb-visit-check': ['Work', 'HCHB Visit Check'],
   };
+  if (pathname.startsWith('/admin/configuration')) {
+    return ['System', 'Configuration'];
+  }
   if (pathname.startsWith('/modules/')) {
     const slug = pathname.replace('/modules/', '');
     const stage = SLUG_TO_STAGE[slug];

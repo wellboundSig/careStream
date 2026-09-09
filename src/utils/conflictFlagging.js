@@ -4,6 +4,11 @@ import { recordActivity } from '../api/activityLog.js';
 import { mergeEntities, getStore } from '../store/careStore.js';
 import { CONFLICT_SOURCE_MODULE, CONFLICT_REASON_OPTIONS } from '../data/eligibilityEnums.js';
 import { managedConflictCategoryLabel } from '../data/conflictCategories.js';
+import { withAccountManagerInfoMention } from './mentions.js';
+import {
+  alertAccountManagersForNote,
+  routeNoteToAccountManagerInfo,
+} from './accountManagerInfo.js';
 
 // Conflict severity (2026-06-12): consolidated from 4 levels (Low/Medium/High/
 // Critical) down to 2 (Low/High). Aurora stores plain text — legacy rows still
@@ -163,10 +168,10 @@ export async function resolveConflict({
 
 export function inferConflictSourceModuleFromStage(stage) {
   if (!stage) return CONFLICT_SOURCE_MODULE.OTHER;
-  if (stage === 'Lead Entry' || stage === 'Clinical Lead Pre-Check' || stage === 'Intake' || stage === 'F2F/MD Orders Pending') return CONFLICT_SOURCE_MODULE.INTAKE;
+  if (stage === 'Lead Entry' || stage === 'Intake' || stage === 'F2F/MD Orders Pending') return CONFLICT_SOURCE_MODULE.INTAKE;
   if (stage === 'Eligibility Verification' || stage === 'Disenrollment Required') return CONFLICT_SOURCE_MODULE.ELIGIBILITY;
   if (stage === 'Authorization Pending') return CONFLICT_SOURCE_MODULE.AUTHORIZATION;
-  if (stage === 'Clinical Intake RN Review' || stage === 'Staffing Feasibility' || stage === 'Admin Confirmation') return CONFLICT_SOURCE_MODULE.CLINICAL;
+  if (stage === 'Clinical Lead Pre-Check' || stage === 'Clinical Intake RN Review' || stage === 'Staffing Feasibility' || stage === 'Admin Confirmation') return CONFLICT_SOURCE_MODULE.CLINICAL;
   return CONFLICT_SOURCE_MODULE.OTHER;
 }
 
@@ -182,12 +187,14 @@ export async function flagConflict({
   referralCustomId,
   createdByUserRecordId, // legacy arg (ignored; conflicts.created_by_id is usr_… text)
   actorUserId,
+  actorName,
   patientCustomId,
   sourceModule,
   category,
   severity,
   description,
   origin,
+  mentionAccountManagerInfo = false,
 }) {
   const now = new Date().toISOString();
   const safeSourceModule = Object.values(CONFLICT_SOURCE_MODULE).includes(sourceModule)
@@ -243,15 +250,19 @@ export async function flagConflict({
   // schema mismatch (e.g. author_id select-option allowlist) must not
   // break the user-facing operation.
   const friendlyCategory = conflictCategoryLabel(category);
-  const noteContent = [
+  const noteId = `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  let noteContent = [
     `🚩 ${friendlyCategory} conflict (${severity || 'severity unspecified'})`,
     description ? `\n${description}` : '',
     `\n\nSource module: ${normalizedSourceModule}${referral?.current_stage ? ` · Stage: ${referral.current_stage}` : ''}`,
   ].join('').trim();
+  if (mentionAccountManagerInfo) {
+    noteContent = withAccountManagerInfoMention(noteContent);
+  }
 
   try {
     createNote({
-      id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: noteId,
       patient_id: patientCustomId,
       ...(referralCustomId ? { referral_id: referralCustomId } : {}),
       author_id: actorUserId || 'unknown',
@@ -259,6 +270,37 @@ export async function flagConflict({
       is_pinned: false,
       created_at: now,
       updated_at: now,
+    }).then((createdNote) => {
+      if (createdNote?.id) {
+        try {
+          mergeEntities('notes', {
+            [createdNote.id]: { _id: createdNote.id, ...createdNote.fields },
+          });
+        } catch { /* store not ready */ }
+      }
+      if (!mentionAccountManagerInfo) return;
+      const patientLabel = referral?.patientName
+        || `${referral?.patient?.first_name || ''} ${referral?.patient?.last_name || ''}`.trim()
+        || patientCustomId;
+      routeNoteToAccountManagerInfo({
+        content: noteContent,
+        referral,
+        patientId: patientCustomId,
+        actorName,
+      }).catch((err) => {
+        console.warn('[flagConflict] account manager info append failed (non-fatal):', err?.message || err);
+      });
+      alertAccountManagersForNote({
+        actorUserId,
+        actorName,
+        noteId: createdNote?.fields?.id || noteId,
+        patientId: patientCustomId,
+        referralId: referralCustomId,
+        noteContent,
+        patientLabel,
+      }).catch((err) => {
+        console.warn('[flagConflict] account manager notify failed (non-fatal):', err?.message || err);
+      });
     }).catch((err) => {
       // eslint-disable-next-line no-console
       console.warn('[flagConflict] auto-note write failed (non-fatal):', err?.message || err);

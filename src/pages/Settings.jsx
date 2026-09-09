@@ -505,14 +505,14 @@ export default function Settings() {
       {/* ── Data & Privacy (stub) ── */}
       <Section
         title="Data & Privacy"
-        description="Patient data stored in Airtable in accordance with HIPAA policies."
+        description="Patient data stored in AWS Aurora in accordance with HIPAA policies."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
           {[
             'Data is never shared with third parties.',
             'All connections use TLS encryption in transit.',
             'Access is restricted to authenticated team members via Clerk.',
-            'Audit logs are maintained in the Airtable base.',
+            'Audit logs are maintained in the Aurora database.',
           ].map((item) => (
             <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>

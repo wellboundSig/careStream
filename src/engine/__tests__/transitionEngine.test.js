@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../api/airtable.js', () => {
+vi.mock('../../api/aurora.js', () => {
   const mk = () => ({
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
@@ -17,13 +17,13 @@ vi.mock('../../api/airtable.js', () => {
     createBatch: vi.fn().mockResolvedValue([]),
     updateBatch: vi.fn().mockResolvedValue([]),
   });
-  return { default: mk(), airtable: mk() };
+  return { default: mk(), aurora: mk() };
 });
 
 const { attemptTransition, applyTransition } = await import('../transitionEngine.js');
 const { getStore } = await import('../../store/careStore.js');
 const { seedStore } = await import('../../test/factories.js');
-const airtable = (await import('../../api/airtable.js')).default;
+const aurora = (await import('../../api/aurora.js')).default;
 
 function getRef() { return getStore().referrals.rec_ref1; }
 
@@ -94,7 +94,7 @@ describe('applyTransition (writer)', () => {
     expect(getRef().current_stage).toBe('Intake');
     expect(getRef().intake_owner_id).toBe('usr_9');
     // One Referrals PATCH (audit StageHistory create is separate).
-    expect(airtable.update).toHaveBeenCalledTimes(1);
+    expect(aurora.update).toHaveBeenCalledTimes(1);
   });
 
   it('returns not-ok for a disallowed transition without writing', async () => {
@@ -103,6 +103,6 @@ describe('applyTransition (writer)', () => {
     const out = await applyTransition({ referral, result, context: {} });
     expect(out.ok).toBe(false);
     expect(getRef().current_stage).toBe('Lead Entry');
-    expect(airtable.update).not.toHaveBeenCalled();
+    expect(aurora.update).not.toHaveBeenCalled();
   });
 });

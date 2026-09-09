@@ -4,7 +4,7 @@
  *
  * Mirrors the structure of `eligibilityEnums.js` — single source of truth for
  * every OPWDD-related string the system writes or reads. The values match
- * what lives in Airtable today (see scripts/schema-snapshot.json:
+ * what lives in Aurora today (see scripts/schema-snapshot.json:
  * OPWDDEligibilityCases, OPWDDCaseChecklistItems, and the extended Files /
  * Tasks / Permissions singleSelects).
  */

@@ -1,15 +1,14 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const GUARDIANS = 'KnownGuardians';
 const LINKS = 'PatientGuardians';
 
 export const getKnownGuardians = () =>
-  airtable.fetchAll(GUARDIANS, { sort: [{ field: 'display_name', direction: 'asc' }] });
-export const createKnownGuardian = (fields) => airtable.create(GUARDIANS, fields);
-export const updateKnownGuardian = (id, fields) => airtable.update(GUARDIANS, id, fields);
+  aurora.fetchAll(GUARDIANS, { sort: [{ field: 'display_name', direction: 'asc' }] });
+export const createKnownGuardian = (fields) => aurora.create(GUARDIANS, fields);
+export const updateKnownGuardian = (id, fields) => aurora.update(GUARDIANS, id, fields);
 
-export const getPatientGuardians = (opts = {}) => airtable.fetchAll(LINKS, opts);
-export const createPatientGuardian = (fields) => airtable.create(LINKS, fields);
-export const updatePatientGuardian = (id, fields) => airtable.update(LINKS, id, fields);
-export const deletePatientGuardian = (id) => airtable.remove(LINKS, id);
+export const getPatientGuardians = (opts = {}) => aurora.fetchAll(LINKS, opts);
+export const createPatientGuardian = (fields) => aurora.create(LINKS, fields);
+export const updatePatientGuardian = (id, fields) => aurora.update(LINKS, id, fields);
+export const deletePatientGuardian = (id) => aurora.remove(LINKS, id);

@@ -63,7 +63,7 @@ export function truthyFlag(v) {
   return v === true || v === 'true' || v === 'TRUE' || v === 1 || v === '1';
 }
 
-/** Unwrap Airtable linked-record arrays to a single id string. */
+/** Unwrap Aurora linked-record arrays to a single id string. */
 export function linkId(raw) {
   if (raw == null || raw === '') return '';
   if (Array.isArray(raw)) return raw[0] ? String(raw[0]).trim() : '';

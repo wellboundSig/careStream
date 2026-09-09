@@ -2,9 +2,9 @@
  * F2F / MD Orders Document Review Checklist
  *
  * Cursory review used by the F2F team before pushing to Clinical RN review.
- * Persisted to the `CursoryReview` table in Airtable — one row per referral.
+ * Persisted to the `CursoryReview` table in Aurora — one row per referral.
  *
- * The `dbField` on each item is the Airtable column name. The separation
+ * The `dbField` on each item is the Aurora column name. The separation
  * between UI keys and DB column names is intentional: UI keys are short and
  * readable, DB columns are self-documenting for audit. All read/write code
  * goes through `uiToDbFields()` / `dbToUiFields()` in src/api/cursoryReviews.js

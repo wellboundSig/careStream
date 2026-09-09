@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getReferrals } from '../api/referrals.js';
 import { useCareStore } from '../store/careStore.js';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
 import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
 
@@ -26,7 +25,7 @@ export function useReferralSourceData(source, dateRange = null) {
         let patientMap = {};
         if (pids.length) {
           const formula = `OR(${pids.map((id) => `{id} = "${id}"`).join(',')})`;
-          const pRecs = await airtable.fetchAll('Patients', { filterByFormula: formula }).catch(() => []);
+          const pRecs = await aurora.fetchAll('Patients', { filterByFormula: formula }).catch(() => []);
           pRecs.forEach((r) => {
             const f = r.fields;
             patientMap[f.id] = {

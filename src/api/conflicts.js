@@ -3,20 +3,19 @@
  *
  * Linked-record fields normalised at boundary. See
  * INSURANCE_CONSOLIDATION_PLAN.md for the list of structured
- * `conflict_reasons` options that must exist in Airtable; the code writes
- * from src/data/eligibilityEnums.js and will fail cleanly if the Airtable
+ * `conflict_reasons` options that must exist in Aurora; the code writes
+ * from src/data/eligibilityEnums.js and will fail cleanly if the Aurora
  * singleSelect is missing an option.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'Conflicts';
 
 function normaliseFields(fields) {
   if (!fields) return fields;
   const out = { ...fields };
-  // Strip null/undefined — Airtable rejects nulls on single-line text fields.
+  // Strip null/undefined — Aurora rejects nulls on single-line text fields.
   for (const k of Object.keys(out)) {
     if (out[k] === null || out[k] === undefined) delete out[k];
   }
@@ -24,10 +23,10 @@ function normaliseFields(fields) {
 }
 
 export const getConflictsByReferral = (referralId) =>
-  airtable.fetchAll(TABLE, { filterByFormula: `{referral_id} = "${referralId}"` });
+  aurora.fetchAll(TABLE, { filterByFormula: `{referral_id} = "${referralId}"` });
 
 export const getConflictsByPatient = (patientId) =>
-  airtable.fetchAll(TABLE, { filterByFormula: `FIND("${patientId}", ARRAYJOIN({patient_id}))` });
+  aurora.fetchAll(TABLE, { filterByFormula: `FIND("${patientId}", ARRAYJOIN({patient_id}))` });
 
-export const createConflict = (fields) => airtable.create(TABLE, normaliseFields(fields));
-export const updateConflict = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
+export const createConflict = (fields) => aurora.create(TABLE, normaliseFields(fields));
+export const updateConflict = (id, fields) => aurora.update(TABLE, id, normaliseFields(fields));

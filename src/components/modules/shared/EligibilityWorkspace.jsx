@@ -4,7 +4,7 @@
  * `useEligibilityData` hook; triggerDataRefresh() keeps them in sync.
  *
  * Data sources for the insurance list:
- *   1. Real rows in the PatientInsurances table (once created in Airtable)
+ *   1. Real rows in the PatientInsurances table (once created in Aurora)
  *   2. Virtual entries derived from Patients.insurance_plans JSON (legacy)
  * The workspace surfaces both so staff can verify coverage TODAY, before
  * the new tables are migrated.
@@ -86,7 +86,7 @@ export default function EligibilityWorkspace({
 }) {
   const t = tokens(variant);
   const { appUser, appUserId, appUserName } = useCurrentAppUser();
-  const verifierRecordId = appUser?._id || null; // Users link fields need Airtable rec id
+  const verifierRecordId = appUser?._id || null; // Users link fields need Aurora rec id
   const { resolveUser } = useLookups();
   const { can } = usePermissions();
 
@@ -618,14 +618,14 @@ export default function EligibilityWorkspace({
             try {
               await createDisenrollmentFlag({
                 patient_id: patient._id,
-                // referral_id is a multipleRecordLinks field — pass the Airtable rec id
+                // referral_id is a multipleRecordLinks field — pass the Aurora rec id
                 referral_id: referral?._id || undefined,
                 flag_type: DISENROLLMENT_FLAG_TYPE.EXPERT_MEDICAID_ASSIST,
                 note,
                 follow_up_date: followUpDate,
-                // owner & creator are Users link fields — expect Airtable rec ids.
+                // owner & creator are Users link fields — expect Aurora rec ids.
                 // If the caller typed a business id we pass it through and rely on
-                // Airtable's forgiving behaviour (fails validation if missing).
+                // Aurora's forgiving behaviour (fails validation if missing).
                 follow_up_owner_user_id: followUpOwnerUserId,
                 status: DISENROLLMENT_FLAG_STATUS.OPEN,
                 created_by_user_id: verifierRecordId || undefined,
@@ -754,7 +754,7 @@ function InsuranceCard({
   async function save() {
     if (readOnly) return;
     if (!patientRecordId) {
-      setError('Patient Airtable record id missing; cannot persist link.');
+      setError('Patient record id missing; cannot persist link.');
       return;
     }
     if (!insurance?._id) {

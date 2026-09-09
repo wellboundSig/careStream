@@ -8,7 +8,7 @@ export const useCareStore = create((set, get) => ({
   hydrationError: null,
   hydrationProgress: { done: 0, total: 0 },
 
-  // ── Entity tables (normalized: keyed by Airtable record ID) ──────────────
+  // ── Entity tables (normalized: keyed by Aurora record ID) ──────────────
   patients: {},
   referrals: {},
   entities: {},
@@ -20,6 +20,7 @@ export const useCareStore = create((set, get) => ({
   insuranceChecks: {},
   conflicts: {},
   conflictCategories: {},       // ConflictCategories — admin-managed conflict category list
+  appSettings: {},             // AppSettings — org-wide key/value (Global Configuration)
   authorizations: {},
   disenrollmentAssistanceFlags: {}, // DisenrollmentAssistanceFlags — open/in_review rows drive the Disenrollment module queue
   episodes: {},

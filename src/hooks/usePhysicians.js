@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useCareStore, updateEntity } from '../store/careStore.js';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 
 // ── Backward-compat exports ────────────────────────────────────────────────
 // These are imported by AppShell, PhysicianDrawer, PhysicianPicker, etc.
@@ -10,7 +9,7 @@ export function prefetchPhysicians() { /* no-op — store hydration handles this
 
 export async function refreshPhysicians() {
   try {
-    const records = await airtable.fetchAll('Physicians');
+    const records = await aurora.fetchAll('Physicians');
     const normalized = {};
     records.forEach((r) => { normalized[r.id] = { _id: r.id, ...r.fields }; });
     useCareStore.setState({ physicians: normalized });

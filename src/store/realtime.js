@@ -10,21 +10,14 @@
 //
 // Falls back gracefully: if the socket drops, exponential-backoff reconnect;
 // meanwhile the tiered polling in sync.js still provides eventual consistency.
-//
-// Legacy mode (VITE_API_URL unset): the old Cloudflare SSE path.
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable, { invalidateTable } from '../api/airtable.js';
+import aurora, { invalidateTable } from '../api/aurora.js';
 import { useCareStore, mergeEntities, removeEntity } from './careStore.js';
 import { TABLE_TO_STORE_KEY } from './hydrate.js';
-import { syncHotTables } from './sync.js';
-import { silentRehydrate } from './hydrate.js';
 
 const EVENTS_HOST = import.meta.env.VITE_EVENTS_HTTP_HOST || '';
-const WORKER_URL = import.meta.env.VITE_AIRTABLE_WORKER_URL;
 
 let socket = null;
-let eventSource = null;
 let reconnectTimer = null;
 let reconnectDelay = 1000;
 let stopped = false;
@@ -67,7 +60,7 @@ async function applyChange({ table, recId, action, actorSub }) {
 
   let record = null;
   try {
-    record = await airtable.fetchOne(table, recId);
+    record = await aurora.fetchOne(table, recId);
   } catch {
     return; // deleted in the meantime / transient — polling will reconcile
   }
@@ -164,54 +157,21 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(connectAppSync, reconnectDelay);
 }
 
-// ── Legacy Cloudflare SSE (pre-Aurora rollback path) ─────────────────────────
-
-function onSseMessage(event) {
-  try {
-    const data = JSON.parse(event.data);
-    if (data.type === 'connected') { reconnectDelay = 1000; return; }
-    if (data.type === 'airtable_change') {
-      const hot = new Set(['Referrals', 'Patients', 'Tasks']);
-      if (data.tables?.some((t) => hot.has(t))) syncHotTables();
-      else silentRehydrate();
-    }
-  } catch { /* ignore */ }
-}
-
-async function connectSse() {
-  if (!WORKER_URL || import.meta.env.DEV) return;
-  cleanup();
-  let token = null;
-  try {
-    token = window.Clerk?.session ? await window.Clerk.session.getToken() : null;
-  } catch { /* ignore */ }
-  if (!token) { reconnectTimer = setTimeout(connectSse, 3000); return; }
-  eventSource = new EventSource(`${WORKER_URL.replace(/\/$/, '')}/events?token=${encodeURIComponent(token)}`);
-  eventSource.onmessage = onSseMessage;
-  eventSource.onerror = () => {
-    cleanup();
-    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-    reconnectTimer = setTimeout(connectSse, reconnectDelay);
-  };
-}
-
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 function cleanup() {
   if (socket) { try { socket.close(); } catch { /* already closed */ } socket = null; }
-  if (eventSource) { eventSource.close(); eventSource = null; }
 }
 
 function connect() {
   if (import.meta.env.VITE_API_URL && EVENTS_HOST) return connectAppSync();
-  return connectSse();
 }
 
 export function startRealtime() {
   stopped = false;
   connect();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !socket && !eventSource && !stopped) {
+    if (!document.hidden && !socket && !stopped) {
       clearTimeout(reconnectTimer);
       reconnectDelay = 1000;
       connect();

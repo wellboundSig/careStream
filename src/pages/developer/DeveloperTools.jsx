@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../../api/airtable.js';
+import aurora from '../../api/aurora.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -8,8 +7,8 @@ import IssueReportsPanel from '../../components/developer/IssueReportsPanel.jsx'
 import palette, { hexToRgba } from '../../utils/colors.js';
 import registry from '../../../db/registry.json';
 
-// Developer Tools — raw database grid (the Airtable-UI replacement, migration
-// plan Phase 8). Works against EITHER backend (Airtable legacy, wellbound-api/
+// Developer Tools — raw database grid (the Aurora-UI replacement, migration
+// plan Phase 8). Works against EITHER backend (Aurora legacy, wellbound-api/
 // Aurora) because it goes through the same wrapper as the rest of the app.
 // Excel-style interactions: cell selection, arrow-key navigation, double-click
 // or Enter to edit, drag the fill handle to copy a value down/up, row/column
@@ -140,7 +139,7 @@ export default function DeveloperTools() {
     setColSel(null);
     setEditing(null);
     setSelectedRowId(null);
-    airtable.fetchAll(tableName)
+    aurora.fetchAll(tableName)
       .then((records) => {
         if (cancelled) return;
         setRows(records.map((r) => ({ _id: r.id, ...r.fields })));
@@ -307,7 +306,7 @@ export default function DeveloperTools() {
   }
 
   async function saveCell(rowId, field, value) {
-    await airtable.update(tableName, rowId, { [field]: value });
+    await aurora.update(tableName, rowId, { [field]: value });
     setRows((prev) => prev.map((r) => (r._id === rowId ? { ...r, [field]: value } : r)));
   }
 
@@ -382,7 +381,7 @@ export default function DeveloperTools() {
   async function deleteSelectedRow() {
     if (deleteText !== 'DELETE' || !selectedRowId) return;
     try {
-      await airtable.remove(tableName, selectedRowId);
+      await aurora.remove(tableName, selectedRowId);
       setRows((prev) => prev.filter((r) => r._id !== selectedRowId));
       showToast('Row deleted');
     } catch (err) {
@@ -424,7 +423,7 @@ export default function DeveloperTools() {
     }
     setAdding(true);
     try {
-      const rec = await airtable.create(tableName, fields);
+      const rec = await aurora.create(tableName, fields);
       const row = { _id: rec.id, ...rec.fields };
       setRows((prev) => [row, ...prev]);
       setAddingRow(false);

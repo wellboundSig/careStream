@@ -62,6 +62,15 @@ export function mentionMentionsAccountManagerInfo(content) {
   return extractMentionUserIds(content).includes(ACCOUNT_MANAGER_INFO_MENTION_ID);
 }
 
+/** Append the Account manager info mention token if it is not already present. */
+export function withAccountManagerInfoMention(text) {
+  const token = serializeMention(ACCOUNT_MANAGER_INFO_MENTION);
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return token;
+  if (mentionMentionsAccountManagerInfo(trimmed)) return trimmed;
+  return `${trimmed}\n\n${token}`;
+}
+
 /**
  * Split content into text / mention segments for rendering.
  * @returns {{ type: 'text'|'mention', value?: string, userId?: string, label?: string }[]}

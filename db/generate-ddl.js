@@ -78,6 +78,17 @@ const DRIFT_TABLES = [
       { name: 'created_at', type: 'dateTime' },
     ],
   },
+  {
+    name: 'AppSettings',
+    fields: [
+      { name: 'id', type: 'singleLineText' },
+      { name: 'key', type: 'singleLineText' },
+      { name: 'value', type: 'singleLineText' },
+      { name: 'updated_by_id', type: 'singleLineText' },
+      { name: 'created_at', type: 'dateTime' },
+      { name: 'updated_at', type: 'dateTime' },
+    ],
+  },
 ];
 
 const DRIFT_FIELDS = {

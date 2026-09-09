@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildTeamActivityEvents, buildActorAliasMap } from '../teamActivity.js';
 
 describe('buildActorAliasMap', () => {
-  it('maps clerk and airtable ids to business id', () => {
+  it('maps clerk and aurora ids to business id', () => {
     const map = buildActorAliasMap(
       {
         rec1: { id: 'usr_001', _id: 'rec1', clerk_user_id: 'user_clerk_abc' },

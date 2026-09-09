@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createUserPermission, updateUserPermission } from '../../api/userPermissions.js';
 import { syncUserLanguages } from '../../api/userLanguages.js';
 import { syncCocNurseFacilities } from '../../api/cocNurseFacilities.js';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../../api/airtable.js';
+import aurora from '../../api/aurora.js';
 import { useCareStore, mergeEntities, removeEntity, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
@@ -171,7 +170,7 @@ export default function UserSettingsSheet({
     setSavingRole(true);
     updateEntity('users', user._id, { role_id: newRoleId });
     try {
-      await airtable.update('Users', user._id, { role_id: newRoleId });
+      await aurora.update('Users', user._id, { role_id: newRoleId });
       if (choice === 'apply') {
         const role = Object.values(storeRoles).find((r) => r.id === newRoleId);
         const presetId = firstId(role?.default_preset_id);

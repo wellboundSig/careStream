@@ -21,7 +21,7 @@ export function usePipelineData() {
     const refs = Object.values(referrals).filter(isVisible);
     if (!refs.length) return [];
 
-    // Build two lookup paths: by custom id (pat_007) AND by Airtable record id (recXXX)
+    // Build two lookup paths: by custom id (pat_007) AND by Aurora record id (recXXX)
     const patientByCustomId = {};
     const patientByRecordId = {};
     Object.values(patients).forEach((p) => {

@@ -239,6 +239,14 @@ export const PERMISSION_KEYS = {
   DEVELOPER_TOOLS: 'developer.tools',
 };
 
+/** Any of these keys shows Global Configuration in the left menu. Child pages keep their own gates. */
+export const GLOBAL_CONFIGURATION_PERMISSIONS = [
+  PERMISSION_KEYS.ADMIN_SETTINGS,
+  PERMISSION_KEYS.ADMIN_PERMISSIONS,
+  PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES,
+  PERMISSION_KEYS.ADMIN_DEPARTMENTS,
+];
+
 /** Confirm / send-to-EMR on Clinical RN Review. Module access is enough. */
 export function canPerformClinicalRnReview(can) {
   if (typeof can !== 'function') return false;
@@ -426,7 +434,7 @@ export const PERMISSION_CATALOG = [
   // ── Conflicts ─────────────────────────────────────────────────────────────
   { key: K.CONFLICT_FLAG,             label: 'Flag conflicts',             category: 'Conflicts', description: 'Create conflict records on referrals', sort: 90 },
   { key: K.CONFLICT_RESOLVE,          label: 'Resolve conflicts',          category: 'Conflicts', description: 'Mark conflicts as resolved or waived', sort: 91 },
-  { key: K.CONFLICT_MANAGE_CATEGORIES, label: 'Manage conflict categories', category: 'Conflicts', description: 'Open the Conflict Categories page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 92 },
+  { key: K.CONFLICT_MANAGE_CATEGORIES, label: 'Manage conflict categories', category: 'Conflicts', description: 'Open Conflict Categories under Global Configuration. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 92 },
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
   { key: K.TASK_VIEW,     label: 'View tasks',                  category: 'Tasks', description: 'See task lists and details', sort: 100 },
@@ -478,11 +486,11 @@ export const PERMISSION_CATALOG = [
   { key: K.REPORT_EXPORT, label: 'Export reports & data', category: 'Reports', description: 'Download CSV/PDF exports', sort: 161 },
 
   // ── Administration ────────────────────────────────────────────────────────
-  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',      category: 'Administration', description: 'Open the Departments page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 170 },
+  { key: K.ADMIN_DEPARTMENTS,     label: 'Manage departments',      category: 'Administration', description: 'Open Departments under Global Configuration. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 170 },
   { key: K.ADMIN_USER_MANAGEMENT, label: 'Access User Management',  category: 'Administration', description: 'Open the User Management page. Deny-by-default — the menu item is hidden unless this key is granted.', sort: 171 },
-  { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions', category: 'Administration', description: 'Open permission modals and edit presets', sort: 172 },
+  { key: K.ADMIN_PERMISSIONS,     label: 'Manage user permissions', category: 'Administration', description: 'Open Permissions under Global Configuration and edit presets', sort: 172 },
   { key: K.ADMIN_DATA_TOOLS,      label: 'Access Data Tools',       category: 'Administration', description: 'Use raw data inspection and admin utilities', sort: 173 },
-  { key: K.ADMIN_SETTINGS,        label: 'Access system Settings',  category: 'Administration', description: 'Modify app-wide settings and preferences', sort: 174 },
+  { key: K.ADMIN_SETTINGS,        label: 'Manage Global Configuration', category: 'Administration', description: 'Open Global Configuration and change org-wide settings, including whether ALF and Special Needs leads require clinical pre-check', sort: 174 },
 
   // ── Developer ─────────────────────────────────────────────────────────────
   { key: K.DEVELOPER_TOOLS, label: 'Access Developer Tools', category: 'Developer', description: 'Open Developer Tools (raw database grid). Deny-by-default — the menu item is hidden unless this key is granted.', sort: 180 },

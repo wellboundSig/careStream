@@ -11,7 +11,7 @@ describe('CursoryReview field mapping', () => {
     expect(Object.keys(CURSORY_DB_TO_UI)).toHaveLength(F2F_REVIEW_CHECKLIST.length);
   });
 
-  it('maps UI keys to the exact Airtable column names pulled from schema', () => {
+  it('maps UI keys to the exact Aurora column names pulled from schema', () => {
     // These are the column names pulled live on 2026-04-21 via
     // `npm run schema`. If any drift, this test fails with a clear pointer.
     expect(CURSORY_UI_TO_DB).toEqual({
@@ -33,7 +33,7 @@ describe('CursoryReview field mapping', () => {
     // Only true values survive the round trip (checkbox semantics).
     expect(back).toEqual({ f2f_doc_present: true, patient_name_match: true, dates_valid: true });
     // Original false values are not carried forward — this matches how
-    // Airtable omits unchecked boxes and what the UI expects (undefined === unchecked).
+    // Aurora omits unchecked boxes and what the UI expects (undefined === unchecked).
     expect(back.md_orders_present).toBeUndefined();
   });
 

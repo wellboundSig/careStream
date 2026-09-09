@@ -54,6 +54,7 @@ export const PANE_NAV = [
     group: 'System',
     items: [
       { path: '/team', label: 'Team' },
+      { path: '/admin/configuration', label: 'Configuration' },
       { path: '/admin/settings', label: 'Settings' },
     ],
   },

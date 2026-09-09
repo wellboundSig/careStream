@@ -3,6 +3,7 @@
 
 import { getStore } from '../store/careStore.js';
 import { updateReferralOptimistic } from '../store/mutations.js';
+import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import {
   ACCOUNT_MANAGER_INFO_MENTION_ID,
   mentionMentionsAccountManagerInfo,
@@ -106,6 +107,62 @@ export async function routeNoteToAccountManagerInfo({
   const next = appendAccountManagerInfo(target.account_manager_info, entry);
   await updateReferralOptimistic(target._id, { account_manager_info: next });
   return true;
+}
+
+function parsePermissionKeys(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw == null || raw === '') return [];
+  try {
+    const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Users who watch the Account manager / Pending Log channel.
+ * Used to fan-out alerts when a note @mentions Account manager info.
+ */
+export function listPendingLogRecipientUserIds({ excludeId = null } = {}) {
+  const rows = Object.values(getStore().userPermissions || {});
+  const ids = [];
+  for (const row of rows) {
+    const uid = row?.user_id;
+    if (!uid || uid === excludeId) continue;
+    const keys = parsePermissionKeys(row.permissions);
+    if (keys.includes(PERMISSION_KEYS.SCHEDULING_SOC_PENDING_LOG)) ids.push(uid);
+  }
+  return [...new Set(ids)];
+}
+
+/**
+ * Notify every Pending Log viewer about a note that mentioned Account manager info.
+ * Fire-and-forget callers should still catch — this never needs to block the write.
+ */
+export async function alertAccountManagersForNote({
+  actorUserId,
+  actorName,
+  noteId,
+  patientId,
+  referralId,
+  noteContent,
+  patientLabel,
+}) {
+  const { createMentionNotifications } = await import('../store/mutations.js');
+  const ids = listPendingLogRecipientUserIds({ excludeId: actorUserId });
+  if (!ids.length) return [];
+  return createMentionNotifications({
+    mentionedUserIds: ids,
+    actorUserId,
+    noteId,
+    patientId,
+    referralId,
+    noteContent,
+    actorName,
+    patientLabel,
+    title: `${actorName || 'Someone'} mentioned Account manager info`,
+  });
 }
 
 export { ACCOUNT_MANAGER_INFO_MENTION_ID };

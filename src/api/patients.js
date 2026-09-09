@@ -1,10 +1,9 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'Patients';
 
-export const getPatients = (params) => airtable.fetchAll(TABLE, params);
-export const getPatient = (id) => airtable.fetchOne(TABLE, id);
-export const createPatient = (fields) => airtable.create(TABLE, fields);
-export const updatePatient = (id, fields) => airtable.update(TABLE, id, fields);
-export const deletePatient = (id) => airtable.remove(TABLE, id);
+export const getPatients = (params) => aurora.fetchAll(TABLE, params);
+export const getPatient = (id) => aurora.fetchOne(TABLE, id);
+export const createPatient = (fields) => aurora.create(TABLE, fields);
+export const updatePatient = (id, fields) => aurora.update(TABLE, id, fields);
+export const deletePatient = (id) => aurora.remove(TABLE, id);

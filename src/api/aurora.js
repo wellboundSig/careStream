@@ -1,18 +1,18 @@
 /**
- * LEGACY FILENAME — this is NOT Airtable.
+ * LEGACY FILENAME — this is NOT Aurora.
  *
  * CareStream is Aurora PostgreSQL only (AWS wellbound-api). Dev and prod both
- * use VITE_API_URL. There is no Airtable PAT, base, worker, or api.airtable.com
- * fallback. The filename and default export (`airtable`) are leftovers from the
+ * use VITE_API_URL. There is no Aurora PAT, base, worker, or api.aurora.com
+ * fallback. The filename and default export (`aurora`) are leftovers from the
  * old JSON wire shape ({ fields }, filterByFormula).
  *
- * If VITE_API_URL is missing, requests fail loud. Do not add Airtable back.
+ * If VITE_API_URL is missing, requests fail loud. Do not add Aurora back.
  */
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 function auroraBaseUrl() {
   if (!API_URL) {
-    throw new Error('VITE_API_URL is required. CareStream is Aurora-only (wellbound-api). There is no Airtable path.');
+    throw new Error('VITE_API_URL is required. CareStream is Aurora-only (wellbound-api). There is no Aurora path.');
   }
   return API_URL;
 }
@@ -285,8 +285,8 @@ async function updateBatch(tableName, recordUpdates) {
 }
 
 // LEGACY export name — same client. Prefer importing default as `api` in new files.
-export const airtable = {
+export const aurora = {
   fetchAll, fetchOne, create, update, remove,
   createBatch, updateBatch,
 };
-export default airtable;
+export default aurora;

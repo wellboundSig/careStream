@@ -8,7 +8,7 @@
  * - Any consequential decision must be surfaced to a human reviewer via
  *   `requiresHumanReview: true`.
  *
- * These functions do not import React, I/O, Airtable, or stores. They take
+ * These functions do not import React, I/O, Aurora, or stores. They take
  * plain-object input and return plain-object output, so they are safe to
  * unit-test with no mocking.
  */

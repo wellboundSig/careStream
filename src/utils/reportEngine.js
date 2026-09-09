@@ -6,8 +6,7 @@
  * for the CareStream Reports page.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
@@ -75,10 +74,10 @@ const _lookupCache = {};
 
 async function getLookupMap(tableName) {
   if (_lookupCache[tableName]) return _lookupCache[tableName];
-  const recs = await airtable.fetchAll(tableName);
+  const recs = await aurora.fetchAll(tableName);
   const map = {};
   for (const r of recs) {
-    // Key by both custom `id` field AND Airtable record id (r.id)
+    // Key by both custom `id` field AND Aurora record id (r.id)
     const fields = r.fields;
     map[r.id] = fields;
     if (fields.id) map[fields.id] = fields;
@@ -225,7 +224,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'division',       label: 'Division',    type: 'enum',    options: DIVISIONS },
       { key: 'current_stage',  label: 'Stage',       type: 'enum',    options: STAGES },
       { key: 'priority',       label: 'Priority',    type: 'enum',    options: PRIORITIES },
@@ -272,7 +271,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'type',          label: 'Type',           type: 'enum',    options: SOURCE_TYPES },
       { key: 'method',        label: 'Default Method', type: 'enum',    options: REFERRAL_METHODS },
       { key: 'source_entity', label: 'Entity',         type: 'text' },
@@ -323,7 +322,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'division',        label: 'Division',      type: 'enum',    options: DIVISIONS },
       { key: 'gender',          label: 'Gender',        type: 'enum',    options: ['Male','Female','Other','Prefer Not to Say'] },
       { key: 'address_city',    label: 'City',          type: 'text' },
@@ -362,7 +361,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'status',            label: 'Status',        type: 'enum',    options: ['Active','Discharged','Transferred','Expired'] },
       { key: 'soc_date',          label: 'SOC Date',      type: 'date' },
       { key: 'recert_due_date',   label: 'Recert Due',    type: 'date' },
@@ -399,7 +398,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'type',          label: 'Type',         type: 'enum',    options: ['Insurance Barrier','Missing Document','Auth Needed','Disenrollment','Escalation','Follow-Up','Staffing','Scheduling','Other'] },
       { key: 'status',        label: 'Status',       type: 'enum',    options: ['Pending','In Progress','Completed','Cancelled'] },
       { key: 'priority',      label: 'Priority',     type: 'enum',    options: PRIORITIES },
@@ -441,7 +440,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'check_source',         label: 'Check Source',    type: 'enum',    options: ['Waystar','ePACES','Availity','Manual'] },
       { key: 'check_date',           label: 'Check Date',      type: 'date' },
       { key: 'auth_required',        label: 'Auth Required',   type: 'boolean' },
@@ -479,7 +478,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'status',         label: 'Status',     type: 'enum', options: ['Pending','Approved','Denied','Expired','Appealed'] },
       { key: 'plan_name',      label: 'Plan Name',  type: 'text' },
       { key: 'submitted_date', label: 'Submitted',  type: 'date' },
@@ -512,7 +511,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'type',     label: 'Type',     type: 'enum', options: ['Hospice Overlap','SNF Overlap','CDPAP','HHA Respite Overlap','ALF Refusal','No-Fault','Regulatory','Clinical','Other'] },
       { key: 'severity', label: 'Severity', type: 'enum', options: ['Low','High'] },
       { key: 'status',   label: 'Status',   type: 'enum', options: ['Open','In Progress','Resolved','Waived'] },
@@ -538,7 +537,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'from_stage', label: 'From Stage', type: 'enum', options: STAGES },
       { key: 'to_stage',   label: 'To Stage',   type: 'enum', options: STAGES },
       { key: 'timestamp',  label: 'Timestamp',  type: 'date' },
@@ -566,7 +565,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'action',     label: 'Action',     type: 'text' },
       { key: 'timestamp',  label: 'Timestamp',  type: 'date' },
       { key: 'actor_id',   label: 'Actor ID',   type: 'text' },
@@ -592,7 +591,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'created_at', label: 'Created', type: 'date' },
       { key: 'author_id',  label: 'Author ID', type: 'text' },
       { key: 'is_pinned',  label: 'Pinned', type: 'boolean' },
@@ -618,7 +617,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'payer_display_name', label: 'Payer Name', type: 'text' },
       { key: 'insurance_category', label: 'Category', type: 'text' },
       { key: 'order_rank', label: 'Order', type: 'enum', options: ['primary', 'secondary', 'tertiary', 'informational'] },
@@ -649,7 +648,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'decision', label: 'Decision', type: 'enum', options: ['accept', 'conditional'] },
       { key: 'reviewed_by', label: 'Reviewed By ID', type: 'text' },
       { key: 'updated_at', label: 'Updated', type: 'date' },
@@ -676,7 +675,7 @@ export const TABLE_SCHEMAS = {
         ],
       },
     ],
-    airtableFilters: [
+    queryFilters: [
       { key: 'reason_category', label: 'Reason Category', type: 'text' },
       { key: 'created_at', label: 'Logged At', type: 'date' },
       { key: 'rescheduled_by_id', label: 'Logged By ID', type: 'text' },
@@ -687,7 +686,7 @@ export const TABLE_SCHEMAS = {
 // ── Filter formula builder ─────────────────────────────────────────────────────
 
 /**
- * Convert an array of filter objects to an Airtable filterByFormula string.
+ * Convert an array of filter objects to an Aurora filterByFormula string.
  *
  * filter shape: { field, operator, value, value2 }
  *   operator: 'eq' | 'neq' | 'contains' | 'not_empty' | 'is_empty'
@@ -865,10 +864,10 @@ async function resolveVirtualColumns(records, selectedKeys, primaryTable) {
 // ── Core data fetcher ─────────────────────────────────────────────────────────
 
 /**
- * Fetch records from an Airtable table, apply formula filters, and resolve
+ * Fetch records from an Aurora table, apply formula filters, and resolve
  * all virtual (joined) columns.
  *
- * @param {string} tableName - Airtable table name
+ * @param {string} tableName - Aurora table name
  * @param {Array}  filters   - filter objects for buildFormula()
  * @param {Array}  selectedKeys - column keys to include (determines which lookups to load)
  * @param {Array}  sort      - [{ field, direction }]
@@ -879,7 +878,7 @@ export async function fetchReportData({ tableName, filters = [], selectedKeys = 
   const params = { sort };
   if (formula) params.filterByFormula = formula;
 
-  const records = await airtable.fetchAll(tableName, params);
+  const records = await aurora.fetchAll(tableName, params);
   const rawRows = records.map((r) => ({ _id: r.id, ...r.fields }));
 
   // Resolve virtual columns if any are selected
@@ -1371,7 +1370,7 @@ export async function runMethodAttribution({ dateFrom, dateTo, division, sourceI
   return { rows: outputRows, columns };
 }
 
-/** First linked-record id from Airtable-style link fields (array or scalar). */
+/** First linked-record id from Aurora-style link fields (array or scalar). */
 function firstLink(v) {
   if (Array.isArray(v) && v.length) return v[0];
   return v || null;
@@ -1438,12 +1437,12 @@ export async function runSupportTicketsReport({ dateFrom, dateTo, ticketStatus }
   if (formula) ticketParams.filterByFormula = formula;
 
   const [ticketRecs, categoryMap, teamMap, userMap, clinicianMap, attachmentRecs] = await Promise.all([
-    airtable.fetchAll('Tickets', ticketParams),
+    aurora.fetchAll('Tickets', ticketParams),
     getLookupMap('Categories'),
     getLookupMap('Teams'),
     getLookupMap('Users'),
     getLookupMap('Clinicians'),
-    airtable.fetchAll('Attachments').catch(() => []),
+    aurora.fetchAll('Attachments').catch(() => []),
   ]);
 
   // Group attachments by ticket record id / primary id
@@ -1655,8 +1654,8 @@ async function runProcessingOverview({ dateFrom, dateTo, division, marketerIds }
 
   const [physiciansMap, triageAdultRecs, triagePedRecs, patientsMap] = await Promise.all([
     getLookupMap('Physicians'),
-    airtable.fetchAll('TriageAdult').catch(() => []),
-    airtable.fetchAll('TriagePediatric').catch(() => []),
+    aurora.fetchAll('TriageAdult').catch(() => []),
+    aurora.fetchAll('TriagePediatric').catch(() => []),
     getLookupMap('Patients'),
   ]);
 
@@ -1823,8 +1822,8 @@ export async function runSocMissingDocs({ dateFrom, dateTo, division, marketerId
       selectedKeys: cols,
       sort: [{ field: 'soc_completed_date', direction: 'desc' }],
     }),
-    airtable.fetchAll('CursoryReview').catch(() => []),
-    airtable.fetchAll('Files').catch(() => []),
+    aurora.fetchAll('CursoryReview').catch(() => []),
+    aurora.fetchAll('Files').catch(() => []),
   ]);
 
   let pool = fetched.filter((r) => isSocCompletedReferral(r));
@@ -1870,8 +1869,8 @@ export async function runMasterPatient({ dateFrom, dateTo, division, marketerIds
       selectedKeys: cols,
       sort: [{ field: 'referral_date', direction: 'desc' }],
     }),
-    airtable.fetchAll('CursoryReview').catch(() => []),
-    airtable.fetchAll('Files').catch(() => []),
+    aurora.fetchAll('CursoryReview').catch(() => []),
+    aurora.fetchAll('Files').catch(() => []),
   ]);
   const cursoryByRef = indexLinkedByReferral(cursoryRecs.map((r) => ({ _id: r.id, ...r.fields })));
   const filesByRef = indexLinkedByReferral(

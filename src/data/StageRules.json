@@ -19,13 +19,13 @@
       "displayName": "Lead Pre-Check",
       "gridRow": 0,
       "gridCol": 0,
-      "canMoveTo": ["Lead Entry", "Intake", "Discarded Leads", "OPWDD Enrollment"],
+      "canMoveTo": ["Lead Entry", "Intake", "Discarded Leads", "OPWDD Enrollment", "Conflict"],
       "terminal": false,
       "isGlobal": false,
       "requiresNote": false,
       "requiresPermission": null,
       "protectedExit": false,
-      "description": "New lead awaiting a clinical viability glance. Concurrent in Leads and Clinical Review. Mark Viable moves it to Lead Entry."
+      "description": "New lead awaiting a clinical viability glance. Concurrent in Leads and Clinical Review. Mark Viable moves it to Lead Entry. Lead is not viable sends it to Conflict."
     },
 
     "Lead Entry": {

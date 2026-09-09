@@ -32,7 +32,7 @@ import { triggerDataRefresh } from './useRefreshTrigger.js';
 const SAVE_DEBOUNCE_MS = 400;
 
 // See useCursoryReview for the rationale — deterministic per-referral temp id
-// for the optimistic store mirror until a real Airtable row arrives.
+// for the optimistic store mirror until a real Aurora row arrives.
 function pendingId(referralRecordId) {
   return `_pending_clinical_${referralRecordId}`;
 }

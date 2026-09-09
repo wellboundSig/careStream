@@ -5,7 +5,7 @@
  * subscribe to useRefreshVersion() so any write that calls
  * triggerDataRefresh() causes every mounted workspace to re-fetch.
  *
- * Source of truth is the Airtable Meta API, not the hydrated store, because:
+ * Source of truth is the Aurora Meta API, not the hydrated store, because:
  *   1. Freshly created cases (from NewReferralForm or routing from
  *      Eligibility) may not have hit the store yet.
  *   2. We need the exact record ids (.id) for link/update writes.

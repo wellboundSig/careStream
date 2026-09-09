@@ -1,11 +1,10 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'CocNurseFacilities';
 
-export const getCocNurseFacilities = (params) => airtable.fetchAll(TABLE, params);
-export const createCocNurseFacility = (fields) => airtable.create(TABLE, fields);
-export const deleteCocNurseFacility = (id) => airtable.remove(TABLE, id);
+export const getCocNurseFacilities = (params) => aurora.fetchAll(TABLE, params);
+export const createCocNurseFacility = (fields) => aurora.create(TABLE, fields);
+export const deleteCocNurseFacility = (id) => aurora.remove(TABLE, id);
 
 /**
  * Sync a user's COC facility set to match `facilityIds` (NetworkFacilities ids).

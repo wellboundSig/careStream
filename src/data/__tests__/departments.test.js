@@ -39,5 +39,6 @@ describe('Department data model assumptions', () => {
     expect(content).toContain("'Departments'");
     expect(content).toContain("'DepartmentScopes'");
     expect(content).toContain("'ActivityLog'");
+    expect(content).toContain("'AppSettings'");
   });
 });

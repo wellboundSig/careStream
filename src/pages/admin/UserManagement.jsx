@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCareStore, updateEntity, mergeEntities } from '../../store/careStore.js';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../../api/airtable.js';
+import aurora from '../../api/aurora.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
@@ -84,11 +83,11 @@ export default function UserManagement() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  async function updateUser(userId, airtableId, field, value) {
+  async function updateUser(userId, recId, field, value) {
     setSaving((prev) => ({ ...prev, [userId]: true }));
-    updateEntity('users', airtableId, { [field]: value });
+    updateEntity('users', recId, { [field]: value });
     try {
-      await airtable.update('Users', airtableId, { [field]: value });
+      await aurora.update('Users', recId, { [field]: value });
 
       if (field === 'status' && (value === 'Suspended' || value === 'Revoked')) {
         const isMarketer = Object.values(storeMarketers || {}).some((m) => m.user_id === userId || m.id === userId);

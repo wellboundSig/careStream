@@ -4,7 +4,7 @@
  * Every successful write publishes { table, recId, action, actorSub, at } to
  * the `default/changes` channel. Browsers hold a WebSocket subscription (via
  * the Clerk-verifying Lambda authorizer) and refresh the affected table in
- * under a second — this is what replaced the old Airtable-webhook SSE path.
+ * under a second — this replaced the legacy SSE push path.
  *
  * The publish IS awaited (unlike the access log): an unawaited fetch freezes
  * with the container and the last write before idle would silently lose its

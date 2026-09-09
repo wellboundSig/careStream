@@ -217,7 +217,7 @@ export const ROLE_MODES = [
 export const STAGE_META = {
   'Clinical Lead Pre-Check': {
     displayName: 'Lead Pre-Check',
-    description: 'New lead awaiting a clinical viability glance. Concurrent in Leads and Clinical Review until Mark Viable.',
+    description: 'New lead awaiting a clinical viability glance. Concurrent in Leads and Clinical Review until Mark Viable or Lead is not viable (Conflict).',
     isGlobal: false,
     isTerminal: false,
     color: palette.primaryDeepPlum.hex,

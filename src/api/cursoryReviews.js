@@ -2,7 +2,7 @@
  * CursoryReview API — one row per referral capturing the F2F team's
  * pre-clinical-RN document review checklist.
  *
- * Airtable schema (pulled live 2026-04-21):
+ * Aurora schema (pulled live 2026-04-21):
  *   id                                 singleLineText  (custom id)
  *   referral_id                        multipleRecordLinks → Referrals
  *   reviewed_by                        multilineText   (user business id)
@@ -18,12 +18,11 @@
  * Conventions:
  *   - `referral_id` is normalised to an array at this boundary.
  *   - The UI uses short keys (see src/data/f2fChecklist.js). Translation
- *     between UI keys and Airtable column names is done via uiToDbFields /
+ *     between UI keys and Aurora column names is done via uiToDbFields /
  *     dbToUiFields helpers so the mapping lives in one place.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 import { toLinks } from './_linkHelpers.js';
 import { CURSORY_UI_TO_DB, CURSORY_DB_TO_UI } from '../data/f2fChecklist.js';
 
@@ -47,7 +46,7 @@ function normaliseFields(fields) {
 }
 
 /**
- * Translate a UI-keyed checked map to Airtable field shape.
+ * Translate a UI-keyed checked map to Aurora field shape.
  *
  * @example
  *   uiToDbFields({ f2f_doc_present: true })
@@ -65,7 +64,7 @@ export function uiToDbFields(checkedByUiKey) {
 }
 
 /**
- * Translate an Airtable record's fields into a UI-keyed checked map.
+ * Translate an Aurora record's fields into a UI-keyed checked map.
  */
 export function dbToUiFields(fields) {
   const out = {};
@@ -79,12 +78,12 @@ export function dbToUiFields(fields) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export const getCursoryReviewsByReferral = (referralRecordId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `FIND("${referralRecordId}", ARRAYJOIN({referral_id}))`,
   });
 
-export const createCursoryReview = (fields) => airtable.create(TABLE, normaliseFields(fields));
-export const updateCursoryReview = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
+export const createCursoryReview = (fields) => aurora.create(TABLE, normaliseFields(fields));
+export const updateCursoryReview = (id, fields) => aurora.update(TABLE, id, normaliseFields(fields));
 
 /** Oldest row wins as the canonical one (stable across saves). */
 function pickCanonical(records) {
@@ -106,9 +105,9 @@ function pickCanonical(records) {
  * defensively in the meantime.
  *
  * @param {object} input
- * @param {string} input.referralRecordId  Airtable rec id of the Referral
+ * @param {string} input.referralRecordId  Aurora rec id of the Referral
  * @param {object} input.checkedUiKeys     UI-keyed map { f2f_doc_present: true, ... }
- * @param {string} [input.reviewedBy]      User business id (reviewed_by is multilineText in Airtable)
+ * @param {string} [input.reviewedBy]      User business id (reviewed_by is multilineText in Aurora)
  * @param {string} [input.existingId]      Canonical row id, if known (still de-dupes others)
  * @returns {Promise<{ id: string, fields: object }>}
  */
@@ -127,7 +126,7 @@ export async function upsertCursoryReview({ referralRecordId, checkedUiKeys, rev
 
   if (existing.length === 0) {
     // No row yet (and none in flight we can see) — create the single row.
-    return airtable.create(TABLE, normaliseFields({
+    return aurora.create(TABLE, normaliseFields({
       id: `cr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
       ...payload,
     }));
@@ -135,12 +134,12 @@ export async function upsertCursoryReview({ referralRecordId, checkedUiKeys, rev
 
   // Choose the canonical row: caller's hint if it's still present, else oldest.
   const canonical = existing.find((r) => r.id === existingId) || pickCanonical(existing);
-  const result = await airtable.update(TABLE, canonical.id, payload);
+  const result = await aurora.update(TABLE, canonical.id, payload);
 
   // Self-heal: remove any other rows for this referral.
   const extras = existing.filter((r) => r.id !== canonical.id);
   if (extras.length > 0) {
-    await Promise.allSettled(extras.map((r) => airtable.remove(TABLE, r.id)));
+    await Promise.allSettled(extras.map((r) => aurora.remove(TABLE, r.id)));
   }
 
   return result;

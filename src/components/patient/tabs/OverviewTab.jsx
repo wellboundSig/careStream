@@ -141,7 +141,7 @@ function EditableField({ label, value, fieldKey, patientId, patientRecordId, onS
 // group in the Referral tab (correcting an intake mistake).
 
 function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnly = false }) {
-  // Patients.dob is an Airtable dateTime column with format YYYY-MM-DD; we
+  // Patients.dob is an Aurora dateTime column with format YYYY-MM-DD; we
   // store it as either a bare date string ("2000-01-01") or a full ISO
   // timestamp. Strip the time portion BEFORE constructing a Date so a date
   // like "2000-01-01" doesn't get reinterpreted in the user's timezone (which
@@ -174,7 +174,7 @@ function DobField({ patient, patientId, onSave, referral, readOnly: forceReadOnl
     if (patientId) updateEntity('patients', patientId, { dob: draft });
     setSaving(true);
     try {
-      // Airtable's dateTime column rejects an empty string — clear it with
+      // Aurora's dateTime column rejects an empty string — clear it with
       // `null` instead so users CAN remove a DOB they entered in error
       // without the PATCH failing and silently reverting.
       await updatePatient(patientId, { dob: draft || null });
@@ -777,7 +777,7 @@ function InsuranceEditor({ patient, patientId, onSave }) {
   const [showOther, setShowOther] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // `patientId` is the Airtable record id (rec…); `patient.id` is the
+  // `patientId` is the Aurora record id (rec…); `patient.id` is the
   // business id (pat_…). syncPatientInsurances needs both — the first to
   // write the multipleRecordLinks field, the second to FIND existing rows.
   const patientBusinessId = patient.id;

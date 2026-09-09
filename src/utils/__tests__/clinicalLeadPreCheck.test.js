@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   CLINICAL_LEAD_PRECHECK_STAGE,
   defaultLeadStage,
@@ -9,9 +9,11 @@ import {
   hoursToClinicalLeadPreCheck,
   clinicalLeadPreCheckStampFields,
   markClinicalLeadViable,
+  markClinicalLeadNotViable,
 } from '../clinicalLeadPreCheck.js';
 import { STAGE_META } from '../../data/stageConfig.js';
 import { attemptTransition, applyTransition } from '../../engine/transitionEngine.js';
+import { flagConflict } from '../conflictFlagging.js';
 
 vi.mock('../../engine/transitionEngine.js', () => ({
   attemptTransition: vi.fn(),
@@ -23,14 +25,38 @@ vi.mock('../../api/activityLog.js', () => ({
 vi.mock('../../hooks/useRefreshTrigger.js', () => ({
   triggerDataRefresh: vi.fn(),
 }));
+vi.mock('../conflictFlagging.js', () => ({
+  flagConflict: vi.fn().mockResolvedValue({}),
+  inferConflictSourceModuleFromStage: vi.fn().mockReturnValue('clinical'),
+}));
 
 describe('defaultLeadStage', () => {
-  it('starts ordinary leads in Clinical Lead Pre-Check', () => {
+  it('starts ALF leads in Clinical Lead Pre-Check by default', () => {
     expect(defaultLeadStage({ division: 'ALF' })).toBe(CLINICAL_LEAD_PRECHECK_STAGE);
-    expect(defaultLeadStage({ division: 'Special Needs', code_95: 'yes' })).toBe(CLINICAL_LEAD_PRECHECK_STAGE);
   });
 
-  it('keeps SN + no Code 95 on OPWDD Enrollment', () => {
+  it('starts Special Needs leads in Lead Entry by default (pre-check off)', () => {
+    expect(defaultLeadStage({ division: 'Special Needs', code_95: 'yes' })).toBe('Lead Entry');
+  });
+
+  it('honors explicit ALF/SPN pre-check requirements', () => {
+    expect(defaultLeadStage({
+      division: 'ALF',
+      requirements: { alf: false, sn: true },
+    })).toBe('Lead Entry');
+    expect(defaultLeadStage({
+      division: 'Special Needs',
+      code_95: 'yes',
+      requirements: { alf: false, sn: true },
+    })).toBe(CLINICAL_LEAD_PRECHECK_STAGE);
+  });
+
+  it('keeps SN + no Code 95 on OPWDD Enrollment regardless of the toggles', () => {
+    expect(defaultLeadStage({
+      division: 'Special Needs',
+      code_95: 'no',
+      requirements: { alf: true, sn: true },
+    })).toBe('OPWDD Enrollment');
     expect(defaultLeadStage({ division: 'Special Needs', code_95: 'no' })).toBe('OPWDD Enrollment');
   });
 });
@@ -54,6 +80,11 @@ describe('pre-check stamps and restore', () => {
     expect(restoreLeadStage({
       current_stage: 'Discarded Leads',
       clinical_lead_precheck_approved_at: '2026-09-04T12:00:00.000Z',
+    })).toBe('Lead Entry');
+    expect(restoreLeadStage({
+      current_stage: 'Discarded Leads',
+      division: 'Special Needs',
+      code_95: 'yes',
     })).toBe('Lead Entry');
   });
 
@@ -124,5 +155,58 @@ describe('markClinicalLeadViable', () => {
       }),
     }));
     Date.prototype.toISOString.mockRestore();
+  });
+});
+
+describe('markClinicalLeadNotViable', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    attemptTransition.mockReturnValue({ allowed: true, fieldUpdates: { current_stage: 'Conflict' } });
+    applyTransition.mockResolvedValue({ ok: true });
+    flagConflict.mockResolvedValue({});
+  });
+
+  it('requires a conflict note', async () => {
+    const referral = {
+      _id: 'rec1', id: 'ref_1', patient_id: 'pat_1',
+      current_stage: CLINICAL_LEAD_PRECHECK_STAGE,
+    };
+    await expect(markClinicalLeadNotViable({
+      referral,
+      appUserId: 'usr_rn',
+      conflict: { category: 'other', severity: 'High', description: '   ' },
+    })).rejects.toThrow(/note are required/i);
+    expect(flagConflict).not.toHaveBeenCalled();
+    expect(applyTransition).not.toHaveBeenCalled();
+  });
+
+  it('flags a conflict, mentions account managers, and moves to Conflict', async () => {
+    const referral = {
+      _id: 'rec1', id: 'ref_1', patient_id: 'pat_1',
+      current_stage: CLINICAL_LEAD_PRECHECK_STAGE,
+    };
+    const left = vi.fn();
+    await markClinicalLeadNotViable({
+      referral,
+      appUserId: 'usr_rn',
+      actorName: 'Vanessa Villa',
+      conflict: { category: 'other', severity: 'High', description: 'Not a skilled need' },
+      onLeftModule: left,
+    });
+    expect(flagConflict).toHaveBeenCalledWith(expect.objectContaining({
+      referral,
+      actorUserId: 'usr_rn',
+      category: 'other',
+      severity: 'High',
+      description: 'Not a skilled need',
+      origin: 'clinical_lead_not_viable',
+      mentionAccountManagerInfo: true,
+    }));
+    expect(attemptTransition).toHaveBeenCalledWith(expect.objectContaining({
+      referral,
+      toStage: 'Conflict',
+    }));
+    expect(left).toHaveBeenCalled();
+    expect(applyTransition).toHaveBeenCalled();
   });
 });

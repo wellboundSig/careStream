@@ -1,5 +1,4 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { useCareStore, mergeEntities } from './careStore.js';
 
 function trimField(v) {
@@ -76,12 +75,29 @@ const TABLES = [
   { key: 'activityLog',        table: 'ActivityLog' },
 ];
 
+/** Tiny tables that must not fail the main hydrate if the API build is behind. */
+const OPTIONAL_TABLES = [
+  { key: 'appSettings', table: 'AppSettings' },
+];
+
 /** table name → store key, used by the realtime layer for targeted merges. */
 export const TABLE_TO_STORE_KEY = {
   ...Object.fromEntries(TABLES.map((t) => [t.table, t.key])),
+  ...Object.fromEntries(OPTIONAL_TABLES.map((t) => [t.table, t.key])),
   // Recipient-scoped: not bulk-hydrated (privacy + size). Loaded via hydrateNotificationsForUser.
   Notifications: 'notifications',
 };
+
+async function hydrateOptionalTables() {
+  await Promise.all(OPTIONAL_TABLES.map(async ({ key, table }) => {
+    try {
+      const records = await aurora.fetchAll(table);
+      mergeEntities(key, normalize(records));
+    } catch (err) {
+      console.warn(`[hydrate] Optional ${table}:`, err.message);
+    }
+  }));
+}
 
 /**
  * Load the signed-in user's notification inbox only (never all users' rows).
@@ -193,7 +209,7 @@ export async function hydrateStore() {
       results = await Promise.all(
         TABLES.map(async ({ key, table }) => {
           try {
-            const records = await airtable.fetchAll(table);
+            const records = await aurora.fetchAll(table);
             done++;
             useCareStore.setState({ hydrationProgress: { done, total: TABLES.length } });
             return { key, data: normalize(records) };
@@ -213,7 +229,7 @@ export async function hydrateStore() {
         await new Promise((r) => setTimeout(r, 2500));
         for (const f of failed) {
           try {
-            const records = await airtable.fetchAll(f.table);
+            const records = await aurora.fetchAll(f.table);
             const idx = results.findIndex((r) => r.key === f.key);
             if (idx >= 0) results[idx] = { key: f.key, data: normalize(records) };
             f.recovered = true;
@@ -245,6 +261,7 @@ export async function hydrateStore() {
 
     useCareStore.setState(batch);
     queueSnAgeGroupSweep();
+    hydrateOptionalTables();
   } catch (err) {
     useCareStore.setState({
       hydrating: false,
@@ -264,7 +281,7 @@ export async function silentRehydrate() {
       results = await Promise.all(
         TABLES.map(async ({ key, table }) => {
           try {
-            const records = await airtable.fetchAll(table);
+            const records = await aurora.fetchAll(table);
             return { key, data: normalize(records) };
           } catch {
             return null;
@@ -282,6 +299,7 @@ export async function silentRehydrate() {
     }
     useCareStore.setState({ lastSyncAt: Date.now() });
     queueSnAgeGroupSweep();
+    hydrateOptionalTables();
   } catch {
     // Silent failure — background sync should never disrupt the UI
   }

@@ -2,7 +2,7 @@
 // indicator. Used by ModulePage's context menu, the PatientSnapshot toggle,
 // and any future surface that wants to flip the flag. We:
 //   1. Optimistically write to Referrals via the store mutation layer (rolls
-//      back automatically on Airtable rejection).
+//      back automatically on Aurora rejection).
 //   2. Emit an ActivityLog entry tagged `Urgent Care Flagged` /
 //      `Urgent Care Cleared` so a future Worker can subscribe to the audit
 //      stream and notify clinical RNs by email.

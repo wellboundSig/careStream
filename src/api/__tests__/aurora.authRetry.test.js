@@ -31,8 +31,8 @@ describe('aurora 401 token refresh', () => {
       });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { default: airtable } = await import('../airtable.js');
-    const rec = await airtable.create('Notes', { content: 'hi' });
+    const { default: aurora } = await import('../aurora.js');
+    const rec = await aurora.create('Notes', { content: 'hi' });
     expect(rec.id).toBe('rec1');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(getToken).toHaveBeenCalledTimes(2);

@@ -8,7 +8,7 @@ import {
 } from '../processingOverview.js';
 
 describe('linkId', () => {
-  it('unwraps Airtable link arrays', () => {
+  it('unwraps Aurora link arrays', () => {
     expect(linkId(['recABC'])).toBe('recABC');
     expect(linkId('mkt_1')).toBe('mkt_1');
     expect(linkId(null)).toBe('');

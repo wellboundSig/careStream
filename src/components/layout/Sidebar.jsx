@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { ROLE_MODES, STAGE_SLUGS, STAGE_META } from '../../data/stageConfig.js';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
-import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
+import { PERMISSION_KEYS, GLOBAL_CONFIGURATION_PERMISSIONS } from '../../data/permissionKeys.js';
 import { canViewDirectory } from '../../data/directoryPermissions.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import { useCareStore } from '../../store/careStore.js';
@@ -52,9 +52,7 @@ const NAV_ITEMS = [
       // Each admin page shows only with its own key — a user with just
       // admin.data_tools (e.g. marketers) must not see the other admin links.
       { label: 'User Mgmt', path: '/admin/users', icon: ShieldIcon, perm: PERMISSION_KEYS.ADMIN_USER_MANAGEMENT },
-      { label: 'Permissions', path: '/admin/permissions', icon: PermissionsIcon, perm: PERMISSION_KEYS.ADMIN_PERMISSIONS },
-      { label: 'Conflict Categories', path: '/admin/conflict-categories', icon: ConflictsIcon, perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
-      { label: 'Departments', path: '/admin/departments', icon: DepartmentsIcon, perm: PERMISSION_KEYS.ADMIN_DEPARTMENTS },
+      { label: 'Configuration', path: '/admin/configuration', icon: ConfigurationIcon, permAny: GLOBAL_CONFIGURATION_PERMISSIONS },
       { label: 'Data Tools', path: '/admin/data-tools', icon: DataToolsIcon, perm: PERMISSION_KEYS.ADMIN_DATA_TOOLS },
       // Developer Tools requires its own key — admin.data_tools alone is NOT
       // enough (marketers get Data Tools without raw database access).
@@ -797,22 +795,18 @@ function ShieldIcon({ size = 16, color }) {
   );
 }
 
-function PermissionsIcon({ size = 16, color }) {
+function ConfigurationIcon({ size = 16, color }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M9 11l3 3L22 4" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function DepartmentsIcon({ size = 16, color }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
-      <rect x="3" y="12" width="8" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
-      <rect x="13" y="12" width="8" height="5" rx="1.5" stroke={color} strokeWidth="1.6" />
-      <path d="M12 8v4M7 12v0M17 12v0" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="4" y1="21" x2="4" y2="14" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="4" y1="10" x2="4" y2="3" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="12" y1="21" x2="12" y2="12" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="12" y1="8" x2="12" y2="3" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="20" y1="21" x2="20" y2="16" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <line x1="20" y1="12" x2="20" y2="3" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="4" cy="12" r="2.2" stroke={color} strokeWidth="1.6" />
+      <circle cx="12" cy="10" r="2.2" stroke={color} strokeWidth="1.6" />
+      <circle cx="20" cy="14" r="2.2" stroke={color} strokeWidth="1.6" />
     </svg>
   );
 }
@@ -823,17 +817,6 @@ function DataToolsIcon({ size = 16, color }) {
       <ellipse cx="12" cy="6" rx="8" ry="3" stroke={color} strokeWidth="1.6" />
       <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke={color} strokeWidth="1.6" />
       <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" stroke={color} strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function ConflictsIcon({ size = 16, color }) {
-  // Warning triangle — conflicts/flags.
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 9v4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
-      <path d="M12 17h.01" stroke={color} strokeWidth="2.2" strokeLinecap="round"/>
     </svg>
   );
 }

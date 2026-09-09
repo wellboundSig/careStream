@@ -1,13 +1,12 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 const TABLE = 'Tasks';
 export const getAllTasks = (params) =>
-  airtable.fetchAll(TABLE, { sort: [{ field: 'due_date', direction: 'asc' }], ...params });
+  aurora.fetchAll(TABLE, { sort: [{ field: 'due_date', direction: 'asc' }], ...params });
 export const getMyTasks = (userId) =>
-  airtable.fetchAll(TABLE, { filterByFormula: `{assigned_to_id} = "${userId}"`, sort: [{ field: 'due_date', direction: 'asc' }] });
+  aurora.fetchAll(TABLE, { filterByFormula: `{assigned_to_id} = "${userId}"`, sort: [{ field: 'due_date', direction: 'asc' }] });
 export const getTasksByPatient = (patientId) =>
-  airtable.fetchAll(TABLE, { filterByFormula: `{patient_id} = "${patientId}"`, sort: [{ field: 'due_date', direction: 'asc' }] });
+  aurora.fetchAll(TABLE, { filterByFormula: `{patient_id} = "${patientId}"`, sort: [{ field: 'due_date', direction: 'asc' }] });
 export const getTasksByReferral = (referralId) =>
-  airtable.fetchAll(TABLE, { filterByFormula: `{referral_id} = "${referralId}"` });
-export const createTask = (fields) => airtable.create(TABLE, fields);
-export const updateTask = (id, fields) => airtable.update(TABLE, id, fields);
+  aurora.fetchAll(TABLE, { filterByFormula: `{referral_id} = "${referralId}"` });
+export const createTask = (fields) => aurora.create(TABLE, fields);
+export const updateTask = (id, fields) => aurora.update(TABLE, id, fields);

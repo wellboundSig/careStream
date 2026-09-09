@@ -67,7 +67,7 @@ export function useLookups() {
   // Profile-image lookup, keyed identically to userMap so any caller that
   // already has a user business id (or clerk_user_id) can resolve the
   // avatar URL in one call. `clerk_image_url` is synced from Clerk into
-  // Airtable via useCurrentAppUser — see that hook for the sync path.
+  // Aurora via useCurrentAppUser — see that hook for the sync path.
   const userImageMap = useMemo(() => {
     const map = {};
     Object.values(users).forEach((u) => {
@@ -135,7 +135,7 @@ export function useLookups() {
     return map;
   }, [patients]);
 
-  // Airtable linked fields sometimes arrive as ['rec…'] — unwrap before lookup.
+  // Aurora linked fields sometimes arrive as ['rec…'] — unwrap before lookup.
   const asId = (id) => {
     if (id == null || id === '') return '';
     if (Array.isArray(id)) return id[0] ? String(id[0]) : '';

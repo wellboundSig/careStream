@@ -9,6 +9,7 @@ function getCurrentLabel(pathname) {
   for (const group of PANE_NAV) {
     for (const item of group.items) {
       if (item.path === pathname) return item.label;
+      if (item.path !== '/' && pathname.startsWith(item.path + '/')) return item.label;
     }
   }
   return 'Dashboard';

@@ -21,7 +21,7 @@
  *
  * Back-compat:
  *   - When a column is completely missing from the data object (e.g. an
- *     Airtable column hasn't been added yet), it's SKIPPED rather than
+ *     Aurora column hasn't been added yet), it's SKIPPED rather than
  *     marked missing. This protects against the schema-migration race
  *     where the UI was already shipped but `npm run schema:apply` hasn't
  *     been run on the base yet.

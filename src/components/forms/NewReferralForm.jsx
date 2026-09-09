@@ -1181,7 +1181,7 @@ export default function NewReferralForm({
       let stage = defaultLeadStage({ division: form.division, code_95: form.code_95 });
       if (forceStage === 'Lead Entry' || forceStage === 'Intake') {
         // Inbound convert: honor explicit mode unless SN+no Code 95 forces OPWDD.
-        // "Convert to Lead" still starts in Clinical Lead Pre-Check.
+        // "Convert to Lead" follows the global clinical pre-check setting.
         if (!(form.division === 'Special Needs' && form.code_95 === 'no')) {
           stage = forceStage === 'Lead Entry' ? defaultLeadStage({ division: form.division, code_95: form.code_95 }) : forceStage;
         }

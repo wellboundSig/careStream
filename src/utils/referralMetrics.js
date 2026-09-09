@@ -3,7 +3,7 @@
  * "days in pipeline" everywhere the UI surfaces them.
  *
  * IMPORTANT: there is NO `stage_entered_at` column on the Referrals table
- * in Airtable. Using `Referrals.updated_at` as a proxy is wrong — that
+ * in Aurora. Using `Referrals.updated_at` as a proxy is wrong — that
  * timestamp ticks on ANY field change (notes, tasks, files, etc.) so it
  * never resets when a stage changes. We therefore derive the stage entry
  * timestamp from `StageHistory`, which we already hydrate into the store
@@ -125,7 +125,7 @@ export function formatDaysShort(n) {
 /**
  * Enrich a referral object with computed time metrics. Returns a new object
  * with `_stage_entered_at`, `_days_in_stage`, and `_days_in_pipeline` set.
- * Underscores prevent collisions with future Airtable columns of the same name.
+ * Underscores prevent collisions with future Aurora columns of the same name.
  */
 export function enrichReferralWithMetrics(referral, stageHistoryList) {
   const stageEnteredAt = resolveStageEnteredAt(referral, stageHistoryList);

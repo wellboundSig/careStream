@@ -39,7 +39,7 @@ describe('filesForPatientFromStore', () => {
     expect(rows.map((f) => f.file_name)).toEqual(['CHHA.pdf']);
   });
 
-  it('matches Airtable-style array links', () => {
+  it('matches Aurora-style array links', () => {
     const store = {
       rec_a: { _id: 'rec_a', patient_id: ['pat_hogan'], file_name: 'array.pdf' },
     };

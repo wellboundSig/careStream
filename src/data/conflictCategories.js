@@ -1,6 +1,6 @@
 // Effective conflict-category resolution.
 //
-// Conflict categories are admin-managed (Airtable `ConflictCategories`, hydrated
+// Conflict categories are admin-managed (Aurora `ConflictCategories`, hydrated
 // into `store.conflictCategories`). Until that table is populated, the app falls
 // back to the built-in CONFLICT_REASON_OPTIONS so nothing breaks on a fresh
 // deployment. The category PICKERS use the effective active list; the validation

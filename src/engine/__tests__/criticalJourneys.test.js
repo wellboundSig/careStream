@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../api/airtable.js', () => {
+vi.mock('../../api/aurora.js', () => {
   const mk = () => ({
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
@@ -19,7 +19,7 @@ vi.mock('../../api/airtable.js', () => {
     createBatch: vi.fn().mockResolvedValue([]),
     updateBatch: vi.fn().mockResolvedValue([]),
   });
-  return { default: mk(), airtable: mk() };
+  return { default: mk(), aurora: mk() };
 });
 
 const { attemptTransition, applyTransition } = await import('../transitionEngine.js');

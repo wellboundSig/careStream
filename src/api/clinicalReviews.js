@@ -12,8 +12,8 @@
  *     led to that decision, plus the in-progress decision/auth-required
  *     state so a user can leave + return without losing work.
  *
- * LEGACY NOTE: field list below was first sketched against Airtable. Live
- * store is Aurora `clinical_reviews`. Do not write to Airtable.
+ * LEGACY NOTE: field list below was first sketched against Aurora. Live
+ * store is Aurora `clinical_reviews`. Do not write to Aurora.
  * Field list (historical schema note, 2026-05-27):
  *   id              singleLineText  (custom id)
  *   referral_id     multipleRecordLinks → Referrals
@@ -25,12 +25,11 @@
  *   ...22 checkbox columns, one per clinical checklist item key.
  *     The mapping lives in src/data/clinicalChecklist.js — keep the two
  *     in lock-step. Adding a new item: add a key+dbField there, add the
- *     matching `t.check(name)` to airtable-apply-schema.js, run
+ *     matching `t.check(name)` to aurora-apply-schema.js, run
  *     `npm run schema:apply`.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 import { toLinks } from './_linkHelpers.js';
 import { CLINICAL_UI_TO_DB, CLINICAL_DB_TO_UI } from '../data/clinicalChecklist.js';
 
@@ -58,7 +57,7 @@ function normaliseFields(fields) {
 }
 
 /**
- * Translate a UI-keyed checked map to Airtable field shape.
+ * Translate a UI-keyed checked map to Aurora field shape.
  */
 export function uiToDbFields(checkedByUiKey) {
   const out = {};
@@ -72,7 +71,7 @@ export function uiToDbFields(checkedByUiKey) {
 }
 
 /**
- * Translate an Airtable record's fields into a UI-keyed checked map.
+ * Translate an Aurora record's fields into a UI-keyed checked map.
  * Only `true` checkbox values are included to keep the map sparse.
  */
 export function dbToUiFields(fields) {
@@ -87,20 +86,20 @@ export function dbToUiFields(fields) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export const getClinicalReviewsByReferral = (referralRecordId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `FIND("${referralRecordId}", ARRAYJOIN({referral_id}))`,
   });
 
 export const createClinicalReview = (fields) =>
-  airtable.create(TABLE, normaliseFields(fields));
+  aurora.create(TABLE, normaliseFields(fields));
 export const updateClinicalReview = (id, fields) =>
-  airtable.update(TABLE, id, normaliseFields(fields));
+  aurora.update(TABLE, id, normaliseFields(fields));
 
 /**
  * Upsert the ClinicalReview for a referral. One row per referral.
  *
  * @param {object} input
- * @param {string} input.referralRecordId   Airtable rec id of the Referral
+ * @param {string} input.referralRecordId   Aurora rec id of the Referral
  * @param {object} input.checkedUiKeys      UI-keyed map { dx_reviewed: true, ... }
  * @param {string|null} [input.decision]    'accept' | 'conditional' | null
  * @param {boolean} [input.authRequired]    Managed-care auth flag
@@ -143,7 +142,7 @@ export async function upsertClinicalReview({
     const patch = backfillStartedBy
       ? { ...payload, started_by: backfillStartedBy, started_at: new Date().toISOString() }
       : payload;
-    return airtable.update(TABLE, existingId, normaliseFields(patch));
+    return aurora.update(TABLE, existingId, normaliseFields(patch));
   }
 
   const existing = await getClinicalReviewsByReferral(referralRecordId).catch(() => []);
@@ -155,11 +154,11 @@ export async function upsertClinicalReview({
       patch.started_by = reviewedBy;
       patch.started_at = prior.started_at || prior.created_at || new Date().toISOString();
     }
-    return airtable.update(TABLE, existing[0].id, normaliseFields(patch));
+    return aurora.update(TABLE, existing[0].id, normaliseFields(patch));
   }
 
   const now = new Date().toISOString();
-  return airtable.create(TABLE, normaliseFields({
+  return aurora.create(TABLE, normaliseFields({
     id: `clr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
     ...payload,
     // Immutable starter — who first opened / saved the checklist.

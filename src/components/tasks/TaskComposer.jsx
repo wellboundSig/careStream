@@ -32,7 +32,7 @@
  *     (Calendar.jsx, Team.jsx, DepartmentDashboard.jsx).
  *
  * Callbacks:
- *   - onCreated(record): record returned by createTaskOptimistic (Airtable
+ *   - onCreated(record): record returned by createTaskOptimistic (Aurora
  *     record on success; the optimistic temp record is replaced internally).
  *   - onCancel(): user dismissed the form (also fired when modal backdrop /
  *     Esc closes the dialog).

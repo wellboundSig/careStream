@@ -13,8 +13,8 @@ import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { STAGE_SLUGS, STAGE_META, ALL_STAGES, DISCARD_REASONS } from '../data/stageConfig.js';
 import StageRules from '../data/StageRules.json';
 
-// ── Mock airtable so mutations don't make real calls ────────────────────────
-vi.mock('../api/airtable.js', () => ({
+// ── Mock aurora so mutations don't make real calls ────────────────────────
+vi.mock('../api/aurora.js', () => ({
   default: {
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
@@ -24,7 +24,7 @@ vi.mock('../api/airtable.js', () => ({
     createBatch: vi.fn().mockResolvedValue([]),
     updateBatch: vi.fn().mockResolvedValue([]),
   },
-  airtable: {
+  aurora: {
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
     remove: vi.fn().mockResolvedValue({ id: 'rec_1', deleted: true }),
@@ -35,7 +35,7 @@ vi.mock('../api/airtable.js', () => ({
   },
 }));
 
-const airtable = (await import('../api/airtable.js')).default;
+const aurora = (await import('../api/aurora.js')).default;
 const { useCareStore, getStore, setStore, mergeEntities, updateEntity, removeEntity } = await import('../store/careStore.js');
 const { updateReferralOptimistic, createReferralOptimistic, createPatientOptimistic, createStageHistoryOptimistic, createTaskOptimistic, createNoteOptimistic, updateTaskOptimistic, getNextTaskId } = await import('../store/mutations.js');
 const { makePatient: baseMakePatient, makeReferral: baseMakeReferral } = await import('../test/factories.js');
@@ -162,6 +162,7 @@ describe('canMoveFromTo', () => {
     expect(canMoveFromTo('Lead Entry', 'Intake')).toBe(true);
     expect(canMoveFromTo('Clinical Lead Pre-Check', 'Lead Entry')).toBe(true);
     expect(canMoveFromTo('Clinical Lead Pre-Check', 'Intake')).toBe(true);
+    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Conflict')).toBe(true);
     // Intake → Eligibility Verification (after Clinical RN concurrent push + Insurance Details)
     expect(canMoveFromTo('Intake', 'Eligibility Verification')).toBe(true);
     // F2F is a sub-state of Intake — Intake can flip to F2F and back
@@ -330,14 +331,14 @@ describe('Store and optimistic mutations', () => {
   });
 
   it('rolls back on API failure', async () => {
-    airtable.update.mockRejectedValueOnce(new Error('API down'));
+    aurora.update.mockRejectedValueOnce(new Error('API down'));
     expect(getRefStage()).toBe('Lead Entry');
     await moveStage('Intake').catch(() => {});
     expect(getRefStage()).toBe('Lead Entry');
   });
 
   it('createReferralOptimistic adds a temp record then replaces with real one', async () => {
-    airtable.create.mockResolvedValueOnce({ id: 'rec_new_ref', fields: { id: 'ref_new' } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_new_ref', fields: { id: 'ref_new' } });
     const countBefore = Object.keys(getStore().referrals).length;
     await createReferralOptimistic({ id: 'ref_new', patient_id: 'pat_test', current_stage: 'Lead Entry' });
     const refs = getStore().referrals;
@@ -347,14 +348,14 @@ describe('Store and optimistic mutations', () => {
   });
 
   it('createPatientOptimistic adds patient to store', async () => {
-    airtable.create.mockResolvedValueOnce({ id: 'rec_pat_new', fields: { id: 'pat_new' } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_pat_new', fields: { id: 'pat_new' } });
     await createPatientOptimistic({ id: 'pat_new', first_name: 'Jane', last_name: 'Doe' });
     expect(getStore().patients['rec_pat_new']).toBeTruthy();
   });
 
   it('createTaskOptimistic auto-generates task ID', async () => {
     const taskFields = { title: 'Follow up', type: 'Follow-Up', route_to_role: 'Intake', status: 'Pending' };
-    airtable.create.mockResolvedValueOnce({ id: 'rec_task_new', fields: { id: 'task_001', ...taskFields } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_task_new', fields: { id: 'task_001', ...taskFields } });
     await createTaskOptimistic(taskFields);
     const tasks = getStore().tasks;
     expect(Object.values(tasks).some(t => t.title === 'Follow up')).toBe(true);
@@ -362,7 +363,7 @@ describe('Store and optimistic mutations', () => {
 
   it('createNoteOptimistic adds note to store', async () => {
     const noteFields = { patient_id: 'pat_test', content: 'Test note', author_id: 'usr_001' };
-    airtable.create.mockResolvedValueOnce({ id: 'rec_note_new', fields: { id: 'note_001', ...noteFields } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_note_new', fields: { id: 'note_001', ...noteFields } });
     await createNoteOptimistic(noteFields);
     expect(Object.values(getStore().notes).some(n => n.content === 'Test note')).toBe(true);
   });

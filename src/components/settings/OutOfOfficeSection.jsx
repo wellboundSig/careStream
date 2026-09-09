@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../../api/airtable.js';
+import aurora from '../../api/aurora.js';
 import { useCareStore, updateEntity } from '../../store/careStore.js';
 import { useCurrentAppUser, patchAppUserCache } from '../../hooks/useCurrentAppUser.js';
 import palette, { hexToRgba } from '../../utils/colors.js';
@@ -101,7 +100,7 @@ export default function OutOfOfficeSection() {
     updateEntity('users', me._id, fields);
     patchAppUserCache(fields);
     try {
-      await airtable.update('Users', me._id, fields);
+      await aurora.update('Users', me._id, fields);
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 2200);
     } catch (err) {

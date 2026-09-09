@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRefreshVersion } from './useRefreshTrigger.js';
 
-export function useAirtable(fetchFn, deps = []) {
+export function useRecords(fetchFn, deps = []) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

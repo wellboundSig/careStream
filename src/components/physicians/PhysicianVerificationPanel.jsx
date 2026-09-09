@@ -75,7 +75,7 @@ export default function PhysicianVerificationPanel({ physician, readOnly = false
     setError(null);
     try {
       const r = await verifyPhysicianNpi(npi);
-      // Airtable checkbox fields must be `true` to check or `null` to uncheck —
+      // Aurora checkbox fields must be `true` to check or `null` to uncheck —
       // sending `false` is silently ignored and would leave a stale ✓.
       const title = normalizePhysicianTitle(r.details?.credential);
       const fields = {

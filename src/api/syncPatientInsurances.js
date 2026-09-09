@@ -14,7 +14,7 @@
  *   - Plan in list without matching row      → create (or reactivate)
  *
  * ID handling — this is the bit that used to break:
- *   Airtable stores `patient_id` as a `multipleRecordLinks` field. Writes
+ *   Aurora stores `patient_id` as a `multipleRecordLinks` field. Writes
  *   need the patient's **record id** (`rec…`). Reads that filter on the
  *   link field can't use the record id — `ARRAYJOIN({patient_id})` renders
  *   the linked patient's *primary field* (which is the business `pat_…`
@@ -39,7 +39,7 @@ const ORDER_RANK_FOR = ['primary', 'secondary', 'tertiary'];
 
 /**
  * @param {object} args
- * @param {string} args.patientRecordId  Airtable record id (`rec…`), used for link writes
+ * @param {string} args.patientRecordId  Aurora record id (`rec…`), used for link writes
  * @param {string} args.patientBusinessId Patient business id (`pat_…`), used for filter reads
  * @param {string[]} args.plans  Ordered list of payer display names
  * @param {object}  [args.details] Map of `planName → { member_id }` (also accepts a bare string member id)

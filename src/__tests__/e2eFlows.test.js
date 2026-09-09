@@ -14,7 +14,7 @@ import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { STAGE_SLUGS, STAGE_META, ALL_STAGES, ROLE_MODES } from '../data/stageConfig.js';
 import StageRules from '../data/StageRules.json';
 
-vi.mock('../api/airtable.js', () => ({
+vi.mock('../api/aurora.js', () => ({
   default: {
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
@@ -24,7 +24,7 @@ vi.mock('../api/airtable.js', () => ({
     createBatch: vi.fn().mockResolvedValue([]),
     updateBatch: vi.fn().mockResolvedValue([]),
   },
-  airtable: {
+  aurora: {
     update: vi.fn().mockResolvedValue({ id: 'rec_1', fields: {} }),
     create: vi.fn().mockResolvedValue({ id: 'rec_new', fields: {} }),
     remove: vi.fn().mockResolvedValue({ id: 'rec_1', deleted: true }),
@@ -35,7 +35,7 @@ vi.mock('../api/airtable.js', () => ({
   },
 }));
 
-const airtable = (await import('../api/airtable.js')).default;
+const aurora = (await import('../api/aurora.js')).default;
 const { getStore, setStore, mergeEntities, updateEntity } = await import('../store/careStore.js');
 const {
   updateReferralOptimistic, createReferralOptimistic, createPatientOptimistic,
@@ -92,7 +92,7 @@ describe('FLOW 1: ALF happy path — Lead Entry to SOC Completed', () => {
     await move('Intake', { intake_owner_id: 'usr_intake_01' });
     expect(getRefStage()).toBe('Intake');
     expect(getRef().intake_owner_id).toBe('usr_intake_01');
-    expect(airtable.update).toHaveBeenCalledTimes(1);
+    expect(aurora.update).toHaveBeenCalledTimes(1);
 
     // Step 2: Move to Eligibility Verification
     await move('Eligibility Verification');
@@ -145,7 +145,7 @@ describe('FLOW 1: ALF happy path — Lead Entry to SOC Completed', () => {
     expect(canMoveFromTo('SOC Completed', 'Intake')).toBe(false);
 
     // Verify all API calls were made (10 stage transitions)
-    expect(airtable.update).toHaveBeenCalledTimes(9);
+    expect(aurora.update).toHaveBeenCalledTimes(9);
   });
 });
 
@@ -496,7 +496,7 @@ describe('FLOW 9: Patient record updates persist', () => {
   });
 
   it('rolls back patient update on API failure', async () => {
-    airtable.update.mockRejectedValueOnce(new Error('API error'));
+    aurora.update.mockRejectedValueOnce(new Error('API error'));
     try {
       await updatePatientOptimistic('rec_pat1', { phone_primary: '999-999-9999' });
     } catch {}
@@ -515,7 +515,7 @@ describe('FLOW 10: Tasks and notes during pipeline flow', () => {
   it('creates a task at Intake stage', async () => {
     await move('Intake', { intake_owner_id: 'usr_intake_01' });
 
-    airtable.create.mockResolvedValueOnce({
+    aurora.create.mockResolvedValueOnce({
       id: 'rec_task_1',
       fields: { id: 'task_001', title: 'Collect insurance card', type: 'Missing Document', status: 'Pending' },
     });
@@ -537,7 +537,7 @@ describe('FLOW 10: Tasks and notes during pipeline flow', () => {
     await move('Intake');
     await move('Eligibility Verification');
 
-    airtable.create.mockResolvedValueOnce({
+    aurora.create.mockResolvedValueOnce({
       id: 'rec_note_1',
       fields: { id: 'note_001', content: 'Medicaid active, no open episode', patient_id: 'pat_001' },
     });
@@ -620,14 +620,14 @@ describe('FLOW 12: Rollback on API failures', () => {
   beforeEach(() => { vi.clearAllMocks(); seedStore(); });
 
   it('referral update rolls back on failure', async () => {
-    airtable.update.mockRejectedValueOnce(new Error('Network error'));
+    aurora.update.mockRejectedValueOnce(new Error('Network error'));
     expect(getRefStage()).toBe('Lead Entry');
     await move('Intake').catch(() => {});
     expect(getRefStage()).toBe('Lead Entry');
   });
 
   it('patient update rolls back on failure', async () => {
-    airtable.update.mockRejectedValueOnce(new Error('Network error'));
+    aurora.update.mockRejectedValueOnce(new Error('Network error'));
     await updatePatientOptimistic('rec_pat1', { first_name: 'WRONG' }).catch(() => {});
     expect(getPatient().first_name).toBe('Maria');
   });
@@ -637,7 +637,7 @@ describe('FLOW 12: Rollback on API failures', () => {
       ...getStore(),
       tasks: { rec_t1: { _id: 'rec_t1', status: 'Pending', title: 'Test' } },
     });
-    airtable.update.mockRejectedValueOnce(new Error('Network error'));
+    aurora.update.mockRejectedValueOnce(new Error('Network error'));
     await updateTaskOptimistic('rec_t1', { status: 'Completed' }).catch(() => {});
     expect(getStore().tasks['rec_t1'].status).toBe('Pending');
   });
@@ -894,10 +894,10 @@ describe('FLOW 16: Division-based data segmentation', () => {
 
 describe('FLOW 17: Send to Conflict from every active non-terminal stage', () => {
   // Per the 2026-05-20 workflow overhaul: "Patients can be sent to Conflict
-  // from any stage except 'Completed' or 'Leads.'" Lead Entry is now also
-  // excluded — leads aren't yet active referrals, so conflict isn't an option
-  // until after promotion to Intake.
-  const excluded = new Set(['Conflict', 'OPWDD Enrollment', 'Lead Entry', 'Clinical Lead Pre-Check']);
+  // from any stage except 'Completed' or 'Leads.'" Lead Entry stays excluded —
+  // leads aren't yet active referrals. Clinical Lead Pre-Check is the
+  // exception: Clinical may send a not-viable lead to Conflict.
+  const excluded = new Set(['Conflict', 'OPWDD Enrollment', 'Lead Entry']);
   const activeNonTerminal = Object.entries(StageRules.stages)
     .filter(([name, rule]) => !rule.terminal && !excluded.has(name))
     .map(([name]) => name);
@@ -912,8 +912,8 @@ describe('FLOW 17: Send to Conflict from every active non-terminal stage', () =>
     expect(canMoveFromTo('Lead Entry', 'Conflict')).toBe(false);
   });
 
-  it('Clinical Lead Pre-Check cannot send to Conflict (still a lead)', () => {
-    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Conflict')).toBe(false);
+  it('Clinical Lead Pre-Check can send to Conflict (not viable)', () => {
+    expect(canMoveFromTo('Clinical Lead Pre-Check', 'Conflict')).toBe(true);
   });
 
   it('OPWDD Enrollment cannot send to Conflict (restricted transitions)', () => {
@@ -947,18 +947,18 @@ describe('FLOW 18: Rapid sequential transitions', () => {
     await move('Clinical Intake RN Review');
     await move('Staffing Feasibility');
     expect(getRefStage()).toBe('Staffing Feasibility');
-    expect(airtable.update).toHaveBeenCalledTimes(5);
+    expect(aurora.update).toHaveBeenCalledTimes(5);
   });
 
   it('creating patient + referral + moving in sequence works', async () => {
-    airtable.create.mockResolvedValueOnce({ id: 'rec_new_pat', fields: { id: 'pat_new' } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_new_pat', fields: { id: 'pat_new' } });
     await createPatientOptimistic({
       id: 'pat_new', first_name: 'Test', last_name: 'Patient',
       division: 'ALF', is_active: 'TRUE',
     });
     expect(getStore().patients['rec_new_pat']).toBeTruthy();
 
-    airtable.create.mockResolvedValueOnce({ id: 'rec_new_ref', fields: { id: 'ref_new', patient_id: 'pat_new', current_stage: 'Lead Entry' } });
+    aurora.create.mockResolvedValueOnce({ id: 'rec_new_ref', fields: { id: 'ref_new', patient_id: 'pat_new', current_stage: 'Lead Entry' } });
     await createReferralOptimistic({
       id: 'ref_new', patient_id: 'pat_new',
       current_stage: 'Lead Entry', division: 'ALF',
@@ -979,7 +979,7 @@ describe('FLOW 19: StageHistory records are created', () => {
   beforeEach(() => { vi.clearAllMocks(); seedStore(); });
 
   it('creates stage history entry on transition', async () => {
-    airtable.create.mockResolvedValueOnce({
+    aurora.create.mockResolvedValueOnce({
       id: 'rec_sh_1',
       fields: {
         id: 'sh_001', referral_id: 'ref_001',

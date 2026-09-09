@@ -10,7 +10,7 @@ import { createMarketerFacility, updateMarketerFacility, deleteMarketerFacility 
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
-// Values exactly as stored in Airtable (ALL CAPS single-select)
+// Values exactly as stored in Aurora (ALL CAPS single-select)
 export const FACILITY_TYPES = [
   'NURSING HOME',
   'ASSISTED LIVING FACILITY',
@@ -23,7 +23,7 @@ export const FACILITY_TYPES = [
   'OTHER',
 ];
 
-// Display label for the badge — title-cases the raw Airtable value
+// Display label for the badge — title-cases the raw Aurora value
 export function typeLabel(raw) {
   if (!raw) return 'Other';
   return raw
@@ -44,7 +44,7 @@ export const TYPE_COLORS = {
   'OTHER':                     { bg: hexToRgba(palette.backgroundDark.hex, 0.08),  text: hexToRgba(palette.backgroundDark.hex, 0.55) },
 };
 
-// Region values exactly as stored in Airtable (ALL CAPS single-select)
+// Region values exactly as stored in Aurora (ALL CAPS single-select)
 export const FACILITY_REGIONS = [
   'LI', 'NYC', 'NASSAU', 'BRONX', 'KINGS', 'SUFFOLK',
   'NEW YORK', 'QUEENS', 'WESTCHESTER', 'BROOME', 'BERGEN',

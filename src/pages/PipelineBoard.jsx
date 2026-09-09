@@ -98,7 +98,7 @@ function bucketCardsByStage(referrals) {
 export default function PipelineBoard() {
   const { division } = usePageOutlet();
   const { data: enriched, loading } = usePipelineData();
-  const { appUser, appUserId } = useCurrentAppUser();
+  const { appUser, appUserId, appUserName } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
   const { can, hasDivision } = usePermissions();
   // Pipeline is deny-by-default — only explicitly granted users (page.pipeline).
@@ -164,11 +164,15 @@ export default function PipelineBoard() {
           referralCustomId,
           createdByUserRecordId: appUser?._id,
           actorUserId: appUserId,
+          actorName: appUserName,
           sourceModule: inferConflictSourceModuleFromStage(referral.current_stage),
           category: noteOrPayload.category,
           severity: noteOrPayload.severity,
           description: noteOrPayload.description,
-          origin: 'pipeline_board',
+          origin: referral.current_stage === 'Clinical Lead Pre-Check'
+            ? 'clinical_lead_not_viable'
+            : 'pipeline_board',
+          mentionAccountManagerInfo: referral.current_stage === 'Clinical Lead Pre-Check',
         });
       } catch (err) {
         console.error('Conflict create failed:', err);

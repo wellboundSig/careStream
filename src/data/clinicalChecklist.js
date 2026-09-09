@@ -6,9 +6,9 @@
  *
  * Persistence (2026-05-27)
  * ------------------------
- * Checklist responses are persisted to the `ClinicalReview` Airtable table —
+ * Checklist responses are persisted to the `ClinicalReview` Aurora table —
  * one row per referral, upserted by `upsertClinicalReview` and surfaced via
- * `useClinicalReview`. The `dbField` on every item is the Airtable column
+ * `useClinicalReview`. The `dbField` on every item is the Aurora column
  * name; the UI key / DB column split mirrors the F2F CursoryReview pattern
  * so we can rename UI keys in the future without re-migrating data.
  *
@@ -81,7 +81,7 @@ export function isChecklistComplete(checked) {
 // ── Risk Stratification (mutually exclusive group) ─────────────────────────
 // The three risk-level items carry `exclusive: 'risk'` so they render as a
 // single dropdown (you can't be both "high risk" and "low risk"). The UI keeps
-// the underlying schema unchanged — three checkbox columns in Airtable — and
+// the underlying schema unchanged — three checkbox columns in Aurora — and
 // just toggles them as a group at the boundary.
 export const RISK_KEYS = ALL_CHECKLIST_ITEMS
   .filter((i) => i.exclusive === 'risk')

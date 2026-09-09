@@ -586,7 +586,7 @@ function CustomBuilder() {
   const schema     = TABLE_SCHEMAS[tableKey];
   const allFields  = allFieldsFlat(schema);
   const fieldMap   = fieldsByKey(schema);
-  const filterDefs = schema.airtableFilters;
+  const filterDefs = schema.queryFilters;
 
   function handleTableChange(t) {
     const next = TABLE_SCHEMAS[t];
@@ -610,14 +610,14 @@ function CustomBuilder() {
   const handleRun = useCallback(async (doExport = false) => {
     if (!columns.length) { setErrMsg('Select at least one column.'); setStatus('error'); return; }
     setLoading(true); setStatus(null); setErrMsg('');
-    const airtableFilters = filters.filter((f) => filterDefs.find((d) => d.key === f.field) && f.operator);
+    const queryFilters = filters.filter((f) => filterDefs.find((d) => d.key === f.field) && f.operator);
     const sort = sortField ? [{ field: sortField, direction: sortDir }] : [];
     try {
-      const { rows, total } = await fetchReportData({ tableName: tableKey, filters: airtableFilters, selectedKeys: columns, sort });
+      const { rows, total } = await fetchReportData({ tableName: tableKey, filters: queryFilters, selectedKeys: columns, sort });
       const orderedCols = columns.map((k) => { const f = fieldMap[k]; return f ? { key: k, label: f.label } : null; }).filter(Boolean);
       if (doExport) {
-        const sub = airtableFilters.length
-          ? `Filters: ${airtableFilters.map((f) => `${f.field} ${f.operator} ${f.value || ''}`).join(' | ')}`
+        const sub = queryFilters.length
+          ? `Filters: ${queryFilters.map((f) => `${f.field} ${f.operator} ${f.value || ''}`).join(' | ')}`
           : `Generated: ${new Date().toLocaleString()}`;
         await exportToExcel(rows, orderedCols, `${schema.label} Report`, sub);
         setStatus('done');

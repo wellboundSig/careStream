@@ -13,7 +13,9 @@ import { isSocCompletedReferral } from '../../../data/stageConfig.js';
 import {
   isClinicalLeadPreCheck,
   markClinicalLeadViable,
+  markClinicalLeadNotViable,
 } from '../../../utils/clinicalLeadPreCheck.js';
+import TransitionModal from '../../pipeline/TransitionModal.jsx';
 
 const DECISION_LABELS = {
   accept: 'Accepted',
@@ -35,10 +37,12 @@ const PRE_CLINICAL_STAGES = new Set([
 export default function ClinicalReviewTab({ patient, referral, readOnly = false }) {
   const { resolveUser } = useLookups();
   const { can: canPerm } = usePermissions();
-  const { appUserId } = useCurrentAppUser();
+  const { appUserId, appUserName } = useCurrentAppUser();
   const { updateReferralLocal, setActiveTab } = usePatientDrawer();
   const [viableSaving, setViableSaving] = useState(false);
   const [viableError, setViableError] = useState(null);
+  const [notViableOpen, setNotViableOpen] = useState(false);
+  const [notViableSaving, setNotViableSaving] = useState(false);
 
   const decision = referral?.clinical_review_decision;
   const reviewedBy = referral?.clinical_review_by;
@@ -148,6 +152,26 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
     }
   }
 
+  async function handleNotViableConfirm(payload) {
+    if (!referral || notViableSaving || readOnly) return;
+    setNotViableSaving(true);
+    setViableError(null);
+    try {
+      await markClinicalLeadNotViable({
+        referral,
+        appUserId,
+        actorName: appUserName,
+        conflict: payload,
+        onLeftModule: () => updateReferralLocal?.({ current_stage: 'Conflict' }),
+      });
+      setNotViableOpen(false);
+    } catch (err) {
+      setViableError(err.message || 'Could not send to Conflict.');
+    } finally {
+      setNotViableSaving(false);
+    }
+  }
+
   if (isClinicalLeadPreCheck(referral)) {
     return (
       <div style={{ padding: '20px 20px 40px' }}>
@@ -158,21 +182,39 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
           Glance the chart. This is not the full clinical review.
         </p>
         {canConfirmReview && !readOnly && (
-          <button
-            type="button"
-            data-testid="mark-viable-btn"
-            onClick={handleMarkViable}
-            disabled={viableSaving}
-            style={{
-              width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
-              background: palette.accentGreen.hex,
-              color: palette.backgroundLight.hex,
-              fontSize: 14, fontWeight: 700, cursor: viableSaving ? 'wait' : 'pointer',
-              textAlign: 'left', marginBottom: 12,
-            }}
-          >
-            {viableSaving ? 'Saving…' : 'Mark Viable'}
-          </button>
+          <>
+            <button
+              type="button"
+              data-testid="mark-viable-btn"
+              onClick={handleMarkViable}
+              disabled={viableSaving || notViableSaving}
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: 8, border: 'none',
+                background: palette.accentGreen.hex,
+                color: palette.backgroundLight.hex,
+                fontSize: 14, fontWeight: 700, cursor: viableSaving ? 'wait' : 'pointer',
+                textAlign: 'left', marginBottom: 4,
+              }}
+            >
+              {viableSaving ? 'Saving…' : 'Mark Viable'}
+            </button>
+            <button
+              type="button"
+              data-testid="lead-not-viable-btn"
+              onClick={() => { setViableError(null); setNotViableOpen(true); }}
+              disabled={viableSaving || notViableSaving}
+              style={{
+                display: 'block', width: '100%', padding: '2px 2px 12px',
+                border: 'none', background: 'none',
+                fontSize: 12.5, fontWeight: 600,
+                color: palette.primaryMagenta.hex,
+                cursor: 'pointer', textAlign: 'left',
+                textDecoration: 'underline', textUnderlineOffset: 2,
+              }}
+            >
+              Lead is not viable
+            </button>
+          </>
         )}
         {viableError && (
           <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, fontWeight: 600, marginBottom: 12 }}>{viableError}</p>
@@ -188,6 +230,19 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         >
           Open files
         </button>
+        {notViableOpen && (
+          <TransitionModal
+            referral={{
+              ...referral,
+              patientName: `${patient?.first_name || ''} ${patient?.last_name || ''}`.trim()
+                || referral.patientName,
+            }}
+            toStage="Conflict"
+            loading={notViableSaving}
+            onConfirm={handleNotViableConfirm}
+            onCancel={() => { if (!notViableSaving) setNotViableOpen(false); }}
+          />
+        )}
       </div>
     );
   }

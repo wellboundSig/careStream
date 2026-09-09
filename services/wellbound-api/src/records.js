@@ -1,7 +1,7 @@
 /**
- * records.js — the Airtable wire contract, backed by PostgreSQL.
+ * records.js — the CareStream records wire contract, backed by PostgreSQL.
  *
- * Endpoints (identical shapes to api.airtable.com/v0/{base}):
+ * Endpoints (identical shapes to api.aurora.com/v0/{base}):
  *   GET    /:table                  list — filterByFormula, sort[i][field],
  *                                   sort[i][direction], maxRecords, fields[]
  *                                   (offset accepted; we return the full set in
@@ -12,7 +12,7 @@
  *   PATCH  /:table                  batch update ({ records: [{ id, fields }] })
  *   DELETE /:table/:recId           delete → { deleted: true, id }
  *
- * Record shape: { id: rec_id, createdTime, fields } with Airtable semantics —
+ * Record shape: { id: rec_id, createdTime, fields } with legacy wire semantics —
  * null/empty fields omitted, false checkboxes omitted, link fields as
  * 1-element arrays, jsonb-stringified fields returned as strings.
  */
@@ -58,32 +58,32 @@ function parsePgTimestamp(v) {
   return new Date(v);
 }
 
-// ── Row → Airtable record ─────────────────────────────────────────────────────
+// ── Row → wire record ─────────────────────────────────────────────────────
 function rowToRecord(row, def, projection = null) {
   const fields = {};
-  for (const [airtableName, f] of Object.entries(def.fields)) {
-    if (projection && !projection.has(airtableName)) continue;
+  for (const [fieldName, f] of Object.entries(def.fields)) {
+    if (projection && !projection.has(fieldName)) continue;
     let v = row[f.column];
     if (v === null || v === undefined) continue;
     switch (f.wire) {
       case 'checkbox':
-        if (v !== true) continue; // Airtable omits unchecked boxes
-        fields[airtableName] = true;
+        if (v !== true) continue; // wire format omits unchecked boxes
+        fields[fieldName] = true;
         break;
       case 'jsonString':
-        fields[airtableName] = typeof v === 'string' ? v : JSON.stringify(v);
+        fields[fieldName] = typeof v === 'string' ? v : JSON.stringify(v);
         break;
       case 'jsonRaw':
-        fields[airtableName] = typeof v === 'string' ? JSON.parse(v) : v;
+        fields[fieldName] = typeof v === 'string' ? JSON.parse(v) : v;
         break;
       case 'linkArray':
-        fields[airtableName] = [v];
+        fields[fieldName] = [v];
         break;
       case 'textArray':
-        if (Array.isArray(v)) { if (v.length) fields[airtableName] = v; }
+        if (Array.isArray(v)) { if (v.length) fields[fieldName] = v; }
         else if (typeof v === 'string') {
-          try { const arr = JSON.parse(v); if (Array.isArray(arr) && arr.length) fields[airtableName] = arr; }
-          catch { if (v) fields[airtableName] = [v]; }
+          try { const arr = JSON.parse(v); if (Array.isArray(arr) && arr.length) fields[fieldName] = arr; }
+          catch { if (v) fields[fieldName] = [v]; }
         }
         break;
       case 'timestamp': {
@@ -91,19 +91,19 @@ function rowToRecord(row, def, projection = null) {
         // 500 the whole table read — omit the field instead. (Aug 2026:
         // a single bad dob broke /hydrate Patients for every user.)
         const d = parsePgTimestamp(v);
-        if (!Number.isNaN(d.getTime())) fields[airtableName] = d.toISOString();
+        if (!Number.isNaN(d.getTime())) fields[fieldName] = d.toISOString();
         break;
       }
       case 'date':
-        fields[airtableName] = typeof v === 'string' ? v.slice(0, 10) : v;
+        fields[fieldName] = typeof v === 'string' ? v.slice(0, 10) : v;
         break;
       case 'int':
       case 'float':
-        fields[airtableName] = typeof v === 'string' ? Number(v) : v;
+        fields[fieldName] = typeof v === 'string' ? Number(v) : v;
         break;
       default:
-        if (typeof v === 'string' && v === '') continue; // Airtable omits empty strings
-        fields[airtableName] = v;
+        if (typeof v === 'string' && v === '') continue; // wire format omits empty strings
+        fields[fieldName] = v;
     }
   }
   let createdTime = new Date(0).toISOString();
@@ -128,14 +128,14 @@ function assertSaneDate(fieldName, value) {
   }
 }
 
-// ── Airtable fields → SQL column assignments ─────────────────────────────────
+// ── Wire fields → SQL column assignments ─────────────────────────────────
 function buildWriteSets(def, fields, params) {
   const sets = [];
   const P = (v) => { params.push(v); return `$${params.length}`; };
 
-  for (const [airtableName, value] of Object.entries(fields || {})) {
-    const f = def.fields[airtableName];
-    if (!f) throw new ApiError(422, 'UNKNOWN_FIELD_NAME', `Unknown field name: "${airtableName}"`);
+  for (const [fieldName, value] of Object.entries(fields || {})) {
+    const f = def.fields[fieldName];
+    if (!f) throw new ApiError(422, 'UNKNOWN_FIELD_NAME', `Unknown field name: "${fieldName}"`);
     const colRef = `"${f.column}"`;
     if (value === null || value === undefined) {
       sets.push({ col: colRef, expr: 'NULL' });
@@ -153,7 +153,7 @@ function buildWriteSets(def, fields, params) {
         }
         const str = typeof value === 'string' ? value : JSON.stringify(value);
         try { JSON.parse(str); } catch {
-          throw new ApiError(422, 'INVALID_VALUE', `Field "${airtableName}" is not valid JSON`);
+          throw new ApiError(422, 'INVALID_VALUE', `Field "${fieldName}" is not valid JSON`);
         }
         sets.push({ col: colRef, expr: `${P(str)}::jsonb` });
         break;
@@ -176,11 +176,11 @@ function buildWriteSets(def, fields, params) {
         break;
       }
       case 'timestamp':
-        assertSaneDate(airtableName, value);
+        assertSaneDate(fieldName, value);
         sets.push({ col: colRef, expr: `${P(String(value))}::timestamptz` });
         break;
       case 'date':
-        assertSaneDate(airtableName, value);
+        assertSaneDate(fieldName, value);
         sets.push({ col: colRef, expr: `${P(String(value).slice(0, 10))}::date` });
         break;
       case 'int':
@@ -232,12 +232,18 @@ export async function hydrateTables(tableNames) {
   }
   const out = {};
   await Promise.all(tableNames.map(async (name) => {
+    // Unknown tables (client ahead of this API build) return empty rather
+    // than failing the whole hydrate batch.
+    if (!REGISTRY[name]) {
+      out[name] = { records: [] };
+      return;
+    }
     out[name] = await listRecords(name, {});
   }));
   return { tables: out };
 }
 
-/** Airtable Metadata-API-shaped table list (Support's listTablesAndColumns). */
+/** Metadata-shaped table list (Support's listTablesAndColumns). */
 export function metaTables() {
   return {
     tables: Object.entries(REGISTRY).map(([name, def]) => ({
@@ -255,9 +261,9 @@ export function metaTables() {
 // Unfiltered list results are cached in container memory for 30s; any write
 // to the table clears this container's copy immediately, and other containers
 // age out within the TTL. Turns the hottest reads into ~1ms.
-const HOT_TABLES = new Set([
+  const HOT_TABLES = new Set([
   'Roles', 'Permissions', 'RolePermissions', 'PermissionPresets',
-  'Departments', 'DepartmentScopes', 'ConflictCategories',
+  'Departments', 'DepartmentScopes', 'ConflictCategories', 'AppSettings',
   'Teams', 'Categories', 'Entities', 'NetworkFacilities',
 ]);
 const HOT_TTL_MS = 30_000;

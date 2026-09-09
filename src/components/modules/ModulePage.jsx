@@ -204,7 +204,7 @@ export default function ModulePage({ stage }) {
     resolveSourceEntity = () => '—',
   } = useLookups();
   const { open: openPatient, isOpen: isPatientDrawerOpen } = usePatientDrawer();
-  const { appUser, appUserId } = useCurrentAppUser();
+  const { appUser, appUserId, appUserName } = useCurrentAppUser();
   const { can: canPerm, canAny: canPermAny, hasDivision } = usePermissions();
   const { prefs, save: savePrefs } = usePreferences();
   const getReviewInProgress = useClinicalReviewInProgress();
@@ -745,11 +745,15 @@ export default function ModulePage({ stage }) {
           referralCustomId,
           createdByUserRecordId: appUser?._id,
           actorUserId: appUserId,
-          sourceModule: inferConflictSourceModuleFromStage(stage),
+          actorName: appUserName,
+          sourceModule: inferConflictSourceModuleFromStage(referral.current_stage || stage),
           category: noteOrPayload.category,
           severity: noteOrPayload.severity,
           description: noteOrPayload.description,
-          origin: `module:${stage}`,
+          origin: referral.current_stage === 'Clinical Lead Pre-Check'
+            ? 'clinical_lead_not_viable'
+            : `module:${stage}`,
+          mentionAccountManagerInfo: referral.current_stage === 'Clinical Lead Pre-Check',
         });
       } catch (err) {
         console.error('Conflict create failed:', err);
@@ -1626,7 +1630,8 @@ export default function ModulePage({ stage }) {
               {(() => {
                 if (!selectedReferral) return null;
                 const discardVisible = canDiscardAny && stage !== 'Discarded Leads' && selectedReferral.current_stage !== 'Discarded Leads';
-                // Conflict workflow applies after Intake — leads are not active referrals yet.
+                // Conflict is available once a case is an active referral, and
+                // from Clinical Lead Pre-Check (viability glance in Clinical Review).
                 const conflictVisible = !['Conflict', 'Discarded Leads', 'SOC Completed', 'Completed', 'NTUC', 'Lead Entry'].includes(stage);
                 if (!discardVisible && !conflictVisible) return null;
                 const canConflict = conflictVisible && canMoveFromTo(selectedReferral.current_stage, 'Conflict');

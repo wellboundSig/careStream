@@ -10,8 +10,8 @@ export async function recordTransition({ referral, fromStage, toStage, note, aut
   const now = new Date().toISOString();
 
   // ── 1. StageHistory record — always written ──────────────────────────────
-  // Airtable StageHistory uses single-select fields for referral_id and changed_by_id
-  // (logical keys like ref_001 / usr_001), not Airtable record ids (recXXX).
+  // Aurora StageHistory uses single-select fields for referral_id and changed_by_id
+  // (logical keys like ref_001 / usr_001), not Aurora record ids (recXXX).
   // Never fall back to referral._id — it triggers 422 Invalid enum value.
   const historyFields = {
     id:        `sh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -39,7 +39,7 @@ export async function recordTransition({ referral, fromStage, toStage, note, aut
   // create new select option". We try the full row silently first; if it
   // fails we retry with those locked columns folded into `metadata` (text) so
   // the audit row still lands instead of being dropped with a scary error.
-  // (Convert those four columns to plain text in Airtable to restore full
+  // (Convert those four columns to plain text in Aurora to restore full
   // per-referral timeline linkage.)
   const promote = (rec) => {
     if (rec?.id) {

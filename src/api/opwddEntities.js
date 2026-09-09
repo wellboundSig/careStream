@@ -8,15 +8,14 @@
  * (the dropdown is dynamic — new rows appear without a code change).
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'HomehealthOpwddEntities';
 
 export const getAllOpwddEntities = () =>
-  airtable.fetchAll(TABLE, { sort: [{ field: 'name', direction: 'asc' }] });
+  aurora.fetchAll(TABLE, { sort: [{ field: 'name', direction: 'asc' }] });
 
-export const createOpwddEntity = (fields) => airtable.create(TABLE, fields);
+export const createOpwddEntity = (fields) => aurora.create(TABLE, fields);
 
 export const updateOpwddEntity = (recordId, fields) =>
-  airtable.update(TABLE, recordId, { ...fields, updated_at: new Date().toISOString() });
+  aurora.update(TABLE, recordId, { ...fields, updated_at: new Date().toISOString() });

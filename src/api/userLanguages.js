@@ -1,11 +1,10 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'UserLanguages';
 
-export const getUserLanguages = (params) => airtable.fetchAll(TABLE, params);
-export const createUserLanguage = (fields) => airtable.create(TABLE, fields);
-export const deleteUserLanguage = (id) => airtable.remove(TABLE, id);
+export const getUserLanguages = (params) => aurora.fetchAll(TABLE, params);
+export const createUserLanguage = (fields) => aurora.create(TABLE, fields);
+export const deleteUserLanguage = (id) => aurora.remove(TABLE, id);
 
 /**
  * Sync a user's language set to match `languageIds`.

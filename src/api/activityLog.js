@@ -7,23 +7,22 @@
  * applicable. `metadata` is an arbitrary JSON blob used by report engines.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 
 const TABLE = 'ActivityLog';
 
 export const getActivityLog = (params) =>
-  airtable.fetchAll(TABLE, { sort: [{ field: 'timestamp', direction: 'desc' }], ...params });
+  aurora.fetchAll(TABLE, { sort: [{ field: 'timestamp', direction: 'desc' }], ...params });
 
 export const getActivityByUser = (userId, limit = 30) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{actor_id} = "${userId}"`,
     sort: [{ field: 'timestamp', direction: 'desc' }],
     maxRecords: limit,
   });
 
 export const getActivityByPatient = (patientId, limit = 100) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{patient_id} = "${patientId}"`,
     sort: [{ field: 'timestamp', direction: 'desc' }],
     maxRecords: limit,
@@ -83,10 +82,10 @@ export async function recordActivity(entry) {
   try {
     // Silent: a failure here is expected on bases where the id columns are
     // still legacy selects, and is fully handled by the retry below.
-    return await airtable.create(TABLE, fullFields, { silent: true });
+    return await aurora.create(TABLE, fullFields, { silent: true });
   } catch {
     try {
-      return await airtable.create(TABLE, reducedFields);
+      return await aurora.create(TABLE, reducedFields);
     } catch (err2) {
       // eslint-disable-next-line no-console
       console.warn('[recordActivity] audit write failed (non-fatal):', err2?.message || err2);

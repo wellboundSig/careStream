@@ -5,7 +5,7 @@
  * Each event: { id, actorId, timestamp, action, detail, patientId, referralId, colorKey }
  *
  * actorId is always normalized to the member's business id (usr_###) when possible,
- * so Clerk ids / Airtable rec ids still land on the right person.
+ * so Clerk ids / Aurora rec ids still land on the right person.
  */
 
 function asIso(v) {

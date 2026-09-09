@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/react';
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { updateEntity, useCareStore } from '../store/careStore.js';
 
 const LAST_LOGIN_STAMP_MS = 15 * 60 * 1000;
@@ -15,7 +14,7 @@ function stampLastLogin(u) {
   if (useCareStore.getState().users?.[u._id]) {
     updateEntity('users', u._id, { last_login_at: iso });
   }
-  airtable.update('Users', u._id, { last_login_at: iso }).catch(() => {});
+  aurora.update('Users', u._id, { last_login_at: iso }).catch(() => {});
 }
 
 // Session-level caches
@@ -29,28 +28,10 @@ export function patchAppUserCache(fields) {
 }
 
 async function fetchValidAuthorIds() {
-  if (_validAuthorIds) return _validAuthorIds;
-  // Postgres backend (wellbound-api): author_id is a plain text column — there
-  // is no Airtable select-option constraint, so "no constraint" (null) is
-  // correct and callers already treat null as unconstrained.
-  if (import.meta.env.VITE_API_URL) return null;
-  // Only callable in dev — production has no direct Airtable credentials (worker handles auth).
-  if (!import.meta.env.VITE_AIRTABLE_TOKEN) return null;
-  try {
-    const res = await fetch(
-      `https://api.airtable.com/v0/meta/bases/${import.meta.env.VITE_AIRTABLE_BASE_ID}/tables`,
-      { headers: { Authorization: `Bearer ${import.meta.env.VITE_AIRTABLE_TOKEN}` } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const notesTable = data.tables?.find((t) => t.name === 'Notes');
-    const authorField = notesTable?.fields?.find((f) => f.name === 'author_id');
-    const choices = authorField?.options?.choices?.map((c) => c.name) || null;
-    _validAuthorIds = choices;
-    return choices;
-  } catch {
-    return null;
-  }
+  // Aurora (wellbound-api): author_id is a plain text column — there is no
+  // select-option constraint, so "no constraint" (null) is correct and
+  // callers already treat null as unconstrained.
+  return null;
 }
 
 export function useCurrentAppUser() {
@@ -84,15 +65,15 @@ export function useCurrentAppUser() {
 
     (async () => {
       // 1. Match by clerk_user_id — primary, most reliable
-      const byClerk = await airtable.fetchAll('Users', {
+      const byClerk = await aurora.fetchAll('Users', {
         filterByFormula: `{clerk_user_id} = "${user.id}"`,
         maxRecords: 1,
       }).catch(() => []);
       if (byClerk.length) {
         const u = { _id: byClerk[0].id, ...byClerk[0].fields };
-        // Sync Clerk profile photo to Airtable so teammates can see it
+        // Sync Clerk profile photo to the Users table so teammates can see it
         if (user.imageUrl && u.clerk_image_url !== user.imageUrl) {
-          airtable.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
+          aurora.update('Users', u._id, { clerk_image_url: user.imageUrl }).catch(() => {});
           u.clerk_image_url = user.imageUrl;
         }
         stampLastLogin(u);
@@ -105,7 +86,7 @@ export function useCurrentAppUser() {
       // 2. Match by email
       const email = user.primaryEmailAddress?.emailAddress;
       if (email) {
-        const byEmail = await airtable.fetchAll('Users', {
+        const byEmail = await aurora.fetchAll('Users', {
           filterByFormula: `{email} = "${email}"`,
           maxRecords: 1,
         }).catch(() => []);
@@ -115,7 +96,7 @@ export function useCurrentAppUser() {
           if (user.id && !u.clerk_user_id) updates.clerk_user_id = user.id;
           if (user.imageUrl && u.clerk_image_url !== user.imageUrl) updates.clerk_image_url = user.imageUrl;
           if (Object.keys(updates).length) {
-            airtable.update('Users', u._id, updates).catch(() => {});
+            aurora.update('Users', u._id, updates).catch(() => {});
             Object.assign(u, updates);
           }
           stampLastLogin(u);
@@ -129,29 +110,12 @@ export function useCurrentAppUser() {
       // 3. Env var override — last resort for dev when clerk_user_id isn't set yet
       const envOverride = import.meta.env.VITE_DEFAULT_AUTHOR_ID;
       if (envOverride) {
-        const records = await airtable.fetchAll('Users', {
+        const records = await aurora.fetchAll('Users', {
           filterByFormula: `{id} = "${envOverride}"`,
           maxRecords: 1,
         }).catch(() => []);
         if (records.length) {
           const u = { _id: records[0].id, ...records[0].fields };
-          _appUserCache = u;
-          setAppUser(u);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 4. Fallback: find first user whose id IS a valid Notes author option
-      const valid = await fetchValidAuthorIds();
-      if (valid?.length) {
-        const formula = `OR(${valid.map((id) => `{id} = "${id}"`).join(',')})`;
-        const validUsers = await airtable.fetchAll('Users', {
-          filterByFormula: formula,
-          maxRecords: 1,
-        }).catch(() => []);
-        if (validUsers.length) {
-          const u = { _id: validUsers[0].id, ...validUsers[0].fields };
           _appUserCache = u;
           setAppUser(u);
           setLoading(false);

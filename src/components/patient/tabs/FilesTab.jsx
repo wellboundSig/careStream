@@ -89,7 +89,7 @@ function formatDateTime(d) {
 }
 
 function getFileIcon(type, name) {
-  // Always check extension first (type may be missing since Airtable field is restricted)
+  // Always check extension first (type may be missing since Aurora field is restricted)
   const ext = (name || '').split('.').pop().toLowerCase();
   if (['pdf'].includes(ext)) return 'pdf';
   if (['jpg','jpeg','png','gif','webp','svg','avif','heic'].includes(ext)) return 'image';

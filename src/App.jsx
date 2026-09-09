@@ -28,6 +28,8 @@ import BatchEligibility from './pages/BatchEligibility.jsx';
 import HchbVisitCheck from './pages/HchbVisitCheck.jsx';
 import Permissions from './pages/admin/Permissions.jsx';
 import ConflictCategories from './pages/admin/ConflictCategories.jsx';
+import GlobalConfiguration, { ConfigurationIndex } from './pages/admin/GlobalConfiguration.jsx';
+import LeadViabilitySettings from './pages/admin/LeadViabilitySettings.jsx';
 import DeveloperTools from './pages/developer/DeveloperTools.jsx';
 import DepartmentManagement from './pages/admin/DepartmentManagement.jsx';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage.jsx';
@@ -111,10 +113,17 @@ export default function App() {
         <Route path="directory/clinicians" element={<Clinicians />} />
         <Route path="team" element={<Team />} />
         <Route path="admin/users" element={<UserManagement />} />
-        <Route path="admin/permissions" element={<Permissions />} />
-        <Route path="admin/conflict-categories" element={<ConflictCategories />} />
+        <Route path="admin/configuration" element={<GlobalConfiguration />}>
+          <Route index element={<ConfigurationIndex />} />
+          <Route path="leads" element={<LeadViabilitySettings />} />
+          <Route path="permissions" element={<Permissions />} />
+          <Route path="conflict-categories" element={<ConflictCategories />} />
+          <Route path="departments" element={<DepartmentManagement />} />
+        </Route>
+        <Route path="admin/permissions" element={<Navigate to="/admin/configuration/permissions" replace />} />
+        <Route path="admin/conflict-categories" element={<Navigate to="/admin/configuration/conflict-categories" replace />} />
+        <Route path="admin/departments" element={<Navigate to="/admin/configuration/departments" replace />} />
         <Route path="developer/tools" element={<DeveloperTools />} />
-        <Route path="admin/departments" element={<DepartmentManagement />} />
         <Route path="admin/settings" element={<Settings />} />
         <Route path="admin/data-tools" element={<DataTools />} />
         <Route path="*" element={<NotFound />} />

@@ -78,16 +78,16 @@ export default function PhysicianOverviewTab({ physician, onUpdated }) {
     setSaving(key);
     setSaveError(null);
     try {
-      // Airtable checkbox fields: send `true` to check, `null` to uncheck.
-      // Sending `false` is silently ignored by Airtable for checkbox type fields.
-      const airtableValue = next ? true : null;
-      await updatePhysician(physician._id, { [field]: airtableValue });
+      // Aurora checkbox fields: send `true` to check, `null` to uncheck.
+      // Sending `false` is silently ignored by Aurora for checkbox type fields.
+      const nextValue = next ? true : null;
+      await updatePhysician(physician._id, { [field]: nextValue });
       // Patch local tab state and drawer header
       setLocal((prev) => ({ ...prev, [field]: next }));
       onUpdated?.({ [field]: next });
       // Patch the shared in-memory + sessionStorage cache so the Physicians list
       // page reflects the change without a full 3000-record re-fetch.
-      updatePhysicianInCache(physician._id, { [field]: airtableValue });
+      updatePhysicianInCache(physician._id, { [field]: nextValue });
     } catch (err) {
       setSaveError(`Failed to update ${key.toUpperCase()} status.`);
       console.error('updatePhysician error:', err);
@@ -112,7 +112,7 @@ export default function PhysicianOverviewTab({ physician, onUpdated }) {
   }
 
   // After an automated verification, sync this tab's local state, the drawer
-  // header, and the directory cache (the panel already wrote Airtable + store).
+  // header, and the directory cache (the panel already wrote Aurora + store).
   function handleVerified(fields) {
     setLocal((prev) => ({
       ...prev,

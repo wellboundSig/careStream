@@ -17,7 +17,7 @@ import {
 /**
  * @param {object} args
  * @param {object} args.patient  Patient fields (must include insurance JSON if present)
- * @param {string} args.patientRecordId  Airtable/rec id for link writes
+ * @param {string} args.patientRecordId  Aurora/rec id for link writes
  * @param {string} args.patientBusinessId  pat_… id for reads
  * @returns {Promise<{ healed: boolean, reason?: string, result?: object }>}
  */

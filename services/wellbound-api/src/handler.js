@@ -1,5 +1,5 @@
 /**
- * handler.js — Lambda entry for wellbound-api (Airtable-compatible data API).
+ * handler.js — Lambda entry for wellbound-api (CareStream records API).
  *
  * Deployed behind an API Gateway HTTP API with TWO route classes:
  *   1. `ANY /{proxy+}`  — JWT verified in-Lambda (Clerk OIDC).

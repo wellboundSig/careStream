@@ -236,7 +236,7 @@ async function apiCreate(env, table, fields) {
     throw new Error(`API create ${table} failed: ${res.status} ${text}`);
   }
   const data = await res.json();
-  // Airtable wire: { records: [{ id, fields }] } or single
+  // Records wire: { records: [{ id, fields }] } or single
   return data.records?.[0] || data;
 }
 

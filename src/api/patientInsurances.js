@@ -2,13 +2,12 @@
  * PatientInsurances API — the canonical source of truth for a patient's
  * insurance coverage set.
  *
- * Soft-delete: set `termination_date` (YYYY-MM-DD). The Airtable-wire API
+ * Soft-delete: set `termination_date` (YYYY-MM-DD). The Aurora-wire API
  * omits false checkboxes, so `is_active_raw: false` alone cannot be read
  * back reliably — termination_date is the durable signal.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 import { toLinks } from './_linkHelpers.js';
 
 const TABLE = 'PatientInsurances';
@@ -51,7 +50,7 @@ export function isInsuranceActive(rowOrFields) {
  */
 export async function getInsurancesByPatient(patientId, opts = {}) {
   const { includeInactive = false } = opts;
-  const records = await airtable.fetchAll(TABLE, {
+  const records = await aurora.fetchAll(TABLE, {
     filterByFormula: `FIND("${patientId}", ARRAYJOIN({patient_id}))`,
     sort: [{ field: 'order_rank', direction: 'asc' }, { field: 'created_at', direction: 'asc' }],
   });
@@ -59,6 +58,6 @@ export async function getInsurancesByPatient(patientId, opts = {}) {
   return records.filter((r) => isInsuranceActive(r));
 }
 
-export const createPatientInsurance = (fields) => airtable.create(TABLE, normaliseFields(fields));
-export const updatePatientInsurance = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
-export const deletePatientInsurance = (id) => airtable.remove(TABLE, id);
+export const createPatientInsurance = (fields) => aurora.create(TABLE, normaliseFields(fields));
+export const updatePatientInsurance = (id, fields) => aurora.update(TABLE, id, normaliseFields(fields));
+export const deletePatientInsurance = (id) => aurora.remove(TABLE, id);

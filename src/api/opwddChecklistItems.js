@@ -6,8 +6,7 @@
  * documents are requested / received / reviewed.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 import { OPWDD_PACKET_DOCS, OPWDD_CHECKLIST_STATUS } from '../data/opwddEnums.js';
 
 const TABLE = 'OPWDDCaseChecklistItems';
@@ -22,22 +21,22 @@ function stripEmpty(fields) {
 }
 
 export const getChecklistItemsByCase = (caseId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{opwdd_case_id} = "${caseId}"`,
     sort: [{ field: 'sort_order', direction: 'asc' }],
   });
 
 export const getChecklistItemsByReferral = (referralId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `{referral_id} = "${referralId}"`,
     sort: [{ field: 'sort_order', direction: 'asc' }],
   });
 
 export const createChecklistItem = (fields) =>
-  airtable.create(TABLE, stripEmpty(fields));
+  aurora.create(TABLE, stripEmpty(fields));
 
 export const updateChecklistItem = (recordId, fields) =>
-  airtable.update(TABLE, recordId, stripEmpty({ ...fields, updated_at: new Date().toISOString() }));
+  aurora.update(TABLE, recordId, stripEmpty({ ...fields, updated_at: new Date().toISOString() }));
 
 /**
  * Seeds the 9 packet-assembly document rows for a freshly-opened case
@@ -67,7 +66,7 @@ export async function seedChecklistForCase({ caseId, patientId, referralId }) {
       created_at:   nowIso,
       updated_at:   nowIso,
     };
-    const record = await airtable.create(TABLE, stripEmpty(fields));
+    const record = await aurora.create(TABLE, stripEmpty(fields));
     created.push(record);
   }
   return created;

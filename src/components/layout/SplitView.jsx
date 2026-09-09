@@ -27,7 +27,11 @@ import Campaigns from '../../pages/directory/Campaigns.jsx';
 import ReferralSources from '../../pages/directory/ReferralSources.jsx';
 import Team from '../../pages/Team.jsx';
 import UserManagement from '../../pages/admin/UserManagement.jsx';
+import Permissions from '../../pages/admin/Permissions.jsx';
 import ConflictCategories from '../../pages/admin/ConflictCategories.jsx';
+import GlobalConfiguration, { ConfigurationIndex } from '../../pages/admin/GlobalConfiguration.jsx';
+import LeadViabilitySettings from '../../pages/admin/LeadViabilitySettings.jsx';
+import DepartmentManagement from '../../pages/admin/DepartmentManagement.jsx';
 import DeveloperTools from '../../pages/developer/DeveloperTools.jsx';
 import Settings from '../../pages/Settings.jsx';
 import DataTools from '../../pages/DataTools.jsx';
@@ -125,7 +129,16 @@ export default function SplitView({ children, division, roleMode, onClose }) {
 
                     <Route path="team" element={<Team />} />
                     <Route path="admin/users" element={<UserManagement />} />
-                    <Route path="admin/conflict-categories" element={<ConflictCategories />} />
+                    <Route path="admin/configuration" element={<GlobalConfiguration />}>
+                      <Route index element={<ConfigurationIndex />} />
+                      <Route path="leads" element={<LeadViabilitySettings />} />
+                      <Route path="permissions" element={<Permissions />} />
+                      <Route path="conflict-categories" element={<ConflictCategories />} />
+                      <Route path="departments" element={<DepartmentManagement />} />
+                    </Route>
+                    <Route path="admin/permissions" element={<Navigate to="/admin/configuration/permissions" replace />} />
+                    <Route path="admin/conflict-categories" element={<Navigate to="/admin/configuration/conflict-categories" replace />} />
+                    <Route path="admin/departments" element={<Navigate to="/admin/configuration/departments" replace />} />
                     <Route path="developer/tools" element={<DeveloperTools />} />
                     <Route path="admin/settings" element={<Settings />} />
                     <Route path="admin/data-tools" element={<DataTools />} />

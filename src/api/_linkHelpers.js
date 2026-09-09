@@ -1,7 +1,7 @@
 /**
- * Helpers for Airtable `multipleRecordLinks` fields.
+ * Helpers for Aurora `multipleRecordLinks` fields.
  *
- * Airtable expects linked-record fields as ARRAYS of record IDs. Writing a
+ * Aurora expects linked-record fields as ARRAYS of record IDs. Writing a
  * bare string silently produces a validation error. These helpers centralise
  * the conversion so every API module writes consistently.
  *

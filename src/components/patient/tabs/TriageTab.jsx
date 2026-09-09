@@ -32,7 +32,7 @@
  *
  * Database fields:
  *   The v2 schema adds new columns in TriageAdult / TriagePediatric (see
- *   scripts/airtable-apply-schema.js, ~line 290). The old columns
+ *   scripts/aurora-apply-schema.js, ~line 290). The old columns
  *   (caregiver_name, pet_details, is_diabetic, homecare_hours, ...) stay
  *   in place so historical records remain readable, but the new form no
  *   longer writes to them.
@@ -171,7 +171,7 @@ const PED_BLANK = {
 
 // ── DB normalization ────────────────────────────────────────────────────────
 //
-// Airtable's `dateTime` columns return ISO strings; our forms work in
+// Aurora's `dateTime` columns return ISO strings; our forms work in
 // YYYY-MM-DD. Yes/No three-state booleans are stored as the strings
 // 'Yes'/'No' so the spec's explicit-Yes / explicit-No / null distinction
 // survives the round trip. Phones go in as digits-only; the smart inputs
@@ -219,7 +219,7 @@ function buildPayloadForSave(data, allowedKeys) {
     if (typeof v === 'string' && v.trim() === '' && DATE_FIELDS.has(k)) continue;
     if (typeof v === 'string' && v === '' && !TRI_STATE_FIELDS.has(k)) {
       // Send an explicit empty string for non-date text so a previously-set
-      // value can be cleared. Airtable treats '' as "clear this field".
+      // value can be cleared. Aurora treats '' as "clear this field".
       fields[k] = '';
       continue;
     }
@@ -235,7 +235,7 @@ function buildPayloadForSave(data, allowedKeys) {
       continue;
     }
     if (DATE_FIELDS.has(k) && typeof v === 'string' && v.length === 10) {
-      // Pass the date-only ISO string through unchanged; Airtable accepts it
+      // Pass the date-only ISO string through unchanged; Aurora accepts it
       // for `dateTime` columns and treats it as midnight in the configured TZ.
       fields[k] = v;
       continue;
@@ -246,7 +246,7 @@ function buildPayloadForSave(data, allowedKeys) {
 }
 
 // Which DB columns each form is allowed to write — also serves as the
-// "stop sending fields you no longer use" whitelist (Airtable rejects the
+// "stop sending fields you no longer use" whitelist (Aurora rejects the
 // whole record if you send a field name the table doesn't have).
 const ADULT_COLUMNS = new Set([
   'referral_id', 'filled_by_id',

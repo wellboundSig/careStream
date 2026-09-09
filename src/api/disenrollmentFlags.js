@@ -4,8 +4,7 @@
  * Linked-record fields are normalised to array form at this boundary.
  */
 
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from './airtable.js';
+import aurora from './aurora.js';
 import { toLinks } from './_linkHelpers.js';
 
 const TABLE = 'DisenrollmentAssistanceFlags';
@@ -32,10 +31,10 @@ function normaliseFields(fields) {
 }
 
 export const getDisenrollmentFlagsByPatient = (patientId) =>
-  airtable.fetchAll(TABLE, {
+  aurora.fetchAll(TABLE, {
     filterByFormula: `FIND("${patientId}", ARRAYJOIN({patient_id}))`,
     sort: [{ field: 'created_at', direction: 'desc' }],
   });
 
-export const createDisenrollmentFlag = (fields) => airtable.create(TABLE, normaliseFields(fields));
-export const updateDisenrollmentFlag = (id, fields) => airtable.update(TABLE, id, normaliseFields(fields));
+export const createDisenrollmentFlag = (fields) => aurora.create(TABLE, normaliseFields(fields));
+export const updateDisenrollmentFlag = (id, fields) => aurora.update(TABLE, id, normaliseFields(fields));

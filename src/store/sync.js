@@ -1,5 +1,4 @@
-// LEGACY FILENAME: airtable.js is the Aurora (wellbound-api) records client. Not Airtable. Do not add Airtable URLs, PATs, or bases.
-import airtable from '../api/airtable.js';
+import aurora from '../api/aurora.js';
 import { useCareStore, mergeEntities } from './careStore.js';
 import { silentRehydrate } from './hydrate.js';
 import { getNotificationsForUser } from '../api/notifications.js';
@@ -73,7 +72,7 @@ async function syncTier(tables) {
         sort: [{ field: sortField, direction: 'desc' }],
         ...(formula ? { filterByFormula: formula } : { maxRecords: 100 }),
       };
-      const records = await airtable.fetchAll(table, params);
+      const records = await aurora.fetchAll(table, params);
       if (records.length > 0) {
         mergeEntities(key, normalize(records));
       }

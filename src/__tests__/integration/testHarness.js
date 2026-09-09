@@ -1,6 +1,6 @@
 /**
  * In-memory test harness that simulates the persistence layer used by the
- * Eligibility + Authorization modules. No network, no Airtable, no timers.
+ * Eligibility + Authorization modules. No network, no Aurora, no timers.
  *
  * Each table is a Map keyed by a synthetic id. `recordActivity` writes to
  * the audit log so tests can assert on what happened.

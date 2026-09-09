@@ -435,7 +435,7 @@ export default function PatientList() {
   }
 
   function buildPatient(row) {
-    // Pass the full patient record — all fields are already on the object from useAirtable
+    // Pass the full patient record — all fields are already on the object from useRecords
     return { ...row };
   }
 

@@ -11,7 +11,7 @@
  *    referral record id. No per-component fetch — hydration already loaded
  *    the whole table.
  *  - Writes: optimistic + debounced. We update the store immediately on
- *    each toggle so the UI feels instant, and flush to Airtable at most
+ *    each toggle so the UI feels instant, and flush to Aurora at most
  *    once every ~400ms of inactivity so rapid clicking doesn't fire a
  *    request per check.
  *  - Sync: after a successful write we call `triggerDataRefresh()` so any
@@ -30,7 +30,7 @@ import { triggerDataRefresh } from './useRefreshTrigger.js';
 
 const SAVE_DEBOUNCE_MS = 400;
 
-// Stable id for the optimistic store mirror when no Airtable row exists yet.
+// Stable id for the optimistic store mirror when no Aurora row exists yet.
 // Using a deterministic per-referral id means subsequent toggles update the
 // SAME store entry instead of producing duplicates.
 function pendingId(referralRecordId) {
@@ -125,7 +125,7 @@ export function useCursoryReview(referralRecordId) {
           [created.id]: { _id: created.id, ...created.fields },
         });
         // Prune the temp mirror AND any stale duplicate rows for this referral
-        // from the store. `upsert` already deleted the duplicates in Airtable;
+        // from the store. `upsert` already deleted the duplicates in Aurora;
         // dropping them locally too is what makes an uncheck stick — otherwise
         // the canonical-row read could still see a lingering `true`.
         const store = useCareStore.getState().cursoryReviews || {};
@@ -206,6 +206,6 @@ export function useCursoryReview(referralRecordId) {
     saveError,
     reviewedBy: existingRow?.reviewed_by || null,
     // Exposed for debugging / explicit writes
-    _fieldsForAirtable: uiToDbFields(checked),
+    _fieldsForAurora: uiToDbFields(checked),
   };
 }
