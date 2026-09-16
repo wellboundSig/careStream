@@ -1638,12 +1638,11 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
 
 const CLOSEOUT_STATUS_LABEL = {
   closed: 'Fully closed',
-  paperwork_open: 'Visit done — paperwork open',
+  paperwork_open: 'Paperwork open',
 };
 
 /**
- * Visit closeout — visits completed vs paperwork still open vs fully closed.
- * Date range is visit-completed date (blank = all time).
+ * Visit closeout: visits completed, paperwork still open, fully closed.
  */
 export async function runVisitCloseout({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType } = {}) {
   const base = await runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType });
@@ -2109,7 +2108,7 @@ export const PRESETS = [
   {
     id: 'visit_closeout',
     title: 'Visit Closeout',
-    description: 'Visits completed vs referrals still open for paperwork vs fully closed (visit + paperwork). Date range is visit-completed date; blank = all time.',
+    description: 'Visits completed, paperwork still open, and fully closed referrals. Blank dates = all time.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runVisitCloseout(params); },
   },

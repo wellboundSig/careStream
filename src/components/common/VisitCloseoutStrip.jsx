@@ -4,19 +4,19 @@ const CARDS = [
   {
     id: 'visits',
     label: 'Visits completed',
-    sub: 'SOC / ROC visit happened',
+    sub: 'SOC / ROC visit done',
     color: palette.accentBlue.hex,
   },
   {
     id: 'paperwork',
     label: 'Paperwork still open',
-    sub: 'Visit done — referral not closed',
+    sub: 'Visit done, not closed',
     color: palette.accentOrange.hex,
   },
   {
     id: 'closed',
     label: 'Fully closed',
-    sub: 'Visit + paperwork complete',
+    sub: 'Visit and paperwork done',
     color: palette.accentGreen.hex,
   },
 ];

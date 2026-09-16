@@ -6,7 +6,6 @@ import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
 import { STAGE_META, isSocCompletedReferral, isFullyFinishedReferral, isVisitDonePaperworkOpen, isPostVisitReferral, isActiveClinicalHandoff, countVisitCloseout } from '../../data/stageConfig.js';
-import VisitCloseoutStrip from '../common/VisitCloseoutStrip.jsx';
 import { isClinicalLeadPreCheck, isClinicalLeadPreCheckApproved } from '../../utils/clinicalLeadPreCheck.js';
 import { isPendingLogReferral, pendingLogMentionIndex } from '../../utils/pendingLog.js';
 import { canMoveFromTo, needsModal } from '../../utils/stageTransitions.js';
@@ -256,9 +255,11 @@ export default function ModulePage({ stage }) {
   const [closeoutView, setCloseoutView] = useState(
     ['visits', 'paperwork', 'closed'].includes(closeoutParam) ? closeoutParam : 'closed',
   );
+  // Closed is the default view. Visits / Paperwork are only shown when
+  // deliberately chosen (pill click or explicit ?closeout= link).
   useEffect(() => {
-    if (['visits', 'paperwork', 'closed'].includes(closeoutParam)) setCloseoutView(closeoutParam);
-  }, [closeoutParam]);
+    setCloseoutView(['visits', 'paperwork', 'closed'].includes(closeoutParam) ? closeoutParam : 'closed');
+  }, [closeoutParam, stage]);
   const isClinicalRnModule = stage === 'Clinical Intake RN Review';
   const isStaffingModule = stage === 'Staffing Feasibility';
   // Clinical queue: default to patients actually in this stage. Deferred-docs /
@@ -1478,15 +1479,34 @@ export default function ModulePage({ stage }) {
           </div>
         )}
         {isCompletedModule && (
-          <div style={{ padding: '10px 12px 0' }}>
-            <VisitCloseoutStrip
-              visitsCompleted={closeoutCounts.visitsCompleted}
-              paperworkOpen={closeoutCounts.paperworkOpen}
-              fullyClosed={closeoutCounts.fullyClosed}
-              activeView={closeoutView}
-              onSelect={setCloseoutView}
-              compact
-            />
+          <div style={{ display: 'flex', gap: 4, padding: '10px 16px 0' }}>
+            {[
+              { id: 'visits', label: 'Visits', count: closeoutCounts.visitsCompleted, color: palette.accentBlue.hex },
+              { id: 'paperwork', label: 'Paperwork open', count: closeoutCounts.paperworkOpen, color: palette.accentOrange.hex },
+              { id: 'closed', label: 'Closed', count: closeoutCounts.fullyClosed, color: palette.accentGreen.hex },
+            ].map((seg) => {
+              const active = closeoutView === seg.id;
+              return (
+                <button
+                  key={seg.id}
+                  type="button"
+                  onClick={() => setCloseoutView(seg.id)}
+                  aria-pressed={active}
+                  style={{
+                    height: 26, padding: '0 10px', borderRadius: 13,
+                    border: `1px solid ${active ? seg.color : 'var(--color-border)'}`,
+                    background: active ? hexToRgba(seg.color, 0.1) : 'none',
+                    fontSize: 11.5, fontWeight: active ? 700 : 550,
+                    color: active ? seg.color : hexToRgba(palette.backgroundDark.hex, 0.55),
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  {seg.label}
+                  <span style={{ fontWeight: 700 }}>{seg.count}</span>
+                </button>
+              );
+            })}
           </div>
         )}
         {isSocCompleted ? (
@@ -1696,15 +1716,35 @@ export default function ModulePage({ stage }) {
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
               {isCompletedModule && (
-                <div style={{ marginTop: 12, maxWidth: 920 }}>
-                  <VisitCloseoutStrip
-                    visitsCompleted={closeoutCounts.visitsCompleted}
-                    paperworkOpen={closeoutCounts.paperworkOpen}
-                    fullyClosed={closeoutCounts.fullyClosed}
-                    activeView={closeoutView}
-                    onSelect={setCloseoutView}
-                    compact
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                  {[
+                    { id: 'visits', label: 'Visits', count: closeoutCounts.visitsCompleted, color: palette.accentBlue.hex },
+                    { id: 'paperwork', label: 'Paperwork open', count: closeoutCounts.paperworkOpen, color: palette.accentOrange.hex },
+                    { id: 'closed', label: 'Closed', count: closeoutCounts.fullyClosed, color: palette.accentGreen.hex },
+                  ].map((seg) => {
+                    const active = closeoutView === seg.id;
+                    return (
+                      <button
+                        key={seg.id}
+                        type="button"
+                        data-testid={`closeout-${seg.id}`}
+                        onClick={() => setCloseoutView(seg.id)}
+                        aria-pressed={active}
+                        style={{
+                          height: 24, padding: '0 10px', borderRadius: 12,
+                          border: `1px solid ${active ? seg.color : 'var(--color-border)'}`,
+                          background: active ? hexToRgba(seg.color, 0.1) : 'none',
+                          fontSize: 11.5, fontWeight: active ? 700 : 550,
+                          color: active ? seg.color : hexToRgba(palette.backgroundDark.hex, 0.55),
+                          cursor: 'pointer', fontFamily: 'inherit',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        {seg.label}
+                        <span style={{ fontWeight: 700 }}>{seg.count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2142,20 +2182,12 @@ export default function ModulePage({ stage }) {
                     isCompletedModule && closeoutView === 'visits'
                       ? 'No completed visits'
                       : isCompletedModule && closeoutView === 'paperwork'
-                        ? 'No referrals waiting on paperwork'
+                        ? 'No open paperwork'
                         : isCompletedModule
-                          ? 'No fully closed referrals'
+                          ? 'No closed referrals'
                           : `No referrals in ${meta.displayName || stage}`
                   }
-                  subtitle={
-                    isCompletedModule && closeoutView === 'paperwork'
-                      ? 'Visit-done referrals that still need paperwork would appear here.'
-                      : isCompletedModule && closeoutView === 'visits'
-                        ? 'Referrals with a completed visit would appear here.'
-                        : isCompletedModule
-                          ? 'Referrals that are done on visit and paperwork would appear here.'
-                          : 'Referrals will appear here when they reach this stage.'
-                  }
+                  subtitle="Referrals will appear here when they reach this stage."
                 />
               )
             ) : (

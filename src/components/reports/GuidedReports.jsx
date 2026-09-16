@@ -302,9 +302,17 @@ export default function GuidedReports() {
   }
 
   return (
-    <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden', minHeight: 480 }}>
+    <div style={{
+      display: 'flex', flex: 1, minHeight: 0, height: '100%',
+      border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden',
+      background: palette.backgroundLight.hex,
+    }}>
       {/* Template list */}
-      <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--color-border)' }}>
+      <div style={{
+        width: 260, flexShrink: 0, minHeight: 0,
+        display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--color-border)',
+      }}>
         <div style={{
           padding: '9px 14px',
           background: hexToRgba(palette.backgroundDark.hex, 0.04),
@@ -314,6 +322,7 @@ export default function GuidedReports() {
         }}>
           Guided reports ({GUIDED_TEMPLATES.length})
         </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {GUIDED_TEMPLATES.map((t, i) => {
           const active = t.id === selectedId;
           return (
@@ -339,11 +348,12 @@ export default function GuidedReports() {
             </button>
           );
         })}
+        </div>
       </div>
 
-      {/* Detail */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--color-border)' }}>
+      {/* Detail — fixed frame; sentence/preview scroll inside */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '18px 22px 0', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
             <div>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 4px' }}>
@@ -367,7 +377,9 @@ export default function GuidedReports() {
               {advanced ? 'Sentence view' : 'Advanced'}
             </button>
           </div>
+        </div>
 
+        <div style={{ flex: preview ? '0 0 38%' : 1, minHeight: 88, overflow: 'auto', padding: '0 22px' }}>
           {!advanced ? (
             <div style={{
               padding: '16px 18px',
@@ -403,8 +415,9 @@ export default function GuidedReports() {
               />
             </div>
           )}
+        </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '14px 22px', flexWrap: 'wrap', flexShrink: 0, borderTop: '1px solid var(--color-border)' }}>
             <button
               type="button"
               disabled={loading}
@@ -428,11 +441,11 @@ export default function GuidedReports() {
                 {preview.total.toLocaleString()} rows matched
               </span>
             )}
-          </div>
         </div>
 
-        {preview && (
-          <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', borderTop: preview ? '1px solid var(--color-border)' : 'none' }}>
+        {preview ? (
+          <>
             <div style={{
               padding: '8px 14px',
               background: hexToRgba(palette.backgroundDark.hex, 0.03),
@@ -478,8 +491,9 @@ export default function GuidedReports() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          </>
+        ) : null}
+        </div>
       </div>
     </div>
   );

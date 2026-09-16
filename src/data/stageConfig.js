@@ -453,7 +453,7 @@ export const STAGE_META = {
   },
   'Completed': {
     displayName: 'Completed',
-    description: 'Closed referrals — visit, paperwork, and clinical review are all done. Use the counts below to separate visits completed, paperwork still open, and fully closed.',
+    description: 'Closed referrals. Visit, paperwork, and clinical review done.',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,

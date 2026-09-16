@@ -400,11 +400,19 @@ function PresetPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden' }}>
+    <div style={{
+      display: 'flex', flex: 1, minHeight: 0, height: '100%',
+      border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden',
+      background: palette.backgroundLight.hex,
+    }}>
       {/* Report list */}
-      <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--color-border)' }}>
+      <div style={{
+        width: 260, flexShrink: 0, minHeight: 0,
+        display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--color-border)',
+      }}>
         <SectionHeader label={`Reports (${cannedPresets.length})`} />
-        <div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {cannedPresets.map((p, i) => {
             const IconComp = PRESET_ICONS[p.id] || Icon.Chart;
             const active   = p.id === selectedId;
@@ -442,31 +450,39 @@ function PresetPanel() {
         </div>
       </div>
 
-      {/* Detail pane */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Detail pane — fixed frame; only inner content scrolls */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <SectionHeader label="Report Configuration" />
 
-        <div style={{ padding: '20px 24px', flex: 1 }}>
-          {/* Title + description */}
-          <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{
+          padding: '20px 24px 0', flexShrink: 0,
+          borderBottom: '1px solid var(--color-border)',
+        }}>
+          <div style={{ marginBottom: 16, minHeight: 64 }}>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 5px' }}>
               {preset.title}
             </h2>
-            <p style={{ fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.5 }}>
+            <p style={{
+              fontSize: 12.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), margin: 0, lineHeight: 1.5,
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              minHeight: 38,
+            }}>
               {preset.description}
             </p>
           </div>
+        </div>
 
-          {/* Parameters */}
-          <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '0 0 8px' }}>
-              Parameters
-            </p>
-            <ParamControls controls={preset.paramControls} params={params} onChange={setParams} />
-          </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '0 0 8px' }}>
+            Parameters
+          </p>
+          <ParamControls controls={preset.paramControls} params={params} onChange={setParams} />
+        </div>
 
-          {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: '14px 24px', borderTop: '1px solid var(--color-border)',
+        }}>
             <button
               onClick={handleExport}
               disabled={loading}
@@ -491,7 +507,6 @@ function PresetPanel() {
             {status === 'error' && (
               <span style={{ fontSize: 12, color: palette.primaryMagenta.hex }}>{errMsg}</span>
             )}
-          </div>
         </div>
       </div>
     </div>
@@ -854,10 +869,15 @@ export default function Reports() {
   if (!can(PERMISSION_KEYS.REPORT_VIEW)) return <AccessDenied message="You do not have permission to view reports." />;
 
   return (
-    <div style={{ padding: '24px 28px 60px', maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{
+      height: '100%', minHeight: 0, flex: 1,
+      display: 'flex', flexDirection: 'column',
+      padding: '24px 28px 20px', boxSizing: 'border-box',
+      overflow: 'hidden', maxWidth: 1300, width: '100%', margin: '0 auto',
+    }}>
 
       {/* Page header */}
-      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
+      <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: palette.backgroundDark.hex, margin: '0 0 3px', letterSpacing: '-0.01em' }}>
           Reports
         </h1>
@@ -867,7 +887,7 @@ export default function Reports() {
       </div>
 
       {/* Tab navigation */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 20, gap: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 16, gap: 0, flexShrink: 0 }}>
         {[
           ['presets', 'Preset Reports'],
           ['guided', 'Guided Reports'],
@@ -889,9 +909,15 @@ export default function Reports() {
         ))}
       </div>
 
-      {tab === 'presets' && <PresetPanel />}
-      {tab === 'guided' && <GuidedReports />}
-      {tab === 'custom' && <CustomBuilder />}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {tab === 'presets' && <PresetPanel />}
+        {tab === 'guided' && <GuidedReports />}
+        {tab === 'custom' && (
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <CustomBuilder />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
