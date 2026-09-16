@@ -17,11 +17,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "default_preset_id": {
-        "column": "default_preset_id",
-        "pg": "text",
-        "wire": "text"
-      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",
@@ -31,6 +26,11 @@
         "column": "updated_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "default_preset_id": {
+        "column": "default_preset_id",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -358,6 +358,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
       "phone": {
         "column": "phone",
         "pg": "text",
@@ -377,11 +382,6 @@
         "column": "is_system",
         "pg": "text",
         "wire": "text"
-      },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
       }
     }
   },
@@ -528,11 +528,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "title": {
-        "column": "title",
-        "pg": "text",
-        "wire": "text"
-      },
       "npi": {
         "column": "npi",
         "pg": "text",
@@ -642,6 +637,11 @@
         "column": "updated_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -670,11 +670,6 @@
       },
       "gender": {
         "column": "gender",
-        "pg": "text",
-        "wire": "text"
-      },
-      "preferred_language": {
-        "column": "preferred_language",
         "pg": "text",
         "wire": "text"
       },
@@ -753,31 +748,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "emergency_contact_relationship": {
-        "column": "emergency_contact_relationship",
-        "pg": "text",
-        "wire": "text"
-      },
-      "primary_contact_name": {
-        "column": "primary_contact_name",
-        "pg": "text",
-        "wire": "text"
-      },
-      "primary_contact_phone": {
-        "column": "primary_contact_phone",
-        "pg": "text",
-        "wire": "text"
-      },
-      "primary_contact_email": {
-        "column": "primary_contact_email",
-        "pg": "text",
-        "wire": "text"
-      },
-      "primary_contact_relationship": {
-        "column": "primary_contact_relationship",
-        "pg": "text",
-        "wire": "text"
-      },
       "is_active": {
         "column": "is_active",
         "pg": "text",
@@ -817,6 +787,36 @@
         "column": "conflicts",
         "pg": "text",
         "wire": "text"
+      },
+      "preferred_language": {
+        "column": "preferred_language",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emergency_contact_relationship": {
+        "column": "emergency_contact_relationship",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_name": {
+        "column": "primary_contact_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_phone": {
+        "column": "primary_contact_phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_email": {
+        "column": "primary_contact_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "primary_contact_relationship": {
+        "column": "primary_contact_relationship",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -838,16 +838,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "referral_method": {
-        "column": "referral_method",
-        "pg": "text",
-        "wire": "text"
-      },
-      "episode_type": {
-        "column": "episode_type",
-        "pg": "text",
-        "wire": "text"
-      },
       "facility_id": {
         "column": "facility_id",
         "pg": "text",
@@ -865,26 +855,6 @@
       },
       "intake_owner_id": {
         "column": "intake_owner_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "lead_created_by_id": {
-        "column": "lead_created_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "intake_owner_changed_at": {
-        "column": "intake_owner_changed_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "intake_owner_changed_by_id": {
-        "column": "intake_owner_changed_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "coc_nurse_id": {
-        "column": "coc_nurse_id",
         "pg": "text",
         "wire": "text"
       },
@@ -927,16 +897,6 @@
         "column": "f2f_urgency",
         "pg": "text",
         "wire": "text"
-      },
-      "f2f_date_logged_by_id": {
-        "column": "f2f_date_logged_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "f2f_date_logged_at": {
-        "column": "f2f_date_logged_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
       },
       "physician_id": {
         "column": "physician_id",
@@ -1093,16 +1053,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "clinical_lead_precheck_approved_at": {
-        "column": "clinical_lead_precheck_approved_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "clinical_lead_precheck_approved_by_id": {
-        "column": "clinical_lead_precheck_approved_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
       "in_clinical_review": {
         "column": "in_clinical_review",
         "pg": "boolean",
@@ -1112,26 +1062,6 @@
         "column": "clinical_review_pushed_at",
         "pg": "timestamptz",
         "wire": "timestamp"
-      },
-      "clinical_review_pushed_by_id": {
-        "column": "clinical_review_pushed_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "clinical_review_assigned_to_id": {
-        "column": "clinical_review_assigned_to_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "clinical_review_assigned_at": {
-        "column": "clinical_review_assigned_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "clinical_review_assigned_by_id": {
-        "column": "clinical_review_assigned_by_id",
-        "pg": "text",
-        "wire": "text"
       },
       "clinical_review_completed_at": {
         "column": "clinical_review_completed_at",
@@ -1168,31 +1098,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "returned_from_clinical": {
-        "column": "returned_from_clinical",
-        "pg": "boolean",
-        "wire": "checkbox"
-      },
-      "returned_from_clinical_note": {
-        "column": "returned_from_clinical_note",
-        "pg": "text",
-        "wire": "text"
-      },
-      "account_manager_info": {
-        "column": "account_manager_info",
-        "pg": "text",
-        "wire": "text"
-      },
-      "returned_from_clinical_at": {
-        "column": "returned_from_clinical_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "returned_from_clinical_by": {
-        "column": "returned_from_clinical_by",
-        "pg": "text",
-        "wire": "text"
-      },
       "requires_urgent_care": {
         "column": "requires_urgent_care",
         "pg": "boolean",
@@ -1210,6 +1115,151 @@
       },
       "urgent_care_note": {
         "column": "urgent_care_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_recheck_requested_at": {
+        "column": "eligibility_recheck_requested_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "eligibility_recheck_return_stage": {
+        "column": "eligibility_recheck_return_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emr_onboarded_at": {
+        "column": "emr_onboarded_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "emr_onboarded_by_id": {
+        "column": "emr_onboarded_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "recent_hospitalization": {
+        "column": "recent_hospitalization",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "hospitalization_date": {
+        "column": "hospitalization_date",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_scheduled_at": {
+        "column": "soc_scheduled_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staffing_confirmed_at": {
+        "column": "staffing_confirmed_at",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staffing_confirmed_by_id": {
+        "column": "staffing_confirmed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "soc_scheduled_by_id": {
+        "column": "soc_scheduled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "returned_from_clinical": {
+        "column": "returned_from_clinical",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "returned_from_clinical_note": {
+        "column": "returned_from_clinical_note",
+        "pg": "text",
+        "wire": "text"
+      },
+      "returned_from_clinical_at": {
+        "column": "returned_from_clinical_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "returned_from_clinical_by": {
+        "column": "returned_from_clinical_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_method": {
+        "column": "referral_method",
+        "pg": "text",
+        "wire": "text"
+      },
+      "episode_type": {
+        "column": "episode_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "lead_created_by_id": {
+        "column": "lead_created_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "intake_owner_changed_at": {
+        "column": "intake_owner_changed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "intake_owner_changed_by_id": {
+        "column": "intake_owner_changed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "coc_nurse_id": {
+        "column": "coc_nurse_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "f2f_date_logged_by_id": {
+        "column": "f2f_date_logged_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "f2f_date_logged_at": {
+        "column": "f2f_date_logged_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_lead_precheck_approved_at": {
+        "column": "clinical_lead_precheck_approved_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_lead_precheck_approved_by_id": {
+        "column": "clinical_lead_precheck_approved_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_pushed_by_id": {
+        "column": "clinical_review_pushed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_assigned_to_id": {
+        "column": "clinical_review_assigned_to_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "clinical_review_assigned_at": {
+        "column": "clinical_review_assigned_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "clinical_review_assigned_by_id": {
+        "column": "clinical_review_assigned_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "account_manager_info": {
+        "column": "account_manager_info",
         "pg": "text",
         "wire": "text"
       },
@@ -1248,26 +1298,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "eligibility_recheck_requested_at": {
-        "column": "eligibility_recheck_requested_at",
-        "pg": "text",
-        "wire": "text"
-      },
-      "eligibility_recheck_return_stage": {
-        "column": "eligibility_recheck_return_stage",
-        "pg": "text",
-        "wire": "text"
-      },
-      "emr_onboarded_at": {
-        "column": "emr_onboarded_at",
-        "pg": "text",
-        "wire": "text"
-      },
-      "emr_onboarded_by_id": {
-        "column": "emr_onboarded_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
       "emr_initial_onboarded_at": {
         "column": "emr_initial_onboarded_at",
         "pg": "text",
@@ -1275,36 +1305,6 @@
       },
       "emr_initial_onboarded_by_id": {
         "column": "emr_initial_onboarded_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "recent_hospitalization": {
-        "column": "recent_hospitalization",
-        "pg": "boolean",
-        "wire": "checkbox"
-      },
-      "hospitalization_date": {
-        "column": "hospitalization_date",
-        "pg": "text",
-        "wire": "text"
-      },
-      "soc_scheduled_at": {
-        "column": "soc_scheduled_at",
-        "pg": "text",
-        "wire": "text"
-      },
-      "staffing_confirmed_at": {
-        "column": "staffing_confirmed_at",
-        "pg": "text",
-        "wire": "text"
-      },
-      "staffing_confirmed_by_id": {
-        "column": "staffing_confirmed_by_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "soc_scheduled_by_id": {
-        "column": "soc_scheduled_by_id",
         "pg": "text",
         "wire": "text"
       },
@@ -1420,116 +1420,6 @@
       }
     }
   },
-  "Notifications": {
-    "pgTable": "notifications",
-    "fields": {
-      "id": {
-        "column": "id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "recipient_user_id": {
-        "column": "recipient_user_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "actor_user_id": {
-        "column": "actor_user_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "type": {
-        "column": "type",
-        "pg": "text",
-        "wire": "text"
-      },
-      "entity_type": {
-        "column": "entity_type",
-        "pg": "text",
-        "wire": "text"
-      },
-      "entity_id": {
-        "column": "entity_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "patient_id": {
-        "column": "patient_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "referral_id": {
-        "column": "referral_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "title": {
-        "column": "title",
-        "pg": "text",
-        "wire": "text"
-      },
-      "body": {
-        "column": "body",
-        "pg": "text",
-        "wire": "text"
-      },
-      "is_read": {
-        "column": "is_read",
-        "pg": "boolean",
-        "wire": "checkbox"
-      },
-      "created_at": {
-        "column": "created_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      }
-    }
-  },
-  "ReferralDrafts": {
-    "pgTable": "referral_drafts",
-    "fields": {
-      "id": {
-        "column": "id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "owner_user_id": {
-        "column": "owner_user_id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "display_name": {
-        "column": "display_name",
-        "pg": "text",
-        "wire": "text"
-      },
-      "draft_number": {
-        "column": "draft_number",
-        "pg": "bigint",
-        "wire": "int"
-      },
-      "form_data": {
-        "column": "form_data",
-        "pg": "jsonb",
-        "wire": "jsonRaw"
-      },
-      "created_at": {
-        "column": "created_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      }
-    }
-  },
   "Files": {
     "pgTable": "files",
     "fields": {
@@ -1583,11 +1473,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "physician_id": {
-        "column": "physician_id",
-        "pg": "text",
-        "wire": "text"
-      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",
@@ -1633,11 +1518,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
       "archived_at": {
         "column": "archived_at",
         "pg": "timestamptz",
@@ -1650,6 +1530,16 @@
       },
       "archived_reason": {
         "column": "archived_reason",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "physician_id": {
+        "column": "physician_id",
         "pg": "text",
         "wire": "text"
       }
@@ -2907,16 +2797,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "soc_completed_view": {
-        "column": "soc_completed_view",
-        "pg": "text",
-        "wire": "text"
-      },
-      "table_scroll_mode": {
-        "column": "table_scroll_mode",
-        "pg": "text",
-        "wire": "text"
-      },
       "created_at": {
         "column": "created_at",
         "pg": "timestamptz",
@@ -2926,6 +2806,16 @@
         "column": "updated_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "soc_completed_view": {
+        "column": "soc_completed_view",
+        "pg": "text",
+        "wire": "text"
+      },
+      "table_scroll_mode": {
+        "column": "table_scroll_mode",
+        "pg": "text",
+        "wire": "text"
       }
     }
   },
@@ -3989,6 +3879,16 @@
         "pg": "text",
         "wire": "text"
       },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
       "packet_assembled_at": {
         "column": "packet_assembled_at",
         "pg": "timestamptz",
@@ -4026,106 +3926,6 @@
       },
       "parent_letter_received_at": {
         "column": "parent_letter_received_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "created_at": {
-        "column": "created_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      }
-    }
-  },
-  "HomehealthOpwddEntities": {
-    "pgTable": "homehealth_opwdd_entities",
-    "fields": {
-      "id": {
-        "column": "id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "name": {
-        "column": "name",
-        "pg": "text",
-        "wire": "text"
-      },
-      "tier": {
-        "column": "tier",
-        "pg": "text",
-        "wire": "text"
-      },
-      "category": {
-        "column": "category",
-        "pg": "text",
-        "wire": "text"
-      },
-      "submission_status": {
-        "column": "submission_status",
-        "pg": "text",
-        "wire": "text"
-      },
-      "direct_authority_basis": {
-        "column": "direct_authority_basis",
-        "pg": "text",
-        "wire": "text"
-      },
-      "population": {
-        "column": "population",
-        "pg": "text",
-        "wire": "text"
-      },
-      "counties": {
-        "column": "counties",
-        "pg": "text[]",
-        "wire": "textArray"
-      },
-      "phone": {
-        "column": "phone",
-        "pg": "text",
-        "wire": "text"
-      },
-      "email": {
-        "column": "email",
-        "pg": "text",
-        "wire": "text"
-      },
-      "address": {
-        "column": "address",
-        "pg": "text",
-        "wire": "text"
-      },
-      "next_step": {
-        "column": "next_step",
-        "pg": "text",
-        "wire": "text"
-      },
-      "source_url": {
-        "column": "source_url",
-        "pg": "text",
-        "wire": "text"
-      },
-      "verification_notes": {
-        "column": "verification_notes",
-        "pg": "text",
-        "wire": "text"
-      },
-      "is_active": {
-        "column": "is_active",
-        "pg": "boolean",
-        "wire": "checkbox"
-      },
-      "created_at": {
-        "column": "created_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "updated_at": {
-        "column": "updated_at",
         "pg": "timestamptz",
         "wire": "timestamp"
       }
@@ -4285,16 +4085,6 @@
         "pg": "text",
         "wire": "text"
       },
-      "started_by": {
-        "column": "started_by",
-        "pg": "text",
-        "wire": "text"
-      },
-      "started_at": {
-        "column": "started_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
       "decision": {
         "column": "decision",
         "pg": "text",
@@ -4422,6 +4212,16 @@
       },
       "updated_at": {
         "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "started_by": {
+        "column": "started_by",
+        "pg": "text",
+        "wire": "text"
+      },
+      "started_at": {
+        "column": "started_at",
         "pg": "timestamptz",
         "wire": "timestamp"
       }
@@ -4604,11 +4404,6 @@
         "pg": "boolean",
         "wire": "checkbox"
       },
-      "routed_to_idtech_at": {
-        "column": "routed_to_idtech_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
       "source": {
         "column": "source",
         "pg": "text",
@@ -4633,6 +4428,11 @@
       },
       "updated_at": {
         "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "routed_to_idtech_at": {
+        "column": "routed_to_idtech_at",
         "pg": "timestamptz",
         "wire": "timestamp"
       }
@@ -4977,6 +4777,995 @@
         "column": "last_seen_at",
         "pg": "timestamptz",
         "wire": "timestamp"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AppSettings": {
+    "pgTable": "app_settings",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "key": {
+        "column": "key",
+        "pg": "text",
+        "wire": "text"
+      },
+      "value": {
+        "column": "value",
+        "pg": "text",
+        "wire": "text"
+      },
+      "updated_by_id": {
+        "column": "updated_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtOrganizations": {
+    "pgTable": "asset_mgt_organizations",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtSolutionCategories": {
+    "pgTable": "asset_mgt_solution_categories",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtSolutions": {
+    "pgTable": "asset_mgt_solutions",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "category_id": {
+        "column": "category_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtSolutionCategories"
+      },
+      "solution_class": {
+        "column": "solution_class",
+        "pg": "text",
+        "wire": "text"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "requestable": {
+        "column": "requestable",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "request_rank": {
+        "column": "request_rank",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtSolutionOrganizations": {
+    "pgTable": "asset_mgt_solution_organizations",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "solution_id": {
+        "column": "solution_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtSolutions"
+      },
+      "organization_id": {
+        "column": "organization_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtOrganizations"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtUsers": {
+    "pgTable": "asset_mgt_users",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "employee_id": {
+        "column": "employee_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "first_name": {
+        "column": "first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "last_name": {
+        "column": "last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_type": {
+        "column": "staff_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "discipline": {
+        "column": "discipline",
+        "pg": "text",
+        "wire": "text"
+      },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hire_date": {
+        "column": "hire_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "termination_date": {
+        "column": "termination_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "source": {
+        "column": "source",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtUserSolutions": {
+    "pgTable": "asset_mgt_user_solutions",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtUsers"
+      },
+      "solution_id": {
+        "column": "solution_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtSolutions"
+      },
+      "relationship_type": {
+        "column": "relationship_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "granted_date": {
+        "column": "granted_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "revoked_date": {
+        "column": "revoked_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "granted_by_id": {
+        "column": "granted_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "revoked_by_id": {
+        "column": "revoked_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtHardwareTypes": {
+    "pgTable": "asset_mgt_hardware_types",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "supports_quantity": {
+        "column": "supports_quantity",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "allow_details": {
+        "column": "allow_details",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "sort_order": {
+        "column": "sort_order",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtUserHardware": {
+    "pgTable": "asset_mgt_user_hardware",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtUsers"
+      },
+      "hardware_type_id": {
+        "column": "hardware_type_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtHardwareTypes"
+      },
+      "quantity": {
+        "column": "quantity",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "details": {
+        "column": "details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "assigned_date": {
+        "column": "assigned_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "returned_date": {
+        "column": "returned_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "assigned_by_id": {
+        "column": "assigned_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "returned_by_id": {
+        "column": "returned_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtPresets": {
+    "pgTable": "asset_mgt_presets",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_type": {
+        "column": "staff_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "description": {
+        "column": "description",
+        "pg": "text",
+        "wire": "text"
+      },
+      "active": {
+        "column": "active",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtPresetItems": {
+    "pgTable": "asset_mgt_preset_items",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "preset_id": {
+        "column": "preset_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtPresets"
+      },
+      "item_type": {
+        "column": "item_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "solution_id": {
+        "column": "solution_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtSolutions"
+      },
+      "relationship_type": {
+        "column": "relationship_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hardware_type_id": {
+        "column": "hardware_type_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtHardwareTypes"
+      },
+      "quantity": {
+        "column": "quantity",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtOnboardingRequests": {
+    "pgTable": "asset_mgt_onboarding_requests",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "token": {
+        "column": "token",
+        "pg": "text",
+        "wire": "text"
+      },
+      "new_hire_first_name": {
+        "column": "new_hire_first_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "new_hire_last_name": {
+        "column": "new_hire_last_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "new_hire_name": {
+        "column": "new_hire_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "new_hire_title": {
+        "column": "new_hire_title",
+        "pg": "text",
+        "wire": "text"
+      },
+      "staff_type": {
+        "column": "staff_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity": {
+        "column": "entity",
+        "pg": "text",
+        "wire": "text"
+      },
+      "start_date": {
+        "column": "start_date",
+        "pg": "date",
+        "wire": "date"
+      },
+      "hiring_manager_name": {
+        "column": "hiring_manager_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hiring_manager_email": {
+        "column": "hiring_manager_email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "asset_user_id": {
+        "column": "asset_user_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtUsers"
+      },
+      "ticket_id": {
+        "column": "ticket_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "source_entry_id": {
+        "column": "source_entry_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submitted_at": {
+        "column": "submitted_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "submitted_by_id": {
+        "column": "submitted_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "completed_at": {
+        "column": "completed_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "completed_by_id": {
+        "column": "completed_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "notes": {
+        "column": "notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "AssetMgtOnboardingRequestItems": {
+    "pgTable": "asset_mgt_onboarding_request_items",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "request_id": {
+        "column": "request_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtOnboardingRequests"
+      },
+      "item_type": {
+        "column": "item_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "solution_id": {
+        "column": "solution_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtSolutions"
+      },
+      "relationship_type": {
+        "column": "relationship_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "hardware_type_id": {
+        "column": "hardware_type_id",
+        "pg": "text",
+        "wire": "linkArray",
+        "linkTable": "AssetMgtHardwareTypes"
+      },
+      "quantity": {
+        "column": "quantity",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "details": {
+        "column": "details",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "fulfilled_at": {
+        "column": "fulfilled_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "fulfilled_by_id": {
+        "column": "fulfilled_by_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "Notifications": {
+    "pgTable": "notifications",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "recipient_user_id": {
+        "column": "recipient_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "actor_user_id": {
+        "column": "actor_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "type": {
+        "column": "type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_type": {
+        "column": "entity_type",
+        "pg": "text",
+        "wire": "text"
+      },
+      "entity_id": {
+        "column": "entity_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "patient_id": {
+        "column": "patient_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "referral_id": {
+        "column": "referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "title": {
+        "column": "title",
+        "pg": "text",
+        "wire": "text"
+      },
+      "body": {
+        "column": "body",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_read": {
+        "column": "is_read",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "ReferralDrafts": {
+    "pgTable": "referral_drafts",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "owner_user_id": {
+        "column": "owner_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "display_name": {
+        "column": "display_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "draft_number": {
+        "column": "draft_number",
+        "pg": "bigint",
+        "wire": "int"
+      },
+      "form_data": {
+        "column": "form_data",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "ScheduledLeads": {
+    "pgTable": "scheduled_leads",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "owner_user_id": {
+        "column": "owner_user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "display_name": {
+        "column": "display_name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "go_live_at": {
+        "column": "go_live_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "form_data": {
+        "column": "form_data",
+        "pg": "jsonb",
+        "wire": "jsonRaw"
+      },
+      "force_stage": {
+        "column": "force_stage",
+        "pg": "text",
+        "wire": "text"
+      },
+      "status": {
+        "column": "status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "promoted_at": {
+        "column": "promoted_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "promoted_referral_id": {
+        "column": "promoted_referral_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "HomehealthOpwddEntities": {
+    "pgTable": "homehealth_opwdd_entities",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "name": {
+        "column": "name",
+        "pg": "text",
+        "wire": "text"
+      },
+      "tier": {
+        "column": "tier",
+        "pg": "text",
+        "wire": "text"
+      },
+      "category": {
+        "column": "category",
+        "pg": "text",
+        "wire": "text"
+      },
+      "submission_status": {
+        "column": "submission_status",
+        "pg": "text",
+        "wire": "text"
+      },
+      "direct_authority_basis": {
+        "column": "direct_authority_basis",
+        "pg": "text",
+        "wire": "text"
+      },
+      "population": {
+        "column": "population",
+        "pg": "text",
+        "wire": "text"
+      },
+      "counties": {
+        "column": "counties",
+        "pg": "text[]",
+        "wire": "textArray"
+      },
+      "phone": {
+        "column": "phone",
+        "pg": "text",
+        "wire": "text"
+      },
+      "email": {
+        "column": "email",
+        "pg": "text",
+        "wire": "text"
+      },
+      "address": {
+        "column": "address",
+        "pg": "text",
+        "wire": "text"
+      },
+      "next_step": {
+        "column": "next_step",
+        "pg": "text",
+        "wire": "text"
+      },
+      "source_url": {
+        "column": "source_url",
+        "pg": "text",
+        "wire": "text"
+      },
+      "verification_notes": {
+        "column": "verification_notes",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_active": {
+        "column": "is_active",
+        "pg": "boolean",
+        "wire": "checkbox"
       },
       "created_at": {
         "column": "created_at",
@@ -5552,41 +6341,6 @@
       },
       "source": {
         "column": "source",
-        "pg": "text",
-        "wire": "text"
-      },
-      "created_at": {
-        "column": "created_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      },
-      "updated_at": {
-        "column": "updated_at",
-        "pg": "timestamptz",
-        "wire": "timestamp"
-      }
-    }
-  },
-  "AppSettings": {
-    "pgTable": "app_settings",
-    "fields": {
-      "id": {
-        "column": "id",
-        "pg": "text",
-        "wire": "text"
-      },
-      "key": {
-        "column": "key",
-        "pg": "text",
-        "wire": "text"
-      },
-      "value": {
-        "column": "value",
-        "pg": "text",
-        "wire": "text"
-      },
-      "updated_by_id": {
-        "column": "updated_by_id",
         "pg": "text",
         "wire": "text"
       },

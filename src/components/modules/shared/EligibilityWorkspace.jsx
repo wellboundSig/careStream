@@ -424,7 +424,7 @@ export default function EligibilityWorkspace({
                         patientId: patient.id,
                         referralId: referral?.id,
                         detail: clinicalReviewDone
-                          ? 'Eligibility completed — patient advanced to EMR Onboarding (LIFO trigger).'
+                          ? 'Eligibility completed — patient advanced to Intake (LIFO trigger).'
                           : isRecheck
                             ? `Eligibility re-check completed — returned to ${returnStage}.`
                             : 'Eligibility completed — awaiting Clinical RN completion.',

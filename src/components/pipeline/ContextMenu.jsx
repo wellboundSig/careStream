@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import StageRules from '../../data/StageRules.json';
+import { displayStageName } from '../common/StageBadge.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const STAGE_ORDER = [
@@ -19,6 +20,7 @@ function getValidDestinations(fromStage) {
     valid.add('Hold');
   }
   valid.delete(fromStage);
+  valid.delete('EMR Onboarding');
   return STAGE_ORDER.filter((s) => valid.has(s));
 }
 
@@ -114,7 +116,7 @@ export default function ContextMenu({ x, y, referral, onSelect, onDismiss }) {
             marginTop: 1,
           }}
         >
-          Currently in {referral.current_stage}
+          Currently in {displayStageName(referral) || referral.current_stage}
         </p>
       </div>
 
@@ -210,7 +212,7 @@ function ContextMenuItem({ stage, fromStage, onClick, isGlobal }) {
             textOverflow: 'ellipsis',
           }}
         >
-          {stage}
+          {displayStageName({ current_stage: stage }) || stage}
         </span>
       </div>
 

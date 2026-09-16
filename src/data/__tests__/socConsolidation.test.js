@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { STAGE_SLUGS, STAGE_META, ROLE_MODES, ALL_STAGES, isSocCompletedReferral } from '../stageConfig.js';
+import { STAGE_SLUGS, STAGE_META, ROLE_MODES, ALL_STAGES, isSocCompletedReferral, isFullyFinishedReferral, isVisitDonePaperworkOpen, countVisitCloseout } from '../stageConfig.js';
 import StageRules from '../StageRules.json';
 import { PANE_NAV } from '../paneRoutes.js';
 
@@ -129,6 +129,32 @@ describe('SOC Completed concurrent membership (soc_completed_date)', () => {
       current_stage: 'Discarded Leads',
       soc_completed_date: '2026-07-20',
     })).toBe(false);
+  });
+});
+
+describe('Visit closeout buckets', () => {
+  const visitOpen = { current_stage: 'Intake', soc_completed_date: '2026-09-01' };
+  const closed = { current_stage: 'Completed', soc_completed_date: '2026-09-01' };
+  const notVisited = { current_stage: 'Intake' };
+
+  it('counts a visit stamp as visits completed even when paperwork is still open', () => {
+    expect(isSocCompletedReferral(visitOpen)).toBe(true);
+    expect(isVisitDonePaperworkOpen(visitOpen)).toBe(true);
+    expect(isFullyFinishedReferral(visitOpen)).toBe(false);
+  });
+
+  it('counts terminal Completed as fully closed', () => {
+    expect(isSocCompletedReferral(closed)).toBe(true);
+    expect(isVisitDonePaperworkOpen(closed)).toBe(false);
+    expect(isFullyFinishedReferral(closed)).toBe(true);
+  });
+
+  it('splits a mixed pool into the three dashboard numbers', () => {
+    expect(countVisitCloseout([visitOpen, closed, notVisited])).toEqual({
+      visitsCompleted: 2,
+      paperworkOpen: 1,
+      fullyClosed: 1,
+    });
   });
 });
 

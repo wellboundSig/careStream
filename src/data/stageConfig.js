@@ -60,9 +60,15 @@ function isTruthyFlag(v) {
   return v === true || v === 'true' || v === 'True' || v === 'TRUE' || v === 1 || v === '1';
 }
 
+/** Stages that have left Clinical Review even if handoff flags linger. */
+const LEFT_CLINICAL_QUEUE = new Set(['Conflict', 'NTUC', 'Discarded Leads']);
+
 /** Active Clinical Review handoff — used by both module queues. */
 export function isActiveClinicalHandoff(r) {
   if (!r) return false;
+  // Conflict / NTUC / Discarded own the case. A leftover in_clinical_review
+  // flag or assignee must not keep them on the Clinical Review queue.
+  if (LEFT_CLINICAL_QUEUE.has(r.current_stage)) return false;
   if (
     r.current_stage === 'Clinical Intake RN Review'
     || r.current_stage === 'Post Visit Clinical Review'
@@ -92,6 +98,37 @@ export function isFullyFinishedReferral(r) {
     return false;
   }
   return !legacyVisitPaperworkOpen(r);
+}
+
+/** Visit happened, but the referral is not closed — paperwork still needed. */
+export function isVisitDonePaperworkOpen(r) {
+  return isSocCompletedReferral(r) && !isFullyFinishedReferral(r);
+}
+
+export function visitCloseoutStatus(r) {
+  if (isFullyFinishedReferral(r)) return 'closed';
+  if (isSocCompletedReferral(r)) return 'paperwork_open';
+  return null;
+}
+
+export const VISIT_CLOSEOUT_LABELS = {
+  visits: 'Visits completed',
+  paperwork: 'Paperwork still open',
+  closed: 'Fully closed',
+};
+
+export function countVisitCloseout(referrals) {
+  let visitsCompleted = 0;
+  let paperworkOpen = 0;
+  let fullyClosed = 0;
+  for (const r of referrals || []) {
+    const closed = isFullyFinishedReferral(r);
+    const visit = isSocCompletedReferral(r);
+    if (visit) visitsCompleted += 1;
+    if (closed) fullyClosed += 1;
+    else if (visit) paperworkOpen += 1;
+  }
+  return { visitsCompleted, paperworkOpen, fullyClosed };
 }
 
 // ── Stage slug mapping ────────────────────────────────────────────────────────
@@ -293,9 +330,11 @@ export const STAGE_META = {
     color: palette.primaryMagenta.hex,
     protected: true,
     consolidatedStages: ['Clinical Intake RN Review', 'Post Visit Clinical Review', 'Clinical Lead Pre-Check'],
-    matchReferral: (r) =>
-      (r.current_stage === 'Clinical Lead Pre-Check' || isActiveClinicalHandoff(r))
-      && !isFullyFinishedReferral(r),
+    matchReferral: (r) => {
+      if (LEFT_CLINICAL_QUEUE.has(r.current_stage)) return false;
+      return (r.current_stage === 'Clinical Lead Pre-Check' || isActiveClinicalHandoff(r))
+        && !isFullyFinishedReferral(r);
+    },
   },
   'Authorization Pending': {
     description: 'Supportive sub-module of Eligibility. Lists patients with an active Authorizations row (current_stage stays Eligibility).',
@@ -316,6 +355,7 @@ export const STAGE_META = {
     matchReferral: (r) => r.current_stage === 'Conflict',
   },
   'EMR Onboarding': {
+    displayName: 'Intake',
     description: 'Onboard the patient into the external EMR (HCHB). Worked inside the Intake module; the drawer\'s EMR Onboarding tab tracks initial + complete milestones.',
     isGlobal: false,
     isTerminal: false,
@@ -391,7 +431,7 @@ export const STAGE_META = {
     matchReferral: (r) => isSocCompletedReferral(r),
   },
   'Post Visit Intake': {
-    displayName: 'Post Visit Intake',
+    displayName: 'Intake Post Visit',
     description: 'Post-visit paperwork collection — worked inside the Intake module',
     isGlobal: false,
     isTerminal: false,
@@ -413,7 +453,7 @@ export const STAGE_META = {
   },
   'Completed': {
     displayName: 'Completed',
-    description: 'Fully finished cases. Visit, paperwork, and clinical review are all done. Visit-done work still open stays in Intake or Clinical Review.',
+    description: 'Closed referrals — visit, paperwork, and clinical review are all done. Use the counts below to separate visits completed, paperwork still open, and fully closed.',
     isGlobal: false,
     isTerminal: true,
     color: palette.accentGreen.hex,

@@ -5,8 +5,9 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { canPerformClinicalRnReview } from '../../data/permissionKeys.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import FilePreviewModal from '../common/FilePreviewModal.jsx';
-import { markClinicalLeadViable, isClinicalLeadPreCheck } from '../../utils/clinicalLeadPreCheck.js';
+import { markClinicalLeadViable, markClinicalLeadNotViable, isClinicalLeadPreCheck } from '../../utils/clinicalLeadPreCheck.js';
 import { openSignedFile } from '../../utils/r2Upload.js';
+import TransitionModal from '../pipeline/TransitionModal.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 function filePatient(referral) {
@@ -22,10 +23,9 @@ export default function ClinicalLeadPreCheckPanel({
   selectedReferral,
   onOpenFiles,
   onSelectedReferralLeftModule,
-  onInitiateTransition,
 }) {
   const { can: canPerm } = usePermissions();
-  const { appUserId } = useCurrentAppUser();
+  const { appUserId, appUserName } = useCurrentAppUser();
   const { openFileBeside } = usePatientDrawer();
   const canMark = canPerformClinicalRnReview(canPerm);
 
@@ -34,6 +34,7 @@ export default function ClinicalLeadPreCheckPanel({
   const [filePreview, setFilePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [notViableOpen, setNotViableOpen] = useState(false);
 
   const preCheckCount = referrals.filter(isClinicalLeadPreCheck).length;
   const reviewCount = referrals.length - preCheckCount;
@@ -42,6 +43,7 @@ export default function ClinicalLeadPreCheckPanel({
     setFilePreview(null);
     setError(null);
     setSaving(false);
+    setNotViableOpen(false);
   }, [selectedReferral?._id]);
 
   useEffect(() => {
@@ -79,7 +81,26 @@ export default function ClinicalLeadPreCheckPanel({
   function handleNotViable() {
     if (!selectedReferral || !canMark || saving) return;
     setError(null);
-    onInitiateTransition?.(selectedReferral, 'Conflict');
+    setNotViableOpen(true);
+  }
+
+  async function handleNotViableConfirm(payload) {
+    if (!selectedReferral || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await markClinicalLeadNotViable({
+        referral: selectedReferral,
+        appUserId,
+        actorName: appUserName,
+        conflict: payload,
+        onLeftModule: onSelectedReferralLeftModule,
+      });
+      setNotViableOpen(false);
+    } catch (err) {
+      setError(err?.message || 'Could not send to Conflict.');
+      setSaving(false);
+    }
   }
 
   const patient = filePatient(selectedReferral);
@@ -287,6 +308,15 @@ export default function ClinicalLeadPreCheckPanel({
             openFileBeside(filePreview, patient, selectedReferral);
             setFilePreview(null);
           }}
+        />
+      )}
+      {notViableOpen && selectedReferral && (
+        <TransitionModal
+          referral={selectedReferral}
+          toStage="Conflict"
+          loading={saving}
+          onConfirm={handleNotViableConfirm}
+          onCancel={() => { if (!saving) setNotViableOpen(false); }}
         />
       )}
     </div>

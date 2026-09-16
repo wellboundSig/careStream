@@ -6,6 +6,7 @@ import {
   runSourceAttribution,
   runMethodAttribution,
   runSocCompleted,
+  runVisitCloseout,
   runReferralSourceReport,
   runReferralSpeed,
   runSocMissingDocs,
@@ -229,6 +230,32 @@ export const GUIDED_TEMPLATES = [
     ],
     async run(slots) {
       return runSocCompleted({
+        dateFrom: slots.dateFrom,
+        dateTo: slots.dateTo,
+        division: slots.division || undefined,
+        episodeType: slots.episodeType || undefined,
+        marketerIds: slots.marketerIds,
+        ownerIds: slots.ownerIds,
+      });
+    },
+  },
+  {
+    id: 'visit_closeout',
+    title: 'Visit Closeout',
+    description: 'Visits completed, paperwork still open, and fully closed referrals.',
+    icon: 'visit_closeout',
+    dateField: 'soc_completed_date',
+    slots: ['dateRange', 'division', 'episodeType', 'marketers', 'owners'],
+    defaultSlots: () => ({ ...EMPTY_SLOTS, ...defaultDateRange() }),
+    fields: [
+      { name: 'soc_completed_date', label: 'Visit completed date', inputType: 'date' },
+      { name: 'division', label: 'Division', values: DIVISIONS.map((d) => ({ name: d, label: d })) },
+      { name: 'episode_type', label: 'SOC / ROC', values: [{ name: 'SOC', label: 'SOC' }, { name: 'ROC', label: 'ROC' }] },
+      { name: 'marketer_id', label: 'Marketer', inputType: 'text' },
+      { name: 'intake_owner_id', label: 'Intake owner', inputType: 'text' },
+    ],
+    async run(slots) {
+      return runVisitCloseout({
         dateFrom: slots.dateFrom,
         dateTo: slots.dateTo,
         division: slots.division || undefined,

@@ -77,34 +77,46 @@ vi.mock('../../../hooks/useIsMobile.js', () => ({
   useIsMobile: () => false,
 }));
 
-vi.mock('../../../store/careStore.js', () => ({
-  useCareStore: (selector) => {
-    const state = {
-      marketers: {
-        m1: { _id: 'm1', id: 'mkt_1', first_name: 'Jane', last_name: 'Doe', user_id: 'usr_other', division: 'Both' },
-        m2: { _id: 'm2', id: 'mkt_2', first_name: 'Bob', last_name: 'Smith', user_id: 'usr_bob', division: 'ALF' },
-      },
-      referralSources: { s1: { _id: 's1', id: 'src_1', name: 'Hospital A' } },
-      roles: { r1: { _id: 'r1', id: 'rol_001', name: 'Intake Coordinator' } },
-      facilities: { f1: { _id: 'f1', id: 'fac_1', name: 'Sunrise ALF', is_active: 'TRUE' } },
-      networkFacilities: { nf1: { _id: 'nf1', id: 'fac_1', name: 'Sunrise ALF', region: 'KINGS' } },
-      marketerFacilities: {
-        mf1: { _id: 'mf1', facility_id: 'fac_1', marketer_id: 'mkt_1', is_primary: true },
-        mf2: { _id: 'mf2', facility_id: 'fac_1', marketer_id: 'mkt_2', is_primary: false },
-      },
-    };
-    return selector(state);
-  },
-  mergeEntities: vi.fn(),
-}));
+vi.mock('../../../store/careStore.js', () => {
+  const state = {
+    marketers: {
+      m1: { _id: 'm1', id: 'mkt_1', first_name: 'Jane', last_name: 'Doe', user_id: 'usr_other', division: 'Both' },
+      m2: { _id: 'm2', id: 'mkt_2', first_name: 'Bob', last_name: 'Smith', user_id: 'usr_bob', division: 'ALF' },
+    },
+    referralSources: { s1: { _id: 's1', id: 'src_1', name: 'Hospital A' } },
+    roles: { r1: { _id: 'r1', id: 'rol_001', name: 'Intake Coordinator' } },
+    facilities: { f1: { _id: 'f1', id: 'fac_1', name: 'Sunrise ALF', is_active: 'TRUE' } },
+    networkFacilities: { nf1: { _id: 'nf1', id: 'fac_1', name: 'Sunrise ALF', region: 'KINGS' } },
+    marketerFacilities: {
+      mf1: { _id: 'mf1', facility_id: 'fac_1', marketer_id: 'mkt_1', is_primary: true },
+      mf2: { _id: 'mf2', facility_id: 'fac_1', marketer_id: 'mkt_2', is_primary: false },
+    },
+    cocNurseFacilities: {},
+    users: {},
+    entities: {},
+    appSettings: {},
+  };
+  const useCareStore = (selector) => selector(state);
+  useCareStore.getState = () => state;
+  return {
+    useCareStore,
+    mergeEntities: vi.fn(),
+    updateEntity: vi.fn(),
+  };
+});
 
 vi.mock('../../../api/patients.js', () => ({
   createPatient: vi.fn().mockResolvedValue({ id: 'rec_pat1', fields: { id: 'pat_test' } }),
+  updatePatient: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('../../../api/referrals.js', () => ({
   createReferral: vi.fn().mockResolvedValue({ id: 'rec_ref1', _id: 'rec_ref1', fields: { id: 'ref_test' } }),
   updateReferral: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../../../api/scheduledLeads.js', () => ({
+  createScheduledLead: vi.fn().mockResolvedValue({ id: 'rec_sled1', fields: { id: 'sled_test' } }),
 }));
 
 vi.mock('../../../api/notes.js', () => ({
@@ -145,6 +157,18 @@ vi.mock('../../../utils/r2Upload.js', () => ({
 
 vi.mock('../../../api/patientFiles.js', () => ({
   createFile: vi.fn().mockResolvedValue({ id: 'rec_file1', fields: { id: 'file_1', file_name: 'packet.pdf' } }),
+}));
+
+vi.mock('../../../api/syncPatientInsurances.js', () => ({
+  syncPatientInsurances: vi.fn().mockResolvedValue({ synced: true }),
+}));
+
+vi.mock('../../../api/referralSources.js', () => ({
+  createReferralSource: vi.fn().mockResolvedValue({ id: 'rec_src', fields: { id: 'src_new' } }),
+}));
+
+vi.mock('../../../store/opwddOrchestration.js', () => ({
+  openCaseForReferral: vi.fn().mockResolvedValue({}),
 }));
 
 // Re-import after mocks

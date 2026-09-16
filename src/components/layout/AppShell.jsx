@@ -30,6 +30,7 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useTaskReminderWatch } from '../../hooks/useTaskReminderWatch.js';
+import { useScheduledLeadWatch } from '../../hooks/useScheduledLeadWatch.js';
 
 const UNASSIGNED_ROLE_ID = 'rol_016';
 const NAV_TEXT = '#F7F7FA';
@@ -107,6 +108,7 @@ export default function AppShell() {
   const hydrated = useCareStore((s) => s.hydrated);
   const { appUser, appUserId, appUserName } = useCurrentAppUser();
   useTaskReminderWatch();
+  useScheduledLeadWatch();
   const { canAny, hasDivision } = usePermissions();
   const { resolveRole } = useLookups();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
@@ -201,10 +203,14 @@ export default function AppShell() {
   const newReferralModal = showNewReferral && (
     <NewReferralForm
       onClose={() => setShowNewReferral(false)}
-      onSuccess={({ patient, referral }) => {
+      onSuccess={(result) => {
+        if (result?.scheduled) {
+          triggerDataRefresh();
+          return;
+        }
         triggerDataRefresh();
         // Mobile: land on Files so upload is one tap away after create.
-        openDrawer(patient, referral, isMobile ? 'files' : undefined);
+        openDrawer(result.patient, result.referral, isMobile ? 'files' : undefined);
       }}
     />
   );

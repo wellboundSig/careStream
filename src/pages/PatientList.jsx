@@ -7,7 +7,7 @@ import { useProgressiveReveal } from '../hooks/useProgressiveReveal.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
 import DivisionBadge from '../components/common/DivisionBadge.jsx';
-import StageBadge from '../components/common/StageBadge.jsx';
+import StageBadge, { displayStageName } from '../components/common/StageBadge.jsx';
 import EpisodeTypeBadge from '../components/common/EpisodeTypeBadge.jsx';
 import ClinicalReviewByline from '../components/common/ClinicalReviewByline.jsx';
 import { useClinicalReviewInProgress } from '../hooks/useClinicalReviewInProgress.js';
@@ -24,7 +24,7 @@ import { useFlipWindow } from '../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../utils/tableScrollMode.js';
 import FlipTableShell from '../components/common/FlipTableShell.jsx';
 import { ColumnFilterButton } from '../utils/columnModel.jsx';
-import { cellMatchesFilter, filterIsActive, matchesNumericFilter, selectedFilterValues } from '../utils/columnFilters.js';
+import { cellMatchesFilter, filterIsActive, matchesNumericFilter, matchesStageFilter, stageFilterLabel } from '../utils/columnFilters.js';
 import { useCareStore } from '../store/careStore.js';
 import { matchesInsuranceQuery } from '../utils/insuranceDetails.js';
 import {
@@ -34,7 +34,13 @@ import {
   triageColumnLabel,
 } from '../utils/triageColumn.js';
 
-const ALL_STAGE_ORDER = ['Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required','F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending','Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation','Pre-SOC','SOC Scheduled','SOC Completed','Post Visit Intake','Post Visit Clinical Review','Completed','Hold','NTUC'];
+const ALL_STAGE_ORDER = [
+  'Lead Pre-Check', 'Lead Entry', 'Intake', 'Intake Post Visit',
+  'Eligibility', 'Disenrollment', 'F2F / MD Orders', 'Clinical Review',
+  'Clinical Review Post Visit', 'Auth Pending', 'Conflict', 'Staffing',
+  'Admin Confirm', 'Pre-SOC/ROC', 'SOC/ROC Sched', 'Visit Done', 'Completed',
+  'Hold', 'NTUC',
+];
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 const COLUMN_DEFS = [
@@ -291,9 +297,11 @@ export default function PatientList() {
           case 'triage':
             TRIAGE_FILTER_OPTIONS.forEach((opt) => vals.add(opt));
             break;
-          case 'stage':
-            if (ref?.current_stage) vals.add(ref.current_stage);
+          case 'stage': {
+            const label = stageFilterLabel(ref);
+            if (label) vals.add(label);
             break;
+          }
           case 'marketer': {
             const v = resolveMarketer(ref?.marketer_id);
             if (v && v !== '—') vals.add(v);
@@ -365,7 +373,7 @@ export default function PatientList() {
       }
       const ref = refByPatientId[p.id];
       if (stageFilter) {
-        if (!ref || ref.current_stage !== stageFilter) return false;
+        if (!ref || !matchesStageFilter(ref, [stageFilter])) return false;
       }
       // Per-column filters (multi-select)
       for (const [key, val] of Object.entries(colFilters)) {
@@ -382,12 +390,15 @@ export default function PatientList() {
           if (!matchesTriageFilter(label, val)) return false;
           continue;
         }
+        if (key === 'stage') {
+          if (!matchesStageFilter(ref, val)) return false;
+          continue;
+        }
         let cellVal = '';
         switch (key) {
           case 'division':       cellVal = p.division || ''; break;
           case 'episode_type':   cellVal = episodeTypeLongLabel(ref); break;
           case 'licence':        cellVal = resolveEntity(ref?.entity_id); break;
-          case 'stage':          cellVal = ref?.current_stage || ''; break;
           case 'marketer':       cellVal = resolveMarketer(ref?.marketer_id); break;
           case 'insurance':      cellVal = p.insurance_plan || ''; break;
           case 'referral_date':  cellVal = ref?.referral_date ? fmtDate(ref.referral_date) : ''; break;
@@ -413,8 +424,8 @@ export default function PatientList() {
       let va = (a[sortField] || '').toString().toLowerCase();
       let vb = (b[sortField] || '').toString().toLowerCase();
       if (sortField === 'stage') {
-        va = refByPatientId[a.id]?.current_stage || '';
-        vb = refByPatientId[b.id]?.current_stage || '';
+        va = displayStageName(refByPatientId[a.id]) || '';
+        vb = displayStageName(refByPatientId[b.id]) || '';
       }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     });

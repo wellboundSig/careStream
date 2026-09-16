@@ -8,6 +8,7 @@ import {
   needsPreCheckIntakeWarning,
   hoursToClinicalLeadPreCheck,
   clinicalLeadPreCheckStampFields,
+  formatClinicalLeadViableByline,
   markClinicalLeadViable,
   markClinicalLeadNotViable,
 } from '../clinicalLeadPreCheck.js';
@@ -109,6 +110,16 @@ describe('pre-check stamps and restore', () => {
     expect(fields.clinical_lead_precheck_approved_at).toBe('2026-09-04T15:00:00.000Z');
     expect(fields.clinical_lead_precheck_approved_by_id).toBe('usr_rn');
   });
+
+  it('formats the Referral tab viable-by line', () => {
+    expect(formatClinicalLeadViableByline({ current_stage: 'Lead Entry' })).toBe(null);
+    expect(formatClinicalLeadViableByline({
+      clinical_lead_precheck_approved_at: '2026-09-11T18:09:46.000Z',
+      clinical_lead_precheck_approved_by_id: 'usr_rn',
+    }, (id) => (id === 'usr_rn' ? 'Vanessa Villa' : id))).toMatch(
+      /^Marked viable by Vanessa Villa on .+2026.+\.$/,
+    );
+  });
 });
 
 describe('concurrent module membership', () => {
@@ -130,6 +141,18 @@ describe('concurrent module membership', () => {
     };
     expect(leads(r)).toBe(true);
     expect(clinical(r)).toBe(false);
+  });
+
+  it('leaves Clinical Review and Leads for Conflict, even if handoff flags linger', () => {
+    const conflict = STAGE_META.Conflict.matchReferral;
+    const r = {
+      current_stage: 'Conflict',
+      in_clinical_review: true,
+      clinical_review_assigned_to_id: 'usr_rn',
+    };
+    expect(leads(r)).toBe(false);
+    expect(clinical(r)).toBe(false);
+    expect(conflict(r)).toBe(true);
   });
 });
 
@@ -205,6 +228,10 @@ describe('markClinicalLeadNotViable', () => {
     expect(attemptTransition).toHaveBeenCalledWith(expect.objectContaining({
       referral,
       toStage: 'Conflict',
+      context: expect.objectContaining({
+        system: true,
+        extraFields: { in_clinical_review: false },
+      }),
     }));
     expect(left).toHaveBeenCalled();
     expect(applyTransition).toHaveBeenCalled();

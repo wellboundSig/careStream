@@ -14,6 +14,10 @@ import { inferAgeGroupFromDob } from '../../../utils/validation.js';
 import { fmtCalendarDate } from '../../../utils/dateFormat.js';
 import { isSourceBusinessId } from '../../../utils/sourceName.js';
 import { REFERRAL_METHODS } from '../../referralSources/sourceConstants.js';
+import {
+  isClinicalLeadPreCheck,
+  formatClinicalLeadViableByline,
+} from '../../../utils/clinicalLeadPreCheck.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const SERVICES_OPTIONS = ['SN', 'PT', 'OT', 'ST', 'HHA', 'ABA'];
@@ -707,6 +711,16 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
           <ValueText value={resolveUser(referral.intake_owner_id)} empty={!referral.intake_owner_id || resolveUser(referral.intake_owner_id) === '—'} />
         </FieldRow>
         <ReadField label="Submitted by" value={resolveUser(referral.lead_created_by_id)} />
+      </Section>
+
+      <Section title="Viability">
+        <ReadField
+          label="Clinical pre-check"
+          value={
+            formatClinicalLeadViableByline(referral, resolveUser)
+            || (isClinicalLeadPreCheck(referral) ? 'Awaiting clinical pre-check' : null)
+          }
+        />
       </Section>
 
       <Section title="Source">

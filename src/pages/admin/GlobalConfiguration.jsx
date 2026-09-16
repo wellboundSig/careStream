@@ -6,6 +6,7 @@ import palette, { hexToRgba } from '../../utils/colors.js';
 
 export const CONFIGURATION_TABS = [
   { to: 'leads', label: 'Lead viability', perm: PERMISSION_KEYS.ADMIN_SETTINGS },
+  { to: 'coc', label: 'COC', perm: PERMISSION_KEYS.ADMIN_SETTINGS },
   { to: 'permissions', label: 'Permissions', perm: PERMISSION_KEYS.ADMIN_PERMISSIONS },
   { to: 'conflict-categories', label: 'Conflict Categories', perm: PERMISSION_KEYS.CONFLICT_MANAGE_CATEGORIES },
   { to: 'departments', label: 'Departments', perm: PERMISSION_KEYS.ADMIN_DEPARTMENTS },

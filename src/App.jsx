@@ -30,6 +30,7 @@ import Permissions from './pages/admin/Permissions.jsx';
 import ConflictCategories from './pages/admin/ConflictCategories.jsx';
 import GlobalConfiguration, { ConfigurationIndex } from './pages/admin/GlobalConfiguration.jsx';
 import LeadViabilitySettings from './pages/admin/LeadViabilitySettings.jsx';
+import CocNursesSettings from './pages/admin/CocNursesSettings.jsx';
 import DeveloperTools from './pages/developer/DeveloperTools.jsx';
 import DepartmentManagement from './pages/admin/DepartmentManagement.jsx';
 import DepartmentDashboardPage from './pages/DepartmentDashboardPage.jsx';
@@ -116,6 +117,7 @@ export default function App() {
         <Route path="admin/configuration" element={<GlobalConfiguration />}>
           <Route index element={<ConfigurationIndex />} />
           <Route path="leads" element={<LeadViabilitySettings />} />
+          <Route path="coc" element={<CocNursesSettings />} />
           <Route path="permissions" element={<Permissions />} />
           <Route path="conflict-categories" element={<ConflictCategories />} />
           <Route path="departments" element={<DepartmentManagement />} />

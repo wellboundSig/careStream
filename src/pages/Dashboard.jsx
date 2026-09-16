@@ -19,7 +19,8 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysSinceCalendarDate } from '../utils/dateFormat.js';
-import { isSocCompletedReferral, STAGE_META } from '../data/stageConfig.js';
+import { isSocCompletedReferral, STAGE_META, countVisitCloseout } from '../data/stageConfig.js';
+import VisitCloseoutStrip from '../components/common/VisitCloseoutStrip.jsx';
 import OverduePatientsModal from '../components/dashboard/OverduePatientsModal.jsx';
 import CaseloadTasksSection from '../components/dashboard/CaseloadTasksSection.jsx';
 import { sortTasksBySchedule } from '../utils/taskSort.js';
@@ -39,7 +40,7 @@ import {
 const PIPELINE_STAGES = [
   'Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
-  'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
+  'Conflict','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed',
   'Post Visit Intake','Post Visit Clinical Review','Completed',
   'Hold','NTUC',
@@ -224,7 +225,9 @@ function CaseloadDashboard({ modeToggle = null }) {
   const storePatients = useCareStore((s) => s.patients) || {};
   const isMobile = useIsMobile();
   const lockedGrid = useLockedTableGrid();
-  const { can } = usePermissions();
+  const { can, canAny } = usePermissions();
+  const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
+  const [showNewReferral, setShowNewReferral] = useState(false);
 
   const myReferrals = useMemo(() => {
     if (!appUserId) return [];
@@ -345,6 +348,14 @@ function CaseloadDashboard({ modeToggle = null }) {
               {modeToggle && (
                 <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
               )}
+              {canEnterLead && (
+                <button
+                  onClick={() => setShowNewReferral(true)}
+                  style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  + New Lead
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -383,6 +394,20 @@ function CaseloadDashboard({ modeToggle = null }) {
             </button>
           )}
         </div>
+        {showNewReferral && (
+          <NewReferralForm
+            onClose={() => setShowNewReferral(false)}
+            onSuccess={(result) => {
+              if (result?.scheduled) {
+                setShowNewReferral(false);
+                return;
+              }
+              triggerDataRefresh();
+              setShowNewReferral(false);
+              openPatient(result.patient, result.referral);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -402,6 +427,14 @@ function CaseloadDashboard({ modeToggle = null }) {
             <HeaderMentionsButton onClick={() => navigate('/mentions')} />
             {modeToggle && (
               <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
+            )}
+            {canEnterLead && (
+              <button
+                onClick={() => setShowNewReferral(true)}
+                style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                + New Lead
+              </button>
             )}
           </div>
         )}
@@ -494,6 +527,20 @@ function CaseloadDashboard({ modeToggle = null }) {
           </table>
         )}
       </FlipTableShell>
+      {showNewReferral && (
+        <NewReferralForm
+          onClose={() => setShowNewReferral(false)}
+          onSuccess={(result) => {
+            if (result?.scheduled) {
+              setShowNewReferral(false);
+              return;
+            }
+            triggerDataRefresh();
+            setShowNewReferral(false);
+            openPatient(result.patient, result.referral);
+          }}
+        />
+      )}
       {showOverdue && (
         <OverduePatientsModal
           referrals={overdueReferrals}
@@ -530,10 +577,11 @@ function ExecutiveDashboard({ modeToggle = null }) {
   const { resolveMarketer, resolveUser, resolveUserImage } = useLookups();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { can } = usePermissions();
+  const { canAny } = usePermissions();
   const [showNewReferral, setShowNewReferral] = useState(false);
   const [showOverdue, setShowOverdue] = useState(false);
   const lockedGrid = useLockedTableGrid();
+  const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
 
   const filtered = useMemo(
     () => division === 'All' ? referrals : referrals.filter((r) => r.division === division),
@@ -544,9 +592,13 @@ function ExecutiveDashboard({ modeToggle = null }) {
     PIPELINE_STAGES.reduce((acc, s) => {
       // SOC Completed is concurrent: durable soc_completed_date keeps the
       // patient counted here even when current_stage is back in Intake.
-      acc[s] = filtered.filter((r) =>
-        s === 'SOC Completed' ? isSocCompletedReferral(r) : r.current_stage === s,
-      ).length;
+      acc[s] = filtered.filter((r) => {
+        if (s === 'SOC Completed') return isSocCompletedReferral(r);
+        if (s === 'Intake') {
+          return r.current_stage === 'Intake' || r.current_stage === 'EMR Onboarding';
+        }
+        return r.current_stage === s;
+      }).length;
       return acc;
     }, {}),
     [filtered],
@@ -583,6 +635,8 @@ function ExecutiveDashboard({ modeToggle = null }) {
       rocOwners: rankByCount(rocOwnerCounts, resolveUser, resolveUserImage),
     };
   }, [filtered, resolveMarketer, resolveUser, resolveUserImage]);
+
+  const visitCloseout = useMemo(() => countVisitCloseout(filtered), [filtered]);
 
   const activeCount = filtered.filter((r) => {
     if (INACTIVE_FOR_ACTIVE_KPI.has(r.current_stage)) return false;
@@ -641,6 +695,9 @@ function ExecutiveDashboard({ modeToggle = null }) {
         }}>
           {[
             { label: 'Active', value: activeCount, color: palette.primaryMagenta.hex },
+            { label: 'Visits done', value: visitCloseout.visitsCompleted, color: palette.accentBlue.hex, onClick: () => navigate('/modules/completed?closeout=visits') },
+            { label: 'Docs open', value: visitCloseout.paperworkOpen, color: palette.accentOrange.hex, onClick: () => navigate('/modules/completed?closeout=paperwork') },
+            { label: 'Fully closed', value: visitCloseout.fullyClosed, color: palette.accentGreen.hex, onClick: () => navigate('/modules/completed?closeout=closed') },
             { label: 'SOC done', value: socStaffBreakdown.socDone, color: palette.accentGreen.hex },
             { label: 'ROC done', value: socStaffBreakdown.rocDone, color: palette.accentBlue.hex },
             { label: 'New / wk', value: newThisWeek, color: palette.accentBlue.hex },
@@ -727,10 +784,14 @@ function ExecutiveDashboard({ modeToggle = null }) {
         {showNewReferral && (
           <NewReferralForm
             onClose={() => setShowNewReferral(false)}
-            onSuccess={({ patient, referral }) => {
+            onSuccess={(result) => {
+              if (result?.scheduled) {
+                setShowNewReferral(false);
+                return;
+              }
               triggerDataRefresh();
               setShowNewReferral(false);
-              openPatient(patient, referral, 'files');
+              openPatient(result.patient, result.referral, 'files');
             }}
           />
         )}
@@ -764,7 +825,7 @@ function ExecutiveDashboard({ modeToggle = null }) {
           {modeToggle && (
             <HeaderModeToggleButton mode={modeToggle.mode} onToggle={modeToggle.onToggle} />
           )}
-          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+          {canEnterLead && (
             <button
               onClick={() => setShowNewReferral(true)}
               style={{ padding: '8px 16px', borderRadius: 8, background: palette.primaryMagenta.hex, border: 'none', fontSize: 12.5, fontWeight: 650, color: palette.backgroundLight.hex, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -798,6 +859,18 @@ function ExecutiveDashboard({ modeToggle = null }) {
           />
         </div>
         <StatCard label="Overdue  ›14 days" value={overdueCount} sub="in stage too long" color={overdueCount > 0 ? palette.accentOrange.hex : palette.accentGreen.hex} alert={overdueCount > 0} onClick={() => setShowOverdue(true)} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), margin: '0 0 10px' }}>
+          Visit closeout
+        </p>
+        <VisitCloseoutStrip
+          visitsCompleted={visitCloseout.visitsCompleted}
+          paperworkOpen={visitCloseout.paperworkOpen}
+          fullyClosed={visitCloseout.fullyClosed}
+          onSelect={(view) => navigate(`/modules/completed?closeout=${view}`)}
+        />
       </div>
 
       {/* ── Stage distribution bar ── */}
@@ -878,9 +951,10 @@ function ExecutiveDashboard({ modeToggle = null }) {
       {showNewReferral && (
         <NewReferralForm
           onClose={() => setShowNewReferral(false)}
-          onSuccess={({ patient, referral }) => {
+          onSuccess={(result) => {
+            if (result?.scheduled) return;
             triggerDataRefresh();
-            openPatient(patient, referral);
+            openPatient(result.patient, result.referral);
           }}
         />
       )}

@@ -37,6 +37,7 @@ import { runWaystarEligibilityCheck } from './waystarEligibility.js';
 import { runSmartEligibilityCheck } from './payerRouting.js';
 import { runHchbDupCheck } from './hchbDupCheck.js';
 import { runHchbVisitCheck } from './hchbVisitCheck.js';
+import { runAssetOnboardingIntake } from './assetOnboarding.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://wellboundcarestream.com',
@@ -144,6 +145,31 @@ export async function handler(event) {
 
   if (rawPath === '/meta/tables' && method === 'GET') {
     return json(200, metaTables(), origin, event);
+  }
+
+  // Asset management onboarding intake — called by the HR onboarding Apps
+  // Script through /internal/asset-onboarding/intake (x-internal-key). Never
+  // exposed to browser sessions: the endpoint mints request-form tokens and
+  // emails hiring managers.
+  if (rawPath === '/asset-onboarding/intake' && method === 'POST') {
+    if (caller.kind !== 'internal') {
+      return json(403, { error: { type: 'FORBIDDEN', message: 'Internal callers only' } }, origin, event);
+    }
+    let body = null;
+    try {
+      body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString() : (event.body || '{}'));
+    } catch {
+      return json(400, { error: { type: 'INVALID_JSON', message: 'Body is not valid JSON' } }, origin, event);
+    }
+    try {
+      const result = await runAssetOnboardingIntake(body || {});
+      logAccess({ actorSub, method, table: '(asset-onboarding-intake)', status: result.ok ? 200 : 422 });
+      return json(result.ok ? 200 : 422, result, origin, event);
+    } catch (err) {
+      console.error('[wellbound-api asset-onboarding]', err);
+      logAccess({ actorSub, method, table: '(asset-onboarding-intake)', status: 500 });
+      return json(500, { error: { type: 'SERVER_ERROR', message: err.message } }, origin, event);
+    }
   }
 
   // Optum real-time eligibility (270/271). Secrets stay on the Lambda.
@@ -316,8 +342,10 @@ export async function handler(event) {
         throw new ApiError(404, 'NOT_FOUND', `Record not found`);
       }
       result = await getRecord(tableName, recId);
-      // Self-scope Users / UserPermissions for locked callers.
-      if (caller.locked && caller.kind !== 'internal') {
+      // Self-scope Users / UserPermissions for locked callers, and strip
+      // IT-only asset tables for non-IT callers (single-record reads must
+      // honor the same rules as list reads).
+      if (caller.kind !== 'internal') {
         const filtered = filterReadResult(caller, tableName, { records: [result] });
         if (!filtered.records?.length) throw new ApiError(404, 'NOT_FOUND', 'Record not found');
         result = filtered.records[0];

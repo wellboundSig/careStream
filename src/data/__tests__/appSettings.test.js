@@ -57,4 +57,15 @@ describe('global configuration permissions', () => {
     expect(content).not.toContain("path: '/admin/departments'");
     expect(content).not.toContain("path: '/admin/conflict-categories'");
   });
+
+  it('lists a COC roster tab next to Lead viability', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const content = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../../pages/admin/GlobalConfiguration.jsx'),
+      'utf-8',
+    );
+    expect(content).toContain("to: 'coc'");
+    expect(content).toContain("label: 'COC'");
+  });
 });

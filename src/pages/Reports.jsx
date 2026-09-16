@@ -54,6 +54,7 @@ const Icon = {
 const PRESET_ICONS = {
   files_report:          Icon.File,
   referral_speed:        Icon.Clock,
+  visit_closeout:        Icon.Checkmark,
   soc_missing_docs:      Icon.Warning,
   master_patient:        Icon.Pills,
   intake_volume:         Icon.Pipeline,

@@ -5,7 +5,7 @@ import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCareStore } from '../../../store/careStore.js';
 import { ColumnFilterButton } from '../../../utils/columnModel.jsx';
-import { cellMatchesFilter, filterIsActive } from '../../../utils/columnFilters.js';
+import { cellMatchesFilter, filterIsActive, matchesStageFilter, stageFilterLabel } from '../../../utils/columnFilters.js';
 import { useLockedTableGrid } from '../../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../../hooks/useFlipWindow.js';
 import { lockedGridClass, lockColClass } from '../../../utils/tableScrollMode.js';
@@ -79,7 +79,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
         switch (key) {
           case 'division':  return cellMatchesFilter(r.division, val);
           case 'licence':   return cellMatchesFilter(resolveEntity(r.entity_id), val);
-          case 'stage':     return cellMatchesFilter(r.current_stage, val);
+          case 'stage':     return matchesStageFilter(r, val);
           case 'triage':    return matchesTriageFilter(triageColumnLabel(r, !!(r?.id && triagePresence[r.id])), val);
           case 'insurance': return cellMatchesFilter(r.insurance_plan, val);
           default: return true;
@@ -118,7 +118,7 @@ export default function SourcePatientsTab({ referrals, loading }) {
         switch (col.key) {
           case 'division':  if (r.division) vals.add(r.division); break;
           case 'licence':   { const v = resolveEntity(r.entity_id); if (v && v !== '—') vals.add(v); break; }
-          case 'stage':     if (r.current_stage) vals.add(r.current_stage); break;
+          case 'stage':     { const v = stageFilterLabel(r); if (v) vals.add(v); break; }
           case 'triage':    TRIAGE_FILTER_OPTIONS.forEach((opt) => vals.add(opt)); break;
           case 'insurance': if (r.insurance_plan) vals.add(r.insurance_plan); break;
         }

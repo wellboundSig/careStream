@@ -196,6 +196,12 @@ function MadLibSentence({ template, slots, setSlots, marketerOpts, ownerOpts, so
           Export completed care {bits.episodeType} {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}.
         </p>
       );
+    case 'visit_closeout':
+      return (
+        <p style={sentenceStyle}>
+          Show visit closeout {bits.episodeType} {bits.dateRange} {bits.division}, {bits.marketers}, {bits.owners}: visits completed, paperwork still open, and fully closed.
+        </p>
+      );
     case 'ntuc_analysis':
       return (
         <p style={sentenceStyle}>

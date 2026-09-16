@@ -15,6 +15,7 @@ import {
   requiresClinicalPreCheck,
 } from '../data/appSettings.js';
 import { useCareStore } from '../store/careStore.js';
+import { fmtDateTime } from './dateFormat.js';
 
 export const CLINICAL_LEAD_PRECHECK_STAGE = 'Clinical Lead Pre-Check';
 
@@ -39,6 +40,16 @@ export function isClinicalLeadPreCheck(referral) {
 export function isClinicalLeadPreCheckApproved(referral) {
   const d = referral?.clinical_lead_precheck_approved_at;
   return d != null && d !== '' && d !== false;
+}
+
+/** Snapshot Referral tab copy: "Marked viable by Jane Doe on Sep 11, 2026 at 2:09 PM." */
+export function formatClinicalLeadViableByline(referral, resolveUser) {
+  if (!isClinicalLeadPreCheckApproved(referral)) return null;
+  const raw = referral.clinical_lead_precheck_approved_by_id;
+  const resolved = typeof resolveUser === 'function' ? resolveUser(raw) : null;
+  const staff = (resolved && resolved !== '—') ? resolved : (raw || 'Unknown');
+  const when = fmtDateTime(referral.clinical_lead_precheck_approved_at) || 'unknown date';
+  return `Marked viable by ${staff} on ${when}.`;
 }
 
 /** Restore destination after Discarded: keep the clinical glance if it never happened. */
@@ -149,8 +160,10 @@ export async function markClinicalLeadNotViable({
     referral,
     toStage: 'Conflict',
     context: {
+      system: true,
       actorUserId: appUserId,
       note: description,
+      extraFields: { in_clinical_review: false },
     },
   });
   if (!result.allowed) throw new Error(result.reason || 'Could not send to Conflict.');

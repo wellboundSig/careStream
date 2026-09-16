@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS "roles" (
   "id" text,
   "name" text,
   "description" text,
-  "default_preset_id" text,
   "created_at" timestamptz DEFAULT now(),
   "updated_at" timestamptz DEFAULT now()
 );
@@ -99,7 +98,10 @@ CREATE TABLE IF NOT EXISTS "users" (
   "eligibility_verifications" text,
   "conflicts" text,
   "is_support_staff" boolean,
-  "resolved_tickets" text
+  "resolved_tickets" text,
+  "ooo_active" boolean,
+  "ooo_starts_on" date,
+  "ooo_ends_on" date
 );
 CREATE INDEX IF NOT EXISTS "idx_users_id" ON "users" ("id");
 CREATE INDEX IF NOT EXISTS "idx_users_clerk_user_id" ON "users" ("clerk_user_id");
@@ -338,7 +340,6 @@ CREATE TABLE IF NOT EXISTS "referrals" (
   "urgent_care_marked_at" timestamptz,
   "urgent_care_marked_by_id" text,
   "urgent_care_note" text,
-  "urgent_care_type" text,
   "eligibility_recheck_requested_at" text,
   "eligibility_recheck_return_stage" text,
   "emr_onboarded_at" text,
@@ -348,7 +349,11 @@ CREATE TABLE IF NOT EXISTS "referrals" (
   "soc_scheduled_at" text,
   "staffing_confirmed_at" text,
   "staffing_confirmed_by_id" text,
-  "soc_scheduled_by_id" text
+  "soc_scheduled_by_id" text,
+  "returned_from_clinical" boolean,
+  "returned_from_clinical_note" text,
+  "returned_from_clinical_at" timestamptz,
+  "returned_from_clinical_by" text
 );
 CREATE INDEX IF NOT EXISTS "idx_referrals_id" ON "referrals" ("id");
 CREATE INDEX IF NOT EXISTS "idx_referrals_patient_id" ON "referrals" ("patient_id");
@@ -427,7 +432,6 @@ CREATE TABLE IF NOT EXISTS "files" (
   "r2_key" text,
   "r2_url" text,
   "category" text,
-  "physician_id" text,
   "created_at" timestamptz DEFAULT now(),
   "f2f_visit_date" text,
   "opwdd_case_id" text,
@@ -437,16 +441,19 @@ CREATE TABLE IF NOT EXISTS "files" (
   "verified_current_by_id" text,
   "verified_current_at" timestamptz,
   "authorization_id" text,
+  "archived_at" timestamptz,
+  "archived_by_id" text,
+  "archived_reason" text,
   "updated_at" timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS "idx_files_id" ON "files" ("id");
 CREATE INDEX IF NOT EXISTS "idx_files_patient_id" ON "files" ("patient_id");
 CREATE INDEX IF NOT EXISTS "idx_files_referral_id" ON "files" ("referral_id");
 CREATE INDEX IF NOT EXISTS "idx_files_uploaded_by_id" ON "files" ("uploaded_by_id");
-CREATE INDEX IF NOT EXISTS "idx_files_physician_id" ON "files" ("physician_id");
 CREATE INDEX IF NOT EXISTS "idx_files_opwdd_case_id" ON "files" ("opwdd_case_id");
 CREATE INDEX IF NOT EXISTS "idx_files_verified_current_by_id" ON "files" ("verified_current_by_id");
 CREATE INDEX IF NOT EXISTS "idx_files_authorization_id" ON "files" ("authorization_id");
+CREATE INDEX IF NOT EXISTS "idx_files_archived_by_id" ON "files" ("archived_by_id");
 CREATE INDEX IF NOT EXISTS "idx_files_updated_at" ON "files" ("updated_at");
 DROP TRIGGER IF EXISTS "trg_files_touch" ON "files";
 CREATE TRIGGER "trg_files_touch" BEFORE UPDATE ON "files" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -1307,7 +1314,6 @@ CREATE TABLE IF NOT EXISTS "tickets" (
   "resolution_note" text,
   "resolved_by_id" text,
   "internal_override" boolean,
-  "routed_to_idtech_at" timestamptz,
   "source" text,
   "wifi_connected" boolean,
   "facility_id" text,
@@ -1462,6 +1468,278 @@ CREATE INDEX IF NOT EXISTS "idx_clinicians_worker_id" ON "clinicians" ("worker_i
 CREATE INDEX IF NOT EXISTS "idx_clinicians_updated_at" ON "clinicians" ("updated_at");
 DROP TRIGGER IF EXISTS "trg_clinicians_touch" ON "clinicians";
 CREATE TRIGGER "trg_clinicians_touch" BEFORE UPDATE ON "clinicians" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AppSettings ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "app_settings" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "key" text,
+  "value" text,
+  "updated_by_id" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_app_settings_id" ON "app_settings" ("id");
+CREATE INDEX IF NOT EXISTS "idx_app_settings_updated_by_id" ON "app_settings" ("updated_by_id");
+CREATE INDEX IF NOT EXISTS "idx_app_settings_updated_at" ON "app_settings" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_app_settings_touch" ON "app_settings";
+CREATE TRIGGER "trg_app_settings_touch" BEFORE UPDATE ON "app_settings" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtOrganizations ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_organizations" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "name" text,
+  "active" boolean,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_organizations_id" ON "asset_mgt_organizations" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_organizations_updated_at" ON "asset_mgt_organizations" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_organizations_touch" ON "asset_mgt_organizations";
+CREATE TRIGGER "trg_asset_mgt_organizations_touch" BEFORE UPDATE ON "asset_mgt_organizations" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtSolutionCategories ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_solution_categories" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "name" text,
+  "sort_order" bigint,
+  "active" boolean,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_categories_id" ON "asset_mgt_solution_categories" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_categories_updated_at" ON "asset_mgt_solution_categories" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_solution_categories_touch" ON "asset_mgt_solution_categories";
+CREATE TRIGGER "trg_asset_mgt_solution_categories_touch" BEFORE UPDATE ON "asset_mgt_solution_categories" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtSolutions ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_solutions" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "name" text,
+  "category_id" text,
+  "solution_class" text,
+  "active" boolean,
+  "requestable" boolean,
+  "request_rank" bigint,
+  "notes" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solutions_id" ON "asset_mgt_solutions" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solutions_category_id" ON "asset_mgt_solutions" ("category_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solutions_updated_at" ON "asset_mgt_solutions" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_solutions_touch" ON "asset_mgt_solutions";
+CREATE TRIGGER "trg_asset_mgt_solutions_touch" BEFORE UPDATE ON "asset_mgt_solutions" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtSolutionOrganizations ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_solution_organizations" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "solution_id" text,
+  "organization_id" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_organizations_id" ON "asset_mgt_solution_organizations" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_organizations_solution_id" ON "asset_mgt_solution_organizations" ("solution_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_organizations_organization_id" ON "asset_mgt_solution_organizations" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_solution_organizations_updated_at" ON "asset_mgt_solution_organizations" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_solution_organizations_touch" ON "asset_mgt_solution_organizations";
+CREATE TRIGGER "trg_asset_mgt_solution_organizations_touch" BEFORE UPDATE ON "asset_mgt_solution_organizations" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtUsers ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_users" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "employee_id" text,
+  "first_name" text,
+  "last_name" text,
+  "name" text,
+  "staff_type" text,
+  "discipline" text,
+  "title" text,
+  "email" text,
+  "status" text,
+  "hire_date" date,
+  "termination_date" date,
+  "source" text,
+  "notes" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_users_id" ON "asset_mgt_users" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_users_employee_id" ON "asset_mgt_users" ("employee_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_users_updated_at" ON "asset_mgt_users" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_users_touch" ON "asset_mgt_users";
+CREATE TRIGGER "trg_asset_mgt_users_touch" BEFORE UPDATE ON "asset_mgt_users" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtUserSolutions ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_user_solutions" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "user_id" text,
+  "solution_id" text,
+  "relationship_type" text,
+  "granted_date" date,
+  "revoked_date" date,
+  "granted_by_id" text,
+  "revoked_by_id" text,
+  "notes" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_id" ON "asset_mgt_user_solutions" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_user_id" ON "asset_mgt_user_solutions" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_solution_id" ON "asset_mgt_user_solutions" ("solution_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_granted_by_id" ON "asset_mgt_user_solutions" ("granted_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_revoked_by_id" ON "asset_mgt_user_solutions" ("revoked_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_solutions_updated_at" ON "asset_mgt_user_solutions" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_user_solutions_touch" ON "asset_mgt_user_solutions";
+CREATE TRIGGER "trg_asset_mgt_user_solutions_touch" BEFORE UPDATE ON "asset_mgt_user_solutions" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtHardwareTypes ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_hardware_types" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "name" text,
+  "active" boolean,
+  "supports_quantity" boolean,
+  "allow_details" boolean,
+  "sort_order" bigint,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_hardware_types_id" ON "asset_mgt_hardware_types" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_hardware_types_updated_at" ON "asset_mgt_hardware_types" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_hardware_types_touch" ON "asset_mgt_hardware_types";
+CREATE TRIGGER "trg_asset_mgt_hardware_types_touch" BEFORE UPDATE ON "asset_mgt_hardware_types" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtUserHardware ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_user_hardware" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "user_id" text,
+  "hardware_type_id" text,
+  "quantity" bigint,
+  "details" text,
+  "assigned_date" date,
+  "returned_date" date,
+  "assigned_by_id" text,
+  "returned_by_id" text,
+  "notes" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_id" ON "asset_mgt_user_hardware" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_user_id" ON "asset_mgt_user_hardware" ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_hardware_type_id" ON "asset_mgt_user_hardware" ("hardware_type_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_assigned_by_id" ON "asset_mgt_user_hardware" ("assigned_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_returned_by_id" ON "asset_mgt_user_hardware" ("returned_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_user_hardware_updated_at" ON "asset_mgt_user_hardware" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_user_hardware_touch" ON "asset_mgt_user_hardware";
+CREATE TRIGGER "trg_asset_mgt_user_hardware_touch" BEFORE UPDATE ON "asset_mgt_user_hardware" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtPresets ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_presets" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "name" text,
+  "staff_type" text,
+  "description" text,
+  "active" boolean,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_presets_id" ON "asset_mgt_presets" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_presets_updated_at" ON "asset_mgt_presets" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_presets_touch" ON "asset_mgt_presets";
+CREATE TRIGGER "trg_asset_mgt_presets_touch" BEFORE UPDATE ON "asset_mgt_presets" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtPresetItems ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_preset_items" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "preset_id" text,
+  "item_type" text,
+  "solution_id" text,
+  "relationship_type" text,
+  "hardware_type_id" text,
+  "quantity" bigint,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_preset_items_id" ON "asset_mgt_preset_items" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_preset_items_preset_id" ON "asset_mgt_preset_items" ("preset_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_preset_items_solution_id" ON "asset_mgt_preset_items" ("solution_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_preset_items_hardware_type_id" ON "asset_mgt_preset_items" ("hardware_type_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_preset_items_updated_at" ON "asset_mgt_preset_items" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_preset_items_touch" ON "asset_mgt_preset_items";
+CREATE TRIGGER "trg_asset_mgt_preset_items_touch" BEFORE UPDATE ON "asset_mgt_preset_items" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtOnboardingRequests ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_onboarding_requests" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "token" text,
+  "new_hire_first_name" text,
+  "new_hire_last_name" text,
+  "new_hire_name" text,
+  "new_hire_title" text,
+  "staff_type" text,
+  "entity" text,
+  "start_date" date,
+  "hiring_manager_name" text,
+  "hiring_manager_email" text,
+  "status" text,
+  "asset_user_id" text,
+  "ticket_id" text,
+  "source_entry_id" text,
+  "submitted_at" timestamptz,
+  "submitted_by_id" text,
+  "completed_at" timestamptz,
+  "completed_by_id" text,
+  "notes" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_id" ON "asset_mgt_onboarding_requests" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_asset_user_id" ON "asset_mgt_onboarding_requests" ("asset_user_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_ticket_id" ON "asset_mgt_onboarding_requests" ("ticket_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_source_entry_id" ON "asset_mgt_onboarding_requests" ("source_entry_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_submitted_by_id" ON "asset_mgt_onboarding_requests" ("submitted_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_completed_by_id" ON "asset_mgt_onboarding_requests" ("completed_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_requests_updated_at" ON "asset_mgt_onboarding_requests" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_onboarding_requests_touch" ON "asset_mgt_onboarding_requests";
+CREATE TRIGGER "trg_asset_mgt_onboarding_requests_touch" BEFORE UPDATE ON "asset_mgt_onboarding_requests" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ── AssetMgtOnboardingRequestItems ─────────────────────────────
+CREATE TABLE IF NOT EXISTS "asset_mgt_onboarding_request_items" (
+  "rec_id" text PRIMARY KEY DEFAULT gen_rec_id(),
+  "id" text,
+  "request_id" text,
+  "item_type" text,
+  "solution_id" text,
+  "relationship_type" text,
+  "hardware_type_id" text,
+  "quantity" bigint,
+  "details" text,
+  "status" text,
+  "fulfilled_at" timestamptz,
+  "fulfilled_by_id" text,
+  "created_at" timestamptz DEFAULT now(),
+  "updated_at" timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_id" ON "asset_mgt_onboarding_request_items" ("id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_request_id" ON "asset_mgt_onboarding_request_items" ("request_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_solution_id" ON "asset_mgt_onboarding_request_items" ("solution_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_hardware_type_id" ON "asset_mgt_onboarding_request_items" ("hardware_type_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_fulfilled_by_id" ON "asset_mgt_onboarding_request_items" ("fulfilled_by_id");
+CREATE INDEX IF NOT EXISTS "idx_asset_mgt_onboarding_request_items_updated_at" ON "asset_mgt_onboarding_request_items" ("updated_at");
+DROP TRIGGER IF EXISTS "trg_asset_mgt_onboarding_request_items_touch" ON "asset_mgt_onboarding_request_items";
+CREATE TRIGGER "trg_asset_mgt_onboarding_request_items_touch" BEFORE UPDATE ON "asset_mgt_onboarding_request_items" FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- ── api_access_log (server-side access accounting; not an Airtable table) ──
 CREATE TABLE IF NOT EXISTS "api_access_log" (

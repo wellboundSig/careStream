@@ -74,6 +74,21 @@ describe('applyStageEntryEffects', () => {
     expect(act.metadata.priorCompletedBy).toBe('usr_013');
   });
 
+  it('clears the Clinical Review handoff when entering Conflict', () => {
+    const extra = applyStageEntryEffects({
+      referral: {
+        id: 'ref_1',
+        patient_id: 'pat_1',
+        current_stage: 'Clinical Lead Pre-Check',
+        in_clinical_review: true,
+      },
+      fromStage: 'Clinical Lead Pre-Check',
+      toStage: 'Conflict',
+      actorUserId: 'usr_1',
+    });
+    expect(extra.in_clinical_review).toBe(false);
+  });
+
   it('does not write history rows when there was no prior completion', () => {
     const extra = applyStageEntryEffects({
       referral: { id: 'ref_1', patient_id: 'pat_1', current_stage: 'Intake' },

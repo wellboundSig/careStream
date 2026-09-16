@@ -57,6 +57,38 @@ export const SUPPORT_TABLES = new Set([
   'Clinicians',
 ]);
 
+/**
+ * IT Asset + Access Management (Support /user-solutions workspace).
+ *
+ * Three tiers:
+ *  - ASSET_IT_TABLES: people + assignment history. Read AND write restricted
+ *    to support staff (Users.is_support_staff) — the workspace is IT-only.
+ *  - ASSET_CATALOG_TABLES: reference data (solutions, hardware types,
+ *    presets, …). Readable by any authenticated non-revoked user (the
+ *    hiring-manager request form needs the catalogs), writable by IT only.
+ *  - ASSET_REQUEST_TABLES: onboarding requests. Hiring managers (any
+ *    authenticated staff) read + write these to submit their hardware /
+ *    software requests; IT fulfills them.
+ */
+export const ASSET_IT_TABLES = new Set([
+  'AssetMgtUsers',
+  'AssetMgtUserSolutions',
+  'AssetMgtUserHardware',
+]);
+export const ASSET_CATALOG_TABLES = new Set([
+  'AssetMgtOrganizations',
+  'AssetMgtSolutionCategories',
+  'AssetMgtSolutions',
+  'AssetMgtSolutionOrganizations',
+  'AssetMgtHardwareTypes',
+  'AssetMgtPresets',
+  'AssetMgtPresetItems',
+]);
+export const ASSET_REQUEST_TABLES = new Set([
+  'AssetMgtOnboardingRequests',
+  'AssetMgtOnboardingRequestItems',
+]);
+
 export class AccessDeniedError extends Error {
   constructor(message = 'Access denied') {
     super(message);
@@ -141,13 +173,15 @@ function rowToCaller(row, { pending = false } = {}) {
     locked,
     pending,
     revoked,
+    // IT flag — gates the asset-management tables (deny by default).
+    isSupportStaff: row.is_support_staff === true,
   };
 }
 
 async function lookupCaller(actorSub, claims, hintEmail = '') {
   try {
     const { rows } = await query(
-      `SELECT rec_id, id, role_id, status, clerk_user_id, email
+      `SELECT rec_id, id, role_id, status, clerk_user_id, email, is_support_staff
          FROM users
         WHERE TRIM(clerk_user_id) = TRIM($1)
         LIMIT 1`,
@@ -162,7 +196,7 @@ async function lookupCaller(actorSub, claims, hintEmail = '') {
       const email = extractEmail(claims, hintEmail);
       if (email) {
         const byEmail = await query(
-          `SELECT rec_id, id, role_id, status, clerk_user_id, email
+          `SELECT rec_id, id, role_id, status, clerk_user_id, email, is_support_staff
              FROM users
             WHERE LOWER(TRIM(email)) = $1
               AND COALESCE(TRIM(status), '') <> 'Revoked'
@@ -212,6 +246,16 @@ async function lookupCaller(actorSub, claims, hintEmail = '') {
 export function assertCanWrite(caller, tableName = null) {
   if (!caller || caller.kind === 'internal') return;
   if (caller.revoked) throw new AccessDeniedError('Account revoked');
+  // Asset management: people/assignments and catalogs are IT-only writes.
+  // Onboarding request tables stay writable by any authenticated staff
+  // (hiring managers submit their requests there).
+  if (tableName && (ASSET_IT_TABLES.has(tableName) || ASSET_CATALOG_TABLES.has(tableName))) {
+    if (!caller.isSupportStaff) {
+      throw new AccessDeniedError('Asset management is restricted to IT support staff');
+    }
+    return;
+  }
+  if (tableName && ASSET_REQUEST_TABLES.has(tableName)) return;
   // Support-desk tables are open to any authenticated (non-revoked) user, even
   // if they have no CareStream role — the support portal serves all staff.
   if (tableName && SUPPORT_TABLES.has(tableName)) return;
@@ -260,11 +304,20 @@ export async function assertHasAnyPermission(caller, permissionKeys) {
 }
 
 export function filterReadResult(caller, tableName, result) {
-  if (!caller || caller.kind === 'internal' || !caller.locked) return result;
+  if (!caller || caller.kind === 'internal') return result;
+  // Asset people + assignment history: IT eyes only, regardless of role.
+  // Empty set (not 403) keeps client table-fetch shapes intact.
+  if (ASSET_IT_TABLES.has(tableName) && !caller.isSupportStaff) {
+    return { records: [] };
+  }
+  if (!caller.locked) return result;
   if (caller.revoked) throw new AccessDeniedError('Account revoked');
   // Support-desk tables (non-PHI) are readable by all authenticated users so the
   // support portal works for staff with no CareStream role.
   if (SUPPORT_TABLES.has(tableName)) return result;
+  // Asset catalogs + onboarding requests: non-PHI, needed by hiring managers
+  // (who may have no CareStream role) to fill the request form.
+  if (ASSET_CATALOG_TABLES.has(tableName) || ASSET_REQUEST_TABLES.has(tableName)) return result;
   if (LOCKED_READ_ALLOWLIST.has(tableName)) {
     if (tableName === 'Users' && caller.userId && result?.records) {
       return {
@@ -285,7 +338,9 @@ export function filterReadResult(caller, tableName, result) {
 }
 
 export async function filterHydrateResult(caller, hydrateResult) {
-  if (!caller || caller.kind === 'internal' || !caller.locked) return hydrateResult;
+  // No locked shortcut here: filterReadResult also strips the IT-only asset
+  // tables for unlocked non-IT callers, so every table must pass through it.
+  if (!caller || caller.kind === 'internal') return hydrateResult;
   if (caller.revoked) throw new AccessDeniedError('Account revoked');
   const tables = hydrateResult?.tables || {};
   const out = {};

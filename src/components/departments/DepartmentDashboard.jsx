@@ -9,8 +9,8 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import TaskComposer from '../tasks/TaskComposer.jsx';
 import { MODULE_COLUMN_DEFS, useColumnVisibility, useColumnFilters, ColumnPicker, ColumnFilterButton, FilterIcon, ColsIcon } from '../../utils/columnModel.jsx';
-import { cellMatchesFilter, filterIsActive } from '../../utils/columnFilters.js';
-import StageBadge from '../common/StageBadge.jsx';
+import { cellMatchesFilter, filterIsActive, matchesStageFilter, stageFilterLabel } from '../../utils/columnFilters.js';
+import StageBadge, { displayStageName } from '../common/StageBadge.jsx';
 import DivisionBadge from '../common/DivisionBadge.jsx';
 import EmptyState from '../common/EmptyState.jsx';
 import OooBadge from '../common/OooBadge.jsx';
@@ -34,12 +34,12 @@ import {
 
 const TERMINAL = new Set(['NTUC', 'SOC Completed', 'Completed']);
 const STAGE_BAR_COLOR = {
-  'Clinical Lead Pre-Check': palette.primaryDeepPlum.hex, 'Lead Entry': palette.accentBlue.hex, 'Intake': hexToRgba(palette.accentBlue.hex, 0.66), 'Staffing Feasibility': hexToRgba(palette.accentBlue.hex, 0.33),
-  'Eligibility Verification': palette.accentOrange.hex, 'Disenrollment Required': hexToRgba(palette.accentOrange.hex, 0.66), 'F2F/MD Orders Pending': hexToRgba(palette.accentOrange.hex, 0.33),
-  'Clinical Intake RN Review': palette.primaryMagenta.hex, 'Conflict': hexToRgba(palette.primaryMagenta.hex, 0.66), 'Authorization Pending': hexToRgba(palette.primaryMagenta.hex, 0.33),
-  'Admin Confirmation': palette.primaryDeepPlum.hex, 'Pre-SOC': hexToRgba(palette.accentGreen.hex, 0.33), 'SOC Scheduled': hexToRgba(palette.accentGreen.hex, 0.66),
-  'SOC Completed': palette.accentGreen.hex, 'Post Visit Intake': hexToRgba(palette.accentBlue.hex, 0.5),
-  'Post Visit Clinical Review': hexToRgba(palette.primaryMagenta.hex, 0.5), 'Completed': palette.accentGreen.hex,
+  'Clinical Lead Pre-Check': palette.primaryDeepPlum.hex, 'Lead Pre-Check': palette.primaryDeepPlum.hex, 'Lead Entry': palette.accentBlue.hex, 'Intake': hexToRgba(palette.accentBlue.hex, 0.66), 'Staffing Feasibility': hexToRgba(palette.accentBlue.hex, 0.33), 'Staffing': hexToRgba(palette.accentBlue.hex, 0.33),
+  'Eligibility Verification': palette.accentOrange.hex, 'Eligibility': palette.accentOrange.hex, 'Disenrollment Required': hexToRgba(palette.accentOrange.hex, 0.66), 'Disenrollment': hexToRgba(palette.accentOrange.hex, 0.66), 'F2F/MD Orders Pending': hexToRgba(palette.accentOrange.hex, 0.33), 'F2F / MD Orders': hexToRgba(palette.accentOrange.hex, 0.33),
+  'Clinical Intake RN Review': palette.primaryMagenta.hex, 'Clinical Review': palette.primaryMagenta.hex, 'Conflict': hexToRgba(palette.primaryMagenta.hex, 0.66), 'Authorization Pending': hexToRgba(palette.primaryMagenta.hex, 0.33), 'Auth Pending': hexToRgba(palette.primaryMagenta.hex, 0.33),
+  'Admin Confirmation': palette.primaryDeepPlum.hex, 'Admin Confirm': palette.primaryDeepPlum.hex, 'Pre-SOC': hexToRgba(palette.accentGreen.hex, 0.33), 'Pre-SOC/ROC': hexToRgba(palette.accentGreen.hex, 0.33), 'SOC Scheduled': hexToRgba(palette.accentGreen.hex, 0.66), 'SOC/ROC Sched': hexToRgba(palette.accentGreen.hex, 0.66),
+  'SOC Completed': palette.accentGreen.hex, 'Visit Done': palette.accentGreen.hex, 'Post Visit Intake': hexToRgba(palette.accentBlue.hex, 0.5), 'Intake Post Visit': hexToRgba(palette.accentBlue.hex, 0.5),
+  'Post Visit Clinical Review': hexToRgba(palette.primaryMagenta.hex, 0.5), 'Clinical Review Post Visit': hexToRgba(palette.primaryMagenta.hex, 0.5), 'Completed': palette.accentGreen.hex,
   'Hold': palette.highlightYellow.hex, 'NTUC': hexToRgba(palette.backgroundDark.hex, 0.33),
 };
 const STATUS_DOT = { Active: palette.accentGreen.hex, Pending: palette.highlightYellow.hex, Suspended: palette.accentOrange.hex, Revoked: hexToRgba(palette.backgroundDark.hex, 0.3) };
@@ -124,7 +124,14 @@ export default function DepartmentDashboard({ department, scope }) {
   const activeCount = scopedReferrals.filter((r) => !TERMINAL.has(r.current_stage)).length;
   const now = Date.now();
   const overdueCount = scopedReferrals.filter((r) => { if (TERMINAL.has(r.current_stage) || r.current_stage === 'Hold' || !r.updated_at) return false; return Math.floor((now - new Date(r.updated_at).getTime()) / 86400000) > 14; }).length;
-  const stageCounts = useMemo(() => { const c = {}; scopedReferrals.forEach((r) => { c[r.current_stage] = (c[r.current_stage] || 0) + 1; }); return c; }, [scopedReferrals]);
+  const stageCounts = useMemo(() => {
+    const c = {};
+    scopedReferrals.forEach((r) => {
+      const label = displayStageName(r) || r.current_stage;
+      if (label) c[label] = (c[label] || 0) + 1;
+    });
+    return c;
+  }, [scopedReferrals]);
   const activeStages = scopeStages.length > 0 ? scopeStages.filter((s) => stageCounts[s] > 0) : Object.keys(stageCounts).filter((s) => stageCounts[s] > 0);
 
   const triagePresence = useMemo(
@@ -140,7 +147,7 @@ export default function DepartmentDashboard({ department, scope }) {
       list = list.filter((r) => {
         switch (key) {
           case 'division': return cellMatchesFilter(r.division, val);
-          case 'stage': return cellMatchesFilter(r.current_stage, val);
+          case 'stage': return matchesStageFilter(r, val);
           case 'source': return cellMatchesFilter(resolveSource(r.referral_source_id), val);
           case 'source_entity': return cellMatchesFilter(resolveSourceEntity(r.referral_source_id), val);
           case 'marketer': return cellMatchesFilter(resolveMarketer(r.marketer_id), val);
@@ -352,12 +359,12 @@ export default function DepartmentDashboard({ department, scope }) {
               {activeStages.map((stage) => (<div key={stage} style={{ width: `${(stageCounts[stage] / activeCount) * 100}%`, minWidth: 3, background: STAGE_BAR_COLOR[stage] || hexToRgba(palette.backgroundDark.hex, 0.3), cursor: 'pointer', transition: 'filter 0.1s' }}
                 onMouseEnter={(e) => { if (!barRef.current) return; const br = barRef.current.getBoundingClientRect(); const sr = e.currentTarget.getBoundingClientRect(); setTooltip({ stage, count: stageCounts[stage], x: Math.max(60, Math.min(sr.left - br.left + sr.width / 2, br.width - 60)) }); e.currentTarget.style.filter = 'brightness(1.12)'; }}
                 onMouseLeave={(e) => { setTooltip(null); e.currentTarget.style.filter = ''; }}
-                onDoubleClick={() => { const slug = STAGE_SLUGS[stage]; if (slug) navigate(`/modules/${slug}`); }} />))}
+                onDoubleClick={() => { const slug = STAGE_SLUGS[stage] || (stage === 'Intake Post Visit' || stage === 'Intake' ? 'intake' : stage === 'Clinical Review Post Visit' || stage === 'Clinical Review' ? 'clinical-rn' : null); if (slug) navigate(`/modules/${slug}`); }} />))}
             </div>
             {tooltip && <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: tooltip.x, transform: 'translateX(-50%)', background: palette.backgroundDark.hex, color: palette.backgroundLight.hex, padding: '5px 11px', borderRadius: 6, fontSize: 11.5, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 20 }}><strong>{tooltip.stage}</strong> · {tooltip.count}<span style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `5px solid ${palette.backgroundDark.hex}` }} /></div>}
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
-            {activeStages.slice(0, 8).map((s) => (<span key={s} onClick={() => { const slug = STAGE_SLUGS[s]; if (slug) navigate(`/modules/${slug}`); }} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: STAGE_BAR_COLOR[s] }} /><strong>{stageCounts[s]}</strong> {s}</span>))}
+            {activeStages.slice(0, 8).map((s) => (<span key={s} onClick={() => { const slug = STAGE_SLUGS[s] || (s === 'Intake Post Visit' || s === 'Intake' ? 'intake' : s === 'Clinical Review Post Visit' || s === 'Clinical Review' ? 'clinical-rn' : null); if (slug) navigate(`/modules/${slug}`); }} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.55), cursor: 'pointer' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: STAGE_BAR_COLOR[s] }} /><strong>{stageCounts[s]}</strong> {s}</span>))}
           </div>
         </div>
       )}
@@ -490,7 +497,7 @@ export default function DepartmentDashboard({ department, scope }) {
                                         : col.key === 'division'
                                           ? [...new Set(scopedReferrals.map((r) => r.division).filter(Boolean))].sort((a, b) => a.localeCompare(b))
                                           : col.key === 'stage'
-                                            ? [...new Set(scopedReferrals.map((r) => r.current_stage).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+                                            ? [...new Set(scopedReferrals.map((r) => stageFilterLabel(r)).filter(Boolean))].sort((a, b) => a.localeCompare(b))
                                             : undefined
                                 }
                               />

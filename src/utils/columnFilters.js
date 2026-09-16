@@ -1,3 +1,5 @@
+import { displayStageName } from '../components/common/StageBadge.jsx';
+
 /** Column filter values are string[] (multi-select). Legacy strings still parse. */
 
 export function selectedFilterValues(val) {
@@ -35,6 +37,26 @@ export function matchesYesNoFilter(isYes, val) {
   if (wantsYes) return !!isYes;
   if (wantsNo) return !isYes;
   return true;
+}
+
+/**
+ * Stage column filters use UI labels (Intake Post Visit, Clinical Review Post
+ * Visit, EMR Onboarding → Intake), not the raw `current_stage` string.
+ */
+export function stageFilterLabel(referral, fallbackStage) {
+  return displayStageName(referral, fallbackStage) || '';
+}
+
+export function matchesStageFilter(referral, val, fallbackStage) {
+  const selected = selectedFilterValues(val);
+  if (!selected.length) return true;
+  const label = stageFilterLabel(referral, fallbackStage);
+  if (!label) return false;
+  return selected.some((s) => {
+    if (label === s) return true;
+    const asDisplay = displayStageName({ current_stage: s }, s);
+    return !!asDisplay && label === asDisplay;
+  });
 }
 
 export function matchesNumericFilter(dayCount, val) {

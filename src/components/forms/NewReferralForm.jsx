@@ -3,16 +3,10 @@ import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../../data/permissionKeys.js';
 import { useIsMobile } from '../../hooks/useIsMobile.js';
-import { createPatient, updatePatient } from '../../api/patients.js';
-import { createReferral, updateReferral } from '../../api/referrals.js';
+import { updatePatient } from '../../api/patients.js';
 import { createNoteOptimistic } from '../../store/mutations.js';
-import { syncPatientInsurances } from '../../api/syncPatientInsurances.js';
-import {
-  serializeUrgentCareTypes,
-} from '../../utils/urgentCare.js';
 import UrgentCareTypePicker from '../common/UrgentCareTypePicker.jsx';
-import { openCaseForReferral } from '../../store/opwddOrchestration.js';
-import { useCareStore, mergeEntities, updateEntity } from '../../store/careStore.js';
+import { useCareStore, updateEntity } from '../../store/careStore.js';
 import { useLookups } from '../../hooks/useLookups.js';
 import PhysicianPicker from '../physicians/PhysicianPicker.jsx';
 import { agencies } from '../../../agencies.js';
@@ -26,13 +20,10 @@ import {
   inferAgeGroupFromDob,
 } from '../../utils/validation.js';
 import { parseFlexibleBirthDate } from '../../utils/dateFormat.js';
-import { defaultLeadStage } from '../../utils/clinicalLeadPreCheck.js';
 import { DEFAULT_LANGUAGE_CODE, LANGUAGE_OPTIONS } from '../../data/languages.js';
-import { createReferralSource } from '../../api/referralSources.js';
 import {
   sanitizeSourceName,
   isSourceBusinessId,
-  isPlausibleSourceLabel,
   UNKNOWN_SOURCE_ID,
 } from '../../utils/sourceName.js';
 import { REFERRAL_METHODS, normalizeReferralMethod } from '../referralSources/sourceConstants.js';
@@ -42,8 +33,7 @@ import {
   normalizeContactName,
 } from '../../utils/personName.js';
 import { useReferralDraftAutosave } from '../../hooks/useReferralDraftAutosave.js';
-import { savePatientContactSlot, isStaffDirectoryEmail } from '../../utils/knownGuardians.js';
-import { splitContactNameAndRelationship } from '../../data/guardianRelationships.js';
+import { isStaffDirectoryEmail } from '../../utils/knownGuardians.js';
 import HchbDupWarning from '../common/HchbDupWarning.jsx';
 import InsurancePlanPicker from '../common/InsurancePlanPicker.jsx';
 import { EPISODE_TYPES, normalizeEpisodeType } from '../../utils/episodeType.js';
@@ -52,6 +42,8 @@ import LeadFileAttachments, {
   stagedFilesNeedF2fDate,
   uploadStagedLeadFiles,
 } from './LeadFileAttachments.jsx';
+import { commitNewLeadFromForm } from '../../utils/commitNewLeadFromForm.js';
+import { createScheduledLead } from '../../api/scheduledLeads.js';
 
 const DIVISIONS = ['ALF', 'Special Needs'];
 const GENDERS = ['Male', 'Female', 'Other', 'Prefer Not to Say'];
@@ -116,6 +108,14 @@ export function getServicesForDivision(division) {
 
 function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function defaultGoLiveLocal() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ── Shared field components ───────────────────────────────────────────────────
@@ -554,6 +554,8 @@ export default function NewReferralForm({
   const [submitPhase, setSubmitPhase] = useState('creating');
   const [stagedFiles, setStagedFiles] = useState([]);
   const [error, setError] = useState(null);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [scheduleLocal, setScheduleLocal] = useState('');
   // If patient insert succeeds and referral insert fails, reuse this row on
   // retry instead of minting another pat_… shell.
   const orphanPatientRef = useRef(null);
@@ -945,8 +947,8 @@ export default function NewReferralForm({
     return errs;
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(e, scheduleOpts = {}) {
+    e?.preventDefault?.();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
@@ -990,282 +992,70 @@ export default function NewReferralForm({
       }
     }
 
+    const goLiveAt = scheduleOpts.goLiveAt;
+    const goLiveMs = goLiveAt ? new Date(goLiveAt).getTime() : NaN;
+    const scheduleFuture = Number.isFinite(goLiveMs) && goLiveMs > Date.now() + 2000;
+
+    if (scheduleFuture) {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const named = normalizePersonNameFields({
+          first_name: form.first_name,
+          last_name: form.last_name,
+        });
+        const displayName = [named.last_name, named.first_name].filter(Boolean).join(', ') || 'Scheduled lead';
+        const snapshot = {
+          ...form,
+          _physician: selectedPhysician || form._physician || null,
+          _forceStage: forceStage || null,
+        };
+        await createScheduledLead({
+          id: generateId('sled'),
+          owner_user_id: appUserId,
+          display_name: displayName,
+          go_live_at: new Date(goLiveAt).toISOString(),
+          form_data: snapshot,
+          force_stage: forceStage || '',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        await deleteDraftQuiet();
+        setDirty(false);
+        setShowSchedulePicker(false);
+        onSuccess?.({
+          scheduled: true,
+          goLiveAt: new Date(goLiveAt).toISOString(),
+          displayName,
+        });
+        onClose();
+      } catch (err) {
+        console.error('[NewReferralForm] Schedule failed:', err);
+        setError(`Could not schedule lead: ${err.message}`);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     setSubmitPhase('creating');
     setError(null);
 
     try {
-      const orphan = orphanPatientRef.current;
-      const patientCustomId = orphan?.businessId || generateId('pat');
-      const referralCustomId = generateId('ref');
-
-      const insurancePrimary = form.insurance_plans[0] || '';
-      const allInsuranceJson = form.insurance_plans.length > 0 ? JSON.stringify(form.insurance_plans) : '';
-      const planDetailsJson = Object.keys(form.insurance_plan_details).length > 0 ? JSON.stringify(form.insurance_plan_details) : '';
-
-      const named = normalizePersonNameFields({
-        first_name: form.first_name,
-        last_name: form.last_name,
+      const stamp = Number.isFinite(goLiveMs) ? new Date(goLiveAt).toISOString() : new Date().toISOString();
+      const result = await commitNewLeadFromForm({
+        form,
+        appUserId,
+        sources,
+        forceStage,
+        selectedPhysician,
+        at: stamp,
+        orphanPatient: orphanPatientRef.current,
       });
-
-      // Lead Entry "Primary Contact" UI stores on emergency_contact_* and
-      // dual-writes primary_contact_* (same person / same-as-primary).
-      const resolvedPrimaryPhone = form.emergency_contact_phone || form.phone_primary || form.phone_secondary || '';
-      const resolvedPrimaryEmail = (form.emergency_contact_email || '').trim();
-      const resolvedPrimaryName = form.emergency_contact_name || form.primary_contact_name || '';
-      const resolvedPrimaryRel = form.emergency_contact_relationship || form.primary_contact_relationship || '';
-      const primaryParsed = splitContactNameAndRelationship(resolvedPrimaryName);
-      const emergencyParsed = primaryParsed;
-      const emergencyPhone = resolvedPrimaryPhone;
-      const emergencyEmail = resolvedPrimaryEmail;
-      const emergencyRel = resolvedPrimaryRel;
-
-      const patientFields = {
-        id: patientCustomId,
-        first_name: named.first_name,
-        last_name: named.last_name,
-        phone_primary: form.phone_primary.trim(),
-        insurance_plan: insurancePrimary,
-        division: form.division,
-        is_active: 'TRUE',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        ...(allInsuranceJson && { insurance_plans: allInsuranceJson }),
-        ...(planDetailsJson && { insurance_plan_details: planDetailsJson }),
-        ...(form.county && { county: form.county }),
-        ...(form.dob && { dob: form.dob }),
-        ...(form.gender && { gender: form.gender }),
-        preferred_language: form.preferred_language || DEFAULT_LANGUAGE_CODE,
-        ...(form.phone_secondary && { phone_secondary: form.phone_secondary }),
-        ...(form.email && { email: form.email }),
-        // DEPRECATED: Patients.medicaid_number / medicare_number / insurance_id
-        // are no longer written at referral time. Per-plan member IDs are
-        // stored in `insurance_plan_details` and (post-migration) in the
-        // PatientInsurances table. See INSURANCE_CONSOLIDATION_PLAN.md.
-        ...(form.address_street && { address_street: form.address_street }),
-        ...(form.address_city && { address_city: form.address_city }),
-        ...(form.address_state && { address_state: form.address_state }),
-        ...(form.address_zip && { address_zip: form.address_zip }),
-        ...(primaryParsed.cleanName && {
-          primary_contact_name: normalizeContactName(primaryParsed.cleanName),
-        }),
-        ...(resolvedPrimaryPhone && { primary_contact_phone: resolvedPrimaryPhone }),
-        ...(resolvedPrimaryEmail && { primary_contact_email: resolvedPrimaryEmail }),
-        ...((resolvedPrimaryRel || primaryParsed.relationship) && {
-          primary_contact_relationship: resolvedPrimaryRel || primaryParsed.relationship,
-        }),
-        ...(emergencyParsed.cleanName && {
-          emergency_contact_name: normalizeContactName(emergencyParsed.cleanName),
-        }),
-        ...(emergencyPhone && { emergency_contact_phone: emergencyPhone }),
-        ...(emergencyEmail && { emergency_contact_email: emergencyEmail }),
-        ...((emergencyRel || emergencyParsed.relationship) && {
-          emergency_contact_relationship: emergencyRel || emergencyParsed.relationship,
-        }),
-      };
-
-      let patientRecord;
-      if (orphan?.recId) {
-        const updated = await updatePatient(orphan.recId, patientFields);
-        patientRecord = updated?.id
-          ? updated
-          : { id: orphan.recId, fields: { ...orphan.fields, ...patientFields } };
-      } else {
-        patientRecord = await createPatient(patientFields);
-      }
-      const createdPatientId = patientRecord.fields?.id || patientCustomId;
-      orphanPatientRef.current = {
-        recId: patientRecord.id,
-        businessId: createdPatientId,
-        fields: patientRecord.fields || patientFields,
-      };
-
-      // System of record: known_guardians + patient_guardians (non-fatal if API lags).
-      const primaryName = primaryParsed.cleanName || resolvedPrimaryName;
-      const primaryPhone = resolvedPrimaryPhone;
-      if (primaryName || primaryPhone) {
-        savePatientContactSlot({
-          patientBusinessId: createdPatientId,
-          patientRecordId: patientRecord.id,
-          slot: 'primary',
-          name: primaryName,
-          phone: primaryPhone,
-          email: resolvedPrimaryEmail,
-          relationship: resolvedPrimaryRel || primaryParsed.relationship || '',
-          source: 'new_referral',
-        }).catch((err) => console.warn('New referral: primary guardian sync failed', err));
-      }
-      const emergencyName = form.emergency_same_as_primary
-        ? (primaryName || form.emergency_contact_name)
-        : form.emergency_contact_name;
-      const emergencyPhoneForSync = form.emergency_same_as_primary
-        ? (primaryPhone || form.emergency_contact_phone)
-        : form.emergency_contact_phone;
-      if (emergencyName || emergencyPhoneForSync) {
-        savePatientContactSlot({
-          patientBusinessId: createdPatientId,
-          patientRecordId: patientRecord.id,
-          slot: 'emergency',
-          name: emergencyName,
-          phone: emergencyPhoneForSync,
-          email: form.emergency_same_as_primary
-            ? resolvedPrimaryEmail
-            : form.emergency_contact_email,
-          relationship: form.emergency_same_as_primary
-            ? (form.emergency_contact_relationship || resolvedPrimaryRel || primaryParsed.relationship)
-            : form.emergency_contact_relationship,
-          source: 'new_referral',
-        }).catch((err) => console.warn('New referral: emergency guardian sync failed', err));
-      }
-
-      // Canonical PatientInsurances — Eligibility/Auth/Demographics read this.
-      // Await so CIN is present before the drawer opens; JSON remains the mirror.
-      if (form.insurance_plans.length > 0) {
-        try {
-          const syncResult = await syncPatientInsurances({
-            patientRecordId:   patientRecord.id,
-            patientBusinessId: createdPatientId,
-            plans:   form.insurance_plans,
-            details: form.insurance_plan_details,
-            enteredFrom: 'referral',
-          });
-          if (!syncResult?.synced) {
-            console.warn('New referral: PatientInsurances sync incomplete', syncResult);
-          }
-        } catch (err) {
-          console.warn('New referral: PatientInsurances sync failed', err);
-        }
-      }
-
-      const resolvedMarketer = form.marketer_id === 'other'
-        ? form.marketer_other.trim()
-        : form.marketer_id;
-
-      let resolvedSource = form.referral_source_id;
-      let otherSourceNote = '';
-      if (form.referral_source_id === 'other') {
-        const rawOther = form.referral_source_other.trim();
-        const safeName = sanitizeSourceName(rawOther);
-        if (!safeName) throw new Error('Invalid referral source name');
-        // Never write free text into referral_source_id.
-        // Short labels → new directory row; prose / notes → Unknown + note.
-        if (isPlausibleSourceLabel(safeName)) {
-          const srcId = `src_${Date.now().toString(36)}`;
-          const srcRec = await createReferralSource({
-            id: srcId,
-            name: safeName,
-            type: 'Other',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          resolvedSource = srcRec.fields?.id || srcId;
-          try {
-            mergeEntities('referralSources', {
-              [srcRec.id]: { _id: srcRec.id, ...srcRec.fields, id: resolvedSource },
-            });
-          } catch { /* non-fatal */ }
-          if (rawOther !== safeName) {
-            otherSourceNote = `Original "Other" source text: ${rawOther}`;
-          }
-        } else {
-          resolvedSource = UNKNOWN_SOURCE_ID;
-          otherSourceNote = `Referral source details (Other): ${rawOther}`;
-        }
-      } else if (!isSourceBusinessId(resolvedSource)
-        && !sources.some((s) => s.id === resolvedSource)) {
-        throw new Error('Referral source must be selected from the directory');
-      }
-
-      const referralDate = new Date().toISOString();
-      let stage = defaultLeadStage({ division: form.division, code_95: form.code_95 });
-      if (forceStage === 'Lead Entry' || forceStage === 'Intake') {
-        // Inbound convert: honor explicit mode unless SN+no Code 95 forces OPWDD.
-        // "Convert to Lead" follows the global clinical pre-check setting.
-        if (!(form.division === 'Special Needs' && form.code_95 === 'no')) {
-          stage = forceStage === 'Lead Entry' ? defaultLeadStage({ division: form.division, code_95: form.code_95 }) : forceStage;
-        }
-      }
-      const referralFields = {
-        id: referralCustomId,
-        patient_id: createdPatientId,
-        marketer_id: typeof resolvedMarketer === 'string' ? resolvedMarketer.trim() : resolvedMarketer,
-        referral_source_id: resolvedSource,
-        ...(form.referral_method ? { referral_method: form.referral_method } : {}),
-        current_stage: stage,
-        division: form.division,
-        episode_type: normalizeEpisodeType(form.episode_type),
-        priority: form.requires_urgent_care ? 'High' : 'Normal',
-        referral_date: referralDate,
-        created_at: referralDate,
-        updated_at: referralDate,
-        // Immutable: who submitted the original lead. Never overwrite later.
-        ...(appUserId && { lead_created_by_id: appUserId }),
-        ...(form.services_requested.length && { services_requested: form.services_requested }),
-        ...(form.facility_id && { facility_id: form.facility_id }),
-        ...(form.coc_nurse_id && { coc_nurse_id: form.coc_nurse_id }),
-        // Intake owner is assigned when a lead becomes a referral (promote to Intake),
-        // not when a marketer/staff creates a Lead Entry record.
-        ...(appUserId && stage === 'Intake' && {
-          intake_owner_id: appUserId,
-          intake_owner_changed_at: referralDate,
-          intake_owner_changed_by_id: appUserId,
-        }),
-        ...(selectedPhysician?.id && { physician_id: selectedPhysician.id }),
-        ...(form.sn_age_group && { sn_age_group: form.sn_age_group }),
-        ...(form.entity_id && { entity_id: form.entity_id }),
-        ...(form.code_95 && { code_95: form.code_95 }),
-        ...(form.requires_urgent_care ? {
-          requires_urgent_care: true,
-          urgent_care_type: serializeUrgentCareTypes(form.urgent_care_types),
-          urgent_care_marked_at: referralDate,
-          ...(appUserId && { urgent_care_marked_by_id: appUserId }),
-        } : {}),
-      };
-
-      const referralRecord = await createReferral(referralFields);
-      orphanPatientRef.current = null;
-
-      mergeEntities('patients', { [patientRecord.id]: { _id: patientRecord.id, ...patientRecord.fields } });
-      mergeEntities('referrals', { [referralRecord.id]: { _id: referralRecord.id, ...referralRecord.fields } });
-
-      // If this referral is routing straight to OPWDD Enrollment (Special
-      // Needs division + code_95 = no), open the OPWDD eligibility case
-      // immediately so the enrollment specialist picks up a fully-seeded
-      // checklist + case row. Failure is non-fatal — the case can be
-      // opened later from the OPWDD workspace.
-      if (referralFields.current_stage === 'OPWDD Enrollment') {
-        openCaseForReferral({
-          referral: { id: referralCustomId, _id: referralRecord.id },
-          patientId: createdPatientId,
-          actorUserId: appUserId,
-          assignedSpecialistId: appUserId,
-        }).catch((err) => console.warn('Auto-open OPWDD case failed:', err));
-      }
-
-      // stage_entered_at not a column in Referrals — skip
-
-      const noteStamp = Date.now();
-      const persistLeadNote = async (content, suffix = '') => {
-        const text = String(content || '').trim();
-        if (!text || !createdPatientId) return;
-        const now = new Date().toISOString();
-        try {
-          await createNoteOptimistic({
-            id: `note_${noteStamp}${suffix}_${Math.random().toString(36).slice(2, 6)}`,
-            patient_id: createdPatientId,
-            referral_id: referralCustomId,
-            ...(appUserId ? { author_id: appUserId } : {}),
-            content: text,
-            created_at: now,
-            updated_at: now,
-          });
-        } catch (err) {
-          console.warn('[NewReferralForm] Could not save note:', err);
-        }
-      };
-      await persistLeadNote(form.initial_notes);
-      await persistLeadNote(otherSourceNote, '_src');
+      orphanPatientRef.current = result.orphanPatient;
+      const { patientRecord, referralRecord, createdPatientId, referralCustomId } = result;
 
       if (stagedFiles.length) {
         setSubmitPhase('files');
@@ -1277,10 +1067,20 @@ export default function NewReferralForm({
           appUserId,
         });
         if (uploadFailures.length) {
-          await persistLeadNote(
-            `Could not attach at lead creation: ${uploadFailures.map((f) => `${f.name} (${f.message})`).join('; ')}`,
-            '_files',
-          );
+          const now = new Date().toISOString();
+          try {
+            await createNoteOptimistic({
+              id: `note_${Date.now()}_files_${Math.random().toString(36).slice(2, 6)}`,
+              patient_id: createdPatientId,
+              referral_id: referralCustomId,
+              ...(appUserId ? { author_id: appUserId } : {}),
+              content: `Could not attach at lead creation: ${uploadFailures.map((f) => `${f.name} (${f.message})`).join('; ')}`,
+              created_at: now,
+              updated_at: now,
+            });
+          } catch (err) {
+            console.warn('[NewReferralForm] Could not save file note:', err);
+          }
         }
       }
 
@@ -2072,27 +1872,114 @@ export default function NewReferralForm({
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <button type="button" onClick={requestClose} style={{ padding: '9px 18px', borderRadius: 8, background: hexToRgba(palette.backgroundDark.hex, 0.06), border: 'none', fontSize: 13, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.6), cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                style={{ padding: '9px 24px', borderRadius: 8, background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : palette.primaryMagenta.hex, border: 'none', fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex, cursor: submitting ? 'not-allowed' : 'pointer', transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                {submitting && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.75s linear infinite' }}>
-                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-                    <circle cx="12" cy="12" r="10" stroke={hexToRgba(palette.backgroundLight.hex, 0.3)} strokeWidth="2.5" />
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
+              <div style={{ position: 'relative', display: 'flex' }}>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  style={{
+                    padding: '9px 18px 9px 24px',
+                    borderRadius: embedded ? 8 : '8px 0 0 8px',
+                    background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : palette.primaryMagenta.hex,
+                    border: 'none',
+                    fontSize: 13, fontWeight: 650, color: palette.backgroundLight.hex,
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  {submitting && (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 0.75s linear infinite' }}>
+                      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                      <circle cx="12" cy="12" r="10" stroke={hexToRgba(palette.backgroundLight.hex, 0.3)} strokeWidth="2.5" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke={palette.backgroundLight.hex} strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                  )}
+                  {submitting
+                    ? (submitPhase === 'files' ? 'Uploading files…' : (showSchedulePicker ? 'Scheduling…' : 'Creating…'))
+                    : (forceStage === 'Intake' ? 'Create Referral' : 'Create Lead')}
+                </button>
+                {!embedded && (
+                <button
+                  type="button"
+                  aria-label="Schedule lead"
+                  title="Schedule lead"
+                  disabled={submitting}
+                  onClick={() => {
+                    setShowSchedulePicker((v) => {
+                      const next = !v;
+                      if (next && !scheduleLocal) setScheduleLocal(defaultGoLiveLocal());
+                      return next;
+                    });
+                  }}
+                  style={{
+                    padding: '9px 10px',
+                    borderRadius: '0 8px 8px 0',
+                    background: submitting ? hexToRgba(palette.primaryMagenta.hex, 0.4) : hexToRgba(palette.primaryMagenta.hex, 0.82),
+                    border: 'none',
+                    borderLeft: `1px solid ${hexToRgba(palette.backgroundLight.hex, 0.28)}`,
+                    color: palette.backgroundLight.hex,
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: showSchedulePicker ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                    <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
+                </button>
                 )}
-                {submitting
-                  ? (submitPhase === 'files' ? 'Uploading files…' : 'Creating…')
-                  : (forceStage === 'Intake' ? 'Create Referral' : 'Create Lead')}
-              </button>
+                {!embedded && showSchedulePicker && (
+                  <div
+                    role="dialog"
+                    aria-label="Schedule lead"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 'calc(100% + 8px)',
+                      width: 280,
+                      padding: 14,
+                      borderRadius: 10,
+                      background: palette.backgroundLight.hex,
+                      border: '1px solid var(--color-border)',
+                      boxShadow: `0 10px 28px ${hexToRgba(palette.backgroundDark.hex, 0.18)}`,
+                      zIndex: 20,
+                    }}
+                  >
+                    <p style={{ fontSize: 12.5, fontWeight: 700, color: palette.backgroundDark.hex, marginBottom: 6 }}>
+                      Schedule lead
+                    </p>
+                    <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.5), lineHeight: 1.45, marginBottom: 10 }}>
+                      Goes live at this date and time as if it were entered then.
+                      {stagedFiles.length > 0 ? ' File attachments are not stored on scheduled leads.' : ''}
+                    </p>
+                    <input
+                      type="datetime-local"
+                      value={scheduleLocal}
+                      onChange={(e) => setScheduleLocal(e.target.value)}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 7,
+                        border: '1px solid var(--color-border)', fontSize: 13, fontFamily: 'inherit',
+                        marginBottom: 10,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={submitting || !scheduleLocal}
+                      onClick={() => handleSubmit(null, { goLiveAt: scheduleLocal })}
+                      style={{
+                        width: '100%', padding: '8px 12px', borderRadius: 7, border: 'none',
+                        background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+                        fontSize: 12.5, fontWeight: 650, cursor: submitting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Schedule lead
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

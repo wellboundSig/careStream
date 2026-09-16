@@ -49,4 +49,9 @@ describe('displayStageName', () => {
       soc_completed_date: '2026-08-04',
     })).toBe('Clinical Review Post Visit');
   });
+
+  it('displays EMR Onboarding as Intake', () => {
+    expect(displayStageName({ current_stage: 'EMR Onboarding' })).toBe('Intake');
+    expect(displayStageName(null, 'EMR Onboarding')).toBe('Intake');
+  });
 });

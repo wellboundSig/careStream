@@ -1099,7 +1099,7 @@ function IntakePanel({ referrals, selectedReferral, resolveSource, resolveUser, 
             referral={selectedReferral}
             stageLabel={
               selectedReferral.current_stage === 'Post Visit Intake'
-                ? 'Post Visit Intake'
+                ? 'Intake Post Visit'
                 : isF2F
                   ? (selectedReferral.soc_completed_date ? 'F2F / MD Orders · SOC done' : 'F2F / MD Orders')
                   : (selectedReferral.soc_completed_date ? 'Intake · SOC done' : 'Intake')
@@ -3385,7 +3385,6 @@ function AdminConfirmationPanel({ selectedReferral, resolveUser, onInitiateTrans
 
 // ── 11. Pre-SOC ───────────────────────────────────────────────────────────────
 function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
-  const today = todayCalendarDate();
   const [open, setOpen] = useState(false);
   const [newDate, setNewDate] = useState('');
   const [reasonCategory, setReasonCategory] = useState('');
@@ -3524,7 +3523,6 @@ function RescheduleSocForm({ referral, appUserId, canSchedule, onDone }) {
       <input
         type="date"
         value={newDate}
-        min={today}
         onChange={(e) => setNewDate(e.target.value)}
         data-testid="reschedule-soc-date"
         style={{
@@ -3610,7 +3608,6 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
   const { appUserId } = useCurrentAppUser();
   const { resolveMarketer } = useLookups();
   const actualStage = selectedReferral?.current_stage;
-  const today = todayCalendarDate();
 
   // Concurrent membership: the SOC/ROC module also lists cases still working
   // paperwork in Intake / Clinical (EMR chart exists, visit not completed).
@@ -3829,7 +3826,7 @@ function PreSocPanel({ selectedReferral, resolveSource, resolveUser, onInitiateT
 
               <div style={{ marginTop: 10 }}>
                 <p style={{ fontSize: 11.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.55), marginBottom: 5 }}>{episodeDateLabel(selectedReferral)}</p>
-                <input type="date" value={socDate} min={today} onChange={(e) => setSocDate(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }} />
+                <input type="date" value={socDate} onChange={(e) => setSocDate(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: 7, border: `1px solid ${socDate ? palette.accentGreen.hex : 'var(--color-border)'}`, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: palette.backgroundLight.hex, color: palette.backgroundDark.hex, marginBottom: 8 }} />
                 {error && <p style={{ fontSize: 12, color: palette.primaryMagenta.hex, marginBottom: 6 }}>{error}</p>}
                 <ActionBtn label={saving ? 'Scheduling…' : `${scheduleVerb(selectedReferral)} →`} variant="forward" onClick={handleSchedule} disabled={!socDate || saving} />
               </div>

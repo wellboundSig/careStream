@@ -46,7 +46,7 @@ const ROW_GROUPS = [
   {
     label: 'Staffing & Admin',
     color: palette.primaryDeepPlum.hex,
-    stages: ['EMR Onboarding', 'Staffing Feasibility', 'Admin Confirmation'],
+    stages: ['Staffing Feasibility', 'Admin Confirmation'],
   },
   {
     label: 'Admission',
@@ -57,6 +57,7 @@ const ROW_GROUPS = [
   {
     label: 'Post-Visit Documentation',
     color: palette.accentBlue.hex,
+    displayNames: { 'Post Visit Intake': 'Intake Post Visit', 'Post Visit Clinical Review': 'Clinical Review Post Visit' },
     stages: ['Post Visit Intake', 'Post Visit Clinical Review', 'Completed'],
   },
 ];
@@ -100,7 +101,7 @@ export default function PipelineBoard() {
   const { data: enriched, loading } = usePipelineData();
   const { appUser, appUserId, appUserName } = useCurrentAppUser();
   const { open: openPatient } = usePatientDrawer();
-  const { can, hasDivision } = usePermissions();
+  const { can, canAny, hasDivision } = usePermissions();
   // Pipeline is deny-by-default — only explicitly granted users (page.pipeline).
   const canViewPipeline = can(PERMISSION_KEYS.PAGE_PIPELINE);
 
@@ -285,7 +286,7 @@ export default function PipelineBoard() {
             <RefreshIcon /> Refresh
           </ToolbarBtn>
 
-          {can(PERMISSION_KEYS.REFERRAL_CREATE) && (
+          {canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE) && (
             <button
               onClick={() => setShowNewReferral(true)}
               style={{
@@ -443,9 +444,10 @@ export default function PipelineBoard() {
       {showNewReferral && (
         <NewReferralForm
           onClose={() => setShowNewReferral(false)}
-          onSuccess={({ patient, referral }) => {
+          onSuccess={(result) => {
+            if (result?.scheduled) return;
             triggerDataRefresh();
-            openPatient(patient, referral);
+            openPatient(result.patient, result.referral);
           }}
         />
       )}

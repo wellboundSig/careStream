@@ -1,0 +1,260 @@
+Id,Name,Status,Discipline,Hire Date
+ 99780,"Thomas, Glendie",Active,CFY,2/10/2025
+ 99798,"Almonte De Lamar, Vianka",Active,CFY,2/10/2025
+ 99864,"Camejo, Cynthia",Active,CFY,9/8/2025
+ 99870,"Morgan, Nicole",Active,CFY,9/22/2025
+ 99880,"Sanandaji, Sabrina",Active,CFY,11/3/2025
+ 99881,"Klopfenstein, Kendra",Active,CFY,11/3/2025
+ 99882,"Rodriguez, Perla M",Active,CFY,11/3/2025
+ 99932,"Ahmed, Zinan",Active,CFY,4/20/2026
+ 99933,"Hossain, Abidah",Active,CFY,4/20/2026
+ 25627,"Cabahug, Pauline",Active,COTA,4/29/2022
+ 32447,"Dodard, Samantha N",Active,COTA,7/21/2024
+ 35660,"De Villa, Sean L",Active,COTA,8/22/2023
+ 99652,"Rubi, Samantha R",Active,COTA,2/8/2024
+ 99763,"Denny, Samantha",Active,COTA,8/5/2024
+ 99768,"Mora, Rosanna",Active,COTA,10/22/2024
+ 99794,"Bennett, Yanique",Active,COTA,3/24/2025
+ 99795,"Campbell, Tanysha",Active,COTA,3/18/2025
+ 99796,"Ross, Michelle",Active,COTA,3/24/2025
+ 99801,"Sermeno, Martha Veronica",Active,COTA,3/27/2025
+ 99804,"Tukay, Josel",Active,COTA,4/21/2025
+ 99824,"Wonge, Kim",Active,COTA,5/19/2025
+ 99831,"Santos, Richard",Active,COTA,6/16/2025
+ 99836,"Jefferson, Kaitlyn N",Active,COTA,6/30/2025
+ 99841,"Huczek, Dorota",Active,COTA,6/22/2025
+ 99852,"Cooper, Brenda Lee",Active,COTA,7/14/2025
+ 99863,"Carter, Indiana",Active,COTA,9/8/2025
+ 99897,"Gonzalez, Jeanette",Active,COTA,11/19/2025
+ 99899,"Ibrahim, Mariam",Active,COTA,12/1/2025
+ 99913,"Skinner LLC., Danielle",Active,COTA,2/25/2026
+ 99920,"Baumgardner, Clarence",Active,COTA,3/9/2026
+ 99921,"Joseph, Freda",Active,COTA,3/9/2026
+ 99930,"Henriques, Jacqueline",Active,COTA,4/6/2026
+ 99941,"Porter, Mark",Active,COTA,5/18/2026
+ 99947,"Edwards, Nikia",Active,COTA,6/15/2026
+ 99966,"Bispham, Shanelle",Active,COTA,8/10/2026
+ 99969,"Bachan, Sally",Active,COTA,8/10/2026
+ 25569,"Lemard, Shackera",Active,LPN,9/7/2020
+ 25572,"Belotte, Judex",Active,LPN,11/20/2019
+ 25594,"DeFato, Jodie",Active,LPN,9/1/2022
+ 25665,"Morgan, Shoshana S",Active,LPN,8/30/2021
+ 26611,"Donnelly, Susan D",Active,LPN,11/15/2021
+ 27297,"Williams, Jazmin V",Active,LPN,1/15/2022
+ 27506,"Vargas, Sabine",Active,LPN,2/8/2022
+ 31315,"Harris, Willis H",Active,LPN,9/12/2022
+ 31451,"Pauleus-Cantave, Marie Y",Active,LPN,9/5/2022
+ 31710,"Destin, Marie N",Active,LPN,10/17/2022
+ 32759,"Reyes, Editha B",Active,LPN,12/17/2022
+ 32931,"Gustave, Marie M",Active,LPN,12/17/2022
+ 33064,"Hickey, Christopher D",Active,LPN,2/11/2023
+ 33072,"Hinds Gittens, Arlene E",Active,LPN,1/9/2023
+ 33423,"Richards, Anastasia M",Active,LPN,2/1/2023
+ 33533,"Rosario, Sonia",Active,LPN,2/6/2023
+ 34437,"Harris, Ariel J",Active,LPN,4/17/2023
+ 34562,"Bengah, Elizabeth A",Active,LPN,5/10/2023
+ 34656,"Francis, Tashsheba C",Active,LPN,4/30/2023
+ 34657,"Lewis, Cynthia I",Active,LPN,5/15/2023
+ 35439,"Pal, Mandeep",Active,LPN,4/13/2023
+ 35511,"Khanna, Sophia",Active,LPN,8/1/2023
+ 35746,"Davis-Montanez, Dianne D",Active,LPN,9/4/2023
+ 35759,"Auguste, Lord Georges B",Active,LPN,9/4/2023
+ 36214,"Edwards, Felecia A",Active,LPN,10/3/2023
+ 37291,"Mcmillian, Lashane E",Active,LPN,11/20/2023
+ 37339,"Abraham, Ketly B",Active,LPN,1/31/2024
+ 37428,"Barnosky, Jennifer A",Active,LPN,1/31/2024
+ 38382,"Graziano, Toni",Active,LPN,4/23/2024
+ 99685,"Rios, Christine A",Active,LPN,6/4/2024
+ 99712,"Miller, Antoinette G",Active,LPN,8/22/2024
+ 99715,"Irish, Arianna",Active,LPN,9/1/2024
+ 99717,"Schartau, Susan M",Active,LPN,9/1/2024
+ 99736,"Kaur, Rupinder",Active,LPN,11/11/2024
+ 99737,"Graham, Roxanne E",Active,LPN,10/2/2024
+ 99742,"Braunstein, Leeann",Active,LPN,12/1/2024
+ 99744,"Johansen, Cassie",Active,LPN,12/16/2024
+ 99785,"Fisher, Claudine",Active,LPN,2/10/2025
+ 99806,"Lloyd, Stephenie",Active,LPN,4/8/2025
+ 99821,"Bellevue, Marie",Active,LPN,5/5/2025
+ 99823,"Duck, Daisy",Active,LPN,5/13/2025
+ 99830,"James, Sharrell",Active,LPN,6/2/2025
+ 99838,"McNair, Jeme",Active,LPN,6/30/2025
+ 99848,"Wallace, Nancy",Active,LPN,7/28/2025
+ 99861,"McIntosh-Wright, Jennifer",Active,LPN,8/25/2025
+ 99879,"Smith, Brittany",Active,LPN,10/20/2025
+ 99883,"Kirby, Barbara",Active,LPN,10/20/2025
+ 99890,"Rodriguez, Argelia M",Active,LPN,11/17/2025
+ 99891,"Castro, Alva Ruth",Active,LPN,11/17/2025
+ 99892,"Bruitcher, Justin",Active,LPN,11/17/2025
+ 99900,"Calixte, Christina",Active,LPN,12/1/2025
+ 99903,"Spencer, Santina",Active,LPN,12/29/2025
+ 99904,"Acurio, Katherine",Active,LPN,12/29/2025
+ 99906,"Marcelin, Pascal",Active,LPN,1/14/2026
+ 99914,"Pierre, Marie Dora",Active,LPN,2/25/2026
+ 99922,"Bertrand, Saindruine Theresa",Active,LPN,3/23/2026
+ 99923,"Martine, Judna P",Active,LPN,3/23/2026
+ 99927,"Smith, Imesha N",Active,LPN,4/6/2026
+ 99928,"Okoronkwo, Esther Chibuzo",Active,LPN,4/6/2026
+ 99929,"Bazin, Darlenscka S",Active,LPN,4/6/2026
+ 99936,"Liu, Runyi",Active,LPN,4/20/2026
+ 99940,"Joseph, Paskins",Active,LPN,5/18/2026
+ 99946,"Torres, Caleigh",Active,LPN,6/1/2026
+ 99952,"LaBranche, Carine",Active,LPN,7/8/2026
+ 99957,"Daniels, Lisa",Active,LPN,7/17/2026
+ 99958,"Belus, Deborah",Active,LPN,7/23/2026
+ 99960,"Nyantakyi, Janet",Active,LPN,7/24/2026
+ 99961,"Mihindukulasuriya, Disna Jenasari Perera",Active,LPN,7/28/2026
+ 99962,"Paul, Sophia",Active,LPN,7/29/2026
+ 99971,"Dinzey, Althea",Active,LPN,8/10/2026
+ 99972,"Orelien, Marie Hansie",Active,LPN,8/10/2026
+ 99973,"Bartley, Briana Leah",Active,LPN,8/10/2026
+ 99974,"Jackson, Anna Victoria",Active,LPN,8/10/2026
+ 99976,"Saunders, Brittany-Kaye",Active,LPN,8/24/2026
+ 99979,"Lemli, Jessica Simone",Active,LPN,8/31/2026
+ 99981,"Jia, Liyue",Active,LPN,9/3/2026
+ 25621,"Bell, Dameka N",Active,OT,10/26/2020
+ 25633,"Hankins, Tanya",Active,OT,10/20/2019
+ 27578,"Melluso, Keith",Active,OT,4/1/2022
+ 31516,"Roach, Ryan M",Active,OT,7/31/2023
+ 34432,"Mina, Sherine",Active,OT,11/6/2023
+ 35141,"Tan, Xiao",Active,OT,4/15/2024
+ 35374,"Krakhmal, Viktoria",Active,OT,12/11/2023
+ 36188,"McPherson, Kim",Active,OT,9/19/2023
+ 36735,"Roy-Licin, Marie",Active,OT,11/23/2023
+ 37048,"Ahmed, Syed",Active,OT,12/12/2023
+ 37514,"Darko, Jason",Active,OT,2/22/2024
+ 37516,"Khaimov, Gregory",Active,OT,2/29/2024
+ 99632,"Michael Mazano, Home Advantage OT PC",Active,OT,12/1/2023
+ 99669,"Williams, Anthony",Active,OT,3/27/2024
+ 99679,"Gioacchini, Amy h",Active,OT,5/8/2024
+ 99691,"Alami Chantoufi, Loubna",Active,OT,6/17/2024
+ 99765,"Holder, Twanda",Active,OT,10/7/2024
+ 99786,"Bayles-Panes, Gladys",Active,OT,2/18/2025
+ 99822,"Noble Jr, Miguel",Active,OT,5/19/2025
+ 99832,"Robinson, Courtney",Active,OT,3/9/2025
+ 99846,"Depot Inc, Therapy",Active,OT,12/2/2024
+ 99865,"Rosario, Marilyn",Active,OT,11/3/2025
+ 99871,"Patusco, Erica",Active,OT,11/17/2025
+ 99874,"Beylik, Vladislav",Active,OT,10/6/2025
+ 99878,"Katz, Kaitlyn",Active,OT,10/6/2025
+ 99912,"INFINITE CARE INC, Alexandra Brito",Active,OT,2/15/2026
+ 99943,"Kanekar, Mayura",Active,OT,5/18/2026
+ 99945,"Orellana, Lorena",Active,OT,5/18/2026
+ 99950,"Dallas, Lambros",Active,OT,5/18/2026
+ 99956,"Huang, Cindy",Active,OT,7/13/2026
+ 99964,"Atkins, Eileen",Active,OT,8/10/2026
+ 99967,"Christie, Rushina",Active,OT,8/10/2026
+ 25603,"Tibbe, Maria",Active,PT,4/22/2018
+ 34940,"Wang, Kevin",Active,PT,6/20/2023
+ 35169,"Germain, Zachary A",Active,PT,4/15/2024
+ 36098,"Altamirano, Jeffrey R",Active,PT,10/3/2023
+ 37937,"Appannapally, Jayasree",Active,PT,2/22/2024
+ 99617,"MD PLLC, Peyman Younesi",Active,PT,12/4/2023
+ 99633,"Kevin Mangan, Home Advantage PT PC",Active,PT,12/1/2023
+ 99658,"PHYSICAL THERAPY, HOME-BASED",Active,PT,3/20/2024
+ 99665,"Ovalles, Juan",Active,PT,2/22/2024
+ 99667,"Dela Cruz, Rafael",Active,PT,3/27/2024
+ 99729,"Grover, Melissa A",Active,PT,8/12/2024
+ 99748,"DeJesus, Emmanuel",Active,PT,12/31/2024
+ 99754,"Abdelmohsen, Islam",Active,PT,7/14/2024
+ 99757,"Bimbo Bergado, Emil",Active,PT,10/14/2024
+ 99762,"Daomilas Bation, Ludivina",Active,PT,9/30/2024
+ 99803,"Abdullah, Maryam",Active,PT,4/4/2025
+ 99809,"Bathla, Chaitanya",Active,PT,8/25/2025
+ 99811,"Mae Lati - Da Costa, Kathrina",Active,PT,4/21/2025
+ 99815,"LAM, MICHAEL",Active,PT,4/13/2025
+ 99835,"Quintillan, Sarah",Active,PT,7/6/2026
+ 99843,"Yang, Derrek",Active,PT,7/14/2025
+ 99860,"Pascual, Tommy",Active,PT,6/16/2025
+ 99869,"Berkowsky, Kelly",Active,PT,9/22/2025
+ 99873,"Awad, Moustafa",Active,PT,10/6/2025
+ 99948,"Albasyouny, Hany",Active,PT,6/15/2026
+ 99949,"Abushady, Abdurrahman",Active,PT,6/15/2026
+ 99955,"Maryles, Steven",Active,PT,7/13/2026
+ 99968,"Abualown, Majed",Active,PT,8/10/2026
+ 99797,"Eldarder, Heba",Active,PTA,3/24/2025
+ 99825,"Prabhu, Poornima",Active,PTA,5/19/2025
+ 99829,"Santiago, Josue",Active,PTA,6/2/2025
+ 99867,"Castro, Roberto",Active,PTA,9/22/2025
+ 99876,"Simone, Fabiola",Active,PTA,10/20/2025
+ 99888,"Dunn Morono, Charlene",Active,PTA,11/17/2025
+ 99896,"Thompson, Jamie",Active,PTA,11/20/2025
+ 25550,"Ojofeitimi, Elizabeth",Active,RN,3/7/2021
+ 25562,"Kramer, Michelle",Active,RN,4/11/2014
+ 25744,"Omotade, Olugbenga F",Active,RN,10/19/2021
+ 27620,"Walters, Felita S",Active,RN,12/30/2023
+ 28281,"Nose, Hannes",Active,RN,6/4/2022
+ 33383,"Collinet, Nilda A",Active,RN,2/7/2023
+ 33549,"Severe, Dupont",Active,RN,2/7/2023
+ 33587,"Lata, Suman",Active,RN,2/8/2023
+ 34155,"Pingco Jr., Alfredo F",Active,RN,3/20/2023
+ 34304,"Codrington, Brian G",Active,RN,4/6/2023
+ 34655,"Rhett, Natasha V",Active,RN,5/10/2023
+ 35437,"Philipose, Divya E",Active,RN,7/17/2023
+ 35659,"Bolkvadze, Natalia",Active,RN,7/28/2023
+ 36177,"Hines, Searrah M",Active,RN,9/19/2023
+ 36187,"Morales, Sharon L",Active,RN,10/15/2023
+ 37167,"Atatsi, Katherine",Active,RN,1/16/2024
+ 38339,"Benoit Gervais, Martine",Active,RN,1/4/2026
+ 99738,"Topuridze, Lasha-George",Active,RN,12/3/2024
+ 99741,"Leveille, Johanne",Active,RN,10/24/2024
+ 99755,"Slaughter, Andrea",Active,RN,1/7/2025
+ 99758,"Barbot, Genevieve",Active,RN,12/19/2024
+ 99761,"Adams, Nzinga-Migozo",Active,RN,1/2/2025
+ 99767,"Miller, Elizabeth",Active,RN,10/22/2024
+ 99769,"Moore, Elysia",Active,RN,10/17/2024
+ 99783,"Salomon, Keteline",Active,RN,1/30/2025
+ 99791,"Joseph, Menasha",Active,RN,6/5/2025
+ 99810,"Taylor, Selena",Active,RN,4/7/2025
+ 99819,"Beyer, Mark",Active,RN,5/5/2025
+ 99839,"Richardson, Shaneek S",Active,RN,6/30/2025
+ 99840,"Smith, Kelliann",Active,RN,6/30/2025
+ 99847,"Akinola, Adijatu Olabisi",Active,RN,7/28/2025
+ 99849,"Henry, Jillian",Active,RN,7/28/2025
+ 99850,"Proscher, Deborah",Active,RN,8/4/2025
+ 99893,"Duroseau, Roxanne C",Active,RN,11/17/2025
+ 99894,"Vassell, Lorna",Active,RN,11/17/2025
+ 99901,"Gentile, Melissa",Active,RN,12/1/2025
+ 99902,"Morgan, Monica",Active,RN,12/15/2025
+ 99909,"Loli, Melina C.",Active,RN,1/26/2026
+ 99917,"Anokam, Uchechi",Active,RN,2/25/2026
+ 99918,"Doumbia, Yaya",Active,RN,2/25/2026
+ 99924,"Kanu, Nneoma",Active,RN,3/23/2026
+ 99931,"Sandhu, Sukhjeet Kaur",Active,RN,4/20/2026
+ 99953,"Marshall, Cindly Barbara",Active,RN,7/8/2026
+ 99959,"Kaur, Kamaljit",Active,RN,7/23/2026
+ 99970,"Graves, Carole",Active,RN,8/10/2026
+ 99977,"Opoku, Jacqueline F",Active,RN,8/24/2026
+ 99980,"St.Fleur, Shanelle",Active,RN,8/31/2026
+ 25643,"SAMARDIN, ADELINA",Active,SLP,9/8/2020
+ 25649,"Nelda Hampton, We Speak Speech at Hampton PLLC",Active,SLP,8/12/2020
+ 25680,"Dalton, Kevin P",Active,SLP,9/9/2021
+ 26846,"Saint Louis, Daniel",Active,SLP,10/3/2023
+ 27580,"Ospina, Maria A",Active,SLP,3/9/2022
+ 28324,"Diwa, Giezel",Active,SLP,6/27/2022
+ 31602,"Acosta-Rodriguez, Nancy A",Active,SLP,9/20/2022
+ 31649,"Brezi, Kristen A",Active,SLP,10/17/2022
+ 31665,"West, Shane L",Active,SLP,10/19/2022
+ 34570,"Medina, Nicholas C",Active,SLP,5/2/2023
+ 34930,"Almodwahi, Doha",Active,SLP,6/9/2024
+ 35139,"Alsaidi, Mostafa",Active,SLP,7/11/2023
+ 35384,"Cruz, Andrea V",Active,SLP,7/25/2023
+ 99653,"Monica Lupo, Speak Your Legacy Inc",Active,SLP,1/1/2024
+ 99675,"Tibke, Gina E",Active,SLP,4/24/2024
+ 99759,"Yew, Eddie",Active,SLP,9/16/2024
+ 99764,"Gritsyk, Olesia",Active,SLP,10/22/2024
+ 99766,"John, Shari",Active,SLP,11/18/2024
+ 99778,"Browne, Juenee",Active,SLP,1/26/2025
+ 99781,"Seda, Chastity",Active,SLP,2/1/2025
+ 99789,"Veras, Fatima",Active,SLP,3/10/2025
+ 99793,"Shnicer, Natalie",Active,SLP,3/2/2025
+ 99802,"Joyce, Molly",Active,SLP,2/17/2025
+ 99805,"STEPANSKY, INNA",Active,SLP,3/30/2025
+ 99816,"Somoza, Andrea",Active,SLP,4/27/2025
+ 99827,"Taormina, Marisa",Active,SLP,6/2/2025
+ 99844,"Ahossey, Akossiwa",Active,SLP,7/6/2025
+ 99898,"King, Amber",Active,SLP,11/23/2025
+ 99908,"Peterkin, Janice",Active,SLP,1/4/2026
+ 99935,"Demosthenes, Aisha",Active,SLP,4/20/2026
+ 99963,"Carter, Antia",Active,SLP,8/10/2026
+ 99965,"Ambartsumova, Zina",Active,SLP,8/10/2026
+ 99978,"Lindell, Mallory",Active,SLP,8/24/2026

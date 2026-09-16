@@ -28,6 +28,12 @@ import { createNote } from '../api/notes.js';
 export function applyStageEntryEffects({ referral, fromStage, toStage, actorUserId, resolveUserName }) {
   const extra = {};
 
+  // Conflict is exclusive. Clear the concurrent Clinical Review handoff so
+  // the case leaves that queue the moment current_stage becomes Conflict.
+  if (toStage === 'Conflict') {
+    extra.in_clinical_review = false;
+  }
+
   if (toStage === 'Eligibility Verification') {
     const priorAt = referral?.eligibility_completed_at || '';
     const priorBy = referral?.eligibility_completed_by_id || '';

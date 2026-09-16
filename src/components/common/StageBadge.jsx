@@ -39,13 +39,13 @@ const STAGE_SHORT = {
   'Clinical Intake RN Review': 'Clinical Review',
   'Authorization Pending':     'Auth Pending',
   'Conflict':                  'Conflict',
-  'EMR Onboarding':            'EMR Onboarding',
+  'EMR Onboarding':            'Intake',
   'Staffing Feasibility':      'Staffing',
   'Admin Confirmation':        'Admin Confirm',
   'Pre-SOC':                   'Pre-SOC/ROC',
   'SOC Scheduled':             'SOC/ROC Sched',
   'SOC Completed':             'Visit Done',
-  'Post Visit Intake':         'Post Visit Intake',
+  'Post Visit Intake':         'Intake Post Visit',
   'Post Visit Clinical Review': 'Clinical Review Post Visit',
   'Completed':                 'Completed',
   'Hold':                      'Hold',
@@ -90,6 +90,7 @@ export function displayStageName(referral, fallbackStage) {
 function colorKeyForLabel(label, stage) {
   if (label === 'Intake Post Visit') return 'Intake';
   if (label === 'Clinical Review Post Visit') return 'Clinical Intake RN Review';
+  if (stage === 'EMR Onboarding') return 'Intake';
   return stage;
 }
 

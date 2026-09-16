@@ -188,7 +188,7 @@
     },
 
     "EMR Onboarding": {
-      "displayName": "EMR Onboarding",
+      "displayName": "Intake",
       "gridRow": 1,
       "gridCol": 3,
       "canMoveTo": ["Staffing Feasibility", "Intake", "Conflict", "Hold"],

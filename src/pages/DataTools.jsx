@@ -31,7 +31,7 @@ import ReferralToSocView from '../components/dataTools/ReferralToSocView.jsx';
 const PIPELINE_STAGES = [
   'Clinical Lead Pre-Check','Lead Entry','Intake','Eligibility Verification','Disenrollment Required',
   'F2F/MD Orders Pending','Clinical Intake RN Review','Authorization Pending',
-  'Conflict','EMR Onboarding','Staffing Feasibility','Admin Confirmation',
+  'Conflict','Staffing Feasibility','Admin Confirmation',
   'Pre-SOC','SOC Scheduled','SOC Completed','Hold','NTUC',
 ];
 const TERMINAL = new Set(['SOC Completed','NTUC']);
@@ -507,7 +507,14 @@ function OverviewTab({ referrals, allReferrals }) {
   const mA = useMemo(() => computeMetrics(allReferrals), [allReferrals]);
 
   const stageCounts = useMemo(() =>
-    PIPELINE_STAGES.reduce((acc, s) => { acc[s] = referrals.filter((r) => r.current_stage === s).length; return acc; }, {}),
+    PIPELINE_STAGES.reduce((acc, s) => {
+      acc[s] = referrals.filter((r) => (
+        s === 'Intake'
+          ? r.current_stage === 'Intake' || r.current_stage === 'EMR Onboarding'
+          : r.current_stage === s
+      )).length;
+      return acc;
+    }, {}),
     [referrals]);
 
   const divisionSegments = [

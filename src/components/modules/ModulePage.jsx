@@ -5,7 +5,8 @@ import { useLookups } from '../../hooks/useLookups.js';
 import { usePatientDrawer } from '../../context/PatientDrawerContext.jsx';
 import { useCurrentAppUser } from '../../hooks/useCurrentAppUser.js';
 import { useCareStore } from '../../store/careStore.js';
-import { STAGE_META, isSocCompletedReferral, isPostVisitReferral, isActiveClinicalHandoff } from '../../data/stageConfig.js';
+import { STAGE_META, isSocCompletedReferral, isFullyFinishedReferral, isVisitDonePaperworkOpen, isPostVisitReferral, isActiveClinicalHandoff, countVisitCloseout } from '../../data/stageConfig.js';
+import VisitCloseoutStrip from '../common/VisitCloseoutStrip.jsx';
 import { isClinicalLeadPreCheck, isClinicalLeadPreCheckApproved } from '../../utils/clinicalLeadPreCheck.js';
 import { isPendingLogReferral, pendingLogMentionIndex } from '../../utils/pendingLog.js';
 import { canMoveFromTo, needsModal } from '../../utils/stageTransitions.js';
@@ -23,7 +24,7 @@ import {
   FilterIcon,
   ColsIcon,
 } from '../../utils/columnModel.jsx';
-import { cellMatchesFilter, filterIsActive, matchesNumericFilter, matchesYesNoFilter, selectedFilterValues } from '../../utils/columnFilters.js';
+import { cellMatchesFilter, filterIsActive, matchesNumericFilter, matchesYesNoFilter, matchesStageFilter, selectedFilterValues, stageFilterLabel } from '../../utils/columnFilters.js';
 import { usePreferences } from '../../context/UserPreferencesContext.jsx';
 import { useLockedTableGrid } from '../../hooks/useLockedTableGrid.js';
 import { useFlipWindow } from '../../hooks/useFlipWindow.js';
@@ -47,6 +48,7 @@ import StagePanel from './StagePanel.jsx';
 import DuplicateChecker from './DuplicateChecker.jsx';
 import NewReferralForm from '../forms/NewReferralForm.jsx';
 import ReferralDraftsPanel, { countReferralDrafts } from '../forms/ReferralDraftsPanel.jsx';
+import ScheduledLeadsPanel, { countPendingScheduledLeads } from '../forms/ScheduledLeadsPanel.jsx';
 import TransitionModal from '../pipeline/TransitionModal.jsx';
 import {
   setUrgentCare,
@@ -81,7 +83,7 @@ import { useIsMobile } from '../../hooks/useIsMobile.js';
 import { discardReferral } from '../../utils/discardReferral.js';
 import { triggerDataRefresh } from '../../hooks/useRefreshTrigger.js';
 import palette, { hexToRgba, hexOnWhite } from '../../utils/colors.js';
-import { fmtCalendarDate, daysUntilCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
+import { fmtCalendarDate, fmtDateTime, daysUntilCalendarDate, parseCalendarDate } from '../../utils/dateFormat.js';
 
 /** Uniform queue row height — every module table row is this tall. */
 const QUEUE_ROW_HEIGHT = 48;
@@ -233,6 +235,8 @@ export default function ModulePage({ stage }) {
   const [activeDraft, setActiveDraft] = useState(null);
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
+  const [showScheduledPanel, setShowScheduledPanel] = useState(false);
+  const [scheduledCount, setScheduledCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [changeOwnerTarget, setChangeOwnerTarget] = useState(null);
   const [discardTarget, setDiscardTarget] = useState(null);
@@ -247,6 +251,14 @@ export default function ModulePage({ stage }) {
   const colPickerRef = useRef(null);
 
   const isSocCompleted = stage === 'SOC Completed';
+  const isCompletedModule = stage === 'Completed';
+  const closeoutParam = new URLSearchParams(location.search).get('closeout');
+  const [closeoutView, setCloseoutView] = useState(
+    ['visits', 'paperwork', 'closed'].includes(closeoutParam) ? closeoutParam : 'closed',
+  );
+  useEffect(() => {
+    if (['visits', 'paperwork', 'closed'].includes(closeoutParam)) setCloseoutView(closeoutParam);
+  }, [closeoutParam]);
   const isClinicalRnModule = stage === 'Clinical Intake RN Review';
   const isStaffingModule = stage === 'Staffing Feasibility';
   // Clinical queue: default to patients actually in this stage. Deferred-docs /
@@ -295,6 +307,7 @@ export default function ModulePage({ stage }) {
     setSearch('');
     clearFilters();
     setShowDraftsPanel(false);
+    setShowScheduledPanel(false);
   }, [stage]);
 
   const refreshDraftCount = useCallback(async () => {
@@ -309,9 +322,22 @@ export default function ModulePage({ stage }) {
     }
   }, [stage, appUserId]);
 
+  const refreshScheduledCount = useCallback(async () => {
+    if (stage !== 'Lead Entry' || !appUserId) {
+      setScheduledCount(0);
+      return;
+    }
+    try {
+      setScheduledCount(await countPendingScheduledLeads());
+    } catch {
+      setScheduledCount(0);
+    }
+  }, [stage, appUserId]);
+
   useEffect(() => {
     refreshDraftCount();
-  }, [refreshDraftCount]);
+    refreshScheduledCount();
+  }, [refreshDraftCount, refreshScheduledCount]);
 
   // ── Stage referrals with column filters ───────────────────────────────────
   // Decorate each referral with concurrent-presence flags so the per-stage
@@ -388,11 +414,18 @@ export default function ModulePage({ stage }) {
   const stageReferrals = useMemo(() => {
     // Prefer the modern predicate when present; fall back to the legacy
     // consolidatedStages array, then to a plain stage-equality check.
-    const predicate = typeof meta.matchReferral === 'function'
+    let predicate = typeof meta.matchReferral === 'function'
       ? meta.matchReferral
       : meta.consolidatedStages
         ? (r) => meta.consolidatedStages.includes(r.current_stage)
         : (r) => r.current_stage === stage;
+    if (isCompletedModule) {
+      predicate = closeoutView === 'visits'
+        ? isSocCompletedReferral
+        : closeoutView === 'paperwork'
+          ? isVisitDonePaperworkOpen
+          : isFullyFinishedReferral;
+    }
     let list = isMobilePendingLog
       ? decoratedReferrals.filter((r) => isPendingLogReferral(r, mentionIndex))
       : decoratedReferrals.filter(predicate);
@@ -448,6 +481,7 @@ export default function ModulePage({ stage }) {
         if (key === 'emr_onboarded') {
           return matchesYesNoFilter(!!(r.emr_onboarded_at || r.emr_initial_onboarded_at), val);
         }
+        if (key === 'stage') return matchesStageFilter(r, val);
         if (key === 'soc_completed_date') return matchesYesNoFilter(isSocCompletedReferral(r), val);
         if (key === 'soc_scheduled_date') return matchesYesNoFilter(!!r.soc_scheduled_date, val);
         if (key === 'waiting_docs') return matchesYesNoFilter(isDocumentationDeferred(r), val);
@@ -468,7 +502,6 @@ export default function ModulePage({ stage }) {
         let cellVal = '';
         switch (key) {
           case 'division': cellVal = r.division || ''; break;
-          case 'stage': cellVal = r.current_stage || ''; break;
           case 'episode_type': cellVal = episodeTypeLongLabel(r); break;
           case 'licence': cellVal = resolveEntity(r.entity_id) || ''; break;
           case 'source': cellVal = resolveSource(r.referral_source_id) || ''; break;
@@ -523,7 +556,7 @@ export default function ModulePage({ stage }) {
       }
       return 0;
     });
-  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, triagePresence, isClinicalRnModule, includeDeferredClinical, isMobilePendingLog, mentionIndex]);
+  }, [decoratedReferrals, stage, division, search, sortField, sortDir, colFilters, resolveSource, resolveSourceEntity, resolveMarketer, resolveUser, resolveFacility, resolveEntity, resolvePhysician, meta, hasDivision, pcpByReferralId, triagePresence, isClinicalRnModule, includeDeferredClinical, isMobilePendingLog, mentionIndex, isCompletedModule, closeoutView]);
 
   // Counts for the Clinical queue-scope toggle (division-scoped, ignores search/col filters).
   const clinicalQueueCounts = useMemo(() => {
@@ -540,6 +573,17 @@ export default function ModulePage({ stage }) {
     const active = list.filter(isActiveClinicalQueueRow).length;
     return { active, deferred: list.length - active, all: list.length };
   }, [isClinicalRnModule, decoratedReferrals, meta, hasDivision, division]);
+
+  const closeoutCounts = useMemo(() => {
+    if (!isCompletedModule) return { visitsCompleted: 0, paperworkOpen: 0, fullyClosed: 0 };
+    const scoped = decoratedReferrals.filter((r) => {
+      if (r.division === 'ALF' && !hasDivision('ALF')) return false;
+      if (r.division === 'Special Needs' && !hasDivision('Special Needs')) return false;
+      if (division !== 'All' && r.division !== division) return false;
+      return true;
+    });
+    return countVisitCloseout(scoped);
+  }, [isCompletedModule, decoratedReferrals, hasDivision, division]);
 
   const queueHeaderH = QUEUE_HEADER_HEIGHT;
   const flip = useFlipWindow(stageReferrals, lockedGrid, {
@@ -593,7 +637,11 @@ export default function ModulePage({ stage }) {
             vals.add('waiting_docs'); vals.add('waiting_clinical'); vals.add('overdue');
             break;
           case 'division': if (r.division) vals.add(r.division); break;
-          case 'stage': if (r.current_stage) vals.add(r.current_stage); break;
+          case 'stage': {
+            const label = stageFilterLabel(r);
+            if (label) vals.add(label);
+            break;
+          }
           case 'licence': {
             const v = resolveEntity(r.entity_id);
             if (v && v !== '—') vals.add(v);
@@ -770,6 +818,7 @@ export default function ModulePage({ stage }) {
         actorUserId: appUserId,
         canDirectNtuc: canPerm(PERMISSION_KEYS.REFERRAL_NTUC_DIRECT),
         resolveUserName: resolveUser,
+        extraFields: toStage === 'Conflict' ? { in_clinical_review: false } : undefined,
       },
     });
     if (!result.allowed) {
@@ -1399,12 +1448,18 @@ export default function ModulePage({ stage }) {
               setShowNewReferral(false);
               setActiveDraft(null);
               refreshDraftCount();
+              refreshScheduledCount();
             }}
-            onSuccess={({ patient, referral }) => {
+            onSuccess={(result) => {
               setActiveDraft(null);
               refreshDraftCount();
+              refreshScheduledCount();
+              if (result?.scheduled) {
+                showToast(`Lead scheduled for ${fmtDateTime(result.goLiveAt) || 'later'}`);
+                return;
+              }
               refetch?.();
-              openPatient(patient, referral, 'files');
+              openPatient(result.patient, result.referral, 'files');
             }}
           />
         )}
@@ -1420,6 +1475,18 @@ export default function ModulePage({ stage }) {
             textAlign: 'center',
           }}>
             {toast.message}
+          </div>
+        )}
+        {isCompletedModule && (
+          <div style={{ padding: '10px 12px 0' }}>
+            <VisitCloseoutStrip
+              visitsCompleted={closeoutCounts.visitsCompleted}
+              paperworkOpen={closeoutCounts.paperworkOpen}
+              fullyClosed={closeoutCounts.fullyClosed}
+              activeView={closeoutView}
+              onSelect={setCloseoutView}
+              compact
+            />
           </div>
         )}
         {isSocCompleted ? (
@@ -1565,12 +1632,18 @@ export default function ModulePage({ stage }) {
             setShowNewReferral(false);
             setActiveDraft(null);
             refreshDraftCount();
+            refreshScheduledCount();
           }}
-          onSuccess={({ patient, referral }) => {
+          onSuccess={(result) => {
             setActiveDraft(null);
             refreshDraftCount();
+            refreshScheduledCount();
+            if (result?.scheduled) {
+              showToast(`Lead scheduled for ${fmtDateTime(result.goLiveAt) || 'later'}`);
+              return;
+            }
             refetch?.();
-            openPatient(patient, referral);
+            openPatient(result.patient, result.referral);
           }}
         />
       )}
@@ -1622,6 +1695,18 @@ export default function ModulePage({ stage }) {
                 {meta.isTerminal && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: hexToRgba(palette.accentGreen.hex, 0.8), background: hexToRgba(palette.accentGreen.hex, 0.1), borderRadius: 4, padding: '1px 6px' }}>Terminal</span>}
               </div>
               <p style={{ fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{meta.description}</p>
+              {isCompletedModule && (
+                <div style={{ marginTop: 12, maxWidth: 920 }}>
+                  <VisitCloseoutStrip
+                    visitsCompleted={closeoutCounts.visitsCompleted}
+                    paperworkOpen={closeoutCounts.paperworkOpen}
+                    fullyClosed={closeoutCounts.fullyClosed}
+                    activeView={closeoutView}
+                    onSelect={setCloseoutView}
+                    compact
+                  />
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               {/* Record actions — appear once a referral is selected; they act on
@@ -1703,7 +1788,10 @@ export default function ModulePage({ stage }) {
                 <div style={{ position: 'relative', display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button
                     type="button"
-                    onClick={() => setShowDraftsPanel((v) => !v)}
+                    onClick={() => {
+                      setShowScheduledPanel(false);
+                      setShowDraftsPanel((v) => !v);
+                    }}
                     title="Open saved lead drafts"
                     style={{
                       height: 34, padding: '0 14px', borderRadius: 8, flexShrink: 0,
@@ -1743,6 +1831,41 @@ export default function ModulePage({ stage }) {
                       });
                       setShowNewReferral(true);
                     }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDraftsPanel(false);
+                      setShowScheduledPanel((v) => !v);
+                    }}
+                    title="View scheduled leads"
+                    style={{
+                      height: 34, padding: '0 14px', borderRadius: 8, flexShrink: 0,
+                      border: `1px solid ${showScheduledPanel ? palette.primaryMagenta.hex : 'var(--color-border)'}`,
+                      background: showScheduledPanel ? hexToRgba(palette.primaryMagenta.hex, 0.07) : 'none',
+                      fontSize: 12.5, fontWeight: 650,
+                      color: showScheduledPanel ? palette.primaryMagenta.hex : hexToRgba(palette.backgroundDark.hex, 0.65),
+                      cursor: 'pointer', transition: 'all 0.12s',
+                      display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit',
+                    }}
+                  >
+                    Scheduled
+                    {scheduledCount > 0 && (
+                      <span style={{
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                        background: hexToRgba(palette.backgroundDark.hex, 0.08),
+                        color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                        fontSize: 10, fontWeight: 700, display: 'inline-flex',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {scheduledCount > 99 ? '99+' : scheduledCount}
+                      </span>
+                    )}
+                  </button>
+                  <ScheduledLeadsPanel
+                    open={showScheduledPanel}
+                    onClose={() => setShowScheduledPanel(false)}
+                    onChanged={refreshScheduledCount}
                   />
                   <button
                     type="button"
@@ -1986,13 +2109,53 @@ export default function ModulePage({ stage }) {
                           </span>
                         </button>
                       )}
+                      {scheduledCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowScheduledPanel(true)}
+                          style={{
+                            height: 34, padding: '0 14px', borderRadius: 8,
+                            border: `1px solid var(--color-border)`, background: 'none',
+                            fontSize: 12.5, fontWeight: 650, color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                            cursor: 'pointer', fontFamily: 'inherit',
+                            display: 'flex', alignItems: 'center', gap: 6,
+                          }}
+                        >
+                          View scheduled
+                          <span style={{
+                            minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                            background: hexToRgba(palette.backgroundDark.hex, 0.08),
+                            color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                            fontSize: 10, fontWeight: 700, display: 'inline-flex',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {scheduledCount > 99 ? '99+' : scheduledCount}
+                          </span>
+                        </button>
+                      )}
                     </div>
                   ) : undefined}
                 />
               ) : (
                 <EmptyState
-                  title={`No referrals in ${meta.displayName || stage}`}
-                  subtitle="Referrals will appear here when they reach this stage."
+                  title={
+                    isCompletedModule && closeoutView === 'visits'
+                      ? 'No completed visits'
+                      : isCompletedModule && closeoutView === 'paperwork'
+                        ? 'No referrals waiting on paperwork'
+                        : isCompletedModule
+                          ? 'No fully closed referrals'
+                          : `No referrals in ${meta.displayName || stage}`
+                  }
+                  subtitle={
+                    isCompletedModule && closeoutView === 'paperwork'
+                      ? 'Visit-done referrals that still need paperwork would appear here.'
+                      : isCompletedModule && closeoutView === 'visits'
+                        ? 'Referrals with a completed visit would appear here.'
+                        : isCompletedModule
+                          ? 'Referrals that are done on visit and paperwork would appear here.'
+                          : 'Referrals will appear here when they reach this stage.'
+                  }
                 />
               )
             ) : (

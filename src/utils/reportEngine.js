@@ -10,7 +10,7 @@ import aurora from '../api/aurora.js';
 import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
-import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { isSocCompletedReferral, isFullyFinishedReferral, isVisitDonePaperworkOpen } from '../data/stageConfig.js';
 import { hoursToClinicalLeadPreCheck } from './clinicalLeadPreCheck.js';
 import { normalizeEpisodeType } from './episodeType.js';
 import {
@@ -1636,6 +1636,70 @@ export async function runSocCompleted({ dateFrom, dateTo, division, marketerIds,
   };
 }
 
+const CLOSEOUT_STATUS_LABEL = {
+  closed: 'Fully closed',
+  paperwork_open: 'Visit done — paperwork open',
+};
+
+/**
+ * Visit closeout — visits completed vs paperwork still open vs fully closed.
+ * Date range is visit-completed date (blank = all time).
+ */
+export async function runVisitCloseout({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType } = {}) {
+  const base = await runSocCompleted({ dateFrom, dateTo, division, marketerIds, ownerIds, episodeType });
+  const rows = base.rows.map((r) => {
+    const closed = isFullyFinishedReferral(r);
+    return {
+      ...r,
+      closeout_status: closed ? CLOSEOUT_STATUS_LABEL.closed : CLOSEOUT_STATUS_LABEL.paperwork_open,
+    };
+  });
+  const visitsCompleted = rows.filter((r) => isSocCompletedReferral(r)).length;
+  const paperworkOpen = rows.filter((r) => isVisitDonePaperworkOpen(r)).length;
+  const fullyClosed = rows.filter((r) => isFullyFinishedReferral(r)).length;
+
+  const columns = [
+    { key: '__patient_name', label: 'Patient' },
+    { key: '__patient_dob', label: 'DOB' },
+    { key: 'division', label: 'Division' },
+    { key: 'episode_type', label: 'SOC / ROC' },
+    { key: 'closeout_status', label: 'Closeout' },
+    { key: 'current_stage', label: 'Stage' },
+    { key: 'soc_completed_date', label: 'Visit completed' },
+    { key: 'referral_date', label: 'Referral Date' },
+    { key: '__marketer_name', label: 'Marketer' },
+    { key: '__intake_owner', label: 'Intake Owner' },
+    { key: '__facility_name', label: 'Facility' },
+    { key: '__source_name', label: 'Source' },
+  ];
+
+  return {
+    rows,
+    columns,
+    summary: {
+      kpis: [
+        { label: 'Visits completed', value: visitsCompleted },
+        { label: 'Paperwork still open', value: paperworkOpen },
+        { label: 'Fully closed', value: fullyClosed },
+        { label: 'ALF', value: rows.filter((r) => r.division === 'ALF').length },
+        { label: 'Special Needs', value: rows.filter((r) => r.division === 'Special Needs').length },
+      ],
+      charts: [{
+        title: 'Visit closeout',
+        type: 'bar',
+        labels: ['Visits completed', 'Paperwork still open', 'Fully closed'],
+        datasets: [{
+          label: 'Referrals',
+          data: [visitsCompleted, paperworkOpen, fullyClosed],
+          backgroundColor: ['#3B82F6CC', '#F59E0BCC', '#059669CC'],
+          borderColor: ['#3B82F6', '#F59E0B', '#059669'],
+          borderWidth: 1,
+        }],
+      }],
+    },
+  };
+}
+
 async function runProcessingOverview({ dateFrom, dateTo, division, marketerIds } = {}) {
   const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds });
   const cols = [
@@ -2041,6 +2105,13 @@ export const PRESETS = [
     description: 'Days from referral date to HCHB chart open and to SOC completed. Blank dates = all time.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runReferralSpeed(params); },
+  },
+  {
+    id: 'visit_closeout',
+    title: 'Visit Closeout',
+    description: 'Visits completed vs referrals still open for paperwork vs fully closed (visit + paperwork). Date range is visit-completed date; blank = all time.',
+    paramControls: ['dateRange', 'division'],
+    async run(params) { return runVisitCloseout(params); },
   },
   {
     id: 'soc_missing_docs',

@@ -162,7 +162,10 @@ export default function ClinicalReviewTab({ patient, referral, readOnly = false 
         appUserId,
         actorName: appUserName,
         conflict: payload,
-        onLeftModule: () => updateReferralLocal?.({ current_stage: 'Conflict' }),
+        onLeftModule: () => updateReferralLocal?.({
+          current_stage: 'Conflict',
+          in_clinical_review: false,
+        }),
       });
       setNotViableOpen(false);
     } catch (err) {
