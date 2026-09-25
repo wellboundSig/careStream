@@ -62,6 +62,14 @@ export async function changeMarketer({
     marketer_id: nextId,
     updated_at: now,
   };
+  // Attribution safety net for legacy rows created before original_marketer_id
+  // existed and not yet backfilled: freeze the pre-change assignee as the
+  // original before this reassignment overwrites marketer_id. Write-once —
+  // never touched when already set. (The backfill script computes the true
+  // original from the full activity log and corrects any interim value.)
+  if (!String(referral.original_marketer_id || '').trim() && prevId) {
+    fields.original_marketer_id = prevId;
+  }
 
   await updateReferralOptimistic(referral._id, fields);
 

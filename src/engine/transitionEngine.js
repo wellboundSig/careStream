@@ -22,7 +22,7 @@
  */
 
 import StageRules from '../data/StageRules.json';
-import { canMoveFromTo, needsModal, resolveNtucDestination } from '../utils/stageTransitions.js';
+import { canMoveFromTo, needsModal, resolveNtucDestination, resolveStaffingBypass } from '../utils/stageTransitions.js';
 import { applyStageEntryEffects } from '../utils/stageEntryEffects.js';
 import { runGuards } from './guards.js';
 import { runEffects } from './effects.js';
@@ -72,12 +72,27 @@ export function attemptTransition({ referral, toStage, context = {} }) {
   }
 
   // NTUC interception (non-direct users go to Admin Confirmation instead).
-  const { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
+  let { effectiveStage, ntucMetadata, wasIntercepted } = resolveNtucDestination({
     requestedStage: toStage,
     fromStage,
     canDirect: () => context.canDirectNtuc === true,
     userId: context.actorUserId,
   });
+
+  // Staffing bypass interception: a referral whose visit is already scheduled
+  // (or done) never stops in Staffing Feasibility — scheduling implies the
+  // case was already staffed. Applies to EVERY door (eligibility auto-advance,
+  // clinical confirm, EMR advance, manual board moves) since they all route
+  // through here. Pending extraFields are considered so a move that stamps a
+  // schedule in the same write is honored.
+  let staffingBypassWhy = null;
+  if (effectiveStage === 'Staffing Feasibility') {
+    const bypass = resolveStaffingBypass({ ...referral, ...(context.extraFields || {}) });
+    if (bypass) {
+      effectiveStage = bypass.stage;
+      staffingBypassWhy = bypass.why;
+    }
+  }
 
   const note = typeof context.note === 'string' ? context.note : '';
 
@@ -109,6 +124,10 @@ export function attemptTransition({ referral, toStage, context = {} }) {
   }
   for (const e of (context.extraSideEffects || [])) sideEffects.push(e);
 
+  // Make the bypass visible in the audit trail (StageHistory + timeline note).
+  const bypassTag = staffingBypassWhy ? `[Auto-routed past Staffing: ${staffingBypassWhy}]` : '';
+  const auditNote = bypassTag ? (note ? `${note}\n${bypassTag}` : bypassTag) : note;
+
   const fromRule = StageRules.stages[fromStage] || {};
   return {
     allowed: true,
@@ -119,9 +138,10 @@ export function attemptTransition({ referral, toStage, context = {} }) {
     requiresModal: needsModal(fromStage, toStage),
     requiresPermission: StageRules.stages[toStage]?.requiresPermission || null,
     wasIntercepted,
+    wasStaffingBypassed: !!staffingBypassWhy,
     fieldUpdates,
     sideEffects,
-    auditNote: note,
+    auditNote,
   };
 }
 

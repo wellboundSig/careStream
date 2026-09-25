@@ -11,6 +11,15 @@ import { getSignedFileUrl } from './r2Upload.js';
 import { exportReportWorkbook, buildAutoSummary } from './reportWorkbook.js';
 import { daysUntilCalendarDate } from './dateFormat.js';
 import { isSocCompletedReferral, isFullyFinishedReferral, isVisitDonePaperworkOpen } from '../data/stageConfig.js';
+import {
+  computeMarketerPerformance,
+  formatCloseRate,
+  attributionMarketerId,
+  isDiscardedReferral,
+  CLOSE_RATE_METHODOLOGY,
+  COUNTS_NOTE,
+  UNASSIGNED_KEY,
+} from './marketerPerformance.js';
 import { hoursToClinicalLeadPreCheck } from './clinicalLeadPreCheck.js';
 import { normalizeEpisodeType } from './episodeType.js';
 import {
@@ -943,88 +952,157 @@ export function buildReferralParamFilters({
 }
 
 /**
- * Marketer Performance — one row per marketer showing referral counts by stage.
+ * Marketer Performance — incentive-program view (one row per marketer).
+ *
+ * Attribution: originally assigned marketer (original_marketer_id), so
+ * reassignments never move credit. Close rate = SOC ÷ (SOC + NTUC), counted
+ * by OUTCOME date (soc_completed_date / ntuc_date) — the date range buckets
+ * outcomes by when they happened, not when the referral came in. Open
+ * referrals sit outside the rate as a separate current-snapshot count.
  */
 export async function runMarketerPerformance({ dateFrom, dateTo, division, marketerIds } = {}) {
-  const filters = buildReferralParamFilters({ dateFrom, dateTo, division, marketerIds });
-
-  const { rows } = await fetchReportData({ tableName: 'Referrals', filters, selectedKeys: ['__marketer_name', '__marketer_region'] });
+  // No referral_date pre-filter: outcome-dated counting needs every referral —
+  // an SOC completed this quarter may belong to a referral received last one.
+  const filters = buildReferralParamFilters({ division });
+  const { rows } = await fetchReportData({ tableName: 'Referrals', filters });
   const marketers = await getLookupMap('Marketers');
 
-  // Group by marketer_id
-  const groups = {};
-  for (const row of rows) {
-    const mid   = row.marketer_id || '__unassigned__';
-    const mData = marketers[mid] || {};
-    if (!groups[mid]) {
-      groups[mid] = {
-        marketer:   row.__marketer_name || `${mData.first_name || ''} ${mData.last_name || ''}`.trim() || 'Unassigned',
-        region:     row.__marketer_region || mData.region || '—',
-        division:   mData.division || '—',
-        total:      0,
-        ntuc:       0,
-        soc:        0,
-        hold:       0,
-        active:     0,
-        stageBreak: {},
+  const range = (dateFrom || dateTo)
+    ? { preset: 'custom', from: dateFrom || '', to: dateTo || '' }
+    : null;
+  const perf = computeMarketerPerformance(rows, range);
+
+  const wanted = Array.isArray(marketerIds) && marketerIds.length
+    ? new Set(marketerIds.map((id) => String(id).trim()))
+    : null;
+
+  // Real, resolvable marketers only. Referrals with no marketer (or a
+  // marketer id that no longer exists in the directory) are excluded from
+  // this report entirely.
+  const isRealMarketer = (mid) => mid !== UNASSIGNED_KEY && !!marketers[mid];
+
+  const outputRows = Object.entries(perf)
+    .filter(([mid]) => isRealMarketer(mid) && (!wanted || wanted.has(mid)))
+    .map(([mid, s]) => {
+      const mData = marketers[mid] || {};
+      return {
+        _mid: mid, // internal, not a rendered column
+        marketer:  `${mData.first_name || ''} ${mData.last_name || ''}`.trim() || mid,
+        region:    mData.region || 'N/A',
+        division:  mData.division || 'N/A',
+        received:  s.received,
+        soc:       s.soc,
+        ntuc:      s.ntuc,
+        closed:    s.closed,
+        closeRate: formatCloseRate(s.closeRate),
+        open:      s.open,
       };
-    }
-    const g = groups[mid];
-    g.total++;
-    const stage = row.current_stage || 'Unknown';
-    g.stageBreak[stage] = (g.stageBreak[stage] || 0) + 1;
-    if (stage === 'NTUC') g.ntuc++;
-    if (isSocCompletedReferral(row)) g.soc++;
-    if (stage === 'Hold') g.hold++;
-    if (!['NTUC','SOC Completed','Completed','Hold'].includes(stage)) g.active++;
-  }
+    });
+
+  outputRows.sort((a, b) => b.soc - a.soc || b.received - a.received);
 
   const columns = [
-    { key: 'marketer', label: 'Marketer' },
-    { key: 'region',   label: 'Region' },
-    { key: 'division', label: 'Division' },
-    { key: 'total',    label: 'Total Referrals' },
-    { key: 'active',   label: 'Active in Pipeline' },
-    { key: 'soc',      label: 'SOC/ROC Completed' },
-    { key: 'ntuc',     label: 'NTUC' },
-    { key: 'hold',     label: 'On Hold' },
-    { key: 'socRate',  label: 'SOC Rate' },
-    { key: 'ntucRate', label: 'NTUC Rate' },
-    ...STAGES.map((s) => ({ key: `stage_${s}`, label: s })),
+    { key: 'marketer',  label: 'Marketer' },
+    { key: 'region',    label: 'Region' },
+    { key: 'division',  label: 'Division' },
+    { key: 'received',  label: 'Referrals Received' },
+    { key: 'soc',       label: 'SOC (by SOC date)' },
+    { key: 'ntuc',      label: 'NTUC (by NTUC date)' },
+    { key: 'closed',    label: 'Closed (SOC + NTUC)' },
+    { key: 'closeRate', label: 'Close Rate' },
+    { key: 'open',      label: 'Open (current)' },
   ];
 
-  const outputRows = Object.values(groups).map((g) => ({
-    ...g,
-    socRate:  g.total ? `${Math.round((g.soc / g.total) * 100)}%` : '0%',
-    ntucRate: g.total ? `${Math.round((g.ntuc / g.total) * 100)}%` : '0%',
-    ...Object.fromEntries(STAGES.map((s) => [`stage_${s}`, g.stageBreak[s] || 0])),
-  }));
+  // ── Per-marketer patient tabs ─────────────────────────────────────────────
+  // One extra sheet per marketer (division-filtered), listing every referral
+  // credited to them: patient, when the referral/lead was added, current
+  // stage, SOC scheduled/completed flags with dates, and NTUC info.
+  const patients = await getLookupMap('Patients');
+  const fmtDate = (v) => (v ? String(v).slice(0, 10) : '');
+  const yesNo = (v) => (v ? 'Yes' : 'No');
 
-  outputRows.sort((a, b) => b.total - a.total);
+  const rowsByMarketer = {};
+  for (const r of rows) {
+    if (isDiscardedReferral(r)) continue;
+    const mid = attributionMarketerId(r);
+    if (!isRealMarketer(mid)) continue; // excluded from this report entirely
+    if (wanted && !wanted.has(mid)) continue;
+    (rowsByMarketer[mid] ||= []).push(r);
+  }
 
+  const marketerSheetColumns = [
+    { key: 'patient',        label: 'Patient' },
+    { key: 'referral_date',  label: 'Referral/Lead Added' },
+    { key: 'division',       label: 'Division' },
+    { key: 'stage',          label: 'Current Stage' },
+    { key: 'status',         label: 'Status' },
+    { key: 'soc_scheduled',  label: 'SOC Scheduled' },
+    { key: 'scheduled_date', label: 'SOC Scheduled Date' },
+    { key: 'soc_done',       label: 'SOC Completed' },
+    { key: 'soc_date',       label: 'SOC Date' },
+    { key: 'ntuc_date',      label: 'NTUC Date' },
+    { key: 'ntuc_reason',    label: 'NTUC Reason' },
+  ];
+
+  const referralStatus = (r) => {
+    if (r.current_stage === 'NTUC') return 'NTUC';
+    if (isSocCompletedReferral(r)) return 'SOC Completed';
+    return 'Open';
+  };
+
+  const usedSheetNames = new Set(['Summary', 'Detail', 'Chart Data']);
+  const uniqueSheetName = (base) => {
+    let name = String(base || 'Marketer').slice(0, 28);
+    let n = 2;
+    while (usedSheetNames.has(name)) name = `${String(base).slice(0, 24)} (${n++})`;
+    usedSheetNames.add(name);
+    return name;
+  };
+
+  const extraSheets = outputRows
+    .map((row) => {
+      const refs = rowsByMarketer[row._mid] || [];
+      if (!refs.length) return null;
+      const sheetRows = refs
+        .slice()
+        .sort((a, b) => new Date(b.referral_date || 0) - new Date(a.referral_date || 0))
+        .map((r) => {
+          const p = patients[r.patient_id] || {};
+          return {
+            patient:        `${p.first_name || ''} ${p.last_name || ''}`.trim() || r.patient_id || 'Unknown',
+            referral_date:  fmtDate(r.referral_date),
+            division:       r.division || '',
+            stage:          r.current_stage || '',
+            status:         referralStatus(r),
+            soc_scheduled:  yesNo(r.soc_scheduled_date),
+            scheduled_date: fmtDate(r.soc_scheduled_date),
+            soc_done:       yesNo(isSocCompletedReferral(r)),
+            soc_date:       fmtDate(r.soc_completed_date || r.admitted_date),
+            ntuc_date:      fmtDate(r.ntuc_date),
+            ntuc_reason:    r.current_stage === 'NTUC' ? (r.ntuc_reason || '') : '',
+          };
+        });
+      return { name: uniqueSheetName(row.marketer), columns: marketerSheetColumns, rows: sheetRows };
+    })
+    .filter(Boolean);
+
+  const totalSoc = outputRows.reduce((s, r) => s + r.soc, 0);
+  const totalNtuc = outputRows.reduce((s, r) => s + r.ntuc, 0);
+  const totalClosed = totalSoc + totalNtuc;
   const top = outputRows.slice(0, 12);
   const summary = {
+    note: `${CLOSE_RATE_METHODOLOGY}\n${COUNTS_NOTE}`,
     kpis: [
       { label: 'Marketers', value: outputRows.length },
-      { label: 'Total referrals', value: outputRows.reduce((s, r) => s + r.total, 0) },
-      { label: 'SOC completed', value: outputRows.reduce((s, r) => s + r.soc, 0) },
-      { label: 'NTUC', value: outputRows.reduce((s, r) => s + r.ntuc, 0) },
+      { label: 'Referrals received', value: outputRows.reduce((s, r) => s + r.received, 0) },
+      { label: 'SOC (in period)', value: totalSoc },
+      { label: 'NTUC (in period)', value: totalNtuc },
+      { label: 'Overall close rate', value: totalClosed ? `${Math.round((totalSoc / totalClosed) * 100)}%` : 'N/A' },
+      { label: 'Open (excluded from rate)', value: outputRows.reduce((s, r) => s + r.open, 0) },
     ],
     charts: [
       {
-        title: 'Referrals by marketer',
-        type: 'bar',
-        labels: top.map((r) => r.marketer),
-        datasets: [{
-          label: 'Total',
-          data: top.map((r) => r.total),
-          backgroundColor: '#C41E6ACC',
-          borderColor: '#C41E6A',
-          borderWidth: 1,
-        }],
-      },
-      {
-        title: 'SOC vs NTUC (top marketers)',
+        title: 'SOC vs NTUC (top marketers, by outcome date)',
         type: 'bar',
         labels: top.map((r) => r.marketer),
         datasets: [
@@ -1044,10 +1122,22 @@ export async function runMarketerPerformance({ dateFrom, dateTo, division, marke
           },
         ],
       },
+      {
+        title: 'Close rate % (resolved referrals only)',
+        type: 'bar',
+        labels: top.map((r) => r.marketer),
+        datasets: [{
+          label: 'Close rate %',
+          data: top.map((r) => (r.closed ? Math.round((r.soc / r.closed) * 100) : 0)),
+          backgroundColor: '#C41E6ACC',
+          borderColor: '#C41E6A',
+          borderWidth: 1,
+        }],
+      },
     ],
   };
 
-  return { rows: outputRows, columns, summary };
+  return { rows: outputRows, columns, summary, extraSheets };
 }
 
 /**
@@ -2157,7 +2247,7 @@ export const PRESETS = [
   {
     id: 'marketer_performance',
     title: 'Marketer Performance',
-    description: 'Total referrals, stage distribution, SOC rate, and NTUC rate with charts for manager reviews.',
+    description: 'Incentive-program view: close rate (SOC ÷ SOC + NTUC, by outcome date), credited to the originally assigned marketer. Open referrals shown separately.',
     paramControls: ['dateRange', 'division'],
     async run(params) { return runMarketerPerformance(params); },
   },

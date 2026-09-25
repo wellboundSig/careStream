@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useCareStore } from '../store/careStore.js';
 import { updateTaskOptimistic } from '../store/mutations.js';
+import { byBusinessId, filterTasksByDivision } from '../utils/taskDivision.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
 import { useLookups } from '../hooks/useLookups.js';
 import TaskCard, { taskUrgencyLevel } from '../components/tasks/TaskCard.jsx';
@@ -25,8 +27,10 @@ const SECTIONS = [
 export default function Tasks() {
   const { appUserId, appUserName } = useCurrentAppUser();
   const { resolveUser }            = useLookups();
+  const { division = 'All' }       = useOutletContext() || {};
   const storeTasks    = useCareStore((s) => s.tasks);
   const storePatients = useCareStore((s) => s.patients);
+  const storeReferrals = useCareStore((s) => s.referrals);
   const hydrated      = useCareStore((s) => s.hydrated);
 
   const [mode, setMode]                   = useState('mine');
@@ -37,7 +41,18 @@ export default function Tasks() {
   const [toast, setToast]                 = useState(null);
   const [showNewTask, setShowNewTask]     = useState(false);
 
-  const allTasks = useMemo(() => Object.values(storeTasks), [storeTasks]);
+  const { can, hasDivision } = usePermissions();
+
+  // Division scoping: a task belongs to its patient's division (fallback:
+  // its referral's). Users only see tasks in divisions they can access, and
+  // the global ALF / Special Needs switcher applies here like everywhere else.
+  const allTasks = useMemo(() => {
+    const patientsById = byBusinessId(storePatients);
+    const referralsById = byBusinessId(storeReferrals);
+    return filterTasksByDivision(Object.values(storeTasks), {
+      hasDivision, division, patientsById, referralsById,
+    });
+  }, [storeTasks, storePatients, storeReferrals, hasDivision, division]);
 
   const patientNameMap = useMemo(() => {
     const map = {};
@@ -57,8 +72,6 @@ export default function Tasks() {
 
   const resolvePatient = useCallback((id) => patientNameMap[id] || null, [patientNameMap]);
   const resolvePatientRecord = useCallback((id) => patientRecordMap[id] || null, [patientRecordMap]);
-
-  const { can } = usePermissions();
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });

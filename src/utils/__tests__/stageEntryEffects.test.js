@@ -89,6 +89,27 @@ describe('applyStageEntryEffects', () => {
     expect(extra.in_clinical_review).toBe(false);
   });
 
+  it('stamps ntuc_date on entering NTUC', () => {
+    const extra = applyStageEntryEffects({
+      referral: { id: 'ref_1', patient_id: 'pat_1', current_stage: 'Intake' },
+      fromStage: 'Intake',
+      toStage: 'NTUC',
+      actorUserId: 'usr_1',
+    });
+    expect(typeof extra.ntuc_date).toBe('string');
+    expect(Number.isNaN(new Date(extra.ntuc_date).getTime())).toBe(false);
+  });
+
+  it('clears ntuc_date (null, not empty string) when re-opened out of NTUC', () => {
+    const extra = applyStageEntryEffects({
+      referral: { id: 'ref_1', patient_id: 'pat_1', current_stage: 'NTUC', ntuc_date: '2026-07-01T00:00:00.000Z' },
+      fromStage: 'NTUC',
+      toStage: 'Intake',
+      actorUserId: 'usr_1',
+    });
+    expect(extra.ntuc_date).toBeNull();
+  });
+
   it('does not write history rows when there was no prior completion', () => {
     const extra = applyStageEntryEffects({
       referral: { id: 'ref_1', patient_id: 'pat_1', current_stage: 'Intake' },

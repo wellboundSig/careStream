@@ -27,9 +27,9 @@ export default function MarketerOverviewTab({ marketer, stats }) {
   return (
     <div style={{ padding: '20px 22px' }}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 22 }}>
-        <StatCard label="Total Referrals" value={stats.total} color={palette.primaryMagenta.hex} />
-        <StatCard label="Active" value={stats.active} color={palette.accentBlue.hex} />
-        <StatCard label="Admissions" value={stats.admitted} sub={`${stats.convRate}% conv.`} color={palette.accentGreen.hex} />
+        <StatCard label="Referrals" value={stats.received} sub="received in period" color={palette.primaryMagenta.hex} />
+        <StatCard label="Open Now" value={stats.open} sub="excluded from rate" color={palette.accentBlue.hex} />
+        <StatCard label="SOC" value={stats.soc} sub={stats.convRate === null ? 'no closed referrals yet' : `${stats.convRate}% close rate`} color={palette.accentGreen.hex} />
         <StatCard label="NTUC" value={stats.ntuc} color={hexToRgba(palette.backgroundDark.hex, 0.45)} />
       </div>
 

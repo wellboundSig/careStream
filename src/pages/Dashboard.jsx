@@ -19,6 +19,7 @@ import { usePermissions } from '../hooks/usePermissions.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import palette, { hexToRgba } from '../utils/colors.js';
 import { fmtCalendarDate, daysSinceCalendarDate } from '../utils/dateFormat.js';
+import { byBusinessId, filterTasksByDivision } from '../utils/taskDivision.js';
 import { isSocCompletedReferral, STAGE_META, countVisitCloseout } from '../data/stageConfig.js';
 import VisitCloseoutStrip from '../components/common/VisitCloseoutStrip.jsx';
 import OverduePatientsModal from '../components/dashboard/OverduePatientsModal.jsx';
@@ -121,8 +122,12 @@ export default function Dashboard() {
   const { prefs, save } = usePreferences();
   const { can } = usePermissions();
   const isMobile = useIsMobile();
-  const mode = prefs.dashboardMode || 'executive';
   const canToggle = can(PERMISSION_KEYS.DASHBOARD_MODE_TOGGLE);
+  // The executive view is reserved for users with the mode-toggle permission.
+  // Everyone else gets the caseload dashboard, always. Previously the default
+  // was 'executive' for all users and the permission only hid the toggle
+  // button, which exposed the executive dashboard to intake staff.
+  const mode = canToggle ? (prefs.dashboardMode || 'executive') : 'caseload';
 
   function handleToggle() {
     const next = mode === 'executive' ? 'caseload' : 'executive';
@@ -225,7 +230,7 @@ function CaseloadDashboard({ modeToggle = null }) {
   const storePatients = useCareStore((s) => s.patients) || {};
   const isMobile = useIsMobile();
   const lockedGrid = useLockedTableGrid();
-  const { can, canAny } = usePermissions();
+  const { can, canAny, hasDivision } = usePermissions();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
   const [showNewReferral, setShowNewReferral] = useState(false);
 
@@ -233,16 +238,30 @@ function CaseloadDashboard({ modeToggle = null }) {
     if (!appUserId) return [];
     return referrals
       .filter((r) => r.intake_owner_id === appUserId)
+      // Never show a division the user cannot access (mirrors ModulePage).
+      .filter((r) => {
+        if (r.division === 'ALF') return hasDivision('ALF');
+        if (r.division === 'Special Needs') return hasDivision('Special Needs');
+        return true;
+      })
       .filter((r) => division === 'All' || r.division === division)
       .filter((r) => !['SOC Completed', 'Completed', 'NTUC'].includes(r.current_stage));
-  }, [referrals, appUserId, division]);
+  }, [referrals, appUserId, division, hasDivision]);
 
   const myTasks = useMemo(() => {
     if (!appUserId) return [];
-    return sortTasksBySchedule(
+    // Division scoping: tasks follow their patient's (or referral's) division.
+    const scoped = filterTasksByDivision(
       Object.values(allTasks).filter((t) => t.assigned_to_id === appUserId && isOpenTask(t)),
+      {
+        hasDivision,
+        division,
+        patientsById: byBusinessId(storePatients),
+        referralsById: byBusinessId(referrals),
+      },
     );
-  }, [allTasks, appUserId]);
+    return sortTasksBySchedule(scoped);
+  }, [allTasks, appUserId, hasDivision, division, storePatients, referrals]);
 
   const patientNameMap = useMemo(() => {
     const map = {};
@@ -577,16 +596,21 @@ function ExecutiveDashboard({ modeToggle = null }) {
   const { resolveMarketer, resolveUser, resolveUserImage } = useLookups();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { canAny } = usePermissions();
+  const { canAny, hasDivision } = usePermissions();
   const [showNewReferral, setShowNewReferral] = useState(false);
   const [showOverdue, setShowOverdue] = useState(false);
   const lockedGrid = useLockedTableGrid();
   const canEnterLead = canAny(PERMISSION_KEYS.LEADS_CREATE, PERMISSION_KEYS.REFERRAL_CREATE);
 
-  const filtered = useMemo(
-    () => division === 'All' ? referrals : referrals.filter((r) => r.division === division),
-    [referrals, division],
-  );
+  const filtered = useMemo(() => {
+    // Never show a division the user cannot access (mirrors ModulePage).
+    const accessible = referrals.filter((r) => {
+      if (r.division === 'ALF') return hasDivision('ALF');
+      if (r.division === 'Special Needs') return hasDivision('Special Needs');
+      return true;
+    });
+    return division === 'All' ? accessible : accessible.filter((r) => r.division === division);
+  }, [referrals, division, hasDivision]);
 
   const stageCounts = useMemo(() =>
     PIPELINE_STAGES.reduce((acc, s) => {

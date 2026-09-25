@@ -49,6 +49,7 @@ import { attemptTransition, applyTransition } from '../../../engine/transitionEn
 import { openCaseForReferral } from '../../../store/opwddOrchestration.js';
 import { triggerDataRefresh } from '../../../hooks/useRefreshTrigger.js';
 import { syncTriageCaregiversToGuardians } from '../../../utils/knownGuardians.js';
+import { LANGUAGE_OPTIONS } from '../../../data/languages.js';
 import { mergeEntities, useCareStore } from '../../../store/careStore.js';
 import { useLookups } from '../../../hooks/useLookups.js';
 import { useCurrentAppUser } from '../../../hooks/useCurrentAppUser.js';
@@ -102,6 +103,8 @@ const ADULT_BLANK = {
   add_secondary_caregiver: null,
   secondary_caregiver_name: '',
   secondary_caregiver_phone: '',
+  caregiver_language_differs: null,
+  caregiver_preferred_language: '',
   has_pets: null,
   has_smoking: null,
   has_homecare_services: null,
@@ -137,6 +140,8 @@ const PED_BLANK = {
   add_secondary_caregiver: null,
   secondary_caregiver_name: '',
   secondary_caregiver_phone: '',
+  caregiver_language_differs: null,
+  caregiver_preferred_language: '',
   emergency_same_as_primary: null,
   emergency_contact_name: '',
   emergency_contact_phone: '',
@@ -179,6 +184,7 @@ const PED_BLANK = {
 
 const TRI_STATE_FIELDS = new Set([
   'add_secondary_caregiver',
+  'caregiver_language_differs',
   'emergency_same_as_primary',
   'has_pets',
   'has_smoking',
@@ -259,6 +265,7 @@ const ADULT_COLUMNS = new Set([
   // Caregiver Info
   'caregiver_name', 'caregiver_phone',
   'add_secondary_caregiver', 'secondary_caregiver_name', 'secondary_caregiver_phone',
+  'caregiver_language_differs', 'caregiver_preferred_language',
   // Home Env
   'has_pets', 'has_smoking',
   // Current Services
@@ -286,6 +293,7 @@ const PEDIATRIC_COLUMNS = new Set([
   // Contact Info
   'phone_call_made_to', 'primary_caregiver_name', 'primary_caregiver_phone',
   'add_secondary_caregiver', 'secondary_caregiver_name', 'secondary_caregiver_phone',
+  'caregiver_language_differs', 'caregiver_preferred_language',
   'emergency_same_as_primary', 'emergency_contact_name', 'emergency_contact_phone',
   'email',
   // Patient Info
@@ -454,6 +462,52 @@ function CheckboxGroup({ options, values = [], onChange, disabled }) {
   );
 }
 
+// ── Caregiver language (shared by both SPN forms) ───────────────────────────
+// Checkbox gate + language dropdown. Stores the caregiver's language on the
+// triage record only; the patient's own preferred language stays on the
+// patient record (edited from the Referral tab).
+
+function CaregiverLanguageFields({ data, set, disabled }) {
+  const differs = isYesLike(data.caregiver_language_differs);
+  return (
+    <>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 600, color: hexToRgba(palette.backgroundDark.hex, 0.65), cursor: disabled ? 'default' : 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={differs}
+          disabled={disabled}
+          onChange={(e) => {
+            const v = e.target.checked;
+            set({
+              ...data,
+              caregiver_language_differs: v ? 'Yes' : 'No',
+              ...(v ? {} : { caregiver_preferred_language: '' }),
+            });
+          }}
+          style={{ width: 15, height: 15, accentColor: palette.primaryMagenta.hex, cursor: 'inherit' }}
+        />
+        Caregiver's preferred language is different from the patient receiving care
+      </label>
+      {differs && (
+        <Field
+          label="Caregiver Preferred Language"
+          hint="To change the preferred language of the patient receiving care, use the Referral tab."
+        >
+          <select
+            value={data.caregiver_preferred_language || ''}
+            onChange={(e) => set({ ...data, caregiver_preferred_language: e.target.value })}
+            disabled={disabled}
+            style={{ ...inputStyle, cursor: disabled ? 'default' : 'pointer' }}
+          >
+            <option value="">Select…</option>
+            {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </Field>
+      )}
+    </>
+  );
+}
+
 // ── Conditional helpers ─────────────────────────────────────────────────────
 
 function isYesLike(v) { return v === 'Yes' || v === true; }
@@ -469,11 +523,13 @@ function clearChildren(parentField, newParentValue, formType) {
   // Map: parent → [children to wipe when not-triggered]
   const ADULT_MAP = {
     add_secondary_caregiver: ['secondary_caregiver_name', 'secondary_caregiver_phone'],
+    caregiver_language_differs: ['caregiver_preferred_language'],
     has_homecare_services:   ['homecare_agency_name', 'homecare_hours_days'],
     has_in_home_therapies:   ['current_therapy_services'],
   };
   const PED_MAP = {
     add_secondary_caregiver:   ['secondary_caregiver_name', 'secondary_caregiver_phone'],
+    caregiver_language_differs: ['caregiver_preferred_language'],
     emergency_same_as_primary: ['emergency_contact_name', 'emergency_contact_phone'],
     has_homecare_services:     ['homecare_agency_name', 'homecare_hours_days'],
   };
@@ -569,6 +625,7 @@ function AdultForm({ data, set, missing, dobBounds, dobHint, disabled, forceVali
             </Field>
           </>
         )}
+        <CaregiverLanguageFields data={data} set={set} disabled={disabled} />
       </FormSection>
 
       <FormSection title="Home Environment">
@@ -739,6 +796,7 @@ function PediatricForm({ data, set, missing, dobBounds, dobHint, disabled, force
             </Field>
           </>
         )}
+        <CaregiverLanguageFields data={data} set={set} disabled={disabled} />
         <Field label="Emergency contact same as Primary Caregiver Contact?" required error={missing.has('emergency_same_as_primary')}>
           <TriStateRadio name="emergency_same_as_primary" value={data.emergency_same_as_primary} onChange={pickGate('emergency_same_as_primary')} disabled={disabled} />
         </Field>

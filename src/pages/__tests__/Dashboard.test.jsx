@@ -107,11 +107,19 @@ describe('Dashboard — mode routing', () => {
     mockPrefs = { dashboardMode: 'executive', pinnedPages: [] };
   });
 
-  it('renders executive dashboard when dashboardMode is "executive"', () => {
+  it('renders executive dashboard when dashboardMode is "executive" and user can toggle', () => {
+    mockCanToggle = true;
     mockPrefs.dashboardMode = 'executive';
     render(<Dashboard />);
     expect(screen.getByText('Dashboard')).toBeTruthy();
     expect(screen.getByText(/Active Referrals/i)).toBeTruthy();
+  });
+
+  it('forces caseload for users without the toggle permission, even when prefs say executive', () => {
+    mockCanToggle = false;
+    mockPrefs.dashboardMode = 'executive';
+    render(<Dashboard />);
+    expect(screen.getByText('My Caseload')).toBeTruthy();
   });
 
   it('renders caseload dashboard when dashboardMode is "caseload"', () => {
@@ -225,9 +233,17 @@ describe('Dashboard — caseload queue', () => {
 });
 
 describe('Dashboard — settings integration', () => {
-  it('defaults to executive when dashboardMode is not set', () => {
+  it('defaults to executive when dashboardMode is not set and user can toggle', () => {
+    mockCanToggle = true;
     mockPrefs = { pinnedPages: [] };
     render(<Dashboard />);
     expect(screen.getByText('Dashboard')).toBeTruthy();
+  });
+
+  it('defaults to caseload when dashboardMode is not set and user cannot toggle', () => {
+    mockCanToggle = false;
+    mockPrefs = { pinnedPages: [] };
+    render(<Dashboard />);
+    expect(screen.getByText('My Caseload')).toBeTruthy();
   });
 });

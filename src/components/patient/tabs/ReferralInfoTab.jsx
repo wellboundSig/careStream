@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { updateReferral } from '../../../api/referrals.js';
+import { updatePatient } from '../../../api/patients.js';
+import { LANGUAGE_OPTIONS, DEFAULT_LANGUAGE_CODE } from '../../../data/languages.js';
 import { updateEntity, useCareStore } from '../../../store/careStore.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import { useLookups } from '../../../hooks/useLookups.js';
@@ -152,6 +154,68 @@ function EditableReferralSelect({ label, value, fieldKey, referralId, onSave, op
           onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
           onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
           {saving ? 'Saving…' : (display || '—')}
+        </p>
+      )}
+    </FieldRow>
+  );
+}
+
+/**
+ * Preferred language, surfaced on the Referral tab. The value lives on the
+ * PATIENT record (single source of truth, same field the Demographics tab
+ * edits) — this control just makes it visible and editable where referral
+ * work happens. Gated by referral.edit_language (granted to everyone by
+ * default) so it works even for staff without full patient-edit rights.
+ */
+function EditablePatientLanguage({ patient, readOnly: forceReadOnly = false }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [localValue, setLocalValue] = useState(patient?.preferred_language || '');
+  const { can } = usePermissions();
+
+  useEffect(() => {
+    setLocalValue(patient?.preferred_language || '');
+  }, [patient?._id, patient?.preferred_language]);
+
+  const canEdit = !forceReadOnly && can(PERMISSION_KEYS.REFERRAL_EDIT_LANGUAGE);
+  const value = localValue || '';
+  const display = value
+    ? (LANGUAGE_OPTIONS.find((o) => o.value === value)?.label || value)
+    : null;
+
+  async function handleChange(e) {
+    if (!canEdit) return;
+    const v = e.target.value;
+    setEditing(false);
+    if (v === value) return;
+    const prev = value;
+    setLocalValue(v);
+    if (patient?._id) updateEntity('patients', patient._id, { preferred_language: v });
+    setSaving(true);
+    try {
+      await updatePatient(patient._id, { preferred_language: v });
+    } catch {
+      setLocalValue(prev);
+      if (patient?._id) updateEntity('patients', patient._id, { preferred_language: prev });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FieldRow label="Preferred language">
+      {editing ? (
+        <select autoFocus value={value || DEFAULT_LANGUAGE_CODE} onChange={handleChange} onBlur={() => setEditing(false)} style={{ ...ei(), cursor: 'pointer' }}>
+          <option value="" disabled>Select…</option>
+          {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : !canEdit ? (
+        <ValueText value={saving ? 'Saving…' : display} empty={!display} />
+      ) : (
+        <p onClick={() => setEditing(true)} title="Click to edit" style={{ ...ds(), opacity: saving ? 0.6 : 1, color: display ? palette.backgroundDark.hex : muted(0.28), fontStyle: display ? 'normal' : 'italic' }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexToRgba(palette.backgroundDark.hex, 0.12); e.currentTarget.style.background = hexToRgba(palette.backgroundDark.hex, 0.03); }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}>
+          {saving ? 'Saving…' : (display || 'Add language')}
         </p>
       )}
     </FieldRow>
@@ -760,6 +824,7 @@ export default function ReferralInfoTab({ patient, referral, readOnly = false })
         )}
         <EditableReferralServices value={referral.services_requested} referralId={referral._id} onSave={handleReferralSave} readOnly={readOnly} />
         <EditableReferralPhysician referral={referral} onSave={handleReferralSave} readOnly={readOnly} />
+        <EditablePatientLanguage patient={patient} readOnly={readOnly} />
       </Section>
 
       {(referral.f2f_date || referral.f2f_expiration || referral.hold_reason || referral.ntuc_reason) && (

@@ -7,6 +7,7 @@ import MarketerMetricsTab from './tabs/MarketerMetricsTab.jsx';
 import MarketerFacilitiesTab from './tabs/MarketerFacilitiesTab.jsx';
 import MarketerDataToolsTab from './tabs/MarketerDataToolsTab.jsx';
 import DateRangeFilter, { DEFAULT_DATE_RANGE } from '../common/DateRangeFilter.jsx';
+import LoadingState from '../common/LoadingState.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 
 const TABS = [
@@ -139,13 +140,20 @@ export default function MarketerDrawer({ marketer, onClose }) {
           <DateRangeFilter value={dateRange} onChange={setDateRange} />
         </div>
 
-        {/* Tab content */}
+        {/* Tab content. While referrals are still loading, show a real loading
+            state instead of misleading all-zero metrics. */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {activeTab === 'overview'   && <MarketerOverviewTab marketer={marketer} stats={stats} />}
-          {activeTab === 'referrals'  && <MarketerReferralsTab referrals={referrals} />}
-          {activeTab === 'metrics'    && <MarketerMetricsTab stats={stats} ntucReasons={ntucReasons} referrals={referrals} />}
+          {loading && activeTab !== 'facilities' ? (
+            <LoadingState message="Loading referral data…" />
+          ) : (
+            <>
+              {activeTab === 'overview'   && <MarketerOverviewTab marketer={marketer} stats={stats} />}
+              {activeTab === 'referrals'  && <MarketerReferralsTab referrals={referrals} />}
+              {activeTab === 'metrics'    && <MarketerMetricsTab stats={stats} ntucReasons={ntucReasons} referrals={referrals} />}
+              {activeTab === 'data'       && <MarketerDataToolsTab referrals={referrals} />}
+            </>
+          )}
           {activeTab === 'facilities' && <MarketerFacilitiesTab facilities={facilities} loading={loading} />}
-          {activeTab === 'data'       && <MarketerDataToolsTab referrals={referrals} />}
         </div>
       </div>
     </>

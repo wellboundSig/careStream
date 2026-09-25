@@ -17,6 +17,9 @@ export const DEFAULT_DATE_RANGE = { preset: 'all', from: '', to: '' };
 export const DATE_RANGE_PRESETS = [
   { id: '30', label: '30d' },
   { id: '90', label: '90d' },
+  { id: 'qtd', label: 'This qtr' },
+  { id: 'lastq', label: 'Last qtr' },
+  { id: 'ytd', label: 'YTD' },
   { id: '365', label: '1y' },
   { id: 'all', label: 'All time' },
   { id: 'custom', label: 'Custom' },
@@ -38,6 +41,14 @@ function parseRowDate(value) {
 
 const DAY_MS = 86400000;
 
+/** Calendar-quarter bounds: offset 0 = current quarter, -1 = previous. */
+export function quarterBounds(offset = 0, now = new Date()) {
+  const qIndex = Math.floor(now.getMonth() / 3) + offset;
+  const start = new Date(now.getFullYear(), qIndex * 3, 1);
+  const end = new Date(now.getFullYear(), (qIndex + 1) * 3, 1).getTime() - 1;
+  return { fromTs: start.getTime(), toTs: end };
+}
+
 /** Resolve a range object to inclusive [fromTs, toTs] bounds (null = open). */
 export function dateRangeBounds(range) {
   if (!range || range.preset === 'all' || !range.preset) return null;
@@ -46,6 +57,12 @@ export function dateRangeBounds(range) {
     const toStart = dayStartTs(range.to);
     if (fromTs == null && toStart == null) return null;
     return { fromTs, toTs: toStart != null ? toStart + DAY_MS - 1 : null };
+  }
+  if (range.preset === 'qtd') return { ...quarterBounds(0), toTs: null };
+  if (range.preset === 'lastq') return quarterBounds(-1);
+  if (range.preset === 'ytd') {
+    const now = new Date();
+    return { fromTs: new Date(now.getFullYear(), 0, 1).getTime(), toTs: null };
   }
   const days = Number(range.preset);
   if (!Number.isFinite(days) || days <= 0) return null;

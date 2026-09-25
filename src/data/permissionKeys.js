@@ -40,6 +40,7 @@ export const PERMISSION_KEYS = {
   REFERRAL_VIEW_ALL: 'referral.view_all',
   REFERRAL_EDIT: 'referral.edit',
   REFERRAL_EDIT_SOURCE: 'referral.edit_source',
+  REFERRAL_EDIT_LANGUAGE: 'referral.edit_language',
   /**
    * Reassign marketer_id on an existing referral from the Referral tab.
    * Deny-by-default — grant only to named users (Rafi / David).
@@ -378,6 +379,7 @@ export const PERMISSION_CATALOG = [
   { key: K.REFERRAL_VIEW_ALL,   label: 'View all cases',                   category: 'Referrals', description: 'See every referral in the Patients list and module queues. Without this, marketers only see cases where they are the marketer or the lead they personally entered.', sort: 13.5 },
   { key: K.REFERRAL_EDIT,       label: 'Edit referral fields',             category: 'Referrals', description: 'Modify referral data in the overview tab (division, services, physician, etc.)', sort: 14 },
   { key: K.REFERRAL_EDIT_SOURCE, label: 'Edit referral source',            category: 'Referrals', description: 'Change the lead / referral source on an existing referral after create', sort: 14.5 },
+  { key: K.REFERRAL_EDIT_LANGUAGE, label: 'Edit preferred language',       category: 'Referrals', description: 'Set or change the patient preferred language from the Referral tab. Granted to everyone by default.', sort: 14.55 },
   { key: K.REFERRAL_CHANGE_MARKETER, label: 'Change referral marketer',    category: 'Referrals', description: 'Reassign the marketer on an existing referral from the Referral tab (writes a timeline event). Deny-by-default — grant only to named users.', sort: 14.6 },
   { key: K.REFERRAL_CHANGE_FACILITY, label: 'Change referral facility',    category: 'Referrals', description: 'Change the facility on an existing referral and reconcile primary marketer, COC nurse, entity, and address per case (writes a timeline event). Deny-by-default — grant only to named users.', sort: 14.7 },
   { key: K.REFERRAL_TRANSITION, label: 'Move referrals between stages',    category: 'Referrals', description: 'Advance or regress referrals in the pipeline', sort: 15 },
@@ -515,7 +517,7 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.LEADS_CREATE, K.LEADS_PROMOTE_TO_INTAKE, K.LEADS_DISCARD, K.INTAKE_EMR_INITIAL, K.INTAKE_ADVANCE_WITHOUT_F2F,
-      K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT, K.REFERRAL_EDIT_SOURCE, K.REFERRAL_EDIT_LANGUAGE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.REFERRAL_MERGE_DUPLICATES,
       K.PATIENT_VIEW, K.PATIENT_EDIT,
@@ -551,7 +553,7 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.LEADS_CREATE, K.REFERRAL_CREATE,
-      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE, K.REFERRAL_TRANSITION, K.REFERRAL_HOLD,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.REFERRAL_MERGE_DUPLICATES,
       K.PATIENT_VIEW,
@@ -579,7 +581,7 @@ export const DEFAULT_PRESETS = [
       // REFERRAL_VIEW_ALL is included for the default Marketer preset (current
       // caseload behavior). Revoke individually for marketers who must only
       // see their own marketer_id / self-entered leads.
-      K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.LEADS_CREATE, K.REFERRAL_CREATE, K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.TASK_VIEW,
@@ -599,7 +601,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_TRANSITION,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE, K.REFERRAL_TRANSITION,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.SCHEDULING_STAFFING, K.SCHEDULING_ADMIN_CONFIRM, K.SCHEDULING_SOC_SCHEDULE, K.SCHEDULING_SOC_COMPLETE,
@@ -621,7 +623,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
-      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_ELIGIBILITY,
@@ -644,7 +646,7 @@ export const DEFAULT_PRESETS = [
     is_system: true,
     permissions: [
       K.LEADS_CREATE, K.REFERRAL_CREATE,
-      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.CLINICAL_TRIAGE, K.CLINICAL_RN_REVIEW,
@@ -664,7 +666,7 @@ export const DEFAULT_PRESETS = [
     permissions: [
       K.DIVISION_ALF, K.DIVISION_SN,
       K.LEADS_CREATE, K.REFERRAL_CREATE,
-      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL,
+      K.REFERRAL_VIEW, K.REFERRAL_VIEW_ALL, K.REFERRAL_EDIT_LANGUAGE,
       K.REFERRAL_FLAG_URGENT_CARE,
       K.PATIENT_VIEW,
       K.TASK_VIEW, K.NOTE_CREATE, K.NOTE_MENTION_ACCOUNT_MANAGER,

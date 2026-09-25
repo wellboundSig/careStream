@@ -245,6 +245,19 @@ export async function exportReportWorkbook({
   summaryWs.getCell('A3').font = { name: 'Calibri', size: 10, color: { argb: BRAND.muted } };
 
   let rowIdx = 5;
+  // Optional methodology note (e.g. how the close rate is calculated).
+  if (auto.note) {
+    summaryWs.mergeCells('A4:H4');
+    const noteCell = summaryWs.getCell('A4');
+    noteCell.value = auto.note;
+    noteCell.font = { name: 'Calibri', size: 9.5, italic: true, color: { argb: BRAND.muted } };
+    noteCell.alignment = { wrapText: true, vertical: 'top' };
+    // Rough sizing: ~110 wrapped chars per line in the merged A:H span.
+    const lines = String(auto.note).split('\n')
+      .reduce((n, seg) => n + Math.max(1, Math.ceil(seg.length / 110)), 0);
+    summaryWs.getRow(4).height = Math.max(42, lines * 14 + 8);
+    rowIdx = 6;
+  }
   summaryWs.getCell(`A${rowIdx}`).value = 'Key metrics';
   summaryWs.getCell(`A${rowIdx}`).font = { name: 'Calibri', size: 12, bold: true, color: { argb: BRAND.dark } };
   rowIdx += 1;

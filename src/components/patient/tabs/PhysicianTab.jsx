@@ -16,6 +16,11 @@ import { updateReferral } from '../../../api/referrals.js';
 import { usePatientDrawer } from '../../../context/PatientDrawerContext.jsx';
 import PhysicianPicker from '../../physicians/PhysicianPicker.jsx';
 import PhysicianVerificationPanel from '../../physicians/PhysicianVerificationPanel.jsx';
+import {
+  downloadPhysicianVerificationPdf,
+  printPhysicianVerificationPdf,
+} from '../../../utils/physicianVerificationPdf.js';
+import { useLookups } from '../../../hooks/useLookups.js';
 import palette, { hexToRgba } from '../../../utils/colors.js';
 
 function findTriagePcpId(triageAdult, triagePediatric, referralId) {
@@ -27,11 +32,12 @@ function findTriagePcpId(triageAdult, triagePediatric, referralId) {
   return null;
 }
 
-export default function PhysicianTab({ referral, readOnly = false }) {
+export default function PhysicianTab({ referral, patient = null, readOnly = false }) {
   const storePhysicians = useCareStore((s) => s.physicians);
   const triageAdult = useCareStore((s) => s.triageAdult);
   const triagePediatric = useCareStore((s) => s.triagePediatric);
   const { updateReferralLocal } = usePatientDrawer();
+  const { resolveUser } = useLookups();
   const [saving, setSaving] = useState(false);
   const promotedRef = useRef(false);
 
@@ -106,6 +112,37 @@ export default function PhysicianTab({ referral, readOnly = false }) {
           </div>
 
           <PhysicianVerificationPanel physician={physician} readOnly={readOnly} compact />
+
+          {physician && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+              <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.4) }}>
+                Verification report:
+              </span>
+              <button
+                type="button"
+                onClick={() => downloadPhysicianVerificationPdf({ physician, patient, referral, checkedByName: physician.verification_checked_by_id ? resolveUser(physician.verification_checked_by_id) : '' })}
+                style={{
+                  padding: '5px 12px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 650,
+                  background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+                }}
+              >
+                Download PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => printPhysicianVerificationPdf({ physician, patient, referral, checkedByName: physician.verification_checked_by_id ? resolveUser(physician.verification_checked_by_id) : '' })}
+                style={{
+                  padding: '5px 12px', borderRadius: 7, cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 650,
+                  border: '1px solid var(--color-border)', background: 'transparent',
+                  color: hexToRgba(palette.backgroundDark.hex, 0.65),
+                }}
+              >
+                Print
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

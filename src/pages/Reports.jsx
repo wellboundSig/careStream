@@ -167,14 +167,43 @@ function ParamControls({ controls, params, onChange }) {
   const rows = [];
 
   if (controls.includes('dateRange')) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const applyQuick = (id) => {
+      const now = new Date();
+      if (id === 'all') { onChange({ ...params, dateFrom: '', dateTo: '' }); return; }
+      if (id === 'ytd') { onChange({ ...params, dateFrom: iso(new Date(now.getFullYear(), 0, 1)), dateTo: iso(now) }); return; }
+      const qIndex = Math.floor(now.getMonth() / 3) + (id === 'lastq' ? -1 : 0);
+      const start = new Date(now.getFullYear(), qIndex * 3, 1);
+      const end = new Date(now.getFullYear(), (qIndex + 1) * 3, 0); // last day of quarter
+      onChange({ ...params, dateFrom: iso(start), dateTo: id === 'qtd' ? iso(now) : iso(end) });
+    };
+    const quickBtn = (id, label) => (
+      <button
+        key={id}
+        onClick={() => applyQuick(id)}
+        style={{
+          padding: '3px 9px', borderRadius: 2, fontSize: 11, cursor: 'pointer', fontWeight: 550,
+          border: '1px solid var(--color-border)', background: 'transparent',
+          color: hexToRgba(palette.backgroundDark.hex, 0.55),
+        }}
+      >
+        {label}
+      </button>
+    );
     rows.push(
       <tr key="dateRange">
         <td style={labelCell}>Date Range</td>
         <td style={valueCell}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <Field type="date" value={params.dateFrom || ''} onChange={(e) => set('dateFrom', e.target.value)} style={{ width: 130 }} />
             <span style={{ fontSize: 11, color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>to</span>
             <Field type="date" value={params.dateTo || ''} onChange={(e) => set('dateTo', e.target.value)} style={{ width: 130 }} />
+            <span style={{ display: 'inline-flex', gap: 4, marginLeft: 4 }}>
+              {quickBtn('qtd', 'This quarter')}
+              {quickBtn('lastq', 'Last quarter')}
+              {quickBtn('ytd', 'YTD')}
+              {quickBtn('all', 'All time')}
+            </span>
           </div>
         </td>
       </tr>

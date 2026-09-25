@@ -16,6 +16,15 @@ import {
   toCalendarDateString,
 } from '../utils/dateFormat.js';
 import { isSocCompletedReferral } from '../data/stageConfig.js';
+import { quarterBounds } from '../components/common/DateRangeFilter.jsx';
+import {
+  attributionMarketerId,
+  computeMarketerPerformance,
+  formatCloseRate,
+  CLOSE_RATE_METHODOLOGY,
+  COUNTS_NOTE,
+  UNASSIGNED_KEY,
+} from '../utils/marketerPerformance.js';
 import {
   PROCESSING_FLAG_COLUMNS,
   PROCESSING_META_COLUMNS,
@@ -61,6 +70,9 @@ const PERIOD_PRESETS = [
   { label: '7d',  days: 7 },
   { label: '30d', days: 30 },
   { label: '90d', days: 90 },
+  { label: 'This qtr', days: 'qtd' },
+  { label: 'Last qtr', days: 'lastq' },
+  { label: 'YTD', days: 'ytd' },
   { label: '1y',  days: 365 },
   { label: 'All', days: null },
   { label: 'Custom', days: 'custom' },
@@ -75,12 +87,12 @@ const COMPARE_METRICS = [
   { key: 'ntuc',          label: 'NTUC',                   fmt: 'n' },
   { key: 'hold',          label: 'On Hold',                fmt: 'n' },
   { key: 'high_priority', label: 'High / Critical Priority', fmt: 'n' },
-  { key: 'conversion',    label: 'SOC Conversion Rate',    fmt: '%' },
-  { key: 'ntuc_rate',     label: 'NTUC Rate',              fmt: '%' },
+  { key: 'conversion',    label: 'Close Rate (SOC ÷ resolved)', fmt: '%' },
+  { key: 'ntuc_rate',     label: 'NTUC Rate (of resolved)',     fmt: '%' },
   { key: 'avg_days',      label: 'Avg Days in Pipeline',   fmt: 'd' },
 ];
 
-const TABS = ['Overview','Referral to SOC','Trends','Sources','Period Comparison','Heatmap','Processing Overview','Data Table'];
+const TABS = ['Overview','Marketer Performance','Referral to SOC','Trends','Sources','Period Comparison','Heatmap','Processing Overview','Data Table'];
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -119,6 +131,10 @@ function computeMetrics(referrals) {
   const total = referrals.length;
   const soc   = referrals.filter((r) => isSocCompletedReferral(r)).length;
   const ntuc  = referrals.filter((r) => r.current_stage === 'NTUC').length;
+  // Close rate = SOC ÷ (SOC + NTUC): resolved referrals only. Open referrals
+  // are excluded so nothing still being worked counts as a loss, and recent
+  // cohorts aren't dragged down just for being recent.
+  const closed = soc + ntuc;
   const withDates = referrals.filter((r) => r.referral_date);
   const sumDays = withDates.reduce((s, r) => s + (daysSinceCalendarDate(r.referral_date) ?? 0), 0);
   return {
@@ -128,10 +144,11 @@ function computeMetrics(referrals) {
     active:        referrals.filter((r) => !TERMINAL.has(r.current_stage)).length,
     soc,
     ntuc,
+    closed,
     hold:          referrals.filter((r) => r.current_stage === 'Hold').length,
     high_priority: referrals.filter((r) => r.priority === 'High' || r.priority === 'Critical').length,
-    conversion:    total > 0 ? (soc / total) * 100 : 0,
-    ntuc_rate:     total > 0 ? (ntuc / total) * 100 : 0,
+    conversion:    closed > 0 ? (soc / closed) * 100 : null,
+    ntuc_rate:     closed > 0 ? (ntuc / closed) * 100 : null,
     avg_days:      withDates.length > 0 ? Math.round(sumDays / withDates.length) : null,
   };
 }
@@ -443,6 +460,131 @@ function CalendarHeatmap({ referrals, weeks = 20 }) {
   );
 }
 
+// ── Marketer Performance tab ──────────────────────────────────────────────────
+// Incentive-program view. Unlike the other tabs (which filter referrals by
+// referral_date), this one buckets SOC/NTUC by OUTCOME date, so it takes the
+// unfiltered rows plus the raw period selection and lets the shared util do
+// the date bucketing. Credit goes to the originally assigned marketer.
+
+function periodToRange(period, customRange) {
+  if (period === null) return null; // All time
+  if (period === 'custom') return { preset: 'custom', from: customRange?.from || '', to: customRange?.to || '' };
+  if (typeof period === 'string') return { preset: period }; // qtd | lastq | ytd
+  return { preset: String(period) }; // day windows: 7 / 30 / 90 / 365
+}
+
+const MARKETER_PERF_COLUMNS = [
+  { key: 'marketer',  label: 'Marketer' },
+  { key: 'received',  label: 'Referrals Received' },
+  { key: 'soc',       label: 'SOC (by SOC date)' },
+  { key: 'ntuc',      label: 'NTUC (by NTUC date)' },
+  { key: 'closed',    label: 'Closed (SOC + NTUC)' },
+  { key: 'closeRateLabel', label: 'Close Rate' },
+  { key: 'open',      label: 'Open (current)' },
+];
+
+function MarketerPerformanceTab({ allReferrals, division, period, customRange, resolveMarketer }) {
+  const rows = useMemo(() => {
+    const divided = filterByDivision(allReferrals, division);
+    const perf = computeMarketerPerformance(divided, periodToRange(period, customRange));
+    // Real, resolvable marketers only. Referrals with no marketer (or a
+    // marketer id that no longer exists) are excluded from this view entirely.
+    const known = [];
+    for (const [mid, s] of Object.entries(perf)) {
+      const name = mid === UNASSIGNED_KEY ? null : resolveMarketer(mid);
+      if (!name || name === '—') continue;
+      known.push({ marketer: name, ...s, closeRateLabel: formatCloseRate(s.closeRate) });
+    }
+    known.sort((a, b) => b.soc - a.soc || b.received - a.received);
+    return known;
+  }, [allReferrals, division, period, customRange, resolveMarketer]);
+
+  const totals = rows.reduce(
+    (a, r) => ({ received: a.received + r.received, soc: a.soc + r.soc, ntuc: a.ntuc + r.ntuc, open: a.open + r.open }),
+    { received: 0, soc: 0, ntuc: 0, open: 0 },
+  );
+  const totalClosed = totals.soc + totals.ntuc;
+  const overallRate = totalClosed > 0 ? (totals.soc / totalClosed) * 100 : null;
+
+  async function handleExport() {
+    await exportToExcel(
+      rows,
+      MARKETER_PERF_COLUMNS,
+      'Marketer Performance',
+      `Generated ${new Date().toLocaleString()}`,
+      {
+        note: `${CLOSE_RATE_METHODOLOGY}\n${COUNTS_NOTE}`,
+        kpis: [
+          { label: 'Marketers', value: rows.length },
+          { label: 'Referrals received', value: totals.received },
+          { label: 'SOC (in period)', value: totals.soc },
+          { label: 'NTUC (in period)', value: totals.ntuc },
+          { label: 'Overall close rate', value: overallRate === null ? 'N/A' : `${Math.round(overallRate)}%` },
+          { label: 'Open (excluded from rate)', value: totals.open },
+        ],
+      },
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
+        <KpiCard label="Overall Close Rate" value={overallRate === null ? 'N/A' : `${overallRate.toFixed(1)}%`} sub="SOC ÷ (SOC + NTUC), resolved only" color={palette.accentGreen.hex} />
+        <KpiCard label="SOC in Period" value={totals.soc} sub="counted by SOC date" color={palette.primaryMagenta.hex} />
+        <KpiCard label="NTUC in Period" value={totals.ntuc} sub="counted by NTUC date" color={palette.accentOrange.hex} />
+        <KpiCard label="Open Now" value={totals.open} sub="excluded from the rate" color={palette.accentBlue.hex} />
+      </div>
+
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <div>
+            <SectionTitle>Performance by Marketer</SectionTitle>
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), maxWidth: 720, lineHeight: 1.5 }}>
+              {CLOSE_RATE_METHODOLOGY}
+            </p>
+            <p style={{ fontSize: 11.5, color: hexToRgba(palette.backgroundDark.hex, 0.45), maxWidth: 720, lineHeight: 1.5, marginTop: 6 }}>
+              {COUNTS_NOTE}
+            </p>
+          </div>
+          <button onClick={handleExport}
+            style={{
+              padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', flexShrink: 0,
+              fontSize: 12, fontWeight: 650, background: palette.primaryMagenta.hex, color: palette.backgroundLight.hex,
+            }}>
+            Export Excel
+          </button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+              {MARKETER_PERF_COLUMNS.map((c) => (
+                <th key={c.key} style={{ padding: '8px 12px', textAlign: c.key === 'marketer' ? 'left' : 'center', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap' }}>
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={MARKETER_PERF_COLUMNS.length} style={{ padding: '28px 0', textAlign: 'center', fontSize: 12.5, fontStyle: 'italic', color: hexToRgba(palette.backgroundDark.hex, 0.35) }}>No marketer activity for this period.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={r.marketer + i} style={{ borderBottom: `1px solid ${hexToRgba(palette.backgroundDark.hex, 0.05)}` }}>
+                <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex }}>{r.marketer}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, color: palette.backgroundDark.hex }}>{r.received}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, fontWeight: 650, color: palette.accentGreen.hex }}>{r.soc}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, color: palette.accentOrange.hex }}>{r.ntuc}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.6) }}>{r.closed}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: r.closeRate === null ? hexToRgba(palette.backgroundDark.hex, 0.35) : r.closeRate >= 0.5 ? palette.accentGreen.hex : r.closeRate >= 0.25 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.5) }}>{r.closeRateLabel}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: 13, color: palette.accentBlue.hex }}>{r.open}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 // ── Period selector ───────────────────────────────────────────────────────────
 
 function PeriodSelector({ value, onChange, customRange, onCustomRangeChange }) {
@@ -535,8 +677,8 @@ function OverviewTab({ referrals, allReferrals }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         <KpiCard label="Total Referrals"   value={m.total}  sub={`${mA.total} all time`} color={palette.primaryMagenta.hex} />
         <KpiCard label="Active in Pipeline" value={m.active} sub={`${((m.active / Math.max(m.total,1)) * 100).toFixed(0)}% of period`} color={palette.accentBlue.hex} />
-        <KpiCard label="SOC Conversion"    value={`${m.conversion.toFixed(1)}%`} sub={`${m.soc} completed`} color={palette.accentGreen.hex} />
-        <KpiCard label="NTUC Rate"         value={`${m.ntuc_rate.toFixed(1)}%`}  sub={`${m.ntuc} cases`}  color={m.ntuc_rate > 20 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6)} />
+        <KpiCard label="Close Rate" value={m.conversion === null ? 'N/A' : `${m.conversion.toFixed(1)}%`} sub={`SOC ÷ resolved · ${m.soc} SOC / ${m.ntuc} NTUC · ${m.active} open excluded`} color={palette.accentGreen.hex} />
+        <KpiCard label="NTUC Rate"  value={m.ntuc_rate === null ? 'N/A' : `${m.ntuc_rate.toFixed(1)}%`}  sub={`${m.ntuc} of ${m.closed} resolved`}  color={(m.ntuc_rate ?? 0) > 20 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.6)} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
@@ -676,7 +818,8 @@ function TrendsTab({ referrals }) {
 
 function SourcesTab({ referrals, resolveMarketer, resolveSource }) {
   const sourceData   = useMemo(() => groupByKey(referrals, (r) => r.referral_source_id, resolveSource).slice(0, 12), [referrals, resolveSource]);
-  const marketerData = useMemo(() => groupByKey(referrals, (r) => r.marketer_id, resolveMarketer).slice(0, 12), [referrals, resolveMarketer]);
+  // Credited to the ORIGINAL marketer (incentive attribution), not the current assignee.
+  const marketerData = useMemo(() => groupByKey(referrals, (r) => attributionMarketerId(r), resolveMarketer).slice(0, 12), [referrals, resolveMarketer]);
 
   const maxS = sourceData[0]?.count || 1;
   const maxM = marketerData[0]?.count || 1;
@@ -1455,6 +1598,18 @@ export default function DataTools() {
         if (!customRange.from && !customRange.to) return allReferrals;
         return filterByDateRange(allReferrals, customRange.from, customRange.to);
       }
+      if (period === 'qtd' || period === 'lastq' || period === 'ytd') {
+        const bounds = period === 'ytd'
+          ? { fromTs: new Date(new Date().getFullYear(), 0, 1).getTime(), toTs: null }
+          : quarterBounds(period === 'lastq' ? -1 : 0);
+        return allReferrals.filter((r) => {
+          const t = parseCalendarDate(r.referral_date)?.getTime();
+          if (t == null) return false;
+          if (bounds.fromTs != null && t < bounds.fromTs) return false;
+          if (bounds.toTs != null && t > bounds.toTs) return false;
+          return true;
+        });
+      }
       return filterByPeriod(allReferrals, period);
     },
     [allReferrals, period, customRange, loading, isAdmin],
@@ -1488,12 +1643,13 @@ export default function DataTools() {
 
   if (loading) return <LoadingState message="Loading data…" />;
 
+  // Header + tab menu live in a FIXED-width container so they never shift when
+  // switching tabs; only the content area below adapts its width per tab.
+  const contentMaxWidth = tab === 'Referral to SOC' ? 1720 : tab === 'Processing Overview' ? 1600 : 1280;
+
   return (
-    <div style={{
-      padding: tab === 'Referral to SOC' ? '28px 40px 64px' : '24px 28px',
-      maxWidth: tab === 'Referral to SOC' ? 1720 : tab === 'Processing Overview' ? 1600 : 1280,
-      margin: '0 auto',
-    }}>
+    <div style={{ padding: '24px 28px 64px' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
@@ -1523,15 +1679,26 @@ export default function DataTools() {
       </div>
 
       <TabBar active={tab} onChange={setTab} />
+      </div>
 
+      <div style={{ maxWidth: contentMaxWidth, margin: '0 auto' }}>
       {tab === 'Overview'          && <OverviewTab referrals={divisionFiltered} allReferrals={allReferrals} />}
+      {tab === 'Marketer Performance' && (
+        <MarketerPerformanceTab
+          allReferrals={allReferrals}
+          division={division}
+          period={period}
+          customRange={customRange}
+          resolveMarketer={resolveMarketer}
+        />
+      )}
       {tab === 'Referral to SOC'   && (
         <ReferralToSocView
           referrals={divisionFiltered}
-          // Custom range: hand the view pre-filtered rows and disable its own
-          // day-window so the explicit From/To bounds are respected.
-          allReferrals={period === 'custom' ? periodFiltered : allReferrals}
-          period={period === 'custom' ? null : period}
+          // Custom / quarter / YTD ranges: hand the view pre-filtered rows and
+          // disable its own day-window so the explicit bounds are respected.
+          allReferrals={typeof period === 'string' ? periodFiltered : allReferrals}
+          period={typeof period === 'string' ? null : period}
           division={division}
         />
       )}
@@ -1553,6 +1720,7 @@ export default function DataTools() {
       {tab === 'Data Table' && (
         <DataTableTab referrals={divisionFiltered} resolveMarketer={resolveMarketer} resolveSource={resolveSource} />
       )}
+      </div>
     </div>
   );
 }

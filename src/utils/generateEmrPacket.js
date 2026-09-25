@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import { getPhysician } from '../api/physicians.js';
+import { buildPhysicianVerificationPdfBytes } from './physicianVerificationPdf.js';
 import { getFilesByPatient, getFilesByReferral } from '../api/patientFiles.js';
 import { getNotesByPatient } from '../api/notes.js';
 import { getStageHistory } from '../api/stageHistory.js';
@@ -731,8 +732,32 @@ async function buildHousePacketPdf({
   const notesBytes = buildNotesPdf(notes, resolveUser);
   const timelineBytes = buildTimelinePdf(timelineEntries, resolveUser, resolveMarketer);
 
+  // Physician NPI / PECOS verification page — the full stored registry
+  // return plus when the check ran, so SPN intake no longer attaches
+  // ePACES / NPI screenshots for clinical review.
+  let verificationBytes = null;
+  if (referral.physician_id) {
+    try {
+      const rec = await getPhysician(referral.physician_id);
+      const physician = rec.fields || rec;
+      if (physician) {
+        verificationBytes = buildPhysicianVerificationPdfBytes({
+          physician,
+          patient: referral.patient || null,
+          referral,
+          checkedByName: physician.verification_checked_by_id
+            ? resolveUser(physician.verification_checked_by_id)
+            : '',
+        });
+      }
+    } catch { /* physician fetch failed — skip the page rather than block the packet */ }
+  }
+
   const merged = await PDFDocument.create();
   await appendPdfBytes(merged, coverBytes);
+  if (verificationBytes) {
+    await appendPdfBytes(merged, verificationBytes);
+  }
   if (files.length > 0) {
     await appendPdfBytes(merged, buildFileManifestPdf(files));
   }

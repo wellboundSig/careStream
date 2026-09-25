@@ -1,4 +1,5 @@
 import StageRules from '../data/StageRules.json';
+import { legacyVisitPaperworkOpen } from '../data/stageConfig.js';
 
 export function canMoveFromTo(fromStage, toStage) {
   if (fromStage === toStage) return false;
@@ -36,6 +37,35 @@ export function needsModal(fromStage, toStage) {
  * @param {string} params.userId - the requesting user's ID
  * @returns {{ effectiveStage: string, ntucMetadata: object, wasIntercepted: boolean }}
  */
+/**
+ * Staffing bypass: a referral whose visit is already scheduled (or done) must
+ * NEVER stop in Staffing Feasibility — scheduling a visit means staffing was
+ * already secured. Resolves the intelligent destination instead:
+ *
+ *   - visit completed + all paperwork/clinical closed  → 'Completed'
+ *   - visit completed + paperwork still open           → 'Intake' (post-visit
+ *     status keeps it on the paperwork queues)
+ *   - visit scheduled, not yet happened                → 'SOC Scheduled'
+ *
+ * Returns null when the referral has no scheduled/completed visit (normal
+ * staffing flow applies).
+ *
+ * @param {object} referral - referral fields (including any pending updates)
+ * @returns {{ stage: string, why: string } | null}
+ */
+export function resolveStaffingBypass(referral) {
+  if (!referral) return null;
+  const visitDone = !!referral.soc_completed_date;
+  const visitScheduled = !!referral.soc_scheduled_date;
+  if (!visitDone && !visitScheduled) return null;
+  if (visitDone) {
+    return legacyVisitPaperworkOpen(referral)
+      ? { stage: 'Intake', why: 'visit already completed; post-visit paperwork continues in Intake' }
+      : { stage: 'Completed', why: 'visit completed and all paperwork closed' };
+  }
+  return { stage: 'SOC Scheduled', why: 'visit already scheduled, so staffing is already secured' };
+}
+
 export function resolveNtucDestination({ requestedStage, fromStage, canDirect, userId }) {
   if (requestedStage !== 'NTUC') {
     return { effectiveStage: requestedStage, ntucMetadata: {}, wasIntercepted: false };

@@ -34,6 +34,17 @@ export function applyStageEntryEffects({ referral, fromStage, toStage, actorUser
     extra.in_clinical_review = false;
   }
 
+  // NTUC outcome date — marketer performance credits NTUC to the period it
+  // was RESOLVED in (same as soc_completed_date for SOC), not when the
+  // referral came in. Stamp on entry; clear when a case is re-opened out of
+  // NTUC so a rescued referral never counts as a loss. Re-NTUC restamps.
+  if (toStage === 'NTUC' && fromStage !== 'NTUC') {
+    extra.ntuc_date = new Date().toISOString();
+  } else if (fromStage === 'NTUC' && toStage !== 'NTUC') {
+    // null (NOT '') — the API's timestamp validation 422s on empty strings.
+    extra.ntuc_date = null;
+  }
+
   if (toStage === 'Eligibility Verification') {
     const priorAt = referral?.eligibility_completed_at || '';
     const priorBy = referral?.eligibility_completed_by_id || '';

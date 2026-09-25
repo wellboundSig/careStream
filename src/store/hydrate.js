@@ -58,6 +58,7 @@ const TABLES = [
   { key: 'userPermissions',    table: 'UserPermissions' },
   { key: 'languages',          table: 'Languages' },
   { key: 'userLanguages',      table: 'UserLanguages' },
+  { key: 'mentionStates',      table: 'MentionStates' },
   { key: 'issueReports',       table: 'IssueReports' },
   { key: 'cocNurseFacilities', table: 'CocNurseFacilities' },
 

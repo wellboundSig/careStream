@@ -11,6 +11,7 @@ import palette, { hexToRgba } from '../utils/colors.js';
 import { UserButton } from '@clerk/react';
 import ReportIssueSection from '../components/settings/ReportIssueSection.jsx';
 import OutOfOfficeSection from '../components/settings/OutOfOfficeSection.jsx';
+import MyLanguagesSection from '../components/settings/MyLanguagesSection.jsx';
 import { isUserOoo } from '../utils/outOfOffice.js';
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
@@ -191,6 +192,9 @@ export default function Settings() {
       <ReportIssueSection />
 
       <OutOfOfficeSection />
+
+      {/* ── Languages I speak ── */}
+      <MyLanguagesSection />
 
       {/* ── Appearance ── */}
       <Section

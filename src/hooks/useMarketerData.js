@@ -3,13 +3,17 @@ import { getReferrals } from '../api/referrals.js';
 import { getMarketerFacilities, getFacilities } from '../api/marketerFacilities.js';
 import { useCareStore } from '../store/careStore.js';
 import aurora from '../api/aurora.js';
-import { isSocCompletedReferral } from '../data/stageConfig.js';
 import { filterByDateRange } from '../components/common/DateRangeFilter.jsx';
+import {
+  attributionMarketerId,
+  summarizeMarketerReferrals,
+} from '../utils/marketerPerformance.js';
 
 export function useMarketerData(marketer, dateRange = null) {
   const [allReferrals, setAllReferrals] = useState([]);
   const [facilities, setFacilities] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true so the drawer never flashes all-zero metrics before the fetch.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const marketerId = String(marketer?.id || '').trim();
@@ -17,12 +21,16 @@ export function useMarketerData(marketer, dateRange = null) {
     setLoading(true);
 
     Promise.all([
-      getReferrals({ filterByFormula: `{marketer_id} = "${marketerId}"` }),
+      // Fetch by current OR original assignment, then keep only rows CREDITED
+      // to this marketer (originally assigned; reassignments don't move credit).
+      getReferrals({ filterByFormula: `OR({marketer_id} = "${marketerId}", {original_marketer_id} = "${marketerId}")` }),
       getMarketerFacilities(marketerId),
       getFacilities(),
     ])
       .then(async ([refs, mfLinks, allFacilities]) => {
-        const rawRefs = refs.map((r) => ({ _id: r.id, ...r.fields }));
+        const rawRefs = refs
+          .map((r) => ({ _id: r.id, ...r.fields }))
+          .filter((r) => attributionMarketerId(r) === marketerId);
 
         // Enrich with patient names (same approach as usePhysicianData)
         const pids = [...new Set(rawRefs.map((r) => r.patient_id).filter(Boolean))];
@@ -63,17 +71,19 @@ export function useMarketerData(marketer, dateRange = null) {
 
   const referrals = filterByDateRange(allReferrals, dateRange, 'referral_date');
 
-  const admittedCount = referrals.filter((r) => isSocCompletedReferral(r)).length;
+  // Incentive-program stats: SOC/NTUC bucketed by OUTCOME date within the
+  // selected range; close rate = SOC ÷ (SOC + NTUC) — resolved only; open is
+  // a current snapshot, never period-scoped. Computed over ALL attributed
+  // referrals (not the referral_date-filtered list) so outcome dating works.
+  const perf = summarizeMarketerReferrals(allReferrals, dateRange);
   const stats = {
-    total:      referrals.length,
-    active:     referrals.filter((r) => !['NTUC', 'SOC Completed', 'Completed'].includes(r.current_stage)).length,
-    admitted:   admittedCount,
-    ntuc:       referrals.filter((r) => r.current_stage === 'NTUC').length,
-    convRate:   referrals.length ? Math.round((admittedCount / referrals.length) * 100) : 0,
-    lastReferral: referrals.reduce((latest, r) => {
-      if (!r.referral_date) return latest;
-      return !latest || new Date(r.referral_date) > new Date(latest) ? r.referral_date : latest;
-    }, null),
+    ...perf, // received, soc, ntuc, closed, closeRate, open, lastReferralDate
+    // Legacy aliases still used by drawer tabs:
+    total:      perf.received,
+    active:     perf.open,
+    admitted:   perf.soc,
+    convRate:   perf.closeRate === null ? null : Math.round(perf.closeRate * 100),
+    lastReferral: perf.lastReferralDate,
   };
 
   const ntucReasons = referrals

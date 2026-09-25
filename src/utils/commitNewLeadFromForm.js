@@ -225,6 +225,9 @@ export async function commitNewLeadFromForm({
     id: referralCustomId,
     patient_id: createdPatientId,
     marketer_id: typeof resolvedMarketer === 'string' ? resolvedMarketer.trim() : resolvedMarketer,
+    // Write-once attribution anchor: incentive credit always follows the
+    // ORIGINALLY assigned marketer, even if marketer_id is later reassigned.
+    original_marketer_id: typeof resolvedMarketer === 'string' ? resolvedMarketer.trim() : resolvedMarketer,
     referral_source_id: resolvedSource,
     ...(form.referral_method ? { referral_method: form.referral_method } : {}),
     current_stage: stage,

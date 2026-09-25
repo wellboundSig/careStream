@@ -6,7 +6,9 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 import { useCareStore } from '../store/careStore.js';
 import { useCurrentAppUser } from '../hooks/useCurrentAppUser.js';
+import { useOutletContext } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions.js';
+import { byBusinessId, divisionVisible, resolveTaskDivision } from '../utils/taskDivision.js';
 import { PERMISSION_KEYS } from '../data/permissionKeys.js';
 import { useLookups } from '../hooks/useLookups.js';
 import { usePatientDrawer } from '../context/PatientDrawerContext.jsx';
@@ -70,7 +72,8 @@ function OutlookGate({ onBypass }) {
 }
 
 export default function CalendarPage() {
-  const { can } = usePermissions();
+  const { can, hasDivision } = usePermissions();
+  const { division = 'All' } = useOutletContext() || {};
   const { appUserId } = useCurrentAppUser();
   const { resolveUser } = useLookups();
   const { open: openDrawer } = usePatientDrawer();
@@ -96,8 +99,15 @@ export default function CalendarPage() {
     if (!hydrated || !appUserId) return [];
     const result = [];
 
+    // Division scoping applies to every event source: users only see events
+    // for divisions they can access, and the global switcher narrows further.
+    const patientsById = byBusinessId(patientMap);
+    const referralsById = byBusinessId(referralMap);
+    const scope = { hasDivision, division };
+
     Object.values(referralMap).forEach((ref) => {
       if (!ref.f2f_expiration) return;
+      if (!divisionVisible(ref.division, scope)) return;
       const d = parseCalendarDate(ref.f2f_expiration);
       if (!d) return;
       const patient = patientMap[ref._patientRecordId] ||
@@ -118,6 +128,7 @@ export default function CalendarPage() {
     Object.values(storeTasks).forEach((task) => {
       const isOwner = task.assigned_to_id === appUserId || task.created_by_id === appUserId;
       if (!isOwner) return;
+      if (!divisionVisible(resolveTaskDivision(task, { patientsById, referralsById }), scope)) return;
 
       if (task.due_date) {
         const d = parseCalendarDate(task.due_date);
@@ -159,7 +170,7 @@ export default function CalendarPage() {
     });
 
     return result;
-  }, [hydrated, appUserId, referralMap, patientMap, storeTasks]);
+  }, [hydrated, appUserId, referralMap, patientMap, storeTasks, hasDivision, division]);
 
   const eventPropGetter = useCallback((event) => {
     const style = TYPE_STYLES[event.type] || TYPE_STYLES[EVENT_TYPE.TASK_DUE];

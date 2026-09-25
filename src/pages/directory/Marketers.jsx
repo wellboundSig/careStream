@@ -7,7 +7,11 @@ import { canViewDirectory } from '../../data/directoryPermissions.js';
 import AccessDenied from '../../components/common/AccessDenied.jsx';
 import palette, { hexToRgba } from '../../utils/colors.js';
 import { fmtCalendarDate } from '../../utils/dateFormat.js';
-import { isSocCompletedReferral } from '../../data/stageConfig.js';
+import {
+  computeMarketerPerformance,
+  formatCloseRate,
+  CLOSE_RATE_METHODOLOGY,
+} from '../../utils/marketerPerformance.js';
 
 const REGION_COLORS = {
   LI:          hexToRgba(palette.accentBlue.hex, 0.18),
@@ -33,24 +37,12 @@ export default function Marketers() {
   const marketers = useMemo(() => Object.values(storeMarketers), [storeMarketers]);
   const allReferrals = useMemo(() => Object.values(storeReferrals), [storeReferrals]);
 
-  const statsByMarketer = useMemo(() => {
-    const map = {};
-    allReferrals.forEach((ref) => {
-      const mid = String(ref.marketer_id || '').trim();
-      if (!mid) return;
-      if (!map[mid]) map[mid] = { total: 0, admitted: 0, ntuc: 0, lastDate: null };
-      map[mid].total++;
-      if (isSocCompletedReferral(ref)) map[mid].admitted++;
-      if (ref.current_stage === 'NTUC') map[mid].ntuc++;
-      if (!map[mid].lastDate || new Date(ref.referral_date) > new Date(map[mid].lastDate)) {
-        map[mid].lastDate = ref.referral_date;
-      }
-    });
-    Object.values(map).forEach((s) => {
-      s.convRate = s.total ? Math.round((s.admitted / s.total) * 100) : 0;
-    });
-    return map;
-  }, [allReferrals]);
+  // All-time performance credited to the ORIGINALLY assigned marketer —
+  // reassignments never move credit (incentive-program attribution).
+  const statsByMarketer = useMemo(
+    () => computeMarketerPerformance(allReferrals, null),
+    [allReferrals],
+  );
 
   const filtered = useMemo(() => {
     let list = marketers;
@@ -80,9 +72,9 @@ export default function Marketers() {
     { label: 'Region', field: 'region' },
     { label: 'Division', field: 'division' },
     { label: 'Status', field: 'status' },
-    { label: 'Referrals', field: null },
-    { label: 'Admitted', field: null },
-    { label: 'Conv.', field: null },
+    { label: 'Referrals', field: null, tooltip: 'Referrals received, credited to the originally assigned marketer' },
+    { label: 'SOC', field: null, tooltip: 'SOC completed (credited to the originally assigned marketer)' },
+    { label: 'Close Rate', field: null, tooltip: CLOSE_RATE_METHODOLOGY },
     { label: 'Last Referral', field: null },
   ];
 
@@ -104,8 +96,8 @@ export default function Marketers() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: hexToRgba(palette.backgroundDark.hex, 0.025), borderBottom: `1px solid var(--color-border)` }}>
-                {COLS.map(({ label, field }) => (
-                  <th key={label} onClick={field ? () => toggleSort(field) : undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: field ? 'pointer' : 'default', userSelect: 'none' }}>
+                {COLS.map(({ label, field, tooltip }) => (
+                  <th key={label} onClick={field ? () => toggleSort(field) : undefined} title={tooltip || undefined} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: hexToRgba(palette.backgroundDark.hex, 0.4), whiteSpace: 'nowrap', cursor: field ? 'pointer' : tooltip ? 'help' : 'default', userSelect: 'none' }}>
                     {label} {field && sortField === field && (sortDir === 'asc' ? '▲' : '▼')}
                   </th>
                 ))}
@@ -117,7 +109,8 @@ export default function Marketers() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={8} style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, color: hexToRgba(palette.backgroundDark.hex, 0.35), fontStyle: 'italic' }}>No marketers found.</td></tr>
               ) : filtered.map((marketer) => {
-                const s = statsByMarketer[String(marketer.id || '').trim()] || { total: 0, admitted: 0, ntuc: 0, convRate: 0, lastDate: null };
+                const s = statsByMarketer[String(marketer.id || '').trim()]
+                  || { received: 0, soc: 0, ntuc: 0, closed: 0, closeRate: null, open: 0, lastReferralDate: null };
                 return <MarketerRow key={marketer._id} marketer={marketer} stats={s} onOpen={() => setSelected(marketer)} />;
               })}
             </tbody>
@@ -133,7 +126,8 @@ export default function Marketers() {
 function MarketerRow({ marketer, stats, onOpen }) {
   const [hovered, setHovered] = useState(false);
   const regionBg = REGION_COLORS[marketer.region] || hexToRgba(palette.backgroundDark.hex, 0.07);
-  const lastDate = stats.lastDate ? fmtCalendarDate(stats.lastDate) : '—';
+  const lastDate = stats.lastReferralDate ? fmtCalendarDate(stats.lastReferralDate) : '—';
+  const ratePct = stats.closeRate === null ? null : Math.round(stats.closeRate * 100);
 
   return (
     <tr onDoubleClick={onOpen} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
@@ -169,10 +163,15 @@ function MarketerRow({ marketer, stats, onOpen }) {
       <td style={{ padding: '11px 14px' }}>
         <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: marketer.status === 'Active' ? hexToRgba(palette.accentGreen.hex, 0.16) : hexToRgba(palette.backgroundDark.hex, 0.08), color: marketer.status === 'Active' ? palette.accentGreen.hex : hexToRgba(palette.backgroundDark.hex, 0.45) }}>{marketer.status || '—'}</span>
       </td>
-      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, textAlign: 'center' }}>{stats.total}</td>
-      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: palette.accentGreen.hex, textAlign: 'center' }}>{stats.admitted}</td>
-      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 650, color: stats.convRate >= 50 ? palette.accentGreen.hex : stats.convRate >= 25 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.5), textAlign: 'center' }}>
-        {stats.total > 0 ? `${stats.convRate}%` : '—'}
+      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: palette.backgroundDark.hex, textAlign: 'center' }}>{stats.received}</td>
+      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: palette.accentGreen.hex, textAlign: 'center' }}>{stats.soc}</td>
+      <td title={CLOSE_RATE_METHODOLOGY} style={{ padding: '11px 14px', fontSize: 13, fontWeight: 650, color: ratePct === null ? hexToRgba(palette.backgroundDark.hex, 0.35) : ratePct >= 50 ? palette.accentGreen.hex : ratePct >= 25 ? palette.accentOrange.hex : hexToRgba(palette.backgroundDark.hex, 0.5), textAlign: 'center', whiteSpace: 'nowrap' }}>
+        {formatCloseRate(stats.closeRate)}
+        {stats.open > 0 && (
+          <span style={{ fontSize: 11, fontWeight: 500, color: hexToRgba(palette.backgroundDark.hex, 0.4), marginLeft: 5 }}>
+            · {stats.open} open
+          </span>
+        )}
       </td>
       <td style={{ padding: '11px 14px', fontSize: 12, color: hexToRgba(palette.backgroundDark.hex, 0.45) }}>{lastDate}</td>
     </tr>

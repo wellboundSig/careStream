@@ -848,6 +848,11 @@
         "pg": "text",
         "wire": "text"
       },
+      "original_marketer_id": {
+        "column": "original_marketer_id",
+        "pg": "text",
+        "wire": "text"
+      },
       "campaign_id": {
         "column": "campaign_id",
         "pg": "text",
@@ -922,6 +927,11 @@
         "column": "ntuc_financial_impact",
         "pg": "text",
         "wire": "text"
+      },
+      "ntuc_date": {
+        "column": "ntuc_date",
+        "pg": "timestamptz",
+        "wire": "timestamp"
       },
       "hold_reason": {
         "column": "hold_reason",
@@ -2182,6 +2192,16 @@
   "TriageAdult": {
     "pgTable": "triage_adult",
     "fields": {
+      "caregiver_language_differs": {
+        "column": "caregiver_language_differs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caregiver_preferred_language": {
+        "column": "caregiver_preferred_language",
+        "pg": "text",
+        "wire": "text"
+      },
       "id": {
         "column": "id",
         "pg": "text",
@@ -2432,6 +2452,16 @@
   "TriagePediatric": {
     "pgTable": "triage_pediatric",
     "fields": {
+      "caregiver_language_differs": {
+        "column": "caregiver_language_differs",
+        "pg": "text",
+        "wire": "text"
+      },
+      "caregiver_preferred_language": {
+        "column": "caregiver_preferred_language",
+        "pg": "text",
+        "wire": "text"
+      },
       "id": {
         "column": "id",
         "pg": "text",
@@ -6031,6 +6061,56 @@
         "column": "metadata",
         "pg": "jsonb",
         "wire": "jsonRaw"
+      },
+      "created_at": {
+        "column": "created_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      }
+    }
+  },
+  "MentionStates": {
+    "pgTable": "mention_states",
+    "fields": {
+      "id": {
+        "column": "id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "user_id": {
+        "column": "user_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "note_id": {
+        "column": "note_id",
+        "pg": "text",
+        "wire": "text"
+      },
+      "is_done": {
+        "column": "is_done",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "done_at": {
+        "column": "done_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
+      },
+      "is_pinned": {
+        "column": "is_pinned",
+        "pg": "boolean",
+        "wire": "checkbox"
+      },
+      "pinned_at": {
+        "column": "pinned_at",
+        "pg": "timestamptz",
+        "wire": "timestamp"
       },
       "created_at": {
         "column": "created_at",

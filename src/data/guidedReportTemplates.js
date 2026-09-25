@@ -144,7 +144,7 @@ export const GUIDED_TEMPLATES = [
   {
     id: 'marketer_performance',
     title: 'Marketer Performance',
-    description: 'Referrals, SOC rate, and NTUC rate by marketer.',
+    description: 'Close rate (SOC ÷ SOC + NTUC, by outcome date) credited to the originally assigned marketer; open referrals counted separately.',
     icon: 'marketer_performance',
     dateField: 'referral_date',
     slots: ['dateRange', 'division', 'marketers'],
